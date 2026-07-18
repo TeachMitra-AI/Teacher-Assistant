@@ -1,0 +1,20 @@
+{
+  "name": "Teacher Coaching Assistant",
+  "short_name": "शिक्षक सहायक",
+  "description": "Just-in-time coaching support for Indian government school teachers.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#667eea",
+  "theme_color": "#FF6B35",
+  "lang": "en-IN",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

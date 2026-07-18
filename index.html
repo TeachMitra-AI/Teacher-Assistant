@@ -12,6 +12,25 @@
   
   <!-- Favicon -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👨‍🏫</text></svg>">
+
+  <!-- PWA / installable app -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.svg">
+
+  <!-- Apply saved theme & text size before paint to avoid a flash -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('theme');
+        var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (t === 'dark' || (t === null && prefersDark)) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+        var fs = localStorage.getItem('fontScale');
+        if (fs) { document.documentElement.style.fontSize = fs + 'px'; }
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <div class="container">
@@ -47,6 +66,14 @@
               <option value="or">ଓଡ଼ିଆ</option>
               <option value="hinglish">Hinglish</option>
             </select>
+          </div>
+
+          <!-- Display controls: text size + dark mode -->
+          <div class="control-group" role="group" aria-label="Display settings">
+            <button class="icon-btn" id="fontDecreaseBtn" type="button" aria-label="Decrease text size" title="Smaller text"><span aria-hidden="true">A&minus;</span></button>
+            <button class="icon-btn" id="fontIncreaseBtn" type="button" aria-label="Increase text size" title="Larger text"><span aria-hidden="true">A+</span></button>
+            <button class="icon-btn" id="themeToggle" type="button" aria-label="Toggle dark mode" title="Toggle light/dark"><span aria-hidden="true" id="themeIcon">🌙</span></button>
+            <button class="icon-btn history-toggle" id="historyToggle" type="button" aria-label="Recent questions" title="Recent questions"><span aria-hidden="true">🕘</span><span class="history-badge" id="historyBadge" hidden>0</span></button>
           </div>
         </div>
       </div>
@@ -138,6 +165,9 @@
             <span id="charCount">0</span>/500
           </div>
         </div>
+
+        <!-- Example starter questions -->
+        <div class="example-chips" id="exampleChips" aria-label="Example questions"></div>
         
         <!-- Action Buttons -->
         <div class="action-buttons">
@@ -171,6 +201,17 @@
       </section>
     </main>
   </div>
+
+  <!-- Recent Questions drawer -->
+  <div class="history-overlay" id="historyOverlay" hidden></div>
+  <aside class="history-drawer" id="historyDrawer" aria-label="Recent questions" aria-hidden="true">
+    <div class="history-drawer-header">
+      <h2 class="drawer-title"><span class="section-icon">🕘</span> Recent Questions</h2>
+      <button class="icon-btn" id="closeHistoryBtn" type="button" aria-label="Close recent questions" title="Close"><span aria-hidden="true">✕</span></button>
+    </div>
+    <div class="history-list" id="historyList"></div>
+    <button class="text-btn history-clear" id="clearHistoryBtn" type="button">Clear all</button>
+  </aside>
 
   <!-- Toast Container -->
   <div id="toastContainer"></div>
