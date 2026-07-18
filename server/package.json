@@ -1,0 +1,21 @@
+{
+  "name": "teacher-assistant-server",
+  "version": "1.0.0",
+  "description": "Backend proxy for the Teacher Just-In-Time Coaching Tool. Keeps the LLM API key server-side and adds rate limiting, validation and logging.",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^7.1.0"
+  }
+}

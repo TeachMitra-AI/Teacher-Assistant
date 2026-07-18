@@ -282,9 +282,24 @@ class TeacherCoachingApp {
   }
 
   /**
+   * Escape HTML special characters to prevent XSS.
+   */
+  escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /**
    * Format response text with basic markdown-like formatting
    */
   formatResponseText(text) {
+    // Escape any HTML first so raw model/user content cannot inject markup.
+    text = this.escapeHtml(text);
+
     // Convert numbered lists
     text = text.replace(/^(\d+)\.\s+(.+)$/gm, '<li>$2</li>');
     

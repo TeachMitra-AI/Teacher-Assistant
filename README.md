@@ -44,24 +44,46 @@ This tool provides **immediate, personalized, context-aware coaching** to teache
    - Click "Create API Key"
    - Copy your API key
 
-2. **Configure the Application**
-   - Open `config.js`
-   - Replace `YOUR_GEMINI_API_KEY_HERE` with your actual API key:
-   ```javascript
-   GEMINI_API_KEY: 'your-actual-api-key-here'
+2. **Configure & run the backend** (keeps your API key secret)
+
+   The frontend never holds the API key. A small Node.js backend proxies
+   requests to Gemini. You need Node.js 18 or newer.
+
+   ```bash
+   cd server
+   npm install
+   cp .env.example .env      # on Windows PowerShell: Copy-Item .env.example .env
    ```
 
-3. **Run the Application**
-   - Simply open `index.html` in your web browser
-   - Or use a local server:
+   Open `server/.env` and set your key:
+   ```env
+   GEMINI_API_KEY=your-actual-api-key-here
+   CORS_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
+   ```
+
+   Start the backend:
+   ```bash
+   npm start
+   ```
+   It listens on `http://localhost:3000` by default.
+
+3. **Run the frontend**
+   - If your backend is not on `http://localhost:3000`, update
+     `API.BACKEND_ENDPOINT` in `config.js`.
+   - Serve the frontend with a local server (needed so the browser origin
+     matches `CORS_ORIGINS`):
    ```bash
    # Using Python 3
    python3 -m http.server 8000
-   
+
    # Using Node.js (if you have http-server installed)
    npx http-server -p 8000
    ```
    - Open browser to: `http://localhost:8000`
+
+> **Security note:** The API key lives only in `server/.env`, which is
+> git-ignored. Never put the key in `config.js` or any frontend file. If a key
+> was ever committed to git, rotate it immediately in the Google console.
 
 ## 📖 How to Use
 

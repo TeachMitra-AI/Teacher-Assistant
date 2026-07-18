@@ -2,10 +2,10 @@
 const CONFIG = {
   // API Configuration
   API: {
-    GEMINI_ENDPOINT: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-    // User needs to add their API key here
-    // Get free API key from: https://makersuite.google.com/app/apikey
-    GEMINI_API_KEY: 'AIzaSyCPY_oDz6P6rI1bVBTDiZTKa-JKhSsqYe8',
+    // The frontend talks ONLY to our backend proxy. The LLM API key lives on
+    // the server (see server/.env), never in the browser.
+    // Point this at wherever the backend is deployed.
+    BACKEND_ENDPOINT: 'http://localhost:3000/api/coach',
     TIMEOUT: 30000, // 30 seconds
     MAX_RETRIES: 3
   },
@@ -20,7 +20,8 @@ const CONFIG = {
     ta: { name: 'தமிழ்', code: 'ta-IN' },
     gu: { name: 'ગુજરાતી', code: 'gu-IN' },
     kn: { name: 'ಕನ್ನಡ', code: 'kn-IN' },
-    or: { name: 'ଓଡ଼ିଆ', code: 'or-IN' }
+    or: { name: 'ଓଡ଼ିଆ', code: 'or-IN' },
+    hinglish: { name: 'Hinglish', code: 'hi-IN' }
   },
 
   // Cache Settings

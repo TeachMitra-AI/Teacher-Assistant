@@ -1,111 +1,18 @@
-// AI Service - Gemini API Integration
+// AI Service - Backend Proxy Integration
+//
+// This client never talks to the LLM directly and holds no API key.
+// It calls our backend (CONFIG.API.BACKEND_ENDPOINT), which owns the key,
+// builds prompts, and handles retries/continuation server-side.
 
 class AIService {
   constructor() {
-    this.apiKey = CONFIG.API.GEMINI_API_KEY;
-    this.endpoint = CONFIG.API.GEMINI_ENDPOINT;
+    this.endpoint = CONFIG.API.BACKEND_ENDPOINT;
     this.requestQueue = [];
     this.isProcessing = false;
   }
 
   /**
-   * Check if response text is complete (not truncated mid-sentence)
-   * Returns true if complete, false if likely truncated
-   */
-  isResponseComplete(text) {
-    if (!text || text.trim().length === 0) return false;
-    
-    // Check for sentence ending markers
-    const endsWithPunctuation = /[.!?:]\s*$/.test(text.trim());
-    
-    // Check for balanced brackets
-    const openRound = (text.match(/\(/g) || []).length;
-    const closeRound = (text.match(/\)/g) || []).length;
-    const openSquare = (text.match(/\[/g) || []).length;
-    const closeSquare = (text.match(/\]/g) || []).length;
-    const openCurly = (text.match(/\{/g) || []).length;
-    const closeCurly = (text.match(/\}/g) || []).length;
-    
-    const bracketsBalanced = openRound === closeRound && 
-                            openSquare === closeSquare && 
-                            openCurly === closeCurly;
-    
-    // Check for incomplete list patterns (ends with colon or dash without items)
-    const endsWithOpenList = /[:\-]\s*$/.test(text.trim());
-    
-    // Check for incomplete markdown headers or formatting
-    const incompleteFormatting = text.includes('**') && (text.match(/\*\*/g) || []).length % 2 !== 0;
-    
-    // Response is complete if: ends with punctuation AND brackets balanced AND no open list
-    const isComplete = endsWithPunctuation && bracketsBalanced && !endsWithOpenList && !incompleteFormatting;
-    
-    return isComplete;
-  }
-
-  /**
-   * Fetch continuation of incomplete response
-   * Sends original response + request to continue
-   */
-  async fetchContinuation(originalText, query, context, language) {
-    try {
-      console.log('Response truncated. Fetching continuation...');
-      
-      const continuationPrompt = `The previous response was incomplete. Here's what was said:
-
-"${originalText}"
-
-Continue from where it left off, completing the thought, and provide the rest of the answer. Continue naturally without repeating.`;
-
-      const requestBody = {
-        contents: [{
-          parts: [{
-            text: continuationPrompt
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 2048,
-        },
-        safetySettings: [
-          {
-            category: "HARM_CATEGORY_HARASSMENT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_HATE_SPEECH",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          }
-        ]
-      };
-
-      const continuationResponse = await this.makeRequest(requestBody);
-      const continuationText = this.extractResponseText(continuationResponse);
-      
-      console.log('Continuation received:', continuationText.substring(0, 100) + '...');
-      
-      // Merge: original + continuation (with space/newline if needed)
-      const merged = originalText.trim() + ' ' + continuationText.trim();
-      return merged;
-      
-    } catch (error) {
-      console.error('Error fetching continuation:', error);
-      // Return original text if continuation fails
-      return originalText;
-    }
-  }
-
-  /**
-   * Generate a response from Gemini API
+   * Generate a response by calling the backend proxy.
    * @param {string} query - Teacher's question
    * @param {object} context - Classroom context (grade, subject, etc.)
    * @param {string} language - Response language
@@ -113,67 +20,9 @@ Continue from where it left off, completing the thought, and provide the rest of
    */
   async generateResponse(query, context = {}, language = 'en') {
     try {
-      // Check if API key is configured
-      if (!this.apiKey || this.apiKey === 'AIzaSyDixdeq_tAs37GVEC5t58I_GEnKsSb7UHI') {
-        throw new Error('API_KEY_NOT_CONFIGURED');
-      }
-
-      // Select appropriate prompt template
-      const prompt = selectTemplate(query, context);
-
-      // Add language instruction if not English
-      const languageInstruction = language !== 'en' 
-        ? `\n\nIMPORTANT: Respond in ${CONFIG.LANGUAGES[language].name} language.`
-        : '';
-
-      const fullPrompt = prompt + languageInstruction;
-
-      // Prepare request payload
-      const requestBody = {
-        contents: [{
-          parts: [{
-            text: fullPrompt
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 2048,
-        },
-        safetySettings: [
-          {
-            category: "HARM_CATEGORY_HARASSMENT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_HATE_SPEECH",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          }
-        ]
-      };
-
-      // Make API request
       const startTime = Date.now();
-      const response = await this.makeRequest(requestBody);
-      const responseTime = Date.now() - startTime;
-
-      // Extract response text
-      let responseText = this.extractResponseText(response);
-
-      // Check if response is complete; if not, fetch continuation
-      if (!this.isResponseComplete(responseText)) {
-        console.log('Response appears incomplete. Auto-fetching continuation...');
-        responseText = await this.fetchContinuation(responseText, query, context, language);
-      }
+      const data = await this.makeRequest({ query, context, language });
+      const responseTime = data.responseTime || Date.now() - startTime;
 
       // Track analytics
       if (CONFIG.FEATURES.ANALYTICS) {
@@ -189,9 +38,9 @@ Continue from where it left off, completing the thought, and provide the rest of
 
       return {
         success: true,
-        text: responseText,
+        text: data.text,
         responseTime: responseTime,
-        timestamp: new Date().toISOString(),
+        timestamp: data.timestamp || new Date().toISOString(),
         context: context,
         language: language
       };
@@ -203,78 +52,69 @@ Continue from where it left off, completing the thought, and provide the rest of
   }
 
   /**
-   * Make HTTP request to Gemini API
+   * POST the query to the backend proxy, with retry on transient failures.
    */
-  async makeRequest(requestBody, retryCount = 0) {
+  async makeRequest(payload, retryCount = 0) {
     try {
       const response = await fetch(this.endpoint, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': this.apiKey
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify(payload),
         signal: AbortSignal.timeout(CONFIG.API.TIMEOUT)
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`API Error: ${response.status} - ${JSON.stringify(errorData)}`);
+        let errorMessage = `Request failed (${response.status})`;
+        try {
+          const errorData = await response.json();
+          if (errorData && errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch (_) {
+          // Response had no JSON body.
+        }
+        const err = new Error(errorMessage);
+        err.status = response.status;
+        throw err;
       }
 
       return await response.json();
 
     } catch (error) {
-      // Retry logic
-      if (retryCount < CONFIG.API.MAX_RETRIES) {
+      // Retry only on network errors or 5xx responses.
+      const retriable = !error.status || error.status >= 500;
+      if (retriable && retryCount < CONFIG.API.MAX_RETRIES) {
         console.log(`Retrying request (attempt ${retryCount + 1}/${CONFIG.API.MAX_RETRIES})...`);
         await this.delay(1000 * (retryCount + 1)); // Exponential backoff
-        return this.makeRequest(requestBody, retryCount + 1);
+        return this.makeRequest(payload, retryCount + 1);
       }
       throw error;
     }
   }
 
   /**
-   * Extract text from Gemini API response
-   */
-  extractResponseText(response) {
-    try {
-      if (response.candidates && response.candidates.length > 0) {
-        const candidate = response.candidates[0];
-        if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-          return candidate.content.parts[0].text;
-        }
-      }
-      throw new Error('Invalid response format');
-    } catch (error) {
-      console.error('Error extracting response:', error);
-      return 'Sorry, I encountered an error processing the response. Please try again.';
-    }
-  }
-
-  /**
-   * Handle errors with user-friendly messages
+   * Handle errors with user-friendly messages.
+   * The backend returns a safe, user-facing message in `error.message`.
    */
   handleError(error, query, context) {
-    let errorMessage = 'Sorry, I encountered an error. Please try again.';
+    let errorMessage = error.message || 'Sorry, I encountered an error. Please try again.';
     let errorType = 'UNKNOWN_ERROR';
 
-    if (error.message === 'API_KEY_NOT_CONFIGURED') {
-      errorMessage = 'Please configure your Gemini API key in config.js to use this feature.';
-      errorType = 'CONFIG_ERROR';
-    } else if (error.name === 'AbortError' || error.message.includes('timeout')) {
-      errorMessage = 'Request timed out. Please check your internet connection and try again.';
-      errorType = 'TIMEOUT_ERROR';
-    } else if (error.message.includes('API Error: 429')) {
-      errorMessage = 'Too many requests. Please wait a moment and try again.';
-      errorType = 'RATE_LIMIT_ERROR';
-    } else if (error.message.includes('API Error: 401') || error.message.includes('API Error: 403')) {
-      errorMessage = 'Invalid API key. Please check your configuration.';
-      errorType = 'AUTH_ERROR';
-    } else if (!navigator.onLine) {
+    if (!navigator.onLine) {
       errorMessage = 'No internet connection. Your query has been saved and will be sent when you\'re back online.';
       errorType = 'OFFLINE_ERROR';
+    } else if (error.name === 'TimeoutError' || (error.message && error.message.includes('timed out'))) {
+      errorMessage = 'Request timed out. Please check your internet connection and try again.';
+      errorType = 'TIMEOUT_ERROR';
+    } else if (error.status === 429) {
+      errorMessage = 'Too many requests. Please wait a moment and try again.';
+      errorType = 'RATE_LIMIT_ERROR';
+    } else if (error.status === 400) {
+      errorType = 'VALIDATION_ERROR';
+    } else if (error.status >= 500) {
+      errorType = 'SERVER_ERROR';
     }
 
     return {
@@ -286,6 +126,7 @@ Continue from where it left off, completing the thought, and provide the rest of
       timestamp: new Date().toISOString()
     };
   }
+
 
   /**
    * Track analytics events
