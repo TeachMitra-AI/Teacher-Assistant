@@ -110,6 +110,38 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     setRating(null);
   }
 
+  async function handleDeleteHistory(item: HistoryItem) {
+    const previous = history;
+    setHistory((h) => h.filter((x) => x.id !== item.id));
+    // If the deleted item is the one currently shown, clear the response too.
+    if (response?.queryId === item.id) {
+      setResponse(null);
+      setRating(null);
+    }
+    try {
+      await api(`/queries/${item.id}`, { method: 'DELETE' });
+      show('Removed from history', 'success');
+    } catch (err) {
+      setHistory(previous); // rollback on failure
+      show(err instanceof ApiError ? err.message : 'Could not delete', 'error');
+    }
+  }
+
+  async function handleClearHistory() {
+    if (history.length === 0) return;
+    const confirmed = window.confirm('Delete your entire question history? This cannot be undone.');
+    if (!confirmed) return;
+    const previous = history;
+    setHistory([]);
+    try {
+      await api('/queries', { method: 'DELETE' });
+      show('History cleared', 'success');
+    } catch (err) {
+      setHistory(previous); // rollback on failure
+      show(err instanceof ApiError ? err.message : 'Could not clear history', 'error');
+    }
+  }
+
   function selectHistory(item: HistoryItem) {
     setQuery(item.query);
     setLanguage(item.language);
@@ -253,6 +285,8 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
         loading={historyLoading}
         onClose={() => setDrawerOpen(false)}
         onSelect={selectHistory}
+        onDelete={handleDeleteHistory}
+        onClearAll={handleClearHistory}
       />
     </div>
   );
