@@ -1,4 +1,4 @@
-import type { Role } from './types';
+import type { Role, ResponseStyle } from './types';
 
 // Languages supported for AI responses (UI itself stays in English).
 export const LANGUAGES: { value: string; label: string }[] = [
@@ -52,5 +52,17 @@ export const ROLE_LABELS: Record<Role, string> = {
 
 // Roles that can see the admin dashboard.
 export const ADMIN_ROLES: Role[] = ['school_admin', 'resource_person', 'super_admin'];
+
+// Preferred coaching response styles shown in Settings.
+export const RESPONSE_STYLES: { value: ResponseStyle; label: string; hint: string }[] = [
+  { value: 'balanced', label: 'Balanced', hint: 'Well-rounded advice (default)' },
+  { value: 'concise', label: 'Concise', hint: 'Short and to the point' },
+  { value: 'detailed', label: 'Detailed', hint: 'Thorough, in-depth explanations' },
+  { value: 'step_by_step', label: 'Step by step', hint: 'Numbered, follow-along steps' },
+  { value: 'practical', label: 'Practical', hint: 'Ready-to-use classroom actions' },
+];
+
+// Lightweight preset avatars (emoji) — no photo upload needed on low-end devices.
+export const AVATAR_PRESETS = ['👩‍🏫', '👨‍🏫', '🧑‍🏫', '📚', '✏️', '🌟', '🍎', '🎓', '🧮', '🔬', '🎨', '🌈'];
 
 export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000/api';

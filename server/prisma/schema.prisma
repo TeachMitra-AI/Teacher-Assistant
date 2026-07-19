@@ -31,6 +31,8 @@ model User {
   school           School    @relation(fields: [schoolId], references: [id])
   schoolId         String
   name             String
+  displayName      String?
+  preferences      String? // JSON string of teacher preferences (defaults + responseStyle + avatar)
   role             String    @default("teacher")
   pinHash          String
   failedLoginCount Int       @default(0)

@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage';
 import CoachPage from './pages/CoachPage';
 import AdminPage from './pages/AdminPage';
 import ManagePage from './pages/ManagePage';
+import SettingsPage from './pages/SettingsPage';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -34,6 +35,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<CoachPage preferences={preferences} />} />
+      <Route path="/settings" element={<SettingsPage preferences={preferences} />} />
       <Route
         path="/admin"
         element={isAdmin ? <AdminPage preferences={preferences} /> : <Navigate to="/" replace />}

@@ -223,7 +223,144 @@ teacher-coaching-tool/
    - Response display
    - User feedback
 
-## 📊 Success Metrics
+## � Data Flow (Analytics Dashboard)
+
+This walks through the **complete data flow** behind the admin **Usage dashboard**,
+using the **"By subject" bar chart** as the example (every other chart follows the
+same pattern). It shows how a single teacher question ends up as a bar on an
+administrator's screen.
+
+### Step 0 — The data is born (teacher asks a question)
+When a teacher submits a question on the Coach page, the browser `POST`s to
+`/api/coach`. The server sanitizes the context and **persists the query**
+(`server/src/index.js`):
+
+```js
+const safeContext = { grade, subject, classroomType, issueType };
+await prisma.query.create({
+  data: {
+    userId: req.user.id,
+    schoolId: req.user.schoolId,
+    queryText: query.trim(),
+    context: JSON.stringify(safeContext), // subject is stored INSIDE this JSON string
+    // ...
+  },
+});
+```
+
+> Key detail: `subject` is **not** its own column — it lives inside a JSON blob in
+> the `Query.context` field (`server/prisma/schema.prisma`), e.g.
+> `{"grade":"Class 3-5","subject":"Mathematics",...}`.
+
+### Step 1 — The admin opens the dashboard (frontend requests data)
+When `AdminPage` mounts it makes one authenticated request
+(`client/src/pages/AdminPage.tsx`). The `api()` helper attaches the admin's JWT as
+a `Bearer` token (`client/src/api.ts`):
+
+```tsx
+const res = await api<Analytics>('/admin/analytics');
+setData(res);
+```
+
+### Step 2 — The server authorizes and scopes the request
+The `/admin/analytics` route runs two guards, then decides which schools this admin
+may see (`server/src/routes/admin.js`):
+
+```js
+router.get('/analytics', authRequired, requireRole(...ADMIN_ROLES), async (req, res) => {
+  const scope = await schoolScope(req.user); // null = all, [ids] = district/school
+  const where = scopeWhere(scope);           // Prisma filter
+```
+
+| Role | Sees data for |
+| --- | --- |
+| School Admin | their own school |
+| Resource Person | their whole district |
+| Super Admin | all schools |
+
+### Step 3 — Fetch the raw rows
+It pulls up to 5000 recent queries, selecting only the needed fields:
+
+```js
+prisma.query.findMany({
+  where,
+  select: { userId: true, context: true, language: true, queryText: true, createdAt: true },
+  orderBy: { createdAt: 'desc' },
+  take: 5000,
+});
+```
+
+### Step 4 — Parse the JSON and tally per subject
+The server loops over every row, **parses the JSON string** back into an object, and
+counts subjects into a plain map:
+
+```js
+const bySubject = {};
+for (const q of recent) {
+  let ctx = {};
+  try { ctx = q.context ? JSON.parse(q.context) : {}; } catch { ctx = {}; }
+  if (ctx.subject) bySubject[ctx.subject] = (bySubject[ctx.subject] || 0) + 1;
+}
+// bySubject => { Mathematics: 12, Science: 5, English: 3 }
+```
+
+### Step 5 — Reshape into chart-friendly rows
+The map is converted into a **sorted array of `{ label, count }`**:
+
+```js
+function toSortedArray(obj) {
+  return Object.entries(obj)
+    .sort((a, b) => b[1] - a[1])            // biggest first
+    .map(([label, count]) => ({ label, count }));
+}
+// => [{ label: "Mathematics", count: 12 }, { label: "Science", count: 5 }, ...]
+```
+
+This is returned as `res.json({ ..., bySubject, ... })`.
+
+### Step 6 — The shared contract
+Both sides agree on the shape via the `Analytics` type (`client/src/types.ts`):
+
+```ts
+bySubject: { label: string; count: number }[];
+```
+
+### Step 7 — Render the bars
+Finally, `recharts` maps the array to bars — `label` on the X axis, `count` as the
+bar height (`client/src/pages/AdminPage.tsx`). If `bySubject` is empty it shows
+"No data yet." instead:
+
+```tsx
+<BarChart data={data.bySubject}>
+  <XAxis dataKey="label" />              {/* "Mathematics", "Science"... */}
+  <YAxis />
+  <Bar dataKey="count" fill="#1E88E5" /> {/* 12, 5, 3... */}
+</BarChart>
+```
+
+### The whole flow at a glance
+
+```mermaid
+flowchart TD
+  A["Teacher submits question<br/>POST /api/coach"] --> B["Query row saved<br/>context = JSON string"]
+  B --> C[("SQLite: Query table")]
+  D["Admin opens dashboard<br/>GET /api/admin/analytics"] --> E["authRequired + requireRole<br/>schoolScope filter"]
+  E --> F["findMany: fetch up to 5000 rows"]
+  C --> F
+  F --> G["Loop: JSON.parse(context)<br/>tally bySubject{}"]
+  G --> H["toSortedArray →<br/>[{label, count}] sorted"]
+  H --> I["res.json({ bySubject })"]
+  I --> J["AdminPage setData(res)"]
+  J --> K["recharts BarChart<br/>X = label, height = count"]
+```
+
+> **Scaling note:** because `subject`/`grade` are stored inside a JSON string rather
+> than real columns, the database cannot aggregate them directly — the server counts
+> them in JavaScript after `JSON.parse`. This is simple and fine for the pilot. At
+> large scale you would promote these to indexed columns (or use `GROUP BY`) so the
+> database does the aggregation instead of loading thousands of rows into memory.
+
+## �📊 Success Metrics
 
 The tool tracks:
 - **Query-to-Resolution Time**: How fast teachers get answers

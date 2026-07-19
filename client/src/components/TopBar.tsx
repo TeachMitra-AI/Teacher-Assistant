@@ -40,6 +40,17 @@ export default function TopBar({ preferences, onHistoryToggle, historyCount = 0 
             {theme === 'dark' ? '☀️' : '🌙'}
           </button>
 
+          {user && (
+            <Link
+              to="/settings"
+              className={`icon-btn${location.pathname === '/settings' ? ' active' : ''}`}
+              title="Settings"
+              aria-label="Settings"
+            >
+              ⚙️
+            </Link>
+          )}
+
           {onHistoryToggle && (
             <button className="icon-btn history-toggle" onClick={onHistoryToggle} title="Recent questions" aria-label="Recent questions">
               🕘
@@ -49,8 +60,13 @@ export default function TopBar({ preferences, onHistoryToggle, historyCount = 0 
 
           {user && (
             <div className="user-chip">
-              <span className="user-name">{user.name}</span>
-              <span className="user-role">{ROLE_LABELS[user.role]}</span>
+              {user.preferences?.avatar && (
+                <span className="user-avatar" aria-hidden="true">{user.preferences.avatar}</span>
+              )}
+              <span className="user-meta">
+                <span className="user-name">{user.displayName || user.name}</span>
+                <span className="user-role">{ROLE_LABELS[user.role]}</span>
+              </span>
             </div>
           )}
           <button className="btn-text" onClick={logout} title="Sign out">Sign out</button>

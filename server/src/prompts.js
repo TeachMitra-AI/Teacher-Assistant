@@ -33,6 +33,30 @@ function languageDirective(language) {
   return LANGUAGE_INSTRUCTIONS[language] || `Respond in ${LANGUAGE_NAMES[language]} language.`;
 }
 
+// Teacher-chosen presentation style for coaching responses. 'balanced' (or an
+// unknown value) adds no directive so the default template structure is used.
+const RESPONSE_STYLE_INSTRUCTIONS = {
+  concise:
+    'Keep the response short and to the point. Give only the 2-3 most important, immediately usable ideas in a compact form. Aim for roughly 150-200 words.',
+  detailed:
+    'Provide a thorough, in-depth response. Elaborate on each strategy with extra explanation, reasoning and multiple concrete examples.',
+  step_by_step:
+    'Structure the entire response as clear, numbered step-by-step instructions the teacher can follow in order, one action per step.',
+  practical:
+    'Focus on concrete, ready-to-use classroom actions, activities and examples the teacher can apply today. Keep theory to a minimum.',
+  balanced: '',
+};
+
+/**
+ * Build the response-style directive appended to prompts. Returns '' when the
+ * style is 'balanced' or unrecognised.
+ * @param {string} responseStyle
+ * @returns {string}
+ */
+function styleDirective(responseStyle) {
+  return RESPONSE_STYLE_INSTRUCTIONS[responseStyle] || '';
+}
+
 const SYSTEM_PROMPT = `You are an expert educational coach for Indian government school teachers. Provide DETAILED, GRADE-SPECIFIC, ACTIONABLE guidance.
 
 CRITICAL REQUIREMENTS:
@@ -260,4 +284,4 @@ function selectTemplate(query, context = {}) {
   return templates.general(query, context);
 }
 
-module.exports = { selectTemplate, LANGUAGE_NAMES, languageDirective };
+module.exports = { selectTemplate, LANGUAGE_NAMES, languageDirective, styleDirective };

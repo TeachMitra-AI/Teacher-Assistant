@@ -8,10 +8,23 @@ export interface School {
   state?: string | null;
 }
 
+export type ResponseStyle = 'balanced' | 'concise' | 'detailed' | 'step_by_step' | 'practical';
+
+export interface TeacherPreferences {
+  defaultLanguage?: string;
+  defaultGrade?: string;
+  defaultSubject?: string;
+  defaultClassroomType?: string;
+  responseStyle?: ResponseStyle;
+  avatar?: string;
+}
+
 export interface User {
   id: string;
   name: string;
+  displayName?: string | null;
   role: Role;
+  preferences: TeacherPreferences;
   school: School;
 }
 

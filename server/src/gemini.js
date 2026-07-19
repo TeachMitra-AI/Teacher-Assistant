@@ -2,7 +2,7 @@
 // failures, and completes truncated responses. The API key lives only here,
 // on the server, sourced from environment variables.
 
-const { selectTemplate, LANGUAGE_NAMES, languageDirective } = require('./prompts');
+const { selectTemplate, LANGUAGE_NAMES, languageDirective, styleDirective } = require('./prompts');
 
 const SAFETY_SETTINGS = [
   { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
@@ -127,11 +127,13 @@ Continue EXACTLY from where it stopped. Do NOT repeat any earlier text, do NOT r
    * Generate a coaching response.
    * @param {{query: string, context: object, language: string}} params
    */
-  async generateResponse({ query, context = {}, language = 'en' }) {
+  async generateResponse({ query, context = {}, language = 'en', responseStyle = 'balanced' }) {
     const prompt = selectTemplate(query, context);
     const directive = languageDirective(language);
     const languageInstruction = directive ? `\n\nIMPORTANT: ${directive}` : '';
-    const fullPrompt = prompt + languageInstruction;
+    const style = styleDirective(responseStyle);
+    const styleInstruction = style ? `\n\nRESPONSE STYLE: ${style}` : '';
+    const fullPrompt = prompt + styleInstruction + languageInstruction;
 
     const startTime = Date.now();
     const first = this.extractCandidate(await this.makeRequest(this.buildRequestBody(fullPrompt)));

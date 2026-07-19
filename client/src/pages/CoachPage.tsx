@@ -5,6 +5,7 @@ import HistoryDrawer from '../components/HistoryDrawer';
 import { useToast } from '../components/Toast';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { usePreferences } from '../hooks/usePreferences';
+import { useAuth } from '../auth';
 import { api, ApiError } from '../api';
 import {
   LANGUAGES, GRADES, SUBJECTS, CLASSROOM_TYPES, ISSUE_TYPES,
@@ -16,10 +17,17 @@ const EMPTY_CONTEXT: QueryContext = { grade: '', subject: '', classroomType: '',
 
 export default function CoachPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
   const { show } = useToast();
+  const { user } = useAuth();
+  const prefs = user?.preferences ?? {};
 
-  const [language, setLanguage] = useState('en');
+  const [language, setLanguage] = useState(prefs.defaultLanguage || 'en');
   const [query, setQuery] = useState('');
-  const [context, setContext] = useState<QueryContext>(EMPTY_CONTEXT);
+  const [context, setContext] = useState<QueryContext>({
+    grade: prefs.defaultGrade ?? '',
+    subject: prefs.defaultSubject ?? '',
+    classroomType: prefs.defaultClassroomType ?? '',
+    issueType: '',
+  });
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<CoachResponse | null>(null);
   const [rating, setRating] = useState<'helpful' | 'not_helpful' | null>(null);

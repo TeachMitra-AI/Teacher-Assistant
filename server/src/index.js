@@ -138,10 +138,27 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
   };
 
   try {
+    // Read the teacher's saved response-style preference server-side so it is
+    // authoritative and cannot be spoofed by the client.
+    let responseStyle = 'balanced';
+    try {
+      const profile = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { preferences: true },
+      });
+      if (profile?.preferences) {
+        const prefs = JSON.parse(profile.preferences);
+        if (prefs && typeof prefs.responseStyle === 'string') responseStyle = prefs.responseStyle;
+      }
+    } catch {
+      /* fall back to balanced */
+    }
+
     const result = await gemini.generateResponse({
       query: query.trim(),
       context: safeContext,
       language,
+      responseStyle,
     });
 
     // Persist the query for history + analytics. A failure here must not break
