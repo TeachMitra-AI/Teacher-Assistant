@@ -58,7 +58,13 @@ This tool provides **immediate, personalized, context-aware coaching** to teache
    Open `server/.env` and set your key:
    ```env
    GEMINI_API_KEY=your-actual-api-key-here
-   CORS_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
+   CORS_ORIGINS=http://localhost:5173,http://localhost:8000
+   ```
+
+   Set up the database (SQLite via Prisma) and seed demo accounts:
+   ```bash
+   npx prisma migrate dev     # creates prisma/dev.db and applies the schema
+   npm run seed               # adds demo schools + accounts (see below)
    ```
 
    Start the backend:
@@ -67,22 +73,40 @@ This tool provides **immediate, personalized, context-aware coaching** to teache
    ```
    It listens on `http://localhost:3000` by default.
 
-3. **Run the frontend**
-   - If your backend is not on `http://localhost:3000`, update
-     `API.BACKEND_ENDPOINT` in `config.js`.
-   - Serve the frontend with a local server (needed so the browser origin
-     matches `CORS_ORIGINS`):
-   ```bash
-   # Using Python 3
-   python3 -m http.server 8000
+3. **Run the React client** (`client/`)
 
-   # Using Node.js (if you have http-server installed)
-   npx http-server -p 8000
+   The modern web app is a Vite + React + TypeScript PWA.
+   ```bash
+   cd ../client
+   npm install
+   cp .env.example .env       # on Windows PowerShell: Copy-Item .env.example .env
+   npm run dev
    ```
-   - Open browser to: `http://localhost:8000`
+   Open the browser to the URL Vite prints (default `http://localhost:5173`).
+   `VITE_API_BASE` in `client/.env` points the app at the backend API.
+
+   Build for production with `npm run build` (outputs to `client/dist/`).
+
+### Demo accounts (from `npm run seed`)
+
+All demo accounts use PIN **123456**. Sign in with a school code + name + PIN.
+
+| School code | Name          | Role            |
+| ----------- | ------------- | --------------- |
+| RAMPUR01    | Demo Teacher  | Teacher         |
+| RAMPUR01    | Rampur Admin  | School Admin    |
+| RAMPUR01    | Rampur RP     | Resource Person |
+| RAMPUR01    | Super Admin   | Super Admin     |
+
+New teachers can self-register with a valid school code from the **Register** tab.
+
+> **Legacy note:** The original vanilla HTML/JS prototype now lives in
+> `archive/` (`index.html`, `app.js`, `styles.css`, etc.). It is superseded by
+> the React client in `client/` and no longer works against the API because
+> `/api/coach` now requires authentication. It is kept only for reference.
 
 > **Security note:** The API key lives only in `server/.env`, which is
-> git-ignored. Never put the key in `config.js` or any frontend file. If a key
+> git-ignored. Never put the key in any frontend file. If a key
 > was ever committed to git, rotate it immediately in the Google console.
 
 ## 📖 How to Use

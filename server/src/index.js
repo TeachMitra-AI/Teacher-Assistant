@@ -15,6 +15,11 @@ const rateLimit = require('express-rate-limit');
 
 const { GeminiService } = require('./gemini');
 const { LANGUAGE_NAMES } = require('./prompts');
+const { prisma } = require('./lib/db');
+const { authRequired } = require('./middleware/auth');
+const authRouter = require('./routes/auth');
+const dataRouter = require('./routes/queries');
+const adminRouter = require('./routes/admin');
 
 // ---- Configuration ---------------------------------------------------------
 
@@ -76,7 +81,8 @@ app.use(
       console.warn(`CORS blocked origin: ${origin}`);
       return callback(new Error('Not allowed by CORS'));
     },
-    methods: ['POST', 'GET'],
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
 
@@ -88,13 +94,24 @@ const limiter = rateLimit({
   message: { error: 'Too many requests. Please wait a moment and try again.' },
 });
 
+// Stricter limiter for auth endpoints to slow down credential guessing.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please wait a few minutes and try again.' },
+});
+
 // ---- Routes ----------------------------------------------------------------
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.post('/api/coach', limiter, async (req, res) => {
+app.use('/api/auth', authLimiter, authRouter);
+
+app.post('/api/coach', authRequired, limiter, async (req, res) => {
   const { query, context = {}, language = 'en' } = req.body || {};
 
   // --- Input validation (system boundary) ---
@@ -126,7 +143,29 @@ app.post('/api/coach', limiter, async (req, res) => {
       context: safeContext,
       language,
     });
-    return res.json({ success: true, ...result, context: safeContext });
+
+    // Persist the query for history + analytics. A failure here must not break
+    // the response the teacher is waiting for.
+    let queryId = null;
+    try {
+      const saved = await prisma.query.create({
+        data: {
+          userId: req.user.id,
+          schoolId: req.user.schoolId,
+          queryText: query.trim(),
+          language,
+          context: JSON.stringify(safeContext),
+          responseText: result.text,
+          responseTimeMs: result.responseTime || null,
+          finishReason: result.finishReason || null,
+        },
+      });
+      queryId = saved.id;
+    } catch (persistError) {
+      console.error('Failed to persist query:', persistError.message);
+    }
+
+    return res.json({ success: true, ...result, context: safeContext, queryId });
   } catch (error) {
     console.error('Coach request failed:', {
       status: error.status,
@@ -146,6 +185,10 @@ app.post('/api/coach', limiter, async (req, res) => {
     return res.status(502).json({ error: 'Failed to generate a response. Please try again.' });
   }
 });
+
+// Teacher history + feedback, and admin analytics/management.
+app.use('/api', dataRouter);
+app.use('/api/admin', adminRouter);
 
 // ---- Start -----------------------------------------------------------------
 

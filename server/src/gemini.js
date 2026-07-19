@@ -168,6 +168,7 @@ Continue EXACTLY from where it stopped. Do NOT repeat any earlier text, do NOT r
       responseTime: Date.now() - startTime,
       timestamp: new Date().toISOString(),
       language,
+      finishReason,
     };
   }
 }

@@ -1,0 +1,97 @@
+// Prisma schema for the Teacher Assistant.
+// SQLite for the pilot; switching to PostgreSQL later only requires changing
+// the datasource provider + DATABASE_URL and re-running migrations.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// A school is the tenant boundary. Teachers log in with the school `code`.
+model School {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  district  String?
+  state     String?
+  createdAt DateTime @default(now())
+
+  users   User[]
+  queries Query[]
+  events  Event[]
+}
+
+// Roles: teacher | school_admin | resource_person | super_admin
+model User {
+  id               String    @id @default(cuid())
+  school           School    @relation(fields: [schoolId], references: [id])
+  schoolId         String
+  name             String
+  role             String    @default("teacher")
+  pinHash          String
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  lastLogin        DateTime?
+  createdAt        DateTime  @default(now())
+
+  queries  Query[]
+  feedback Feedback[]
+  events   Event[]
+
+  // A teacher name is unique within a school.
+  @@unique([schoolId, name])
+}
+
+// Every coaching request is persisted for history + analytics.
+model Query {
+  id             String   @id @default(cuid())
+  user           User?    @relation(fields: [userId], references: [id])
+  userId         String?
+  school         School?  @relation(fields: [schoolId], references: [id])
+  schoolId       String?
+  queryText      String
+  language       String   @default("en")
+  context        String? // JSON string of { grade, subject, classroomType, issueType }
+  responseText   String
+  responseTimeMs Int?
+  finishReason   String?
+  createdAt      DateTime @default(now())
+
+  feedback Feedback[]
+
+  @@index([userId])
+  @@index([schoolId])
+  @@index([createdAt])
+}
+
+// Thumbs up/down on a response.
+model Feedback {
+  id        String   @id @default(cuid())
+  query     Query    @relation(fields: [queryId], references: [id])
+  queryId   String
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?
+  rating    String // helpful | not_helpful
+  createdAt DateTime @default(now())
+
+  @@index([queryId])
+}
+
+// Generic analytics events (voice_used, etc.).
+model Event {
+  id        String   @id @default(cuid())
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?
+  school    School?  @relation(fields: [schoolId], references: [id])
+  schoolId  String?
+  type      String
+  metadata  String? // JSON string
+  createdAt DateTime @default(now())
+
+  @@index([type])
+  @@index([createdAt])
+}
