@@ -14,12 +14,14 @@ This tool provides **immediate, personalized, context-aware coaching** to teache
 ## ✨ Features
 
 ### Core Functionality
-- 🤖 **AI-Powered Coaching**: Uses Google Gemini API for intelligent, context-aware responses
-- 🎤 **Voice Input**: Speak your questions in any supported language
-- 🌐 **Multilingual Support**: 9 Indian languages (English, Hindi, Bengali, Telugu, Marathi, Tamil, Gujarati, Kannada, Odia)
-- 📴 **Offline-First**: Queue queries when offline, auto-sync when connection restored
-- 💾 **Smart Caching**: Instant responses for previously asked questions
-- 📊 **Analytics**: Track usage patterns and response times
+- 🤖 **AI-Powered Coaching**: Uses Google Gemini (2.5 Flash) for context-aware responses. The API key stays **server-side** and is never exposed to the browser.
+- 🎤 **Voice Input**: Ask questions by speaking, using the browser's Web Speech API
+- 🗣️ **Read Aloud**: Text-to-speech playback of the AI answer
+- 🌐 **Multilingual Support**: 9 Indian languages + Hinglish (English, Hindi, Bengali, Telugu, Marathi, Tamil, Gujarati, Kannada, Odia)
+- 🎨 **Personalization**: Per-teacher settings — display name, avatar, default grade/subject/language, and preferred response style (concise, detailed, step-by-step, practical)
+- 🕘 **Question History**: Each teacher's past questions and answers, stored server-side
+- 📊 **Admin Dashboard**: Role-scoped usage analytics for school admins, resource persons, and super admins
+- 📱 **Installable PWA**: Installs like an app with an offline-cached app shell (API calls are never cached)
 
 ### Specialized Coaching Areas
 1. **Classroom Management** - Handle disruptions, manage multi-grade classrooms
@@ -28,6 +30,140 @@ This tool provides **immediate, personalized, context-aware coaching** to teache
 4. **Assessment** - Quick, effective evaluation techniques
 5. **FLN Support** - Foundational Literacy & Numeracy guidance
 6. **Resource-Constrained Teaching** - Creative solutions with limited materials
+
+## 🏛️ Architecture at a Glance
+
+> New to the project? Start here. These diagrams explain how the whole system fits
+> together before you dive into any code.
+
+The app has **two parts**: a **React frontend** (`client/`) that teachers and
+administrators use in the browser, and a **Node.js backend** (`server/`) that keeps
+the Gemini API key secret, talks to the database, and enforces who can see what.
+
+### 1. System components — how the pieces connect
+
+```mermaid
+flowchart LR
+  subgraph Client["🖥️ Frontend — Vite + React + TypeScript PWA  (client/)"]
+    UI["Pages:<br/>Login · Coach · Dashboard · Manage · Settings"]
+  end
+
+  subgraph Server["⚙️ Backend — Node.js + Express  (server/)"]
+    API["REST API  /api/*"]
+    Auth["JWT auth · roles · rate limiting"]
+    Gem["Gemini service<br/>(holds the API key)"]
+    Prompts["Server-side prompt builder"]
+  end
+
+  DB[("🗄️ SQLite via Prisma<br/>School · User · Query · Feedback · Event")]
+  LLM["☁️ Google Gemini 2.5 Flash"]
+
+  UI -- "HTTPS request + JWT (Bearer token)" --> API
+  API --> Auth
+  API --> Gem
+  Gem --> Prompts
+  Gem -- "server-side API key" --> LLM
+  API -- "Prisma ORM" --> DB
+```
+
+**Why a backend at all?** So the Gemini API key is never shipped to the browser, so
+prompts can't be tampered with, and so questions/feedback can be stored and analysed.
+
+### 2. Asking a question — the coaching request lifecycle
+
+```mermaid
+sequenceDiagram
+  participant T as Teacher (browser)
+  participant A as Express API
+  participant G as Gemini service
+  participant L as Gemini API
+  participant D as SQLite (Prisma)
+
+  T->>A: POST /api/coach { query, context, language } + JWT
+  A->>A: authRequired + rate limit + validate input
+  A->>D: read teacher's saved responseStyle preference
+  A->>G: generateResponse({ query, context, language, responseStyle })
+  G->>G: pick template + add language & style directives
+  G->>L: POST prompt (with server-side API key)
+  L-->>G: AI answer (auto-continues if truncated)
+  G-->>A: answer text + timing
+  A->>D: save Query row (for history + analytics)
+  A-->>T: { text, queryId }
+  T->>A: POST /api/feedback { queryId, rating }  (👍/👎)
+```
+
+### 3. Signing in — authentication & roles
+
+Teachers log in with a **school code + their name + a 6-digit PIN**. There are four
+roles; admins see extra pages.
+
+```mermaid
+flowchart TD
+  L["Teacher enters<br/>school code + name + PIN"] --> P["POST /api/auth/login"]
+  P --> V{"PIN correct?"}
+  V -- No --> F["Count failed attempt<br/>lock account after 5 tries"]
+  V -- Yes --> J["Issue JWT (valid 7 days)<br/>stored in browser localStorage"]
+  J --> M["On reload, client calls<br/>/api/auth/me to restore session"]
+  M --> R{"What role?"}
+  R -- teacher --> C["Coach + Settings"]
+  R -- "school_admin / resource_person / super_admin" --> C2["Coach + Settings +<br/>Dashboard + Manage"]
+```
+
+| Role | Coach | Settings | Dashboard | Manage schools/users | Data they can see |
+| --- | :---: | :---: | :---: | :---: | --- |
+| Teacher | ✅ | ✅ | — | — | Only their own history |
+| School Admin | ✅ | ✅ | ✅ | View users | Their own school |
+| Resource Person | ✅ | ✅ | ✅ | View users | Their whole district |
+| Super Admin | ✅ | ✅ | ✅ | Create schools, change roles | All schools |
+
+### 4. The data model
+
+Everything is scoped to a **School** (the tenant). A **User** asks **Queries**; each
+query can receive **Feedback**.
+
+```mermaid
+erDiagram
+  SCHOOL ||--o{ USER : has
+  SCHOOL ||--o{ QUERY : scopes
+  USER ||--o{ QUERY : asks
+  QUERY ||--o{ FEEDBACK : receives
+  USER ||--o{ FEEDBACK : gives
+  USER ||--o{ EVENT : generates
+
+  SCHOOL {
+    string id PK
+    string name
+    string code UK
+    string district
+    string state
+  }
+  USER {
+    string id PK
+    string name
+    string displayName
+    string role
+    string pinHash
+    string preferences
+  }
+  QUERY {
+    string id PK
+    string queryText
+    string language
+    string context
+    string responseText
+    datetime createdAt
+  }
+  FEEDBACK {
+    string id PK
+    string rating
+    datetime createdAt
+  }
+  EVENT {
+    string id PK
+    string type
+    string metadata
+  }
+```
 
 ## 🚀 Quick Start
 
@@ -124,7 +260,7 @@ New teachers can self-register with a valid school code from the **Register** ta
    - Click the 🎤 microphone button to speak
 
 3. **Get Instant Coaching**
-   - Click "Get Coaching" button
+   - Click the "Get advice" button
    - Receive personalized, actionable advice in seconds
 
 4. **Provide Feedback**
@@ -153,16 +289,20 @@ New teachers can self-register with a valid school code from the **Register** ta
 - The app will transcribe and process your question
 - Works in all 9 supported languages
 
-### Offline Mode
-- Queries submitted while offline are automatically queued
-- When connection is restored, queries are processed automatically
-- You'll receive a notification when offline queries are answered
+### Installable PWA
+- Install the app to your home screen / desktop (it's a Progressive Web App)
+- The app shell is cached, so the interface loads even on a flaky connection
+- Getting a **new** answer still needs the internet (API calls are never cached)
 
-### Smart Caching
-- Previously asked questions (with same context) are cached
-- Instant responses from cache (no API call needed)
-- Cache expires after 7 days
-- Reduces API usage and costs
+### Personalization (Settings)
+- Set a display name and pick an avatar
+- Choose default grade, subject, classroom type, and language so the Coach page is pre-filled
+- Pick a preferred **response style**: balanced, concise, detailed, step-by-step, or practical
+- Change your PIN
+
+### Question History
+- Every question and answer you submit is saved to your account
+- Open the 🕘 history drawer to revisit a past answer instantly (no new API call)
 
 ### Language Support
 The tool supports 9 Indian languages:
@@ -178,50 +318,63 @@ The tool supports 9 Indian languages:
 
 ## 🏗️ Technical Architecture
 
-### File Structure
+### Repository structure
 ```
-teacher-coaching-tool/
-├── index.html           # Main HTML structure
-├── styles.css          # Comprehensive styling with animations
-├── config.js           # Configuration and settings
-├── prompt-templates.js # AI prompt templates for different scenarios
-├── ai-service.js       # Gemini API integration
-├── cache-manager.js    # Offline-first caching with IndexedDB
-├── app.js             # Main application logic
-└── README.md          # This file
+Teacher-Assistant/
+├── client/                      # Vite + React + TypeScript PWA (what users open)
+│   ├── src/
+│   │   ├── pages/               # LoginPage, CoachPage, AdminPage (dashboard),
+│   │   │                        #   ManagePage, SettingsPage
+│   │   ├── components/          # TopBar, AdminTabs, HistoryDrawer, ResponseCard, Toast
+│   │   ├── hooks/               # usePreferences (theme/font), useVoiceInput
+│   │   ├── lib/                 # format, tts (text-to-speech)
+│   │   ├── api.ts               # fetch wrapper + JWT handling
+│   │   ├── auth.tsx             # auth context (login / register / me / updateUser)
+│   │   ├── config.ts            # languages, grades, subjects, roles, response styles
+│   │   └── types.ts             # shared TypeScript types
+│   └── vite.config.ts           # PWA config (app-shell cached; API never cached)
+│
+├── server/                      # Node.js + Express + Prisma backend (holds the API key)
+│   ├── src/
+│   │   ├── index.js             # app setup, CORS, rate limits, POST /api/coach
+│   │   ├── gemini.js            # Gemini API client (retries + answer continuation)
+│   │   ├── prompts.js           # prompt templates + language & response-style directives
+│   │   ├── seed.js              # demo schools + accounts
+│   │   ├── lib/db.js            # Prisma client
+│   │   ├── middleware/auth.js   # JWT sign/verify, requireRole
+│   │   └── routes/              # auth.js, queries.js, admin.js
+│   └── prisma/
+│       ├── schema.prisma        # School, User, Query, Feedback, Event
+│       └── migrations/          # SQL migration history
+│
+└── archive/                     # ⚠️ Legacy vanilla HTML/JS prototype (deprecated — reference only)
 ```
 
 ### Technology Stack
-- **Frontend**: Vanilla HTML, CSS, JavaScript (no frameworks)
-- **AI Model**: Google Gemini 1.5 Flash
-- **Storage**: IndexedDB for caching, LocalStorage for settings
-- **Voice**: Web Speech API
-- **Styling**: Modern CSS with glassmorphism, animations
+- **Frontend**: React 18, TypeScript, Vite, React Router, Recharts (charts), vite-plugin-pwa
+- **Backend**: Node.js 18+, Express, Prisma ORM
+- **Database**: SQLite for the pilot — swappable to PostgreSQL by changing the Prisma datasource
+- **AI Model**: Google Gemini 2.5 Flash (called only from the server)
+- **Auth & security**: JWT (jsonwebtoken), bcryptjs (PIN hashing), Helmet, CORS, express-rate-limit, Zod validation
+- **Browser APIs**: Web Speech API (voice input), SpeechSynthesis (read aloud)
 
-### Key Components
+### Key Modules
 
-1. **AI Service** (`ai-service.js`)
-   - Gemini API integration
-   - Error handling and retries
-   - Response formatting
-   - Analytics tracking
+**Backend (`server/src/`)**
+1. **`index.js`** — Express app, CORS, rate limiting, and the `POST /api/coach` endpoint
+2. **`gemini.js`** — calls Gemini, retries on transient errors, and auto-continues truncated answers
+3. **`prompts.js`** — selects a scenario template and appends language + response-style directives
+4. **`routes/auth.js`** — login/register, `/me`, profile updates, PIN change
+5. **`routes/queries.js`** — a teacher's personal history + feedback
+6. **`routes/admin.js`** — role-scoped analytics + school/user management
+7. **`middleware/auth.js`** — JWT signing/verification and `requireRole`
 
-2. **Cache Manager** (`cache-manager.js`)
-   - IndexedDB for persistent storage
-   - Offline queue management
-   - Background sync
-   - Cache expiration
-
-3. **Prompt Templates** (`prompt-templates.js`)
-   - Context-aware prompt generation
-   - Specialized templates for different teaching scenarios
-   - Keyword-based template selection
-
-4. **Main App** (`app.js`)
-   - UI event handling
-   - Voice recognition
-   - Response display
-   - User feedback
+**Frontend (`client/src/`)**
+1. **`pages/CoachPage.tsx`** — ask questions (typed or voice), see the answer and history
+2. **`pages/AdminPage.tsx`** — the analytics dashboard (Recharts)
+3. **`pages/ManagePage.tsx`** — manage schools and users
+4. **`pages/SettingsPage.tsx`** — per-teacher personalization
+5. **`auth.tsx` / `api.ts`** — session management and authenticated API access
 
 ## � Data Flow (Analytics Dashboard)
 
@@ -369,70 +522,64 @@ The tool tracks:
 - **Offline Usage**: Percentage of queries submitted offline
 - **Voice vs Text**: Usage patterns to optimize UX
 
-View analytics in browser console: `aiService.getAnalyticsSummary()`
+View these live in the **admin Dashboard** (sign in as a school admin, resource person, or super admin).
 
 ## 🔒 Privacy & Data
 
-- All data stored locally in browser (IndexedDB, LocalStorage)
-- No data sent to external servers except Gemini API
-- API calls include only the query and context (no personal info)
-- Clear cache anytime: `cacheManager.clearCache()`
+- The **Gemini API key lives only in `server/.env`** (git-ignored) — never in the browser.
+- Teacher **PINs are hashed with bcrypt**; they are never stored in plain text.
+- Questions, answers, and feedback are stored in the **server database** (SQLite) for history and analytics, and are **scoped per school**.
+- **JWT sessions expire after 7 days**; accounts lock after 5 failed PIN attempts.
+- Only lightweight **display preferences** (theme, font size) are stored locally in the browser.
 
 ## 🛠️ Troubleshooting
 
-### "API Key Not Configured" Error
-- Open `config.js`
-- Replace `YOUR_GEMINI_API_KEY_HERE` with your actual API key
-- Refresh the page
+### `FATAL: GEMINI_API_KEY is not set` (backend won't start)
+- Copy `server/.env.example` to `server/.env` and set `GEMINI_API_KEY`
+- Restart the backend with `npm start`
+
+### `npm : running scripts is disabled on this system` (Windows PowerShell)
+- Run `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned` once, **or**
+- Use the `.cmd` form: `npm.cmd install`, `npm.cmd run dev`
+
+### The Dashboard link doesn't appear
+- The dashboard is admin-only. Log in as `Super Admin` / `Rampur Admin` / `Rampur RP`
+  (not `Demo Teacher`). All demo PINs are `123456`.
+- If charts say "No data yet", ask a few questions from the Coach page first.
 
 ### Voice Input Not Working
-- Ensure microphone permissions are granted
-- Use Chrome or Edge browser (best support)
-- Check microphone is not being used by another app
-
-### Offline Queries Not Processing
-- Check internet connection
-- Open browser console to see sync status
-- Manually trigger: `cacheManager.processOfflineQueue()`
+- Allow microphone permissions when prompted
+- Use Chrome or Edge (best Web Speech API support)
+- Make sure no other app is using the microphone
 
 ### Slow Responses
 - Check internet connection speed
-- Gemini API free tier has rate limits
-- Consider upgrading to paid tier for faster responses
+- Gemini's free tier has rate limits (the server also rate-limits requests)
 
 ## 🚀 Deployment
 
-### For Hackathon Demo
-1. Open `index.html` directly in browser
-2. Share screen during presentation
-3. Demonstrate with pre-prepared scenarios
+The app is two deployable pieces: a **static frontend build** and a **Node.js API server**.
 
-### For Production Use
-1. **Host on GitHub Pages** (Free)
-   ```bash
-   # Push to GitHub repository
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git push origin main
-   
-   # Enable GitHub Pages in repository settings
-   ```
-
-2. **Host on Netlify** (Free)
-   - Drag and drop folder to Netlify
-   - Or connect GitHub repository
-
-3. **Host on Vercel** (Free)
-   - Import GitHub repository
-   - Auto-deploy on every commit
-
-### Environment Variables (for production)
-- Store API key in environment variable
-- Update `config.js` to read from environment:
-```javascript
-GEMINI_API_KEY: process.env.GEMINI_API_KEY || 'fallback-key'
+### 1. Build the frontend
+```bash
+cd client
+npm run build          # outputs a static site to client/dist/
 ```
+Host `client/dist/` on any static host (Netlify, Vercel, GitHub Pages, Nginx, etc.).
+Set `VITE_API_BASE` at build time to point at your deployed API URL.
+
+### 2. Run the backend
+```bash
+cd server
+npm install
+npx prisma migrate deploy   # apply migrations on the server
+npm start                   # or run under a process manager (pm2, systemd)
+```
+
+### Production notes
+- Set `NODE_ENV=production` and list exact allowed origins in `CORS_ORIGINS`.
+- Provide `GEMINI_API_KEY` and a strong `JWT_SECRET` as environment variables — never commit them.
+- For higher traffic, switch the Prisma datasource from SQLite to PostgreSQL and re-run migrations.
 
 ## 🎓 Educational Context
 
@@ -454,7 +601,7 @@ This is a hackathon project. Potential improvements:
 - [ ] Integrate video micro-learning modules
 - [ ] Create mobile app (React Native / Flutter)
 - [ ] Add peer teacher community features
-- [ ] Implement admin dashboard for CRPs
+- [x] Implement admin dashboard for CRPs
 - [ ] Add SMS/WhatsApp integration for feature phones
 
 ## 📄 License
