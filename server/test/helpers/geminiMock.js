@@ -9,11 +9,13 @@
 // every test file (and, transitively, plain CJS helpers they require()).
 
 /**
- * @param {Array<{status?: number, json?: object, text?: string, reject?: Error}>} responseQueue
+ * @param {Array<{status?: number, json?: object, text?: string, reject?: Error, headers?: object}>} responseQueue
  *   One entry consumed per fetch call, in order. If there are more calls
  *   than entries, the LAST entry repeats for every subsequent call — handy
  *   for "always fails" or "always succeeds" scenarios without listing every
- *   call explicitly.
+ *   call explicitly. `headers` is a plain object of response headers (e.g.
+ *   { 'retry-after': '2' }); `reject` makes the fetch itself throw (network
+ *   error / timeout).
  * @returns {{ mock: import('vitest').Mock, calls: Array<{url: string, body: any, headers: any}> }}
  */
 function mockGeminiFetch(responseQueue) {
@@ -32,11 +34,20 @@ function mockGeminiFetch(responseQueue) {
   return { mock, calls };
 }
 
-function toFetchResponse({ status = 200, json, text }) {
+// Minimal Headers-like object so gemini.js's `response.headers.get('retry-after')`
+// works against the mock (case-insensitive, matching the real Fetch Headers).
+function makeHeaders(headerObj = {}) {
+  const lower = {};
+  for (const [k, v] of Object.entries(headerObj)) lower[k.toLowerCase()] = String(v);
+  return { get: (name) => (name.toLowerCase() in lower ? lower[name.toLowerCase()] : null) };
+}
+
+function toFetchResponse({ status = 200, json, text, headers }) {
   const ok = status >= 200 && status < 300;
   return {
     ok,
     status,
+    headers: makeHeaders(headers),
     json: async () => json,
     text: async () => (text !== undefined ? text : JSON.stringify(json ?? {})),
   };
@@ -68,4 +79,21 @@ function geminiOutputBlocked(finishReason = 'SAFETY') {
   };
 }
 
-module.exports = { mockGeminiFetch, toFetchResponse, geminiSuccess, geminiInputBlocked, geminiOutputBlocked };
+/**
+ * Builds a 429 rate-limited response, optionally with a Retry-After header.
+ * @param {number|string} [retryAfterSeconds] value for the retry-after header
+ */
+function geminiRateLimited(retryAfterSeconds) {
+  const spec = { status: 429, text: 'rate limit exceeded' };
+  if (retryAfterSeconds != null) spec.headers = { 'retry-after': String(retryAfterSeconds) };
+  return spec;
+}
+
+module.exports = {
+  mockGeminiFetch,
+  toFetchResponse,
+  geminiSuccess,
+  geminiInputBlocked,
+  geminiOutputBlocked,
+  geminiRateLimited,
+};
