@@ -15,11 +15,21 @@ const rateLimit = require('express-rate-limit');
 
 const { GeminiService } = require('./gemini');
 const { LANGUAGE_NAMES } = require('./prompts');
+const { normalizeQuery, flagPossibleInjection } = require('./safety/inputGuard');
 const { prisma } = require('./lib/db');
 const { authRequired } = require('./middleware/auth');
 const authRouter = require('./routes/auth');
 const dataRouter = require('./routes/queries');
 const adminRouter = require('./routes/admin');
+
+// Logs only non-sensitive metadata about an AI request/response — never the
+// raw query text, response text, or upstream error body. Centralizing this
+// in one helper makes the safe pattern the path of least resistance for
+// future changes to this route, rather than relying on convention alone.
+function logAiEvent(level, event, meta = {}) {
+  const fn = level === 'warn' ? console.warn : level === 'error' ? console.error : console.log;
+  fn(`[ai] ${event}`, meta);
+}
 
 // ---- Configuration ---------------------------------------------------------
 
@@ -150,6 +160,16 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
     issueType: typeof context.issueType === 'string' ? context.issueType.slice(0, 60) : undefined,
   };
 
+  // Normalize the query (Unicode NFKC + strip invisible/control characters —
+  // see safety/inputGuard.js) before it's used anywhere: prompt construction,
+  // the injection heuristic, or persistence. A query that normalizes down to
+  // nothing (e.g. it was only invisible characters) is treated the same as
+  // an empty query.
+  const normalizedQuery = normalizeQuery(query.trim());
+  if (normalizedQuery.length === 0) {
+    return res.status(400).json({ error: 'A non-empty "query" string is required.' });
+  }
+
   try {
     // Read the teacher's saved response-style preference server-side so it is
     // authoritative and cannot be spoofed by the client.
@@ -168,7 +188,7 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
     }
 
     const result = await gemini.generateResponse({
-      query: query.trim(),
+      query: normalizedQuery,
       context: safeContext,
       language,
       responseStyle,
@@ -182,7 +202,7 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
         data: {
           userId: req.user.id,
           schoolId: req.user.schoolId,
-          queryText: query.trim(),
+          queryText: normalizedQuery,
           language,
           context: JSON.stringify(safeContext),
           responseText: result.text,
@@ -192,16 +212,41 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
       });
       queryId = saved.id;
     } catch (persistError) {
-      console.error('Failed to persist query:', persistError.message);
+      logAiEvent('error', 'query_persist_failed', { message: persistError.message });
+    }
+
+    // Best-effort, non-blocking prompt-injection telemetry: never blocks the
+    // response, and never logs/stores the raw query or response text — only
+    // a category label plus IDs. See safety/inputGuard.js for why this is
+    // advisory-only rather than a gate.
+    const injectionCheck = flagPossibleInjection(normalizedQuery);
+    if (injectionCheck.flagged) {
+      logAiEvent('warn', 'possible_injection_flagged', { userId: req.user.id, queryId, category: injectionCheck.category });
+      try {
+        await prisma.event.create({
+          data: {
+            userId: req.user.id,
+            schoolId: req.user.schoolId,
+            type: 'ai_safety_flag',
+            metadata: JSON.stringify({ category: injectionCheck.category, queryId }),
+          },
+        });
+      } catch (eventError) {
+        logAiEvent('error', 'safety_event_write_failed', { message: eventError.message });
+      }
     }
 
     return res.json({ success: true, ...result, context: safeContext, queryId });
   } catch (error) {
-    console.error('Coach request failed:', {
-      status: error.status,
-      message: error.message,
-    });
+    logAiEvent('error', 'coach_request_failed', { status: error.status, code: error.code, message: error.message });
 
+    if (error.code === 'INPUT_BLOCKED' || error.code === 'OUTPUT_BLOCKED') {
+      // Gemini's own safety filters blocked the input or the generated
+      // output — this is an expected, occasional outcome, not a system
+      // failure, so it gets a specific, non-alarming message rather than
+      // the generic "failed to generate" one below.
+      return res.status(422).json({ error: "This question couldn't be processed — try rephrasing it." });
+    }
     if (error.status === 429) {
       return res.status(429).json({ error: 'The service is busy. Please try again shortly.' });
     }

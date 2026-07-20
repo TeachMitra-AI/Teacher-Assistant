@@ -23,6 +23,12 @@ const TEST_ENV = {
   LOGIN_LOCKOUT_MINUTES: '15',
   RATE_LIMIT_WINDOW_MINUTES: '15',
   RATE_LIMIT_MAX_REQUESTS: '1000', // generous — rate limiting itself isn't under test here
+  // Kept small so route-level retry tests (ai-safety.test.js) stay fast.
+  // Only affects the shared GeminiService instance index.js constructs from
+  // env — gemini.contract.test.js builds its own GeminiService with explicit
+  // config and is unaffected by these.
+  LLM_TIMEOUT_MS: '5000',
+  LLM_MAX_RETRIES: '1',
 };
 
 function applyTestEnv() {
