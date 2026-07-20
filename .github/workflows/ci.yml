@@ -12,11 +12,54 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # full history, not just the latest commit
-      - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
+          fetch-depth: 0 # full history available, so a commit-range scan (below) can diff against any base
+      # gitleaks/gitleaks-action@v2 requires a paid GITLEAKS_LICENSE for
+      # organization-owned repos. The gitleaks CLI itself is free (MIT) —
+      # install the release binary directly instead of using that Action,
+      # so this job never depends on a license.
+      - name: Install gitleaks CLI
         env:
-          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_VERSION: '8.30.1'
+        run: |
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+          rm gitleaks.tar.gz
+          gitleaks version
+      - name: Determine commit range to scan
+        id: range
+        # This job scans only the NEW commits introduced by this push/PR —
+        # not the entire repository history — same scope gitleaks-action
+        # used by default. Full-history scanning is a separate, one-time
+        # cleanup (see docs/git-history-secret-purge.md): this repo's
+        # history has pre-existing leaked keys from before secret scanning
+        # existed, and a job that re-scans all of history would fail on
+        # every single run until that separate history rewrite happens,
+        # which defeats the point of a per-push gate. Scoping to new
+        # commits keeps this job doing its actual job: never let a NEW
+        # secret get merged, starting now.
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "range=${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            echo "range=${{ github.event.before }}..${{ github.event.after }}" >> "$GITHUB_OUTPUT"
+          else
+            # No sensible prior commit to diff against (e.g. a brand-new
+            # branch's very first push) — fall back to a full-history scan.
+            echo "range=" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run gitleaks
+        # Exits non-zero (failing the job) if any real-looking secret is
+        # found in the scanned range — that's gitleaks' default behavior,
+        # not something added here. Uses this repo's own rules/allowlist in
+        # .gitleaks.toml, plus .gitleaksignore for the one known-fake CI
+        # value below (see that file for exactly what's excluded and why).
+        run: |
+          if [ -n "${{ steps.range.outputs.range }}" ]; then
+            gitleaks detect --source . --config .gitleaks.toml --redact -v --log-opts="${{ steps.range.outputs.range }}"
+          else
+            gitleaks detect --source . --config .gitleaks.toml --redact -v
+          fi
 
   server:
     name: Server (lint, test)
@@ -44,8 +87,8 @@ jobs:
           # own boot-time guards (server/src/index.js, middleware/auth.js)
           # need *some* non-empty secret to start. Unrelated to, and never
           # touching, the project's real secrets.
-          GEMINI_API_KEY: ci-dummy-not-a-real-key
-          JWT_SECRET: ci-dummy-jwt-secret-at-least-32-characters-long
+          GEMINI_API_KEY: ci-dummy-not-a-real-key # gitleaks:allow
+          JWT_SECRET: ci-dummy-jwt-secret-at-least-32-characters-long # gitleaks:allow
 
   client:
     name: Client (lint, build)

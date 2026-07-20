@@ -1,0 +1,19 @@
+# Narrow, fingerprint-scoped allowlist for gitleaks — NOT a general rule
+# weakening. Only used as a secondary safety net; the primary suppression
+# for the one known-fake CI value is an inline `# gitleaks:allow` comment
+# directly on that line in .github/workflows/ci.yml (works across every
+# gitleaks scan mode and every future commit, since it travels with the
+# line itself rather than depending on a specific commit SHA or line
+# number). This file's fingerprint format only applies to a plain directory
+# scan (`gitleaks detect --no-git`, e.g. if someone runs gitleaks by hand
+# against the working tree) — it does NOT apply to git-history-aware scans
+# (`--log-opts`, used in CI), which prefix fingerprints with a commit SHA
+# that changes on every commit touching that line; that's exactly why the
+# inline comment is the real fix and this entry is just a belt-and-suspenders
+# extra.
+#
+# .github/workflows/ci.yml: the CI-only dummy JWT_SECRET passed to the
+# server test job so the app's boot-time "JWT_SECRET must be set" guard
+# (server/src/middleware/auth.js) is satisfied. High-entropy-looking but
+# genuinely not a secret.
+.github/workflows/ci.yml:generic-api-key:91
