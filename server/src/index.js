@@ -13,9 +13,12 @@ const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 
+const crypto = require('crypto');
+
 const { GeminiService } = require('./gemini');
 const { LANGUAGE_NAMES } = require('./prompts');
 const { normalizeQuery, flagPossibleInjection } = require('./safety/inputGuard');
+const { parseIntEnv } = require('./lib/config');
 const { prisma } = require('./lib/db');
 const { authRequired } = require('./middleware/auth');
 const authRouter = require('./routes/auth');
@@ -23,9 +26,10 @@ const dataRouter = require('./routes/queries');
 const adminRouter = require('./routes/admin');
 
 // Logs only non-sensitive metadata about an AI request/response — never the
-// raw query text, response text, or upstream error body. Centralizing this
-// in one helper makes the safe pattern the path of least resistance for
-// future changes to this route, rather than relying on convention alone.
+// raw query text, response text, upstream error body, API keys, tokens, or
+// PII. Centralizing this in one helper makes the safe pattern the path of
+// least resistance for future changes to this route, rather than relying on
+// convention alone.
 function logAiEvent(level, event, meta = {}) {
   const fn = level === 'warn' ? console.warn : level === 'error' ? console.error : console.log;
   fn(`[ai] ${event}`, meta);
@@ -38,8 +42,6 @@ const {
   GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
   PORT = 3000,
   CORS_ORIGINS = '',
-  LLM_TIMEOUT_MS = '30000',
-  LLM_MAX_RETRIES = '3',
   RATE_LIMIT_WINDOW_MINUTES = '15',
   RATE_LIMIT_MAX_REQUESTS = '60',
 } = process.env;
@@ -51,11 +53,37 @@ if (!GEMINI_API_KEY) {
 
 const MAX_QUERY_LENGTH = 500;
 
+// LLM reliability / cost tunables. Invalid values clamp to safe bounds with a
+// warning (see lib/config.js) rather than crashing — a bad tunable must not
+// take the whole server down, while production still gets a safe value.
+const LLM_TIMEOUT_MS = parseIntEnv(process.env.LLM_TIMEOUT_MS, {
+  name: 'LLM_TIMEOUT_MS', defaultValue: 30000, min: 1000, max: 120000,
+});
+const LLM_TOTAL_TIMEOUT_MS = parseIntEnv(process.env.LLM_TOTAL_TIMEOUT_MS, {
+  name: 'LLM_TOTAL_TIMEOUT_MS', defaultValue: 60000, min: 5000, max: 180000,
+});
+const LLM_MAX_RETRIES = parseIntEnv(process.env.LLM_MAX_RETRIES, {
+  name: 'LLM_MAX_RETRIES', defaultValue: 2, min: 0, max: 5,
+});
+const LLM_MAX_CALLS_PER_REQUEST = parseIntEnv(process.env.LLM_MAX_CALLS_PER_REQUEST, {
+  name: 'LLM_MAX_CALLS_PER_REQUEST', defaultValue: 8, min: 1, max: 20,
+});
+const LLM_MAX_CONTINUATIONS = parseIntEnv(process.env.LLM_MAX_CONTINUATIONS, {
+  name: 'LLM_MAX_CONTINUATIONS', defaultValue: 4, min: 0, max: 8,
+});
+const LLM_MAX_OUTPUT_TOKENS = parseIntEnv(process.env.LLM_MAX_OUTPUT_TOKENS, {
+  name: 'LLM_MAX_OUTPUT_TOKENS', defaultValue: 8192, min: 256, max: 8192,
+});
+
 const gemini = new GeminiService({
   apiKey: GEMINI_API_KEY,
   endpoint: GEMINI_ENDPOINT,
-  timeoutMs: parseInt(LLM_TIMEOUT_MS, 10),
-  maxRetries: parseInt(LLM_MAX_RETRIES, 10),
+  timeoutMs: LLM_TIMEOUT_MS,
+  totalTimeoutMs: LLM_TOTAL_TIMEOUT_MS,
+  maxRetries: LLM_MAX_RETRIES,
+  maxCallsPerRequest: LLM_MAX_CALLS_PER_REQUEST,
+  maxContinuations: LLM_MAX_CONTINUATIONS,
+  maxOutputTokens: LLM_MAX_OUTPUT_TOKENS,
 });
 
 // ---- App setup -------------------------------------------------------------
@@ -135,20 +163,25 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authLimiter, authRouter);
 
 app.post('/api/coach', authRequired, limiter, async (req, res) => {
+  // Correlation ID for this AI request — logged with every event and returned
+  // to the client so a teacher/admin can quote it when reporting a problem.
+  // Not sensitive; contains no user data.
+  const requestId = crypto.randomUUID();
+
   const { query, context = {}, language = 'en' } = req.body || {};
 
   // --- Input validation (system boundary) ---
   if (typeof query !== 'string' || query.trim().length === 0) {
-    return res.status(400).json({ error: 'A non-empty "query" string is required.' });
+    return res.status(400).json({ error: 'A non-empty "query" string is required.', requestId });
   }
   if (query.length > MAX_QUERY_LENGTH) {
-    return res.status(400).json({ error: `Query must be at most ${MAX_QUERY_LENGTH} characters.` });
+    return res.status(400).json({ error: `Query must be at most ${MAX_QUERY_LENGTH} characters.`, requestId });
   }
   if (typeof context !== 'object' || Array.isArray(context)) {
-    return res.status(400).json({ error: '"context" must be an object.' });
+    return res.status(400).json({ error: '"context" must be an object.', requestId });
   }
   if (typeof language !== 'string' || !LANGUAGE_NAMES[language]) {
-    return res.status(400).json({ error: 'Unsupported "language".' });
+    return res.status(400).json({ error: 'Unsupported "language".', requestId });
   }
 
   // Only pass through known context fields.
@@ -167,7 +200,7 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
   // an empty query.
   const normalizedQuery = normalizeQuery(query.trim());
   if (normalizedQuery.length === 0) {
-    return res.status(400).json({ error: 'A non-empty "query" string is required.' });
+    return res.status(400).json({ error: 'A non-empty "query" string is required.', requestId });
   }
 
   try {
@@ -187,12 +220,24 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
       /* fall back to balanced */
     }
 
-    const result = await gemini.generateResponse({
-      query: normalizedQuery,
-      context: safeContext,
-      language,
-      responseStyle,
-    });
+    const result = await gemini.generateResponse(
+      {
+        query: normalizedQuery,
+        context: safeContext,
+        language,
+        responseStyle,
+      },
+      { correlationId: requestId }
+    );
+
+    // `metrics` is metadata-only observability — it must NOT be spread into
+    // the client response (kept internal). Pull it out before building the
+    // client payload.
+    const { metrics, ...clientResult } = result;
+
+    // Metadata-only structured log for every AI request: call counts,
+    // retries, continuations, latency, outcome. No prompt/response text.
+    logAiEvent('info', 'coach_completed', { requestId, ...metrics });
 
     // Persist the query for history + analytics. A failure here must not break
     // the response the teacher is waiting for.
@@ -205,14 +250,14 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
           queryText: normalizedQuery,
           language,
           context: JSON.stringify(safeContext),
-          responseText: result.text,
-          responseTimeMs: result.responseTime || null,
-          finishReason: result.finishReason || null,
+          responseText: clientResult.text,
+          responseTimeMs: clientResult.responseTime || null,
+          finishReason: clientResult.finishReason || null,
         },
       });
       queryId = saved.id;
     } catch (persistError) {
-      logAiEvent('error', 'query_persist_failed', { message: persistError.message });
+      logAiEvent('error', 'query_persist_failed', { requestId, message: persistError.message });
     }
 
     // Best-effort, non-blocking prompt-injection telemetry: never blocks the
@@ -221,7 +266,7 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
     // advisory-only rather than a gate.
     const injectionCheck = flagPossibleInjection(normalizedQuery);
     if (injectionCheck.flagged) {
-      logAiEvent('warn', 'possible_injection_flagged', { userId: req.user.id, queryId, category: injectionCheck.category });
+      logAiEvent('warn', 'possible_injection_flagged', { requestId, userId: req.user.id, queryId, category: injectionCheck.category });
       try {
         await prisma.event.create({
           data: {
@@ -232,32 +277,78 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
           },
         });
       } catch (eventError) {
-        logAiEvent('error', 'safety_event_write_failed', { message: eventError.message });
+        logAiEvent('error', 'safety_event_write_failed', { requestId, message: eventError.message });
       }
     }
 
-    return res.json({ success: true, ...result, context: safeContext, queryId });
+    return res.json({ success: true, ...clientResult, context: safeContext, queryId, requestId });
   } catch (error) {
-    logAiEvent('error', 'coach_request_failed', { status: error.status, code: error.code, message: error.message });
+    // Metadata-only failure log, including the reliability metrics the service
+    // attaches to the error (call counts, whether we timed out / were rate
+    // limited, etc.). Never the prompt, response, or upstream error body.
+    logAiEvent('error', 'coach_request_failed', {
+      requestId,
+      status: error.status,
+      code: error.code,
+      message: error.message,
+      ...(error.metrics || {}),
+    });
 
+    // Record NOTABLE reliability incidents durably (best-effort, non-blocking)
+    // — not routine failures. Rare enough not to bloat the Event table, useful
+    // for spotting upstream outages / rate-limit storms after the fact.
+    const notable = { DEADLINE_EXCEEDED: 'ai_deadline_exceeded', BUDGET_EXHAUSTED: 'ai_budget_exhausted' };
+    let notableType = notable[error.code];
+    if (!notableType && error.status === 429) notableType = 'ai_rate_limit_exhausted';
+    else if (!notableType && (error.status >= 500 || error.status == null) && !error.code) notableType = 'ai_upstream_failed';
+    if (notableType) {
+      try {
+        await prisma.event.create({
+          data: {
+            userId: req.user.id,
+            schoolId: req.user.schoolId,
+            type: notableType,
+            metadata: JSON.stringify({
+              requestId,
+              status: error.status ?? null,
+              outcome: error.metrics?.outcome ?? null,
+              callsMade: error.metrics?.callsMade ?? null,
+            }),
+          },
+        });
+      } catch (eventError) {
+        logAiEvent('error', 'reliability_event_write_failed', { requestId, message: eventError.message });
+      }
+    }
+
+    // Safety blocks: Gemini's own filters blocked the input or generated
+    // output — an expected, occasional outcome, not a system failure.
     if (error.code === 'INPUT_BLOCKED' || error.code === 'OUTPUT_BLOCKED') {
-      // Gemini's own safety filters blocked the input or the generated
-      // output — this is an expected, occasional outcome, not a system
-      // failure, so it gets a specific, non-alarming message rather than
-      // the generic "failed to generate" one below.
-      return res.status(422).json({ error: "This question couldn't be processed — try rephrasing it." });
+      return res.status(422).json({
+        error: "This question couldn't be processed — try rephrasing it.",
+        code: 'SAFETY_BLOCKED',
+        requestId,
+      });
+    }
+    // Overall time budget exhausted (retries + continuations took too long).
+    if (error.code === 'DEADLINE_EXCEEDED') {
+      return res.status(504).json({ error: 'The request took too long. Please try again.', code: 'TIMEOUT', requestId });
+    }
+    // Per-call timeout that ultimately failed (no overall-deadline error).
+    if (error.name === 'TimeoutError' || error.name === 'AbortError' || String(error.message).includes('timeout')) {
+      return res.status(504).json({ error: 'The request timed out. Please try again.', code: 'TIMEOUT', requestId });
     }
     if (error.status === 429) {
-      return res.status(429).json({ error: 'The service is busy. Please try again shortly.' });
+      return res.status(429).json({ error: 'The service is busy. Please try again shortly.', code: 'RATE_LIMITED', requestId });
     }
     if (error.status === 401 || error.status === 403) {
       // Do not leak configuration details to the client.
-      return res.status(502).json({ error: 'Upstream authentication error. Please contact the administrator.' });
+      return res.status(502).json({ error: 'Upstream authentication error. Please contact the administrator.', code: 'UPSTREAM_AUTH', requestId });
     }
-    if (error.name === 'TimeoutError' || String(error.message).includes('timeout')) {
-      return res.status(504).json({ error: 'The request timed out. Please try again.' });
-    }
-    return res.status(502).json({ error: 'Failed to generate a response. Please try again.' });
+    // Everything else (upstream 5xx exhausted, network failure, budget
+    // exhaustion, malformed response) → generic upstream failure. Status 502
+    // preserved for backward compatibility; `code` distinguishes the cause.
+    return res.status(502).json({ error: 'Failed to generate a response. Please try again.', code: 'UPSTREAM_UNAVAILABLE', requestId });
   }
 });
 

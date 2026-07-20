@@ -19,6 +19,9 @@ function makeService(overrides = {}) {
     endpoint: 'https://example.invalid/generate',
     timeoutMs: 5000,
     maxRetries: 3,
+    // Instant, deterministic backoff so retry tests don't wait real seconds.
+    // Counts/behavior are unaffected — only the sleep duration is stubbed.
+    sleep: () => Promise.resolve(),
     ...overrides,
   });
 }
