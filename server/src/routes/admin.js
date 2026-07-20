@@ -198,4 +198,24 @@ router.patch('/users/:id/role', authRequired, requireRole('super_admin'), async 
   }
 });
 
+// POST /api/admin/users/:id/revoke-sessions — an admin's "kill a compromised
+// account" tool: revokes every active refresh-token session the target user
+// has, so they're forced to log in again everywhere within one access-token
+// TTL. Scoped the same way every other admin route is (schoolScope above).
+router.post('/users/:id/revoke-sessions', authRequired, requireRole(...ADMIN_ROLES), async (req, res) => {
+  const target = await prisma.user.findUnique({ where: { id: req.params.id } });
+  if (!target) return res.status(404).json({ error: 'User not found.' });
+
+  const scope = await schoolScope(req.user);
+  if (scope !== null && !scope.includes(target.schoolId)) {
+    return res.status(403).json({ error: 'You do not have permission to do this.' });
+  }
+
+  const result = await prisma.session.updateMany({
+    where: { userId: target.id, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  res.json({ success: true, revoked: result.count });
+});
+
 module.exports = router;

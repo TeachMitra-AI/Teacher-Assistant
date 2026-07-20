@@ -6,3 +6,9 @@ npm-debug.log*
 # SQLite database files
 prisma/*.db
 prisma/*.db-journal
+
+# Throwaway test database (created/destroyed by the Vitest global setup)
+test/*.db
+test/*.db-journal
+test/*.db-wal
+test/*.db-shm

@@ -43,9 +43,31 @@ model User {
   queries  Query[]
   feedback Feedback[]
   events   Event[]
+  sessions Session[]
 
   // A teacher name is unique within a school.
   @@unique([schoolId, name])
+}
+
+// A refresh-token session, so a login can be revoked server-side instead of
+// only expiring after TOKEN_TTL. The raw refresh token is never stored —
+// only its SHA-256 hash. Rotated on every /auth/refresh call; `replacedBy`
+// links a session to the one that superseded it, so a reused (already
+// rotated-out) token can be detected as likely theft.
+model Session {
+  id         String    @id @default(cuid())
+  user       User      @relation(fields: [userId], references: [id])
+  userId     String
+  tokenHash  String    @unique
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  replacedBy String?
+  userAgent  String?
+  lastUsedAt DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // Every coaching request is persisted for history + analytics.

@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history, not just the latest commit
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  server:
+    name: Server (lint, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run lint
+      - run: npm test
+        # DATABASE_URL is intentionally not set here — test/helpers/testEnv.js
+        # always points it at its own throwaway server/test/.tmp-test.db,
+        # regardless of the outer environment, so it can never accidentally
+        # run against a real database.
+        env:
+          # Obviously-fake CI-only values — required only because the app's
+          # own boot-time guards (server/src/index.js, middleware/auth.js)
+          # need *some* non-empty secret to start. Unrelated to, and never
+          # touching, the project's real secrets.
+          GEMINI_API_KEY: ci-dummy-not-a-real-key
+          JWT_SECRET: ci-dummy-jwt-secret-at-least-32-characters-long
+
+  client:
+    name: Client (lint, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+        env:
+          VITE_API_BASE: http://localhost:3000/api

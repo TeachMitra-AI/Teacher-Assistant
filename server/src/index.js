@@ -63,12 +63,25 @@ const allowedOrigins = CORS_ORIGINS.split(',')
 // is served (Live Server on 5500, http-server on 8000, or the machine's LAN IP
 // like http://10.x.x.x:8000). In production, set NODE_ENV=production and list
 // the exact allowed origins in CORS_ORIGINS to lock this down.
-const isDev = (process.env.NODE_ENV || 'development') !== 'production';
+//
+// isProduction defaults to false (dev-permissive) only when NODE_ENV is unset,
+// which is the normal local-dev case. If NODE_ENV IS set to 'production' but
+// CORS_ORIGINS is empty, we refuse to boot rather than silently falling back
+// to either "block everything" (confusing) or "allow everything" (unsafe) —
+// same fail-fast pattern already used for GEMINI_API_KEY and JWT_SECRET.
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction && allowedOrigins.length === 0) {
+  console.error(
+    'FATAL: NODE_ENV=production but CORS_ORIGINS is empty. Set it to a comma-separated allowlist of trusted frontend origins.'
+  );
+  process.exit(1);
+}
 
 function isOriginAllowed(origin) {
   // Non-browser tools (curl, health checks) send no Origin header.
   if (!origin) return true;
-  if (isDev) return true; // Reflect any origin during development.
+  if (!isProduction) return true; // Reflect any origin during development.
   return allowedOrigins.includes(origin);
 }
 
@@ -209,9 +222,23 @@ app.use('/api/admin', adminRouter);
 
 // ---- Start -----------------------------------------------------------------
 
-app.listen(PORT, () => {
-  console.log(`Teacher Assistant backend listening on port ${PORT}`);
-  if (allowedOrigins.length === 0) {
-    console.warn('WARNING: CORS_ORIGINS is empty. Browser requests will be blocked.');
-  }
-});
+// Only bind a real port when this file is run directly (`node src/index.js`,
+// which is what `npm start`/`npm run dev` do). When the test suite requires
+// this module to get `app` for Supertest, we don't want a real listening
+// socket — Supertest drives the app in-process instead.
+/* istanbul ignore next -- exercised via `npm start`, not the test suite */
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Teacher Assistant backend listening on port ${PORT}`);
+    // Note: if NODE_ENV=production and CORS_ORIGINS were empty, the process
+    // would already have exited above — reaching here means either we're in
+    // development (any origin is reflected) or the allowlist is populated.
+    if (isProduction) {
+      console.log(`CORS allowlist: ${allowedOrigins.join(', ')}`);
+    } else {
+      console.log('CORS: development mode — reflecting any request origin.');
+    }
+  });
+}
+
+module.exports = app;

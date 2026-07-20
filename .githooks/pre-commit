@@ -1,0 +1,23 @@
+#!/bin/sh
+# Pre-commit secret scan (gitleaks). Enable once per clone with:
+#   git config core.hooksPath .githooks
+#
+# This is a local convenience check — CI runs the same scan as a hard gate,
+# so a missing/skipped local hook can't let a secret slip into main.
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "⚠️  gitleaks not found on PATH — skipping local secret scan."
+  echo "    Install: https://github.com/gitleaks/gitleaks#installing"
+  echo "    (CI will still block a committed secret.)"
+  exit 0
+fi
+
+if ! gitleaks protect --staged --config "$(git rev-parse --show-toplevel)/.gitleaks.toml" -v; then
+  echo ""
+  echo "🔴 Possible secret detected in staged changes — commit blocked."
+  echo "   Remove it, or if this is a false positive, add an allowlist entry"
+  echo "   to .gitleaks.toml and re-stage."
+  exit 1
+fi
+
+exit 0

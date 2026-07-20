@@ -1,0 +1,24 @@
+## Gitleaks config for Teacher Assistant.
+## Extends gitleaks' default ruleset (covers Google API keys, generic
+## high-entropy secrets, private keys, etc.) and adds an explicit rule for
+## the Gemini/Google "AIza..." key format, since that's the exact secret
+## this project had leaked historically.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "google-api-key"
+description = "Google / Gemini API key (AIza...)"
+regex = '''AIza[0-9A-Za-z_\-]{35}'''
+tags = ["key", "google", "gemini"]
+
+[allowlist]
+description = "Known-safe placeholders and examples"
+regexes = [
+  '''AIzaSyD\.\.\.your-actual-key-here\.\.\.''', # SETUP.md placeholder, not a real key
+  '''your-actual-api-key-here''',
+]
+paths = [
+  '''\.env\.example$''',
+]

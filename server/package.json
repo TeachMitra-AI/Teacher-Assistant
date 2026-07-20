@@ -13,7 +13,10 @@
     "seed": "node src/seed.js",
     "migrate": "prisma migrate dev",
     "studio": "prisma studio",
-    "generate": "prisma generate"
+    "generate": "prisma generate",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -27,6 +30,10 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "prisma": "^6.19.3"
+    "@eslint/js": "^9.13.0",
+    "eslint": "^9.13.0",
+    "prisma": "^6.19.3",
+    "supertest": "^7.0.0",
+    "vitest": "^2.1.4"
   }
 }

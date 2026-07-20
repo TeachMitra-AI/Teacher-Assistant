@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api, setToken, getToken } from './api';
+import { api, setSession, getToken, getRefreshToken } from './api';
 import type { AuthResponse, User } from './types';
 
 interface Credentials {
@@ -35,7 +35,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const res = await api<{ user: User }>('/auth/me');
         if (!cancelled) setUser(res.user);
       } catch {
-        setToken(null);
+        // Covers both "no session" and "refresh token also expired/revoked"
+        // (api()'s silent-refresh already tried and failed before this
+        // throws) — either way, there's no valid session to restore.
+        setSession(null, null);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -48,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const authenticate = useCallback(async (path: string, c: Credentials) => {
     const res = await api<AuthResponse>(path, { method: 'POST', body: c, auth: false });
-    setToken(res.token);
+    setSession(res.token, res.refreshToken);
     setUser(res.user);
   }, []);
 
@@ -56,8 +59,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = useCallback((c: Credentials) => authenticate('/auth/register', c), [authenticate]);
 
   const logout = useCallback(() => {
-    setToken(null);
+    // Clear local state immediately so sign-out feels instant; tell the
+    // server to revoke the session in the background on a best-effort basis
+    // (a failure here shouldn't block or roll back the client-side logout).
+    const refreshToken = getRefreshToken();
+    setSession(null, null);
     setUser(null);
+    if (refreshToken) {
+      api('/auth/logout', { method: 'POST', body: { refreshToken }, auth: false }).catch(() => {});
+    }
   }, []);
 
   const updateUser = useCallback((next: User) => {

@@ -4,9 +4,31 @@ const bcrypt = require('bcryptjs');
 const { z } = require('zod');
 
 const { prisma } = require('../lib/db');
-const { signToken, authRequired } = require('../middleware/auth');
+const {
+  signAccessToken,
+  authRequired,
+  generateRefreshToken,
+  hashToken,
+  refreshTokenExpiry,
+} = require('../middleware/auth');
 
 const router = express.Router();
+
+// Creates a new server-tracked refresh-token session and its paired access
+// token. Every login/register/refresh call goes through this so a session
+// can always be found and revoked later (Section 2 of the Phase 0 plan).
+async function issueSession(user, req) {
+  const refreshToken = generateRefreshToken();
+  await prisma.session.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashToken(refreshToken),
+      expiresAt: refreshTokenExpiry(),
+      userAgent: (req.headers['user-agent'] || '').slice(0, 255) || null,
+    },
+  });
+  return { token: signAccessToken(user), refreshToken };
+}
 
 const MAX_ATTEMPTS = parseInt(process.env.LOGIN_MAX_ATTEMPTS || '5', 10);
 const LOCKOUT_MINUTES = parseInt(process.env.LOGIN_LOCKOUT_MINUTES || '15', 10);
@@ -94,8 +116,8 @@ router.post('/register', async (req, res) => {
     data: { schoolId: school.id, name, pinHash, role: 'teacher', lastLogin: new Date() },
   });
 
-  const token = signToken(user);
-  return res.status(201).json({ token, user: publicUser(user, school) });
+  const { token, refreshToken } = await issueSession(user, req);
+  return res.status(201).json({ token, refreshToken, user: publicUser(user, school) });
 });
 
 // POST /api/auth/login — returning teacher/admin sign-in.
@@ -146,8 +168,96 @@ router.post('/login', async (req, res) => {
     data: { failedLoginCount: 0, lockedUntil: null, lastLogin: new Date() },
   });
 
-  const token = signToken(user);
-  return res.json({ token, user: publicUser(user, school) });
+  const { token, refreshToken } = await issueSession(user, req);
+  return res.json({ token, refreshToken, user: publicUser(user, school) });
+});
+
+// POST /api/auth/refresh — exchange a still-valid refresh token for a new
+// access+refresh pair. Rotates the refresh token on every call: the old one
+// is marked revoked (and linked via replacedBy) so it can never be used
+// again. Presenting an already-revoked token is treated as likely theft and
+// revokes every session the user has, forcing a fresh login everywhere.
+const refreshSchema = z.object({ refreshToken: z.string().min(20) });
+
+router.post('/refresh', async (req, res) => {
+  const parsed = refreshSchema.safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid refresh token.' });
+  const { refreshToken } = parsed.data;
+
+  const session = await prisma.session.findUnique({
+    where: { tokenHash: hashToken(refreshToken) },
+    include: { user: { include: { school: true } } },
+  });
+  if (!session) {
+    return res.status(401).json({ error: 'Session not found. Please log in again.' });
+  }
+  if (session.revokedAt) {
+    await prisma.session.updateMany({
+      where: { userId: session.userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return res.status(401).json({ error: 'Session has been revoked. Please log in again.' });
+  }
+  if (session.expiresAt < new Date()) {
+    return res.status(401).json({ error: 'Session has expired. Please log in again.' });
+  }
+
+  const { user } = session;
+  const newRefreshToken = generateRefreshToken();
+  const newSession = await prisma.session.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashToken(newRefreshToken),
+      expiresAt: refreshTokenExpiry(),
+      userAgent: (req.headers['user-agent'] || '').slice(0, 255) || null,
+    },
+  });
+  await prisma.session.update({
+    where: { id: session.id },
+    data: { revokedAt: new Date(), replacedBy: newSession.id, lastUsedAt: new Date() },
+  });
+
+  return res.json({
+    token: signAccessToken(user),
+    refreshToken: newRefreshToken,
+    user: publicUser(user, user.school),
+  });
+});
+
+// POST /api/auth/logout — revoke one refresh-token session. Always returns
+// success even if the token was already gone, so the client can clear its
+// local storage unconditionally without special-casing the response.
+router.post('/logout', async (req, res) => {
+  const refreshToken = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken : null;
+  if (refreshToken) {
+    await prisma.session.updateMany({
+      where: { tokenHash: hashToken(refreshToken), revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+  return res.json({ success: true });
+});
+
+// GET /api/auth/sessions — the caller's own active (non-revoked, non-expired) sessions.
+router.get('/sessions', authRequired, async (req, res) => {
+  const sessions = await prisma.session.findMany({
+    where: { userId: req.user.id, revokedAt: null, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, createdAt: true, lastUsedAt: true, userAgent: true, expiresAt: true },
+  });
+  return res.json({ sessions });
+});
+
+// DELETE /api/auth/sessions/:id — revoke one of the caller's own sessions
+// (e.g. "sign out of another device"). Ownership-checked the same way
+// routes/queries.js checks a query's userId.
+router.delete('/sessions/:id', authRequired, async (req, res) => {
+  const session = await prisma.session.findUnique({ where: { id: req.params.id } });
+  if (!session || session.userId !== req.user.id) {
+    return res.status(404).json({ error: 'Session not found.' });
+  }
+  await prisma.session.update({ where: { id: session.id }, data: { revokedAt: new Date() } });
+  return res.json({ success: true });
 });
 
 // GET /api/auth/me — current profile from a valid token.
