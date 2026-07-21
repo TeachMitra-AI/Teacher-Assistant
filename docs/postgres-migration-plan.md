@@ -27,9 +27,13 @@ is easy and low-risk *when* it becomes true.
 
 - `server/prisma/schema.prisma`: `datasource db { provider = "sqlite", url = env("DATABASE_URL") }`.
 - `server/.env.example`: `DATABASE_URL="file:./dev.db"`.
-- Three migrations exist (`20260718152644_init`, `20260719031857_add_teacher_preferences`,
-  `20260720060253_add_sessions`), each plain Prisma-generated DDL — but
-  written in **SQLite dialect** and not directly replayable against Postgres.
+- Four migrations exist (`20260718152644_init`, `20260719031857_add_teacher_preferences`,
+  `20260720060253_add_sessions`, `20260721153908_add_resources`), each plain
+  Prisma-generated DDL — but written in **SQLite dialect** and not directly
+  replayable against Postgres.
+- The schema now has seven models: `School`, `User`, `Session`, `Query`,
+  `Feedback`, `Event`, and `Resource` (the "My Library" / Lesson Plan Workspace
+  store, added in `…_add_resources`).
 - `server/prisma/dev.db` is git-ignored and was never committed — no
   data-in-git risk during a future migration.
 - Every primary key is a `cuid()` string, not a SQLite autoincrement integer
@@ -59,9 +63,12 @@ is easy and low-risk *when* it becomes true.
    against an empty Postgres database, so Prisma generates fresh,
    Postgres-native DDL from the current `schema.prisma`.
 4. **Migrate the data**, respecting FK order:
-   `School → User → Session → Query → Feedback → Event`
-   (`Event` is currently empty — nothing in the codebase writes to it, per
-   the enterprise-readiness audit's finding). A small one-off Node script
+   `School → User → Session → Resource → Query → Feedback → Event`
+   (`Resource` references `User` (required) and `School` (optional), so it
+   copies after both. `Event` **is** written by the app now — the coach route
+   in `server/src/index.js` records AI-safety flags and notable reliability
+   incidents — so it is no longer an always-empty table and should be copied
+   like any other.) A small one-off Node script
    using two Prisma clients (one pointed at SQLite, one at Postgres) is the
    simplest approach given the small table count and cuid-based IDs — no ID
    remapping required, just read-then-write per table in FK order.
