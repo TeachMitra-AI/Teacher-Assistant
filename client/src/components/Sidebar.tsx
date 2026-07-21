@@ -1,3 +1,4 @@
+import { Plus, X, Trash2, MessageSquareText } from 'lucide-react';
 import type { HistoryItem } from '../types';
 
 interface SidebarProps {
@@ -32,9 +33,11 @@ export default function Sidebar({
       <aside className={`sidebar${open ? ' sidebar-open' : ''}`} aria-hidden={!open}>
         <div className="sidebar-header">
           <button type="button" className="new-chat-btn" onClick={onNewChat}>
-            <span aria-hidden="true">＋</span> New chat
+            <Plus size={18} strokeWidth={2.4} aria-hidden="true" /> New chat
           </button>
-          <button type="button" className="icon-btn sidebar-close" onClick={onClose} aria-label="Close sidebar">✕</button>
+          <button type="button" className="icon-btn sidebar-close" onClick={onClose} aria-label="Close sidebar">
+            <X size={18} aria-hidden="true" />
+          </button>
         </div>
 
         <div className="sidebar-section">
@@ -49,7 +52,16 @@ export default function Sidebar({
         <div className="history-list">
           {loading && <p className="history-empty">Loading…</p>}
           {!loading && items.length === 0 && (
-            <p className="history-empty">Your recent questions will appear here.</p>
+            <div className="history-empty-state">
+              <span className="history-empty-icon" aria-hidden="true">
+                <MessageSquareText size={22} strokeWidth={1.8} />
+              </span>
+              <p className="history-empty-title">No conversations yet</p>
+              <p className="history-empty-hint">Your recent questions will appear here.</p>
+              <button type="button" className="history-empty-cta" onClick={onNewChat}>
+                <Plus size={15} strokeWidth={2.4} aria-hidden="true" /> Start a chat
+              </button>
+            </div>
           )}
           {!loading &&
             items.map((item) => (
@@ -68,12 +80,7 @@ export default function Sidebar({
                   aria-label="Delete this question"
                   title="Delete"
                 >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                    <line x1="10" y1="11" x2="10" y2="17" />
-                    <line x1="14" y1="11" x2="14" y2="17" />
-                  </svg>
+                  <Trash2 size={15} aria-hidden="true" />
                 </button>
               </div>
             ))}

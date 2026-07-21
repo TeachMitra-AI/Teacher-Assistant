@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { SlidersHorizontal } from 'lucide-react';
 import { useDismissable } from '../hooks/useDismissable';
 import { LANGUAGES, GRADES, SUBJECTS, CLASSROOM_TYPES, ISSUE_TYPES } from '../config';
 import type { QueryContext } from '../types';
@@ -50,7 +51,8 @@ export default function ContextBar({ language, onLanguageChange, context, onCont
           aria-haspopup="dialog"
           aria-expanded={moreOpen}
         >
-          + More context{moreActiveCount > 0 ? ` (${moreActiveCount})` : ''}
+          <SlidersHorizontal size={14} aria-hidden="true" />
+          More context{moreActiveCount > 0 ? ` (${moreActiveCount})` : ''}
         </button>
 
         {moreOpen && (

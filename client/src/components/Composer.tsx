@@ -1,4 +1,5 @@
 import type { FormEvent, RefObject } from 'react';
+import { Mic, ArrowUp } from 'lucide-react';
 import { MAX_QUERY_LENGTH } from '../config';
 import type { useVoiceInput } from '../hooks/useVoiceInput';
 
@@ -50,7 +51,7 @@ export default function Composer({ value, onChange, onSubmit, loading, voice, te
                 aria-label={voice.listening ? 'Stop voice input' : 'Start voice input'}
                 aria-pressed={voice.listening}
               >
-                🎤
+                <Mic size={18} aria-hidden="true" />
               </button>
             )}
             <button
@@ -60,7 +61,7 @@ export default function Composer({ value, onChange, onSubmit, loading, voice, te
               aria-label="Send question"
               title="Send (Ctrl+Enter)"
             >
-              {loading ? <span className="btn-spinner" aria-hidden="true" /> : '↑'}
+              {loading ? <span className="btn-spinner" aria-hidden="true" /> : <ArrowUp size={18} aria-hidden="true" />}
             </button>
           </div>
         </div>
