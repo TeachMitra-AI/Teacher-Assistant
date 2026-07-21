@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import TopBar from '../components/TopBar';
 import Sidebar from '../components/Sidebar';
 import WelcomeScreen from '../components/WelcomeScreen';
@@ -11,7 +12,7 @@ import { usePreferences } from '../hooks/usePreferences';
 import { useAuth } from '../auth';
 import { api, ApiError } from '../api';
 import { buildSuffixedQuery } from '../lib/followUp';
-import { SPEECH_LOCALE, type FollowUpAction } from '../config';
+import { ADMIN_ROLES, SPEECH_LOCALE, type FollowUpAction } from '../config';
 import type { CoachResponse, HistoryItem, QueryContext, Turn } from '../types';
 
 const EMPTY_CONTEXT: QueryContext = { grade: '', subject: '', classroomType: '', issueType: '' };
@@ -27,8 +28,10 @@ function newTurnId(): string {
 export default function CoachPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
   const { show } = useToast();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const prefs = user?.preferences ?? {};
   const displayName = user?.displayName || user?.name || '';
+  const isAdmin = user ? ADMIN_ROLES.includes(user.role) : false;
 
   const [language, setLanguage] = useState(prefs.defaultLanguage || 'en');
   const [query, setQuery] = useState('');
@@ -242,7 +245,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
           <div className="chat-scroll">
             <div className="chat-inner">
               {turns.length === 0 ? (
-                <WelcomeScreen name={displayName} onPickAction={pickPrompt} />
+                <WelcomeScreen name={displayName} isAdmin={isAdmin} onPickAction={pickPrompt} onNavigate={navigate} />
               ) : (
                 <MessageList
                   turns={turns}

@@ -1,3 +1,8 @@
+import type { LucideIcon } from 'lucide-react';
+import {
+  NotebookPen, Target, Lightbulb, ClipboardCheck, Users,
+  LayoutDashboard, ShieldCheck,
+} from 'lucide-react';
 import type { Role, ResponseStyle } from './types';
 
 // Languages supported for AI responses (UI itself stays in English).
@@ -35,12 +40,34 @@ export const ISSUE_TYPES = ['Classroom Management', 'Concept Explanation', 'Stud
 
 // Welcome-screen quick actions — seed the composer with a starter prompt for
 // the teacher to finish, rather than submitting immediately.
-export const QUICK_ACTIONS: { icon: string; label: string; prompt: string }[] = [
-  { icon: '📝', label: 'Create a Lesson Plan', prompt: 'Create a lesson plan for ' },
-  { icon: '🎯', label: 'Create Classroom Activity', prompt: 'Suggest a classroom activity for ' },
-  { icon: '💡', label: 'Explain a Concept', prompt: 'Explain this concept simply: ' },
-  { icon: '📋', label: 'Create Assessment', prompt: 'Create a short assessment for ' },
-  { icon: '🧑‍🏫', label: 'Manage Classroom', prompt: 'How do I manage ' },
+export interface QuickAction {
+  icon: LucideIcon;
+  label: string;
+  description: string;
+  prompt: string;
+}
+
+export const QUICK_ACTIONS: QuickAction[] = [
+  { icon: NotebookPen, label: 'Create a Lesson Plan', description: 'Structured plans with objectives and activities', prompt: 'Create a lesson plan for ' },
+  { icon: Target, label: 'Create Classroom Activity', description: 'Engaging, ready-to-run classroom activities', prompt: 'Suggest a classroom activity for ' },
+  { icon: Lightbulb, label: 'Explain a Concept', description: 'Simple explanations pitched to your grade', prompt: 'Explain this concept simply: ' },
+  { icon: ClipboardCheck, label: 'Create Assessment', description: 'Quizzes and worksheets to check learning', prompt: 'Create a short assessment for ' },
+  { icon: Users, label: 'Manage Classroom', description: 'Strategies for engagement and behaviour', prompt: 'How do I manage ' },
+];
+
+// Admin-only shortcuts on the welcome screen. Unlike quick actions, these
+// *navigate* to existing pages rather than seeding a prompt — they surface
+// the dashboard/management areas without duplicating their functionality.
+export interface AdminShortcut {
+  icon: LucideIcon;
+  label: string;
+  description: string;
+  to: string;
+}
+
+export const ADMIN_SHORTCUTS: AdminShortcut[] = [
+  { icon: LayoutDashboard, label: 'Dashboard', description: 'Usage analytics and teaching insights', to: '/admin' },
+  { icon: ShieldCheck, label: 'Manage', description: 'Schools, users, and roles', to: '/admin/manage' },
 ];
 
 // Contextual follow-up chips shown under an AI response. Each one resubmits
