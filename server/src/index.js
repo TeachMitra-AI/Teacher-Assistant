@@ -43,7 +43,6 @@ const {
   PORT = 3000,
   CORS_ORIGINS = '',
   RATE_LIMIT_WINDOW_MINUTES = '15',
-  RATE_LIMIT_MAX_REQUESTS = '60',
 } = process.env;
 
 if (!GEMINI_API_KEY) {
@@ -52,6 +51,22 @@ if (!GEMINI_API_KEY) {
 }
 
 const MAX_QUERY_LENGTH = 500;
+
+// Computed here (rather than down near the CORS check, where this used to
+// live) because RATE_LIMIT_MAX_REQUESTS below needs it too.
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Our own per-IP cap on POST /coach — distinct from Gemini's own quota (see
+// the 429 branch in the /coach handler below, which maps that separately).
+// Defaults are environment-aware: production keeps the existing conservative
+// 60/window unless explicitly raised, but local development defaults much
+// higher (300/window) because a single person iterating on the UI can
+// legitimately exceed 60 requests in 15 minutes, and that shouldn't produce
+// the same 429 a real high-volume/abusive client would trigger. An explicit
+// RATE_LIMIT_MAX_REQUESTS always wins in either environment.
+const RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.RATE_LIMIT_MAX_REQUESTS, {
+  name: 'RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 60 : 300, min: 1, max: 100000,
+});
 
 // LLM reliability / cost tunables. Invalid values clamp to safe bounds with a
 // warning (see lib/config.js) rather than crashing — a bad tunable must not
@@ -102,13 +117,12 @@ const allowedOrigins = CORS_ORIGINS.split(',')
 // like http://10.x.x.x:8000). In production, set NODE_ENV=production and list
 // the exact allowed origins in CORS_ORIGINS to lock this down.
 //
-// isProduction defaults to false (dev-permissive) only when NODE_ENV is unset,
-// which is the normal local-dev case. If NODE_ENV IS set to 'production' but
-// CORS_ORIGINS is empty, we refuse to boot rather than silently falling back
-// to either "block everything" (confusing) or "allow everything" (unsafe) —
-// same fail-fast pattern already used for GEMINI_API_KEY and JWT_SECRET.
-const isProduction = process.env.NODE_ENV === 'production';
-
+// isProduction (computed above, near RATE_LIMIT_MAX_REQUESTS) defaults to
+// false (dev-permissive) only when NODE_ENV is unset, which is the normal
+// local-dev case. If NODE_ENV IS set to 'production' but CORS_ORIGINS is
+// empty, we refuse to boot rather than silently falling back to either
+// "block everything" (confusing) or "allow everything" (unsafe) — same
+// fail-fast pattern already used for GEMINI_API_KEY and JWT_SECRET.
 if (isProduction && allowedOrigins.length === 0) {
   console.error(
     'FATAL: NODE_ENV=production but CORS_ORIGINS is empty. Set it to a comma-separated allowlist of trusted frontend origins.'
@@ -139,10 +153,15 @@ app.use(
 
 const limiter = rateLimit({
   windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
-  max: parseInt(RATE_LIMIT_MAX_REQUESTS, 10),
+  max: RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests. Please wait a moment and try again.' },
+  // Deliberately worded differently from the Gemini-upstream 429 message
+  // below (in the /coach handler's catch block) so the two are never
+  // ambiguous: this one means "you (this IP) called our API too often";
+  // that one means "the AI provider itself is rate-limiting us right now",
+  // which more patience on the client side alone doesn't fix.
+  message: { error: 'You have made too many requests. Please wait a few minutes and try again.' },
 });
 
 // Stricter limiter for auth endpoints to slow down credential guessing.

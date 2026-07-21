@@ -52,6 +52,20 @@ export interface CoachResponse {
   queryId: string | null;
 }
 
+// One exchange in the session-local chat thread on the Coach page. Each turn
+// still calls /coach independently and statelessly — see the redesign plan
+// for why (backend has no multi-turn concept).
+export interface Turn {
+  id: string;
+  query: string;
+  language: string;
+  context: QueryContext;
+  status: 'pending' | 'done' | 'error';
+  response?: CoachResponse;
+  rating: 'helpful' | 'not_helpful' | null;
+  error?: string;
+}
+
 export interface HistoryItem {
   id: string;
   query: string;
