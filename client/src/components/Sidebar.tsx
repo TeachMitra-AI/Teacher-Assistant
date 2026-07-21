@@ -1,10 +1,12 @@
 import type { HistoryItem } from '../types';
 
-interface HistoryDrawerProps {
+interface SidebarProps {
   open: boolean;
   items: HistoryItem[];
   loading: boolean;
+  activeId?: string | null;
   onClose: () => void;
+  onNewChat: () => void;
   onSelect: (item: HistoryItem) => void;
   onDelete: (item: HistoryItem) => void;
   onClearAll: () => void;
@@ -21,21 +23,27 @@ function formatTimestamp(iso: string): string {
   return date.toLocaleDateString();
 }
 
-export default function HistoryDrawer({ open, items, loading, onClose, onSelect, onDelete, onClearAll }: HistoryDrawerProps) {
+export default function Sidebar({
+  open, items, loading, activeId, onClose, onNewChat, onSelect, onDelete, onClearAll,
+}: SidebarProps) {
   return (
     <>
-      <div className={`history-overlay${open ? ' show' : ''}`} onClick={onClose} hidden={!open} />
-      <aside className={`history-drawer${open ? ' open' : ''}`} aria-hidden={!open}>
-        <div className="history-drawer-header">
-          <span className="drawer-title">🕘 Recent questions</span>
-          <div className="history-header-actions">
-            {items.length > 0 && (
-              <button className="history-clear" onClick={onClearAll} disabled={loading}>
-                Clear all
-              </button>
-            )}
-            <button className="icon-btn" onClick={onClose} aria-label="Close">✕</button>
-          </div>
+      <div className={`sidebar-backdrop${open ? ' show' : ''}`} onClick={onClose} hidden={!open} />
+      <aside className={`sidebar${open ? ' sidebar-open' : ''}`} aria-hidden={!open}>
+        <div className="sidebar-header">
+          <button type="button" className="new-chat-btn" onClick={onNewChat}>
+            <span aria-hidden="true">＋</span> New chat
+          </button>
+          <button type="button" className="icon-btn sidebar-close" onClick={onClose} aria-label="Close sidebar">✕</button>
+        </div>
+
+        <div className="sidebar-section">
+          <span className="sidebar-section-label">Recent</span>
+          {items.length > 0 && (
+            <button type="button" className="history-clear" onClick={onClearAll} disabled={loading}>
+              Clear all
+            </button>
+          )}
         </div>
 
         <div className="history-list">
@@ -45,7 +53,7 @@ export default function HistoryDrawer({ open, items, loading, onClose, onSelect,
           )}
           {!loading &&
             items.map((item) => (
-              <div key={item.id} className="history-item">
+              <div key={item.id} className={`history-item${item.id === activeId ? ' active' : ''}`}>
                 <button className="history-item-main" onClick={() => onSelect(item)}>
                   <span className="history-query">{item.query}</span>
                   <span className="history-meta">

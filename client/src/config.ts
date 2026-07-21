@@ -33,12 +33,32 @@ export const SUBJECTS = ['Mathematics', 'Science', 'English', 'Hindi', 'Social S
 export const CLASSROOM_TYPES = ['Single Grade', 'Multi-Grade', 'Mixed Ability', 'Large Class (40+)', 'Small Class (<20)'];
 export const ISSUE_TYPES = ['Classroom Management', 'Concept Explanation', 'Student Engagement', 'Assessment', 'Differentiation', 'Resource Constraints'];
 
-export const EXAMPLE_QUESTIONS = [
-  'How do I manage a noisy multi-grade classroom?',
-  'Simple way to explain fractions to Class 3 students?',
-  'Activities to teach English with no textbooks?',
-  'How to keep students engaged in a large class?',
-  'Quick assessment ideas for a science lesson?',
+// Welcome-screen quick actions — seed the composer with a starter prompt for
+// the teacher to finish, rather than submitting immediately.
+export const QUICK_ACTIONS: { icon: string; label: string; prompt: string }[] = [
+  { icon: '📝', label: 'Create a Lesson Plan', prompt: 'Create a lesson plan for ' },
+  { icon: '🎯', label: 'Create Classroom Activity', prompt: 'Suggest a classroom activity for ' },
+  { icon: '💡', label: 'Explain a Concept', prompt: 'Explain this concept simply: ' },
+  { icon: '📋', label: 'Create Assessment', prompt: 'Create a short assessment for ' },
+  { icon: '🧑‍🏫', label: 'Manage Classroom', prompt: 'How do I manage ' },
+];
+
+// Contextual follow-up chips shown under an AI response. Each one resubmits
+// a *new*, self-contained turn — either the original short question with a
+// brief instruction appended, or the same question with the language
+// switched. Neither approach needs the (potentially very long) previous
+// answer text, so both stay comfortably under MAX_QUERY_LENGTH without any
+// backend change.
+export type FollowUpAction =
+  | { id: string; label: string; icon: string; kind: 'suffix'; suffix: string }
+  | { id: string; label: string; icon: string; kind: 'translate'; targetLanguage: string };
+
+export const FOLLOW_UP_ACTIONS: FollowUpAction[] = [
+  { id: 'simplify', label: 'Make it simpler', icon: '✨', kind: 'suffix', suffix: ' Explain this more simply, in easy words.' },
+  { id: 'worksheet', label: 'Create a worksheet', icon: '📄', kind: 'suffix', suffix: ' Create a printable worksheet for this.' },
+  { id: 'activity', label: '5-minute activity', icon: '⏱️', kind: 'suffix', suffix: ' Suggest a quick 5-minute classroom activity for this.' },
+  { id: 'translate_hi', label: 'Translate to Hindi', icon: '🌐', kind: 'translate', targetLanguage: 'hi' },
+  { id: 'translate_en', label: 'Translate to English', icon: '🌐', kind: 'translate', targetLanguage: 'en' },
 ];
 
 export const MAX_QUERY_LENGTH = 500;

@@ -1,12 +1,14 @@
-import { Link, useLocation } from 'react-router-dom';
+import { useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { usePreferences } from '../hooks/usePreferences';
+import { useDismissable } from '../hooks/useDismissable';
 import { ADMIN_ROLES, ROLE_LABELS } from '../config';
 
 interface TopBarProps {
   preferences: ReturnType<typeof usePreferences>;
-  onHistoryToggle?: () => void;
-  historyCount?: number;
+  onSidebarToggle?: () => void;
+  sidebarOpen?: boolean;
 }
 
 function initialsOf(name: string): string {
@@ -16,24 +18,45 @@ function initialsOf(name: string): string {
   return letters.join('').toUpperCase();
 }
 
-export default function TopBar({ preferences, onHistoryToggle, historyCount = 0 }: TopBarProps) {
+export default function TopBar({ preferences, onSidebarToggle, sidebarOpen }: TopBarProps) {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const { theme, toggleTheme, changeFont, canIncrease, canDecrease } = preferences;
+  const navigate = useNavigate();
+  const { theme, toggleTheme } = preferences;
   const isAdmin = user && ADMIN_ROLES.includes(user.role);
   const displayName = user ? user.displayName || user.name : '';
   const avatarEmoji = user?.preferences?.avatar;
 
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useDismissable(menuOpen, menuRef, () => setMenuOpen(false));
+
   return (
     <header className="topbar">
       <div className="topbar-inner">
-        <Link to="/" className="brand" aria-label="Teacher Assistant — home">
-          <span className="brand-logo" aria-hidden="true">👨‍🏫</span>
-          <span className="brand-text">
-            <strong className="brand-title">शिक्षक सहायक</strong>
-            <span className="brand-sub">Teacher Assistant</span>
-          </span>
-        </Link>
+        <div className="topbar-left">
+          {onSidebarToggle && (
+            <button
+              className="icon-btn sidebar-toggle"
+              onClick={onSidebarToggle}
+              title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+              aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+              aria-pressed={sidebarOpen}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <line x1="9" y1="4" x2="9" y2="20" />
+              </svg>
+            </button>
+          )}
+          <Link to="/" className="brand" aria-label="Teacher Assistant — home">
+            <span className="brand-logo" aria-hidden="true">👨‍🏫</span>
+            <span className="brand-text">
+              <strong className="brand-title">शिक्षक सहायक</strong>
+              <span className="brand-sub">Teacher Assistant</span>
+            </span>
+          </Link>
+        </div>
 
         <div className="topbar-controls">
           {isAdmin && (
@@ -58,11 +81,6 @@ export default function TopBar({ preferences, onHistoryToggle, historyCount = 0 
             </>
           )}
 
-          <div className="btn-group" role="group" aria-label="Text size">
-            <button className="icon-btn" onClick={() => changeFont(-2)} disabled={!canDecrease} title="Smaller text" aria-label="Decrease text size">A−</button>
-            <button className="icon-btn" onClick={() => changeFont(2)} disabled={!canIncrease} title="Larger text" aria-label="Increase text size">A+</button>
-          </div>
-
           <button
             className="icon-btn"
             onClick={toggleTheme}
@@ -74,33 +92,14 @@ export default function TopBar({ preferences, onHistoryToggle, historyCount = 0 
           </button>
 
           {user && (
-            <Link
-              to="/settings"
-              className={`icon-btn${location.pathname === '/settings' ? ' active' : ''}`}
-              title="Settings"
-              aria-label="Settings"
-              aria-current={location.pathname === '/settings' ? 'page' : undefined}
-            >
-              ⚙️
-            </Link>
-          )}
-
-          {onHistoryToggle && (
-            <button
-              className="icon-btn history-toggle"
-              onClick={onHistoryToggle}
-              title="Recent questions"
-              aria-label={historyCount > 0 ? `Recent questions (${historyCount})` : 'Recent questions'}
-            >
-              🕘
-              {historyCount > 0 && <span className="history-badge">{historyCount}</span>}
-            </button>
-          )}
-
-          {user && (
-            <>
-              <span className="topbar-divider" aria-hidden="true" />
-              <div className="user-chip">
+            <div className="profile-menu" ref={menuRef}>
+              <button
+                className="user-chip user-chip-btn"
+                onClick={() => setMenuOpen((o) => !o)}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                aria-label={`Account menu for ${displayName}`}
+              >
                 <span className={`user-avatar${avatarEmoji ? ' user-avatar-emoji' : ''}`} aria-hidden="true">
                   {avatarEmoji || initialsOf(displayName)}
                 </span>
@@ -108,18 +107,35 @@ export default function TopBar({ preferences, onHistoryToggle, historyCount = 0 
                   <span className="user-name">{displayName}</span>
                   <span className="user-role">{ROLE_LABELS[user.role]}</span>
                 </span>
-              </div>
-            </>
-          )}
+              </button>
 
-          <button className="btn-signout" onClick={logout} title="Sign out" aria-label="Sign out">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-            <span className="btn-signout-label">Sign out</span>
-          </button>
+              {menuOpen && (
+                <div className="profile-dropdown" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="profile-dropdown-item"
+                    onClick={() => { setMenuOpen(false); navigate('/settings'); }}
+                  >
+                    ⚙️ Settings
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="profile-dropdown-item profile-dropdown-danger"
+                    onClick={() => { setMenuOpen(false); logout(); }}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                      <polyline points="16 17 21 12 16 7" />
+                      <line x1="21" y1="12" x2="9" y2="12" />
+                    </svg>
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </header>

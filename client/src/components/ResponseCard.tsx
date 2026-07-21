@@ -49,7 +49,7 @@ export default function ResponseCard({ text, language, context, queryId, rating,
   const metaParts = [context.grade, context.subject].filter(Boolean);
 
   return (
-    <article className="response-card">
+    <div className="ai-message-content">
       {metaParts.length > 0 && (
         <div className="response-meta">
           {context.grade && <span>📚 {context.grade}</span>}
@@ -88,6 +88,6 @@ export default function ResponseCard({ text, language, context, queryId, rating,
           </button>
         </div>
       )}
-    </article>
+    </div>
   );
 }
