@@ -106,9 +106,17 @@ All features below are verified against the current source code.
 
 ### Cross-cutting
 - **Dark / light theme** with the choice persisted in `localStorage`.
-- **Responsive / mobile** layout down to ~375px with a collapsible sidebar/drawer.
+- **Responsive / mobile** layout down to ~320px. At ≤640px the top bar reduces to essentials
+  (menu toggle, compact logo, theme toggle, profile) and primary navigation moves to a fixed
+  **bottom navigation** (Coach / Library / Generator); the history sidebar becomes a slide-in
+  drawer. `env(safe-area-inset-bottom)` is respected and content is padded so nothing hides
+  behind the bottom nav or composer.
+- **Adaptive Coach scrolling** — the empty/welcome state scrolls as one natural page
+  (greeting → quick actions → context → composer), while an active conversation uses a
+  fixed-viewport layout (messages scroll; composer stays docked above the bottom nav).
 - **Accessibility** — `:focus-visible` outlines, `aria-label`s on icon-only controls,
-  `role`/`aria-*` on menus, tabs, and dialogs.
+  `role`/`aria-*` on menus, tabs, and dialogs; the bottom nav marks the active route with
+  `aria-current`.
 - **Installable PWA** — the app shell is cached; API calls are never cached.
 
 ### Planned / Roadmap
@@ -144,8 +152,8 @@ Teacher-Assistant/
 │       ├── pages/                  # LoginPage, CoachPage, LibraryPage, ResourceView,
 │       │                           #   ResourceWorkspace, GeneratorPage, SettingsPage,
 │       │                           #   AdminPage, ManagePage
-│       ├── components/             # TopBar, Sidebar, Composer, ContextBar, MessageList,
-│       │                           #   MessageBubble, ResponseCard, FollowUpChips,
+│       ├── components/             # TopBar, BottomNav (mobile), Sidebar, Composer, ContextBar,
+│       │                           #   MessageList, MessageBubble, ResponseCard, FollowUpChips,
 │       │                           #   SaveToLibrary, WelcomeScreen, AdminTabs, Toast
 │       ├── hooks/                  # usePreferences (theme/font), useVoiceInput, useDismissable
 │       ├── lib/                    # api resources client, format (Markdown→HTML), tts, followUp
@@ -169,8 +177,8 @@ Teacher-Assistant/
 │   │   └── migrations/             # SQLite migration history (4 migrations)
 │   └── test/                       # Vitest + Supertest suites and helpers
 │
-├── docs/                           # postgres-migration-plan.md, git-history-secret-purge.md,
-│                                   #   MANUAL-TESTING-GUIDE.md
+├── docs/                           # MANUAL-TESTING-GUIDE.md, MOBILE-RESPONSIVE-TESTING-GUIDE.md,
+│                                   #   postgres-migration-plan.md, git-history-secret-purge.md
 ├── archive/                        # ⚠️ Legacy vanilla HTML/JS prototype — reference only
 ├── .github/workflows/ci.yml        # CI: secret scan + server (lint/test) + client (lint/build)
 ├── .githooks/pre-commit            # optional local gitleaks pre-commit scan
@@ -421,6 +429,11 @@ npm run build     # tsc -b (typecheck) + vite build
 
 CI runs these on every pull request and on pushes to `main` (see `.github/workflows/ci.yml`),
 using Node 20, plus a gitleaks secret scan.
+
+**Manual / QA testing:** step-by-step manual test cases live in
+[`docs/MANUAL-TESTING-GUIDE.md`](docs/MANUAL-TESTING-GUIDE.md) (auth, RBAC, Coach, Library,
+Workspace, Generator, admin, etc.), with detailed mobile/responsive coverage in
+[`docs/MOBILE-RESPONSIVE-TESTING-GUIDE.md`](docs/MOBILE-RESPONSIVE-TESTING-GUIDE.md).
 
 ---
 
