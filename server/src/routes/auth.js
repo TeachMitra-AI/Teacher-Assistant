@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const { z } = require('zod');
 
 const { prisma } = require('../lib/db');
+const { asyncHandler } = require('../lib/asyncHandler');
 const {
   signAccessToken,
   authRequired,
@@ -90,7 +91,7 @@ function publicUser(user, school) {
 }
 
 // POST /api/auth/register — first-time teacher sign-up under a valid school code.
-router.post('/register', async (req, res) => {
+router.post('/register', asyncHandler(async (req, res) => {
   const parsed = credentialsSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid details.' });
@@ -118,10 +119,10 @@ router.post('/register', async (req, res) => {
 
   const { token, refreshToken } = await issueSession(user, req);
   return res.status(201).json({ token, refreshToken, user: publicUser(user, school) });
-});
+}));
 
 // POST /api/auth/login — returning teacher/admin sign-in.
-router.post('/login', async (req, res) => {
+router.post('/login', asyncHandler(async (req, res) => {
   const parsed = credentialsSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid details.' });
@@ -170,7 +171,7 @@ router.post('/login', async (req, res) => {
 
   const { token, refreshToken } = await issueSession(user, req);
   return res.json({ token, refreshToken, user: publicUser(user, school) });
-});
+}));
 
 // POST /api/auth/refresh — exchange a still-valid refresh token for a new
 // access+refresh pair. Rotates the refresh token on every call: the old one
@@ -179,7 +180,7 @@ router.post('/login', async (req, res) => {
 // revokes every session the user has, forcing a fresh login everywhere.
 const refreshSchema = z.object({ refreshToken: z.string().min(20) });
 
-router.post('/refresh', async (req, res) => {
+router.post('/refresh', asyncHandler(async (req, res) => {
   const parsed = refreshSchema.safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid refresh token.' });
   const { refreshToken } = parsed.data;
@@ -222,12 +223,12 @@ router.post('/refresh', async (req, res) => {
     refreshToken: newRefreshToken,
     user: publicUser(user, user.school),
   });
-});
+}));
 
 // POST /api/auth/logout — revoke one refresh-token session. Always returns
 // success even if the token was already gone, so the client can clear its
 // local storage unconditionally without special-casing the response.
-router.post('/logout', async (req, res) => {
+router.post('/logout', asyncHandler(async (req, res) => {
   const refreshToken = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken : null;
   if (refreshToken) {
     await prisma.session.updateMany({
@@ -236,43 +237,43 @@ router.post('/logout', async (req, res) => {
     });
   }
   return res.json({ success: true });
-});
+}));
 
 // GET /api/auth/sessions — the caller's own active (non-revoked, non-expired) sessions.
-router.get('/sessions', authRequired, async (req, res) => {
+router.get('/sessions', authRequired, asyncHandler(async (req, res) => {
   const sessions = await prisma.session.findMany({
     where: { userId: req.user.id, revokedAt: null, expiresAt: { gt: new Date() } },
     orderBy: { createdAt: 'desc' },
     select: { id: true, createdAt: true, lastUsedAt: true, userAgent: true, expiresAt: true },
   });
   return res.json({ sessions });
-});
+}));
 
 // DELETE /api/auth/sessions/:id — revoke one of the caller's own sessions
 // (e.g. "sign out of another device"). Ownership-checked the same way
 // routes/queries.js checks a query's userId.
-router.delete('/sessions/:id', authRequired, async (req, res) => {
+router.delete('/sessions/:id', authRequired, asyncHandler(async (req, res) => {
   const session = await prisma.session.findUnique({ where: { id: req.params.id } });
   if (!session || session.userId !== req.user.id) {
     return res.status(404).json({ error: 'Session not found.' });
   }
   await prisma.session.update({ where: { id: session.id }, data: { revokedAt: new Date() } });
   return res.json({ success: true });
-});
+}));
 
 // GET /api/auth/me — current profile from a valid token.
-router.get('/me', authRequired, async (req, res) => {
+router.get('/me', authRequired, asyncHandler(async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user.id },
     include: { school: true },
   });
   if (!user) return res.status(404).json({ error: 'User not found.' });
   return res.json({ user: publicUser(user, user.school) });
-});
+}));
 
 // PATCH /api/auth/me — update the caller's own display name and/or preferences.
 // The login `name` is the identity credential and is intentionally NOT editable.
-router.patch('/me', authRequired, async (req, res) => {
+router.patch('/me', authRequired, asyncHandler(async (req, res) => {
   const parsed = profileSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid profile details.' });
@@ -300,10 +301,10 @@ router.patch('/me', authRequired, async (req, res) => {
     include: { school: true },
   });
   return res.json({ user: publicUser(updated, updated.school) });
-});
+}));
 
 // PATCH /api/auth/me/pin — change the caller's own PIN after verifying the current one.
-router.patch('/me/pin', authRequired, async (req, res) => {
+router.patch('/me/pin', authRequired, asyncHandler(async (req, res) => {
   const parsed = pinChangeSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid PIN.' });
@@ -319,6 +320,6 @@ router.patch('/me/pin', authRequired, async (req, res) => {
   const pinHash = await bcrypt.hash(newPin, 10);
   await prisma.user.update({ where: { id: user.id }, data: { pinHash } });
   return res.json({ ok: true });
-});
+}));
 
 module.exports = router;

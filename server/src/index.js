@@ -105,6 +105,16 @@ const gemini = new GeminiService({
 
 const app = express();
 app.disable('x-powered-by');
+// Railway (like most PaaS) puts exactly one reverse-proxy hop in front of
+// this app. Trusting that one hop lets Express derive req.ip from the
+// X-Forwarded-For header Railway sets, which express-rate-limit needs to
+// rate-limit real client IPs instead of Railway's proxy IP for everyone —
+// and without this, express-rate-limit refuses to start with
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR (it won't trust a forwarded-for header
+// unless Express is explicitly configured to expect one). Trusting a fixed
+// hop count (not `true`, which would trust the whole chain) keeps req.ip
+// unspoofable by a client-supplied X-Forwarded-For value.
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use(express.json({ limit: '16kb' }));
 
@@ -374,6 +384,25 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
 // Teacher history + feedback, and admin analytics/management.
 app.use('/api', dataRouter);
 app.use('/api/admin', adminRouter);
+
+// Global error handler — last line of defense. Routes wrapped in
+// asyncHandler (see lib/asyncHandler.js) forward a rejected promise here via
+// next(err) instead of letting it become an unhandled rejection, which on
+// Node 18+ would otherwise crash the whole process (this is what turned a
+// single Prisma P2021 "table does not exist" error into a full outage).
+// Must be registered after all routers. Never echoes the raw error
+// message/stack to the client — only status/path/method/error identity are
+// logged server-side.
+app.use((err, req, res, _next) => {
+  console.error('Unhandled request error:', {
+    method: req.method,
+    path: req.path,
+    message: err.message,
+    code: err.code,
+  });
+  if (res.headersSent) return;
+  res.status(500).json({ error: 'Something went wrong. Please try again.' });
+});
 
 // ---- Start -----------------------------------------------------------------
 
