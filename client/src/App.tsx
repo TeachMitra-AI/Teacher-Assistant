@@ -10,6 +10,7 @@ import ManagePage from './pages/ManagePage';
 import SettingsPage from './pages/SettingsPage';
 import LibraryPage from './pages/LibraryPage';
 import ResourceView from './pages/ResourceView';
+import ResourceWorkspace from './pages/ResourceWorkspace';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -39,6 +40,7 @@ function AppRoutes() {
       <Route path="/" element={<CoachPage preferences={preferences} />} />
       <Route path="/library" element={<LibraryPage preferences={preferences} />} />
       <Route path="/library/:id" element={<ResourceView preferences={preferences} />} />
+      <Route path="/library/:id/edit" element={<ResourceWorkspace preferences={preferences} />} />
       <Route path="/settings" element={<SettingsPage preferences={preferences} />} />
       <Route
         path="/admin"

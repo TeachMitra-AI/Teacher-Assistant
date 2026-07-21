@@ -5,6 +5,7 @@ const request = require('supertest');
 const { app, prisma } = require('./helpers/testApp');
 const { createFixtures, PIN } = require('./helpers/fixtures');
 const { loginAs } = require('./helpers/auth');
+const { mockGeminiFetch, geminiSuccess } = require('./helpers/geminiMock');
 
 describe('My Library — /api/resources', () => {
   let fx;
@@ -231,6 +232,67 @@ describe('My Library — /api/resources', () => {
     test('deleting a non-existent id returns 404', async () => {
       const res = await asA(request(app).delete('/api/resources/nope'));
       expect(res.status).toBe(404);
+    });
+  });
+
+  // Lesson Plan Workspace AI actions. Ownership must be enforced exactly like
+  // the rest of the resource routes; the suggestion is returned but never
+  // persisted (saving stays an explicit PATCH). Gemini's fetch is mocked so
+  // the real route + GeminiService run end-to-end without a network call.
+  describe('ai-action — POST /api/resources/:id/ai-action', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    test('requires authentication', async () => {
+      const res = await request(app).post('/api/resources/whatever/ai-action').send({ action: 'simplify' });
+      expect(res.status).toBe(401);
+    });
+
+    test('owner gets a suggestion without the resource being modified', async () => {
+      mockGeminiFetch([geminiSuccess('# Simpler version\nEasy words here.')]);
+      const created = await createFor(teacherAToken, { title: 'Fractions', content: 'Original body' });
+      const id = created.body.resource.id;
+
+      const res = await asA(request(app).post(`/api/resources/${id}/ai-action`).send({ action: 'simplify' }));
+      expect(res.status).toBe(200);
+      expect(res.body.suggestion).toContain('Simpler version');
+      expect(typeof res.body.requestId).toBe('string');
+
+      // The stored resource content is untouched — suggestions are not saved.
+      const row = await prisma.resource.findUnique({ where: { id } });
+      expect(row.content).toBe('Original body');
+    });
+
+    test('another user cannot run an AI action — returns 404 (existence not leaked)', async () => {
+      mockGeminiFetch([geminiSuccess('should never be reached')]);
+      const created = await createFor(teacherAToken, { title: 'A private', content: 'secret' });
+      const res = await asB(
+        request(app).post(`/api/resources/${created.body.resource.id}/ai-action`).send({ action: 'simplify' })
+      );
+      expect(res.status).toBe(404);
+    });
+
+    test('non-existent id returns 404', async () => {
+      mockGeminiFetch([geminiSuccess('nope')]);
+      const res = await asA(request(app).post('/api/resources/does-not-exist/ai-action').send({ action: 'simplify' }));
+      expect(res.status).toBe(404);
+    });
+
+    test('rejects an unknown action', async () => {
+      const created = await createFor(teacherAToken, { title: 'Draft' });
+      const res = await asA(
+        request(app).post(`/api/resources/${created.body.resource.id}/ai-action`).send({ action: 'delete_everything' })
+      );
+      expect(res.status).toBe(400);
+    });
+
+    test('adapt_grade without a target grade is rejected', async () => {
+      const created = await createFor(teacherAToken, { title: 'Draft' });
+      const res = await asA(
+        request(app).post(`/api/resources/${created.body.resource.id}/ai-action`).send({ action: 'adapt_grade' })
+      );
+      expect(res.status).toBe(400);
     });
   });
 });

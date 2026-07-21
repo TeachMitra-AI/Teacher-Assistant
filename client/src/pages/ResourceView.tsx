@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Trash2 } from 'lucide-react';
+import { ArrowLeft, Trash2, Pencil } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import { useToast } from '../components/Toast';
 import { usePreferences } from '../hooks/usePreferences';
@@ -89,15 +89,24 @@ export default function ResourceView({ preferences }: { preferences: ReturnType<
                   Updated {formatDate(resource.updatedAt)}
                 </p>
               </div>
-              <button
-                type="button"
-                className="icon-btn resource-doc-delete"
-                onClick={handleDelete}
-                aria-label="Delete this resource"
-                title="Delete"
-              >
-                <Trash2 size={17} aria-hidden="true" />
-              </button>
+              <div className="resource-doc-actions">
+                <button
+                  type="button"
+                  className="btn-primary resource-doc-edit"
+                  onClick={() => navigate(`/library/${resource.id}/edit`)}
+                >
+                  <Pencil size={15} aria-hidden="true" /> Edit
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn resource-doc-delete"
+                  onClick={handleDelete}
+                  aria-label="Delete this resource"
+                  title="Delete"
+                >
+                  <Trash2 size={17} aria-hidden="true" />
+                </button>
+              </div>
             </header>
 
             <div
