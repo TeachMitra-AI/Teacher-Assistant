@@ -12,6 +12,7 @@ import LibraryPage from './pages/LibraryPage';
 import ResourceView from './pages/ResourceView';
 import ResourceWorkspace from './pages/ResourceWorkspace';
 import GeneratorPage from './pages/GeneratorPage';
+import BottomNav from './components/BottomNav';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -37,7 +38,8 @@ function AppRoutes() {
   const isAdmin = ADMIN_ROLES.includes(user.role);
 
   return (
-    <Routes>
+    <>
+      <Routes>
       <Route path="/" element={<CoachPage preferences={preferences} />} />
       <Route path="/library" element={<LibraryPage preferences={preferences} />} />
       <Route path="/library/:id" element={<ResourceView preferences={preferences} />} />
@@ -53,7 +55,9 @@ function AppRoutes() {
         element={isAdmin ? <ManagePage preferences={preferences} /> : <Navigate to="/" replace />}
       />
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+      <BottomNav />
+    </>
   );
 }
 

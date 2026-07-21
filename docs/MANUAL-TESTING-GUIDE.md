@@ -4,6 +4,11 @@
 > implemented today, including My Library, the Lesson Plan Workspace, Workspace AI Assist,
 > Print/Export, and the Quiz & Worksheet Generator. Every test case below was written against
 > verified source behavior.
+>
+> **Mobile/responsive:** this guide keeps a concise mobile **regression** section (area P).
+> Detailed mobile coverage — the bottom navigation, essentials-only top bar, adaptive Coach
+> scrolling, safe-area handling, and the breakpoint/theme matrix — lives in
+> **[`MOBILE-RESPONSIVE-TESTING-GUIDE.md`](./MOBILE-RESPONSIVE-TESTING-GUIDE.md)**.
 
 ## 1. Purpose
 
@@ -13,7 +18,7 @@ response actions, My Library, resource ownership/isolation, the Lesson Plan Work
 AI Assist, Print/Export, the Admin Dashboard and Management, theming, responsiveness,
 accessibility, error handling, persistence, and safe security checks.
 
-Mark each case using the checklist in [Section 24](#24-test-execution-checklist):
+Mark each case using the checklist in [Section 25](#25-test-execution-checklist):
 ⬜ Not Run · ✅ Pass · ❌ Fail · ⚠️ Blocked.
 
 ## 2. Prerequisites
@@ -108,8 +113,10 @@ Each case has a unique ID, preconditions, steps, and an expected result. Terms:
 **Steps:**
 1. On the **Login** tab, enter school code `RAMPUR01`, name `Demo Teacher`, PIN `123456`.
 2. Click the login/submit button.
-**Expected:** Authenticated; redirected to the Coach page (`/`). Top bar shows **Coach** and
-**Library** nav and a profile chip; **no** Dashboard link.
+**Expected:** Authenticated; redirected to the Coach page (`/`). Primary nav shows **Coach**,
+**Library**, and **Generator** with a profile chip; **no** Dashboard link. (On desktop these are
+top-bar links; at ≤640px they appear in the fixed bottom navigation instead — see the
+[Mobile & Responsive Testing Guide](./MOBILE-RESPONSIVE-TESTING-GUIDE.md).)
 
 ### TC-AUTH-002 — Invalid school code
 **Preconditions:** At `/login`.
@@ -167,7 +174,8 @@ token once (`POST /api/auth/refresh`). *(Optional/observational; may require wai
 
 ### TC-RBAC-001 — Teacher navigation
 **Preconditions:** Logged in as `Demo Teacher`.
-**Expected:** Top bar shows **Coach** and **Library** only. No **Dashboard** link.
+**Expected:** Primary nav shows **Coach**, **Library**, **Generator** only. No **Dashboard** link
+(desktop: top bar; ≤640px: bottom navigation).
 
 ### TC-RBAC-002 — Teacher cannot reach admin routes
 **Steps:** As `Demo Teacher`, visit `http://localhost:5173/admin` then `/admin/manage`.
@@ -621,42 +629,39 @@ readable.
 
 ---
 
-## 20. P — Responsive / Mobile
+## 20. P — Responsive / Mobile (regression summary)
 
-> Use browser dev tools device toolbar. Test at **~375px**, **~430px**, **tablet (~768px)**, and
-> **desktop (~1440px)**.
+> This is a **concise regression pass**. Full mobile/responsive coverage — the bottom navigation,
+> essentials-only top bar, adaptive Coach scrolling, safe-area handling, per-page checks, and the
+> breakpoint/theme matrix — lives in
+> **[`MOBILE-RESPONSIVE-TESTING-GUIDE.md`](./MOBILE-RESPONSIVE-TESTING-GUIDE.md)** (38 cases,
+> TC-MOB-###). Run that guide for a full mobile sign-off; run the five checks below as a quick
+> regression gate. Test at ~375px unless noted.
 
-### TC-RWD-001 — No horizontal scrolling
-**Steps:** At each width, scan Coach, Library, Resource detail, Workspace, and admin pages.
-**Expected:** No horizontal page scrolling; wide content scrolls within its own container if needed.
+### TC-RWD-001 — No horizontal scrolling / no header overlap
+**Steps:** Sweep 320/375/430/768/1440 across Coach, Library, Resource detail, Workspace, Generator.
+**Expected:** No horizontal page scroll and no top-bar overlap at any width; wide content scrolls
+within its own container. *(Full sweep: TC-MOB-060.)*
 
-### TC-RWD-002 — Sidebar / history drawer behavior
-**Steps:** On mobile widths, open/close the history sidebar.
-**Expected:** It behaves as a drawer (overlay), closes with the toggle/Escape/backdrop, and does not
-permanently cover content.
+### TC-RWD-002 — Mobile navigation (bottom nav + drawer)
+**Steps:** At ≤640px use the bottom nav (Coach/Library/Generator) and open/close the history drawer.
+**Expected:** Bottom nav routes correctly with a clear active state and respects the safe-area; the
+sidebar drawer opens/closes and does not permanently cover content. *(Detail: TC-MOB-010…016, 004.)*
 
-### TC-RWD-003 — Profile menu reachable on mobile
-**Steps:** At ~375px, open the profile chip menu.
-**Expected:** The avatar/menu trigger is tappable; Settings and Sign out are reachable.
+### TC-RWD-003 — Coach welcome scrolls naturally
+**Steps:** On a fresh Coach page, scroll the welcome content.
+**Expected:** One natural page scroll (greeting → all quick actions → context → composer); no nested
+scrollbar; all five cards reachable; nothing hidden behind composer/nav. *(Detail: TC-MOB-020…025.)*
 
-### TC-RWD-004 — Composer usable on mobile
-**Steps:** At ~375px, type and submit a question.
-**Expected:** The composer, context bar, and send control are usable without overflow.
+### TC-RWD-004 — Active chat + composer
+**Steps:** Send a question; scroll the thread; use response/follow-up actions.
+**Expected:** Messages scroll; the latest message is fully visible above the composer; the composer
+stays docked above the bottom nav and never overlaps content. *(Detail: TC-MOB-030…035.)*
 
-### TC-RWD-005 — Library grid collapses
-**Expected:** Library cards become a single column on narrow widths.
-
-### TC-RWD-006 — Workspace usable at 375px
-**Steps:** Open the workspace at ~375px.
-**Expected:** Single-column layout; the toolbar collapses to icon buttons (labels hidden); the
-editor and AI Assist remain usable; **Save/Print** remain accessible.
-
-### TC-RWD-007 — AI preview dialog on mobile
-**Steps:** Generate an AI suggestion at ~375px.
-**Expected:** The preview dialog fits the viewport, scrolls internally, and Apply/Cancel are reachable.
-
-### TC-RWD-008 — Print action accessible on mobile
-**Expected:** The **Print / Export** control is reachable in the collapsed mobile toolbar.
+### TC-RWD-005 — Workspace / dialogs / print on mobile
+**Steps:** Open the Workspace at ~375px; open the AI suggestion dialog; open Print / Export.
+**Expected:** Single-column workspace with toolbar collapsed to icons; Save/Print reachable; the AI
+dialog fits and scrolls; the bottom nav is hidden in print. *(Detail: TC-MOB-052, 015, 016.)*
 
 ---
 
@@ -1026,14 +1031,12 @@ Legend: ⬜ Not Run · ✅ Pass · ❌ Fail · ⚠️ Blocked
 | TC-THEME-001 | Theme | Toggle dark/light | ⬜ | |
 | TC-THEME-002 | Theme | Theme persistence | ⬜ | |
 | TC-THEME-003 | Theme | Theme across pages | ⬜ | |
-| TC-RWD-001 | Responsive | No horizontal scrolling | ⬜ | |
-| TC-RWD-002 | Responsive | Sidebar/drawer behavior | ⬜ | |
-| TC-RWD-003 | Responsive | Profile menu on mobile | ⬜ | |
-| TC-RWD-004 | Responsive | Composer usable on mobile | ⬜ | |
-| TC-RWD-005 | Responsive | Library grid collapses | ⬜ | |
-| TC-RWD-006 | Responsive | Workspace usable at 375px | ⬜ | |
-| TC-RWD-007 | Responsive | AI preview dialog on mobile | ⬜ | |
-| TC-RWD-008 | Responsive | Print action accessible on mobile | ⬜ | |
+| TC-RWD-001 | Responsive | No horizontal scroll / no header overlap | ⬜ | |
+| TC-RWD-002 | Responsive | Mobile navigation (bottom nav + drawer) | ⬜ | |
+| TC-RWD-003 | Responsive | Coach welcome scrolls naturally | ⬜ | |
+| TC-RWD-004 | Responsive | Active chat + composer | ⬜ | |
+| TC-RWD-005 | Responsive | Workspace / dialogs / print on mobile | ⬜ | |
+| _see_ | Responsive | Full mobile coverage → MOBILE-RESPONSIVE-TESTING-GUIDE.md (TC-MOB-###) | ⬜ | 38 cases |
 | TC-A11Y-001 | Accessibility | Tab navigation | ⬜ | |
 | TC-A11Y-002 | Accessibility | Visible focus rings | ⬜ | |
 | TC-A11Y-003 | Accessibility | Icon-only button labels | ⬜ | |
@@ -1089,4 +1092,6 @@ Legend: ⬜ Not Run · ✅ Pass · ❌ Fail · ⚠️ Blocked
 | TC-GEN-029 | Generator | Keyboard accessibility | ⬜ | |
 | TC-GEN-030 | Generator | Authentication & ownership | ⬜ | |
 
-**Total: 152 test cases across 21 areas.**
+**Total: 149 test cases across 21 areas** (main guide). Detailed mobile/responsive coverage is in
+**[`MOBILE-RESPONSIVE-TESTING-GUIDE.md`](./MOBILE-RESPONSIVE-TESTING-GUIDE.md)** — a further **38**
+cases (TC-MOB-###).

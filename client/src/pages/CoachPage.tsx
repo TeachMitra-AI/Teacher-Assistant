@@ -238,9 +238,10 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   }
 
   const activeHistoryId = turns.length === 1 ? turns[0].response?.queryId ?? null : null;
+  const isEmpty = turns.length === 0;
 
   return (
-    <div className="page coach-shell">
+    <div className={`page coach-shell${isEmpty ? ' coach-empty' : ''}`}>
       <TopBar preferences={preferences} onSidebarToggle={() => setSidebarOpen((o) => !o)} sidebarOpen={sidebarOpen} />
 
       <div className="coach-body">

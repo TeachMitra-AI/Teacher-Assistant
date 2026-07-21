@@ -15,6 +15,11 @@
   --shadow: 0 1px 3px rgba(20, 24, 33, 0.08), 0 6px 18px rgba(20, 24, 33, 0.06);
   --radius: 14px;
   --radius-sm: 10px;
+
+  /* Height of the mobile bottom navigation (excludes the safe-area inset,
+     which is added on top). Used to size the mobile coach shell and to pad
+     document-scroll pages so nothing hides behind the fixed bar. */
+  --bottomnav-h: 58px;
 }
 
 [data-theme='dark'] {
@@ -171,6 +176,39 @@ button { font-family: inherit; cursor: pointer; }
 
 .topbar-left { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
 .sidebar-toggle { flex-shrink: 0; }
+
+/* ---- Mobile bottom navigation (shown only <=640px; see media query) ------ */
+.bottom-nav {
+  display: none; /* desktop: top-bar nav is used instead */
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  height: calc(var(--bottomnav-h) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -2px 10px rgba(20, 24, 33, 0.06);
+}
+.bottom-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0.3rem 0.25rem;
+  text-decoration: none;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  transition: color 0.12s ease;
+}
+.bottom-nav-item.active { color: var(--orange); }
+.bottom-nav-item:focus-visible { outline: 2px solid var(--orange); outline-offset: -3px; border-radius: var(--radius-sm); }
+.bottom-nav-label { line-height: 1; }
 
 /* User chip / profile menu */
 .profile-menu { position: relative; }
@@ -436,19 +474,44 @@ button { font-family: inherit; cursor: pointer; }
   .topbar-divider { display: none; }
   .brand-sub { display: none; }
   .brand-title { font-size: 1rem; }
-  .topbar-nav .nav-link { padding: 0.45rem 0.6rem; font-size: 0.85rem; }
+  /* Primary nav (Coach / Library / Generator) moves out of the crowded top bar
+     into the fixed bottom navigation, so the top bar keeps only essentials
+     (menu toggle, logo, theme, profile) and never overlaps the brand. */
+  .topbar-nav { display: none; }
+  .bottom-nav { display: flex; }
+
+  /* The coach screen is a fixed-height flex column; on mobile subtract the
+     bottom nav (and safe-area) and use dynamic viewport height so the composer
+     sits just above the bottom nav instead of behind the browser chrome.
+     min-height:0 defeats the base `.page { min-height: 100vh }`. */
+  .coach-shell {
+    min-height: 0;
+    height: calc(100vh - var(--bottomnav-h)); /* fallback */
+    height: calc(100dvh - var(--bottomnav-h) - env(safe-area-inset-bottom));
+  }
+  /* Document-scroll pages (Library, Generator, Resource view, Workspace,
+     Settings, Admin) clear the fixed bottom nav so the last card/content is
+     never hidden behind it. */
+  .page:not(.coach-shell) { padding-bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom)); }
+  /* Keep toasts above the bottom nav. */
+  .toast-stack { bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom) + 0.8rem); }
+
   /* Collapse the profile chip to the avatar only. The trigger stays visible
      and tappable, so Settings / Sign out remain reachable on every phone;
      the name and role are shown inside the dropdown. */
   .user-meta { display: none; }
   .user-chip { padding: 0.15rem; gap: 0; }
 
-  .welcome-screen { gap: 1.25rem; padding: 2rem 0.25rem 1rem; justify-content: flex-start; }
+  /* Density: tighter vertical rhythm so more welcome content fits one phone
+     viewport (greeting↔subtitle↔cards, card↔card, last card↔context controls),
+     while cards keep a comfortable ~55px tap height and text stays readable. */
+  .welcome-screen { gap: 0.75rem; padding: 2rem 0.25rem 0.5rem; justify-content: flex-start; }
+  .welcome-hero { gap: 0.2rem; }
   .welcome-title { font-size: 1.4rem; }
   .welcome-subtitle { font-size: 0.95rem; }
   .quick-action-grid,
-  .admin-shortcut-grid { grid-template-columns: 1fr; }
-  .quick-action-card { padding: 0.8rem 0.85rem; gap: 0.7rem; }
+  .admin-shortcut-grid { grid-template-columns: 1fr; gap: 0.5rem; }
+  .quick-action-card { padding: 0.65rem 0.85rem; gap: 0.7rem; }
   .quick-action-icon { width: 36px; height: 36px; }
   /* No hover on touch — reveal the chevron so cards read as tappable. */
   .quick-action-chevron { opacity: 0.5; transform: none; }
@@ -461,6 +524,37 @@ button { font-family: inherit; cursor: pointer; }
   .composer-dock-inner { position: relative; }
   .context-more { position: static; }
   .context-popover { left: 0.5rem; right: 0.5rem; min-width: 0; }
+
+  /* --- Coach EMPTY / WELCOME state (mobile): natural page scroll ----------
+     The default coach shell is a fixed-viewport flex column where `.chat-scroll`
+     is a nested scroll area that only gets the space left after the top bar and
+     the always-present context+composer dock — on a phone that traps the
+     quick-action cards in a tiny ~2-card scroll window. In the empty state we
+     drop the fixed-height/overflow chain so the whole page scrolls naturally
+     (greeting → cards → context → composer), and the composer flows after the
+     welcome content instead of permanently reserving viewport height. The
+     ACTIVE chat state below is unaffected and keeps the fixed-viewport layout. */
+  .coach-shell.coach-empty {
+    display: block;
+    height: auto;
+    min-height: calc(100vh - var(--bottomnav-h)); /* fallback */
+    min-height: calc(100dvh - var(--bottomnav-h) - env(safe-area-inset-bottom));
+    overflow: visible;
+    /* Clear the fixed bottom nav (this shell is excluded from the generic
+       `.page:not(.coach-shell)` padding rule above). */
+    padding-bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom));
+  }
+  .coach-empty .coach-body,
+  .coach-empty .coach-main-chat { display: block; min-height: 0; }
+  .coach-empty .chat-scroll { flex: initial; overflow: visible; padding: 1rem 1rem 0.25rem; }
+  .coach-empty .chat-inner { min-height: 0; }
+  /* Let the welcome content size to its natural height rather than stretching,
+     and trim the space above the greeting so the first card appears earlier. */
+  .coach-empty .welcome-screen { flex: initial; padding-top: 0.25rem; }
+  /* Welcome-state composer is a little more compact (empty state only — the
+     active-chat composer dock is untouched). */
+  .coach-empty .composer-dock { padding-top: 0.5rem; }
+  .coach-empty .composer-dock-inner { gap: 0.5rem; }
 
   /* My Library / resource view */
   .library-main { padding: 1.25rem 0.9rem 2.5rem; }
@@ -1644,7 +1738,7 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 @media print {
   /* Force a clean white sheet with dark text, ignoring the app theme. */
   html, body { background: #ffffff !important; }
-  .no-print, .topbar, .toast-stack, .workspace-toolbar, .workspace-main { display: none !important; }
+  .no-print, .topbar, .toast-stack, .workspace-toolbar, .workspace-main, .bottom-nav { display: none !important; }
 
   .print-doc {
     display: block !important;
