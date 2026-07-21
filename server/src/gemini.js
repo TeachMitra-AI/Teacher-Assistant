@@ -97,7 +97,7 @@ class GeminiService {
       (text.match(open) || []).length === (text.match(close) || []).length;
     const bracketsBalanced =
       balanced(/\(/g, /\)/g) && balanced(/\[/g, /\]/g) && balanced(/\{/g, /\}/g);
-    const endsWithOpenList = /[:\-]\s*$/.test(trimmed);
+    const endsWithOpenList = /[:-]\s*$/.test(trimmed);
     const incompleteFormatting =
       text.includes('**') && (text.match(/\*\*/g) || []).length % 2 !== 0;
 
