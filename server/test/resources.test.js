@@ -294,5 +294,120 @@ describe('My Library — /api/resources', () => {
       );
       expect(res.status).toBe(400);
     });
+
+    test('accepts an assessment-specific action (make_harder) on an owned resource', async () => {
+      mockGeminiFetch([geminiSuccess('# Harder quiz\n1. Tough question\n## Answer Key\n1. Answer')]);
+      const created = await createFor(teacherAToken, { type: 'assessment', title: 'Quiz', content: '1. Easy?' });
+      const res = await asA(
+        request(app).post(`/api/resources/${created.body.resource.id}/ai-action`).send({ action: 'make_harder' })
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.suggestion).toContain('Harder quiz');
+
+      // Not persisted — the stored content is unchanged until an explicit PATCH.
+      const row = await prisma.resource.findUnique({ where: { id: created.body.resource.id } });
+      expect(row.content).toBe('1. Easy?');
+    });
+
+    test("another user cannot run an assessment action — returns 404", async () => {
+      mockGeminiFetch([geminiSuccess('should never be reached')]);
+      const created = await createFor(teacherAToken, { type: 'assessment', title: 'A quiz' });
+      const res = await asB(
+        request(app).post(`/api/resources/${created.body.resource.id}/ai-action`).send({ action: 'more_questions' })
+      );
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // Quiz / Worksheet Generator. Builds a trusted prompt from a validated config
+  // and returns AI-generated Markdown — it must NEVER persist a resource itself
+  // (saving stays an explicit POST /api/resources). Gemini's fetch is mocked so
+  // the real route + GeminiService run end-to-end without a network call.
+  describe('generate — POST /api/resources/generate', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    const validConfig = {
+      format: 'quiz',
+      grade: 'Class 6-8',
+      subject: 'Science',
+      topic: 'Photosynthesis',
+      difficulty: 'medium',
+      questionType: 'mcq',
+      questionCount: 5,
+      language: 'en',
+    };
+
+    const generate = (token, body) =>
+      request(app).post('/api/resources/generate').set('Authorization', `Bearer ${token}`).send(body);
+
+    test('requires authentication', async () => {
+      const res = await request(app).post('/api/resources/generate').send(validConfig);
+      expect(res.status).toBe(401);
+    });
+
+    test('valid request returns generated content and does NOT persist a resource', async () => {
+      mockGeminiFetch([geminiSuccess('# Quiz: Photosynthesis\n1. Q?\n## Answer Key\n1. A')]);
+      const res = await generate(teacherAToken, validConfig);
+      expect(res.status).toBe(200);
+      expect(res.body.content).toContain('Photosynthesis');
+      expect(typeof res.body.requestId).toBe('string');
+
+      // Nothing saved to the library by generation.
+      const rows = await prisma.resource.findMany({ where: { userId: fx.teacherA.id } });
+      expect(rows).toHaveLength(0);
+    });
+
+    test('accepts the maximum question count (30)', async () => {
+      mockGeminiFetch([geminiSuccess('# Quiz\n1. Q\n## Answer Key\n1. A')]);
+      const res = await generate(teacherAToken, { ...validConfig, questionCount: 30 });
+      expect(res.status).toBe(200);
+    });
+
+    test('rejects an invalid format', async () => {
+      const res = await generate(teacherAToken, { ...validConfig, format: 'essay' });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects an invalid difficulty', async () => {
+      const res = await generate(teacherAToken, { ...validConfig, difficulty: 'impossible' });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects an invalid question type', async () => {
+      const res = await generate(teacherAToken, { ...validConfig, questionType: 'crossword' });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects a question count below the minimum', async () => {
+      const res = await generate(teacherAToken, { ...validConfig, questionCount: 2 });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects a question count above the maximum', async () => {
+      const res = await generate(teacherAToken, { ...validConfig, questionCount: 31 });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects a missing topic', async () => {
+      const { topic, ...noTopic } = validConfig;
+      void topic;
+      const res = await generate(teacherAToken, noTopic);
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects an unknown field (strict schema)', async () => {
+      const res = await generate(teacherAToken, { ...validConfig, userId: fx.teacherB.id });
+      expect(res.status).toBe(400);
+    });
+
+    test('handles an upstream AI failure gracefully (no crash, mapped error)', async () => {
+      // Repeated 500s exhaust retries -> generic upstream failure.
+      mockGeminiFetch([{ status: 500, text: 'boom' }]);
+      const res = await generate(teacherAToken, validConfig);
+      expect(res.status).toBe(502);
+      expect(res.body.code).toBe('UPSTREAM_UNAVAILABLE');
+    });
   });
 });

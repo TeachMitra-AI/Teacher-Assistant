@@ -77,6 +77,24 @@ All features below are verified against the current source code.
   dark text (even from dark mode); branding, title, grade, subject, language, type, and the
   updated date are included.
 
+### Quiz & Worksheet Generator
+- **Dedicated generator** at `/generator` — configure **format** (Quiz / Worksheet), grade,
+  subject, **topic**, **difficulty** (Easy/Medium/Hard), **question type**
+  (Multiple Choice / True-False / Short Answer / Mixed), **number of questions** (3–30), language,
+  and optional additional instructions.
+- **Server-side AI generation** (`POST /api/resources/generate`) — validated with Zod, builds a
+  trusted Gemini prompt, reuses the existing Gemini reliability machinery; the key stays
+  server-side and **nothing is auto-saved**.
+- **Preview & edit** the generated Markdown, then **Save to Library** as an **Assessment** resource
+  (reuses the existing Resource model — no separate quiz/worksheet tables). Saving opens it in the
+  Workspace for full editing, AI assist, and printing.
+- **Structural answer-key separation** — the answer key is the final Markdown section under a
+  canonical heading (`## Answer Key` / `## Teacher Answer Key`). Printing offers a **Student
+  version** (questions only — the answer key is omitted from the print DOM, not merely CSS-hidden)
+  and a **Teacher version** (with the answer key).
+- **Assessment AI follow-ups** (in the Workspace, for assessments): *Make easier*, *Make harder*,
+  *Generate more questions*, *Simplify wording* — same preview→apply→save flow as Workspace Assist.
+
 ### Admin & Super Admin
 - **Admin Dashboard** (`/admin`) — role-scoped usage analytics rendered with Recharts:
   totals (queries, teachers, active teachers, feedback, helpful ratio), queries-by-day,
@@ -124,7 +142,8 @@ Teacher-Assistant/
 ├── client/                         # Vite + React + TypeScript PWA
 │   └── src/
 │       ├── pages/                  # LoginPage, CoachPage, LibraryPage, ResourceView,
-│       │                           #   ResourceWorkspace, SettingsPage, AdminPage, ManagePage
+│       │                           #   ResourceWorkspace, GeneratorPage, SettingsPage,
+│       │                           #   AdminPage, ManagePage
 │       ├── components/             # TopBar, Sidebar, Composer, ContextBar, MessageList,
 │       │                           #   MessageBubble, ResponseCard, FollowUpChips,
 │       │                           #   SaveToLibrary, WelcomeScreen, AdminTabs, Toast
@@ -370,6 +389,7 @@ header; admin routes additionally enforce role.
 **Resources / Library & Workspace AI** (`server/src/routes/resources.js`)
 - `GET /resources` — list (supports `?type=`, `?q=`, `?limit=`)
 - `POST /resources` · `GET /resources/:id` · `PATCH /resources/:id` · `DELETE /resources/:id`
+- `POST /resources/generate` — Quiz/Worksheet Generator: AI-generate assessment Markdown (never persisted here)
 - `POST /resources/:id/ai-action` — generate a Workspace AI suggestion (never persisted here)
 
 **Admin** (`server/src/routes/admin.js`)

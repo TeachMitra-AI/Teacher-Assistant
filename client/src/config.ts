@@ -108,6 +108,30 @@ export const RESOURCE_TYPES: ResourceType[] = [
   'general',
 ];
 
+// --- Quiz / Worksheet Generator options (mirror server enums in
+// server/src/routes/resources.js). ---
+export const ASSESSMENT_FORMATS: { value: 'quiz' | 'worksheet'; label: string; hint: string }[] = [
+  { value: 'quiz', label: 'Quiz', hint: 'Questions with a separate answer key' },
+  { value: 'worksheet', label: 'Worksheet', hint: 'Printable sheet with name/date and teacher answer key' },
+];
+
+export const DIFFICULTIES: { value: 'easy' | 'medium' | 'hard'; label: string }[] = [
+  { value: 'easy', label: 'Easy' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'hard', label: 'Hard' },
+];
+
+export const QUESTION_TYPES: { value: 'mcq' | 'true_false' | 'short_answer' | 'mixed'; label: string }[] = [
+  { value: 'mcq', label: 'Multiple Choice' },
+  { value: 'true_false', label: 'True / False' },
+  { value: 'short_answer', label: 'Short Answer' },
+  { value: 'mixed', label: 'Mixed' },
+];
+
+export const QUESTION_COUNT_MIN = 3;
+export const QUESTION_COUNT_MAX = 30;
+export const QUESTION_COUNT_DEFAULT = 10;
+
 export const ROLE_LABELS: Record<Role, string> = {
   teacher: 'Teacher',
   school_admin: 'School Admin',
