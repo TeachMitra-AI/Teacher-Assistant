@@ -24,6 +24,7 @@ const { authRequired } = require('./middleware/auth');
 const authRouter = require('./routes/auth');
 const dataRouter = require('./routes/queries');
 const adminRouter = require('./routes/admin');
+const resourcesRouter = require('./routes/resources');
 
 // Logs only non-sensitive metadata about an AI request/response — never the
 // raw query text, response text, upstream error body, API keys, tokens, or
@@ -116,7 +117,16 @@ app.disable('x-powered-by');
 // unspoofable by a client-supplied X-Forwarded-For value.
 app.set('trust proxy', 1);
 app.use(helmet());
-app.use(express.json({ limit: '16kb' }));
+// Parse JSON bodies with a 16kb limit everywhere, except the resources routes
+// (My Library), which accept up to 64kb because a saved lesson plan with
+// several structured sections can legitimately exceed 16kb. Scoping the larger
+// limit to just those paths keeps every other endpoint on the tighter bound.
+const jsonSmall = express.json({ limit: '16kb' });
+const jsonLarge = express.json({ limit: '64kb' });
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/resources')) return jsonLarge(req, res, next);
+  return jsonSmall(req, res, next);
+});
 
 const allowedOrigins = CORS_ORIGINS.split(',')
   .map((o) => o.trim())
@@ -381,8 +391,10 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
   }
 });
 
-// Teacher history + feedback, and admin analytics/management.
+// Teacher history + feedback, saved resources (My Library), and admin
+// analytics/management.
 app.use('/api', dataRouter);
+app.use('/api', resourcesRouter);
 app.use('/api/admin', adminRouter);
 
 // Global error handler — last line of defense. Routes wrapped in

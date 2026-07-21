@@ -57,27 +57,32 @@ export default function TopBar({ preferences, onSidebarToggle, sidebarOpen }: To
         </div>
 
         <div className="topbar-controls">
-          {isAdmin && (
-            <>
-              <nav className="topbar-nav" aria-label="Primary">
-                <Link
-                  to="/"
-                  className={`nav-link${location.pathname === '/' ? ' active' : ''}`}
-                  aria-current={location.pathname === '/' ? 'page' : undefined}
-                >
-                  Coach
-                </Link>
-                <Link
-                  to="/admin"
-                  className={`nav-link${location.pathname.startsWith('/admin') ? ' active' : ''}`}
-                  aria-current={location.pathname.startsWith('/admin') ? 'page' : undefined}
-                >
-                  Dashboard
-                </Link>
-              </nav>
-              <span className="topbar-divider" aria-hidden="true" />
-            </>
-          )}
+          <nav className="topbar-nav" aria-label="Primary">
+            <Link
+              to="/"
+              className={`nav-link${location.pathname === '/' ? ' active' : ''}`}
+              aria-current={location.pathname === '/' ? 'page' : undefined}
+            >
+              Coach
+            </Link>
+            <Link
+              to="/library"
+              className={`nav-link${location.pathname.startsWith('/library') ? ' active' : ''}`}
+              aria-current={location.pathname.startsWith('/library') ? 'page' : undefined}
+            >
+              Library
+            </Link>
+            {isAdmin && (
+              <Link
+                to="/admin"
+                className={`nav-link${location.pathname.startsWith('/admin') ? ' active' : ''}`}
+                aria-current={location.pathname.startsWith('/admin') ? 'page' : undefined}
+              >
+                Dashboard
+              </Link>
+            )}
+          </nav>
+          <span className="topbar-divider" aria-hidden="true" />
 
           <button
             className="icon-btn"

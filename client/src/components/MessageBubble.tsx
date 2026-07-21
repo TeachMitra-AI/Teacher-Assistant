@@ -35,6 +35,7 @@ export default function MessageBubble({ turn, onFeedback, onFollowUp, onRetry }:
         {turn.status === 'done' && turn.response && (
           <>
             <ResponseCard
+              query={turn.query}
               text={turn.response.text}
               language={turn.response.language}
               context={turn.response.context}

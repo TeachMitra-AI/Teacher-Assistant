@@ -20,9 +20,10 @@ model School {
   state     String?
   createdAt DateTime @default(now())
 
-  users   User[]
-  queries Query[]
-  events  Event[]
+  users     User[]
+  queries   Query[]
+  events    Event[]
+  resources Resource[]
 }
 
 // Roles: teacher | school_admin | resource_person | super_admin
@@ -40,10 +41,11 @@ model User {
   lastLogin        DateTime?
   createdAt        DateTime  @default(now())
 
-  queries  Query[]
-  feedback Feedback[]
-  events   Event[]
-  sessions Session[]
+  queries   Query[]
+  feedback  Feedback[]
+  events    Event[]
+  sessions  Session[]
+  resources Resource[]
 
   // A teacher name is unique within a school.
   @@unique([schoolId, name])
@@ -117,5 +119,34 @@ model Event {
   createdAt DateTime @default(now())
 
   @@index([type])
+  @@index([createdAt])
+}
+
+// A teacher-owned saved resource: the backing store for "My Library" and
+// (later) the Lesson Plan Workspace. Ownership is always the authenticated
+// user; resources are private to their owner. `structured` holds the
+// lesson-plan fields as a JSON string (only for type = lesson_plan), mirroring
+// the JSON-in-String convention used elsewhere (preferences, context).
+// `sourceQueryId` is a soft link back to the originating history entry (NOT a
+// foreign key), so clearing history never cascades into saved resources.
+model Resource {
+  id            String   @id @default(cuid())
+  user          User     @relation(fields: [userId], references: [id])
+  userId        String
+  school        School?  @relation(fields: [schoolId], references: [id])
+  schoolId      String?
+  type          String   @default("general") // lesson_plan | classroom_activity | assessment | explanation | general
+  title         String
+  grade         String?
+  subject       String?
+  language      String   @default("en")
+  content       String   @default("") // markdown body
+  structured    String? // JSON string of structured lesson-plan fields
+  sourceQueryId String? // soft reference to the originating Query (no FK)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, type])
   @@index([createdAt])
 }

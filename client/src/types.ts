@@ -111,3 +111,26 @@ export interface AdminUser {
   lastLogin?: string | null;
   createdAt: string;
 }
+
+export type ResourceType =
+  | 'lesson_plan'
+  | 'classroom_activity'
+  | 'assessment'
+  | 'explanation'
+  | 'general';
+
+// A saved item in the teacher's personal library. Mirrors the server DTO
+// (see server/src/routes/resources.js) — no ownership/internal fields.
+export interface LibraryResource {
+  id: string;
+  type: ResourceType;
+  title: string;
+  grade?: string | null;
+  subject?: string | null;
+  language: string;
+  content: string;
+  structured?: string | null;
+  sourceQueryId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
