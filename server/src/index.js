@@ -106,6 +106,10 @@ const gemini = new GeminiService({
 
 const app = express();
 app.disable('x-powered-by');
+// Expose the single GeminiService instance to routers (e.g. the resources
+// router's Lesson Plan Workspace AI actions) without re-constructing it or
+// leaking the API key. Read via req.app.locals.gemini.
+app.locals.gemini = gemini;
 // Railway (like most PaaS) puts exactly one reverse-proxy hop in front of
 // this app. Trusting that one hop lets Express derive req.ip from the
 // X-Forwarded-For header Railway sets, which express-rate-limit needs to

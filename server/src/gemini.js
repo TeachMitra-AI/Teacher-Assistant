@@ -320,6 +320,71 @@ You are continuing a response that was cut off mid-way. The text already written
   }
 
   /**
+   * Generic content generation for the Lesson Plan Workspace AI actions.
+   * Unlike generateResponse (which builds a coaching prompt from templates),
+   * the caller supplies a fully-formed trusted systemInstruction and the
+   * delimited untrusted userText. Shares the same per-request budget/deadline,
+   * retry, continuation, and output-sanitization machinery so cost and latency
+   * are bounded identically. Returns only { text, metrics } — no coaching
+   * fields — and never persists anything itself.
+   * @param {{systemInstruction: string, userText: string, language?: string}} params
+   * @param {{correlationId?: string}} [options]
+   */
+  async generateContent({ systemInstruction, userText, language = 'en' }, options = {}) {
+    const startTime = this.now();
+    const tracker = this.createTracker();
+
+    try {
+      const first = this.extractCandidate(
+        await this.makeRequest(this.buildRequestBody({ systemInstruction, userText }), tracker)
+      );
+      let text = first.text;
+      let finishReason = first.finishReason;
+
+      for (
+        let i = 0;
+        finishReason === 'MAX_TOKENS' &&
+        i < this.maxContinuations &&
+        text.length < MAX_OUTPUT_LENGTH &&
+        this.hasCapacity(tracker);
+        i++
+      ) {
+        try {
+          const cont = await this.fetchContinuation(text, language, systemInstruction, tracker);
+          if (!cont.text.trim()) break;
+          text = `${text.trim()} ${cont.text.trim()}`;
+          finishReason = cont.finishReason;
+        } catch {
+          break;
+        }
+      }
+
+      const sanitized = sanitizeOutput(text, { systemInstructionText: systemInstruction });
+      const latencyMs = this.now() - startTime;
+      const outcome = sanitized.suppressed
+        ? 'success_suppressed'
+        : sanitized.truncated
+          ? 'success_truncated'
+          : 'success';
+
+      return {
+        text: sanitized.text,
+        metrics: this.snapshot(tracker, { outcome, latencyMs, correlationId: options.correlationId }),
+      };
+    } catch (err) {
+      const latencyMs = this.now() - startTime;
+      const { reason } = classifyGeminiError(err);
+      if (reason === 'safety_blocked') tracker.safetyBlocked = true;
+      err.metrics = this.snapshot(tracker, {
+        outcome: err.code || reason,
+        latencyMs,
+        correlationId: options.correlationId,
+      });
+      throw err;
+    }
+  }
+
+  /**
    * Generate a coaching response.
    * @param {{query: string, context: object, language: string, responseStyle?: string}} params
    * @param {{correlationId?: string}} [options]
