@@ -1,9 +1,9 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   NotebookPen, Target, Lightbulb, ClipboardCheck, Users,
-  LayoutDashboard, ShieldCheck,
+  LayoutDashboard, ShieldCheck, FileText,
 } from 'lucide-react';
-import type { Role, ResponseStyle } from './types';
+import type { Role, ResponseStyle, ResourceType } from './types';
 
 // Languages supported for AI responses (UI itself stays in English).
 export const LANGUAGES: { value: string; label: string }[] = [
@@ -89,6 +89,24 @@ export const FOLLOW_UP_ACTIONS: FollowUpAction[] = [
 ];
 
 export const MAX_QUERY_LENGTH = 500;
+
+// Saved-resource types shown across the library and the Save action. Order is
+// the display order in filters and the type picker.
+export const RESOURCE_TYPE_META: Record<ResourceType, { label: string; icon: LucideIcon }> = {
+  lesson_plan: { label: 'Lesson Plan', icon: NotebookPen },
+  classroom_activity: { label: 'Classroom Activity', icon: Target },
+  assessment: { label: 'Assessment', icon: ClipboardCheck },
+  explanation: { label: 'Explanation', icon: Lightbulb },
+  general: { label: 'General Resource', icon: FileText },
+};
+
+export const RESOURCE_TYPES: ResourceType[] = [
+  'lesson_plan',
+  'classroom_activity',
+  'assessment',
+  'explanation',
+  'general',
+];
 
 export const ROLE_LABELS: Record<Role, string> = {
   teacher: 'Teacher',

@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { formatResponse } from '../lib/format';
 import { isSpeechSupported, speak, stopSpeaking } from '../lib/tts';
 import { useToast } from './Toast';
+import SaveToLibrary from './SaveToLibrary';
 import type { QueryContext } from '../types';
 
 interface ResponseCardProps {
+  query: string;
   text: string;
   language: string;
   context: QueryContext;
@@ -13,7 +15,7 @@ interface ResponseCardProps {
   onFeedback: (rating: 'helpful' | 'not_helpful') => void;
 }
 
-export default function ResponseCard({ text, language, context, queryId, rating, onFeedback }: ResponseCardProps) {
+export default function ResponseCard({ query, text, language, context, queryId, rating, onFeedback }: ResponseCardProps) {
   const { show } = useToast();
   const [speaking, setSpeaking] = useState(false);
 
@@ -67,6 +69,7 @@ export default function ResponseCard({ text, language, context, queryId, rating,
         )}
         <button className="action-chip" onClick={copy}>📋 Copy</button>
         <button className="action-chip whatsapp" onClick={shareWhatsApp}>💬 WhatsApp</button>
+        <SaveToLibrary query={query} text={text} language={language} context={context} queryId={queryId} />
       </div>
 
       {queryId && (
