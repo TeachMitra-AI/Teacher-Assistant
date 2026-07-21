@@ -1,145 +1,95 @@
 # 🚀 Quick Setup Guide
 
-## Get Started in 3 Steps
+> **Status: Current.** This guide covers the current React (`client/`) + Node/Express
+> (`server/`) application. An older version of this file described the retired vanilla
+> HTML/JS prototype now in `archive/` — that content has been removed to avoid confusion.
+> For full details (features, environment variables, API, deployment) see [`README.md`](./README.md).
 
-### Step 1: Get Your Free Gemini API Key
-1. Visit: **https://makersuite.google.com/app/apikey**
-2. Sign in with your Google account
-3. Click **"Create API Key"**
-4. Copy the API key (starts with `AIza...`)
+## Prerequisites
+- **Node.js 18+** (20 recommended) and npm
+- A free **Google Gemini API key** — https://aistudio.google.com/app/apikey
 
-### Step 2: Configure the Application
-1. Open `config.js` in a text editor
-2. Find this line (around line 8):
-   ```javascript
-   GEMINI_API_KEY: 'YOUR_GEMINI_API_KEY_HERE',
-   ```
-3. Replace `YOUR_GEMINI_API_KEY_HERE` with your actual API key:
-   ```javascript
-   GEMINI_API_KEY: 'AIzaSyD...your-actual-key-here...',
-   ```
-4. Save the file
+> **Windows / PowerShell:** if you see `running scripts is disabled on this system`, either run
+> `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned` once, or use the `.cmd`
+> forms (`npm.cmd`, `npx.cmd`).
 
-### Step 3: Run the Application
-**Option A: Direct Browser**
-- Double-click `index.html`
-- Or right-click → Open with → Chrome/Firefox/Safari
+## 1. Install dependencies
 
-**Option B: Local Server (Recommended)**
 ```bash
-# Using Python (if installed)
-python3 -m http.server 8000
-
-# Using Node.js (if installed)
-npx http-server -p 8000
-```
-Then open: **http://localhost:8000**
-
----
-
-## 🎯 How to Use
-
-### 1. Fill Context (Optional but Recommended)
-- **Grade**: Select your class level
-- **Subject**: Choose the subject
-- **Classroom Type**: Pick your classroom setup
-- **Issue Type**: Select the type of challenge
-
-### 2. Ask Your Question
-**Type** your question in the text area, OR
-**Click 🎤** to speak your question
-
-### 3. Get Instant Coaching
-Click **"Get Coaching"** button
-→ Receive personalized advice in 2-4 seconds
-
-### 4. Provide Feedback
-Click **👍 Helpful** or **👎 Not Helpful**
-→ Helps improve future responses
-
----
-
-## 📱 Features
-
-✅ **Voice Input** - Speak in any of 9 Indian languages
-✅ **Offline Mode** - Queries saved when offline, auto-sync when online
-✅ **Smart Cache** - Instant responses for repeated questions
-✅ **Multilingual** - English, Hindi, Bengali, Telugu, Marathi, Tamil, Gujarati, Kannada, Odia
-✅ **Mobile-Friendly** - Works on phones, tablets, computers
-
----
-
-## 💡 Example Questions
-
-**Classroom Management:**
-> "Advanced students finished early and are disrupting class. What should I do?"
-
-**Concept Explanation:**
-> "My students don't understand borrowing in subtraction with zeros. How do I explain?"
-
-**Multi-Grade Teaching:**
-> "I teach Class 3 and Class 5 together. How can I manage both during math?"
-
-**Resource Constraints:**
-> "I need to teach fractions but have no materials. What can I use?"
-
----
-
-## 🔧 Troubleshooting
-
-### "API Key Not Configured" Error
-→ Make sure you replaced `YOUR_GEMINI_API_KEY_HERE` in `config.js`
-
-### Voice Input Not Working
-→ Use Chrome or Edge browser
-→ Allow microphone permissions when prompted
-
-### Slow Responses
-→ Check internet connection
-→ Gemini free tier has rate limits (60 requests/minute)
-
----
-
-## 📊 View Analytics
-
-Open browser console (F12) and type:
-```javascript
-aiService.getAnalyticsSummary()
+cd server && npm install
+cd ../client && npm install
 ```
 
-See:
-- Total queries submitted
-- Average response time
-- Language distribution
-- Top issue types
+## 2. Configure environment variables
 
----
+```bash
+cd server
+cp .env.example .env      # Windows PowerShell: Copy-Item .env.example .env
 
-## 🎓 For Hackathon Demo
+cd ../client
+cp .env.example .env      # Windows PowerShell: Copy-Item .env.example .env
+```
 
-1. **Open** `index.html` in browser
-2. **Configure** API key in `config.js`
-3. **Test** with Sunita's scenario:
-   - Grade: Class 3-5
-   - Subject: Mathematics
-   - Issue: Concept Explanation
-   - Query: "Students don't understand borrowing in subtraction with zeros"
-4. **Show** instant, specific response
-5. **Demonstrate** voice input (click 🎤)
-6. **Switch** language to Hindi
-7. **Show** offline mode (disconnect internet, submit query)
+In `server/.env`, set at minimum:
 
----
+```env
+GEMINI_API_KEY=<your-gemini-api-key>
+JWT_SECRET=<a-long-random-secret>
+```
 
-## 🌟 Key Differentiators
+`client/.env` only needs `VITE_API_BASE` (defaults to `http://localhost:3000/api`).
 
-1. **Just-in-Time** - Instant help, not weeks later
-2. **Context-Aware** - Specific to grade, subject, classroom
-3. **Offline-First** - Works in low-connectivity areas
-4. **Multilingual** - 9 Indian languages
-5. **Voice-Enabled** - No typing needed
-6. **Free to Use** - Gemini API free tier
+## 3. Set up the database and seed demo data
 
----
+```bash
+cd server
+npx prisma migrate dev     # creates prisma/dev.db and applies migrations
+npx prisma generate        # generate the Prisma client
+npm run seed               # optional: demo schools + accounts (all use PIN 123456)
+```
 
-**Ready to Transform Teacher Support!** 🚀
+## 4. Start the backend
+
+```bash
+cd server
+npm run dev                # or: npm start
+```
+
+Verify it is up:
+
+```bash
+curl http://localhost:3000/api/health   # -> {"status":"ok", ...}
+```
+
+## 5. Start the frontend
+
+```bash
+cd client
+npm run dev
+```
+
+Open the URL Vite prints (default **http://localhost:5173**).
+
+## 6. Log in (demo accounts)
+
+All seeded demo accounts use PIN **`123456`**. Sign in with a **school code + name + PIN**:
+
+| School code | Name | Role |
+| --- | --- | --- |
+| `RAMPUR01` | Demo Teacher | Teacher |
+| `RAMPUR01` | Rampur Admin | School Admin |
+| `RAMPUR01` | Rampur RP | Resource Person |
+| `RAMPUR01` | Super Admin | Super Admin |
+
+New teachers can self-register on the **Register** tab with a valid school code.
+
+## Troubleshooting
+
+- **`FATAL: GEMINI_API_KEY is not set`** — set `GEMINI_API_KEY` in `server/.env` and restart.
+- **`FATAL: JWT_SECRET is not set`** — set `JWT_SECRET` in `server/.env` and restart.
+- **Voice input not working** — use Chrome/Edge and allow microphone access.
+- **Dashboard link missing** — it is admin-only; log in as an admin/super-admin account.
+- **CORS errors in production** — set `NODE_ENV=production` and list your frontend origin(s) in
+  `CORS_ORIGINS`.
+
+For everything else, see [`README.md`](./README.md).
