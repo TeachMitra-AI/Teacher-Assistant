@@ -72,6 +72,13 @@ export default function TopBar({ preferences, onSidebarToggle, sidebarOpen }: To
             >
               Library
             </Link>
+            <Link
+              to="/generator"
+              className={`nav-link${location.pathname.startsWith('/generator') ? ' active' : ''}`}
+              aria-current={location.pathname.startsWith('/generator') ? 'page' : undefined}
+            >
+              Generator
+            </Link>
             {isAdmin && (
               <Link
                 to="/admin"

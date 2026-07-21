@@ -1673,6 +1673,128 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   .print-body li { margin: 0.25rem 0; }
   .print-body p { margin: 0.6rem 0; }
   .print-body p, .print-body li { page-break-inside: avoid; break-inside: avoid; }
+  .print-version {
+    display: inline-block;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #111111;
+    background: #f0f0f0;
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+    padding: 0.1rem 0.5rem;
+    margin: 0 0 0.3rem;
+  }
 
   @page { margin: 1.6cm; }
+}
+
+/* ---- Print version chooser (assessment student/teacher) ------------------ */
+.workspace-print-wrap { position: relative; }
+.workspace-print-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 120;
+  min-width: 220px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 0.35rem;
+}
+.workspace-print-menu-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.7rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.workspace-print-menu-item:hover { background: var(--surface-2); }
+.workspace-print-menu-item:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
+.workspace-print-menu-hint { font-size: 0.76rem; font-weight: 400; color: var(--text-muted); }
+
+/* ---- Quiz / Worksheet Generator ----------------------------------------- */
+.generator-main { max-width: 900px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+.generator-header { margin-bottom: 1.25rem; }
+.generator-title { display: flex; align-items: center; gap: 0.5rem; font-size: 1.5rem; font-weight: 700; color: var(--text); margin: 0 0 0.3rem; }
+.generator-title svg { color: var(--orange); }
+.generator-subtitle { font-size: 0.92rem; color: var(--text-muted); margin: 0; }
+
+.generator-form {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.5rem;
+}
+.generator-fieldset { border: none; padding: 0; margin: 0 0 1.1rem; }
+.generator-fieldset .ws-label { margin-bottom: 0.5rem; }
+.generator-format-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; }
+.generator-format-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: left;
+  padding: 0.8rem 1rem;
+  background: var(--surface-2);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+}
+.generator-format-card.active { border-color: var(--orange); background: var(--orange-soft); }
+.generator-format-card:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.generator-format-label { display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 700; font-size: 0.95rem; }
+.generator-format-hint { font-size: 0.78rem; color: var(--text-muted); }
+
+.generator-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+}
+.generator-req { color: var(--orange); }
+.generator-instructions { display: flex; flex-direction: column; margin-bottom: 1rem; }
+.generator-instructions textarea {
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  font-family: inherit;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+}
+.generator-instructions textarea:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+.generator-actions { display: flex; justify-content: flex-end; }
+.generator-generate { display: inline-flex; align-items: center; gap: 0.5rem; }
+.generator-error { margin-top: 0.8rem; }
+
+.generator-preview {
+  margin-top: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.5rem;
+}
+.generator-preview-head { margin-bottom: 1rem; }
+.generator-preview-title { font-size: 1.15rem; font-weight: 700; color: var(--text); margin: 0 0 0.2rem; }
+.generator-preview-note { font-size: 0.83rem; color: var(--text-muted); margin: 0; }
+.generator-save-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 1.1rem; }
+.generator-save { display: inline-flex; align-items: center; gap: 0.5rem; }
+.generator-save-hint { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; color: var(--text-muted); }
+
+@media (max-width: 640px) {
+  .generator-main { padding: 1rem 0.9rem 3rem; }
+  .generator-form, .generator-preview { padding: 1.1rem; }
+  .generator-title { font-size: 1.25rem; }
 }

@@ -1,17 +1,23 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Save, Printer, Pencil, Eye, Wand2, Puzzle,
   ClipboardCheck, GraduationCap, X, Loader2,
+  TrendingDown, TrendingUp, ListPlus, Type, ChevronDown,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import { useToast } from '../components/Toast';
+import { useDismissable } from '../hooks/useDismissable';
 import { usePreferences } from '../hooks/usePreferences';
 import { formatResponse } from '../lib/format';
 import { getResource, updateResource, runAiAction, type AiActionId } from '../lib/resources';
+import { splitAnswerKey } from '../lib/assessment';
 import { RESOURCE_TYPES, RESOURCE_TYPE_META, LANGUAGES, GRADES, SUBJECTS } from '../config';
 import { ApiError } from '../api';
 import type { LibraryResource, ResourceType } from '../types';
+
+// How the print document should render an assessment.
+type PrintMode = 'full' | 'student' | 'teacher';
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -43,11 +49,24 @@ function toForm(r: LibraryResource): FormState {
 // key server-side, never persists the result, and returns a full revised
 // document so applying is a simple content replace. `adapt_grade` needs a
 // target grade, so it reveals a grade picker before generating.
-const AI_ACTIONS: { id: AiActionId; label: string; icon: typeof Wand2; needsGrade?: boolean }[] = [
+interface AiActionDef {
+  id: AiActionId;
+  label: string;
+  icon: typeof Wand2;
+  needsGrade?: boolean;
+  assessmentOnly?: boolean;
+}
+
+const AI_ACTIONS: AiActionDef[] = [
   { id: 'simplify', label: 'Make it simpler', icon: Wand2 },
   { id: 'add_activities', label: 'Add classroom activities', icon: Puzzle },
   { id: 'add_assessment', label: 'Add assessment questions', icon: ClipboardCheck },
   { id: 'adapt_grade', label: 'Adapt for another grade', icon: GraduationCap, needsGrade: true },
+  // Assessment-only (quiz / worksheet) follow-ups.
+  { id: 'make_easier', label: 'Make easier', icon: TrendingDown, assessmentOnly: true },
+  { id: 'make_harder', label: 'Make harder', icon: TrendingUp, assessmentOnly: true },
+  { id: 'more_questions', label: 'Generate more questions', icon: ListPlus, assessmentOnly: true },
+  { id: 'simplify_wording', label: 'Simplify wording', icon: Type, assessmentOnly: true },
 ];
 
 export default function ResourceWorkspace({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
@@ -70,6 +89,14 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
   const [adaptOpen, setAdaptOpen] = useState(false);
   const [adaptGrade, setAdaptGrade] = useState('');
   const [suggestion, setSuggestion] = useState<string | null>(null);
+
+  // Print state. `printReq` bumps a counter to trigger window.print() after the
+  // print document has re-rendered in the chosen mode (student omits the key).
+  const [printMode, setPrintMode] = useState<PrintMode>('full');
+  const [printReq, setPrintReq] = useState(0);
+  const [printMenuOpen, setPrintMenuOpen] = useState(false);
+  const printMenuRef = useRef<HTMLDivElement>(null);
+  useDismissable(printMenuOpen, printMenuRef, () => setPrintMenuOpen(false));
 
   const dirty = useMemo(
     () => !!form && !!baseline && (Object.keys(form) as (keyof FormState)[]).some((k) => form[k] !== baseline[k]),
@@ -115,6 +142,33 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
   const setField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((f) => (f ? { ...f, [key]: value } : f));
   }, []);
+
+  // Assessment answer-key split for printing. The student version renders only
+  // the questions half — the answer key is never inserted into the print DOM.
+  const isAssessment = form?.type === 'assessment';
+  const answerSplit = useMemo(() => splitAnswerKey(form?.content || ''), [form?.content]);
+  const hasAnswerKey = !!isAssessment && answerSplit.hasAnswerKey;
+
+  // Fire the browser print dialog only after the print document has re-rendered
+  // in the chosen mode (so a student print can never contain the answer key).
+  useEffect(() => {
+    if (printReq === 0) return;
+    const raf = requestAnimationFrame(() => window.print());
+    return () => cancelAnimationFrame(raf);
+  }, [printReq]);
+
+  function startPrint(mode: PrintMode) {
+    setPrintMode(mode);
+    setPrintMenuOpen(false);
+    setPrintReq((n) => n + 1);
+  }
+
+  // For an assessment with an answer key, offer Student / Teacher versions;
+  // otherwise print the whole document directly.
+  function onPrintClick() {
+    if (hasAnswerKey) setPrintMenuOpen((o) => !o);
+    else startPrint('full');
+  }
 
   // Guarded in-app navigation — react-router here isn't a data router, so we
   // confirm on the explicit Back/Cancel controls rather than via useBlocker.
@@ -201,14 +255,31 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
           </button>
           <span className="workspace-toolbar-title">{workspaceLabel}</span>
           <div className="workspace-toolbar-actions">
-            <button
-              type="button"
-              className="btn-text workspace-print"
-              onClick={() => window.print()}
-              disabled={loading || notFound || !!error}
-            >
-              <Printer size={16} aria-hidden="true" /> <span className="workspace-btn-label">Print / Export</span>
-            </button>
+            <div className="workspace-print-wrap" ref={printMenuRef}>
+              <button
+                type="button"
+                className="btn-text workspace-print"
+                onClick={onPrintClick}
+                disabled={loading || notFound || !!error}
+                aria-haspopup={hasAnswerKey ? 'menu' : undefined}
+                aria-expanded={hasAnswerKey ? printMenuOpen : undefined}
+              >
+                <Printer size={16} aria-hidden="true" /> <span className="workspace-btn-label">Print / Export</span>
+                {hasAnswerKey && <ChevronDown size={14} aria-hidden="true" />}
+              </button>
+              {hasAnswerKey && printMenuOpen && (
+                <div className="workspace-print-menu" role="menu">
+                  <button type="button" role="menuitem" className="workspace-print-menu-item" onClick={() => startPrint('student')}>
+                    Student version
+                    <span className="workspace-print-menu-hint">Questions only — no answers</span>
+                  </button>
+                  <button type="button" role="menuitem" className="workspace-print-menu-item" onClick={() => startPrint('teacher')}>
+                    Teacher version
+                    <span className="workspace-print-menu-hint">Includes answer key</span>
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               type="button"
               className="btn-primary workspace-save"
@@ -345,7 +416,7 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
                 <h2 className="workspace-ai-title">AI Assist</h2>
                 <p className="workspace-ai-hint">Generate a suggested revision — you preview and apply it yourself.</p>
                 <div className="workspace-ai-actions">
-                  {AI_ACTIONS.map((a) => {
+                  {AI_ACTIONS.filter((a) => !a.assessmentOnly || isAssessment).map((a) => {
                     const Icon = a.icon;
                     const busy = aiBusy === a.id;
                     return (
@@ -411,25 +482,38 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
         )}
       </main>
 
-      {/* Print-only document (Phase 3). Rendered from live form state so the
-          teacher can print what they see, even before saving. */}
-      {form && resource && !loading && !notFound && !error && (
-        <div className="print-doc" aria-hidden="true">
-          <div className="print-brand">Teacher Assistant</div>
-          <h1 className="print-title">{form.title || 'Untitled resource'}</h1>
-          <p className="print-meta">
-            {[
-              RESOURCE_TYPE_META[form.type].label,
-              form.grade && `Grade: ${form.grade}`,
-              form.subject && `Subject: ${form.subject}`,
-              `Language: ${LANGUAGES.find((l) => l.value === form.language)?.label ?? form.language}`,
-            ].filter(Boolean).join('  ·  ')}
-          </p>
-          <p className="print-date">Updated {formatDate(resource.updatedAt)}</p>
-          <hr className="print-rule" />
-          <div className="response-body print-body" dangerouslySetInnerHTML={{ __html: formatResponse(form.content || '') }} />
-        </div>
-      )}
+      {/* Print-only document (Phase 3 + assessment student/teacher versions).
+          Rendered from live form state so the teacher can print what they see,
+          even before saving. For a student print of an assessment, ONLY the
+          questions half is put into the DOM — the answer key is never present. */}
+      {form && resource && !loading && !notFound && !error && (() => {
+        const printContent = hasAnswerKey && printMode === 'student' ? answerSplit.questions : form.content || '';
+        const versionLabel = hasAnswerKey
+          ? printMode === 'student'
+            ? 'Student Version'
+            : printMode === 'teacher'
+              ? 'Teacher Version — includes answer key'
+              : ''
+          : '';
+        return (
+          <div className="print-doc" aria-hidden="true">
+            <div className="print-brand">Teacher Assistant</div>
+            <h1 className="print-title">{form.title || 'Untitled resource'}</h1>
+            <p className="print-meta">
+              {[
+                RESOURCE_TYPE_META[form.type].label,
+                form.grade && `Grade: ${form.grade}`,
+                form.subject && `Subject: ${form.subject}`,
+                `Language: ${LANGUAGES.find((l) => l.value === form.language)?.label ?? form.language}`,
+              ].filter(Boolean).join('  ·  ')}
+            </p>
+            {versionLabel && <p className="print-version">{versionLabel}</p>}
+            <p className="print-date">Updated {formatDate(resource.updatedAt)}</p>
+            <hr className="print-rule" />
+            <div className="response-body print-body" dangerouslySetInnerHTML={{ __html: formatResponse(printContent) }} />
+          </div>
+        );
+      })()}
     </div>
   );
 }

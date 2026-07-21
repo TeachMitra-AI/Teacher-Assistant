@@ -1,8 +1,9 @@
 # Teacher Assistant — Manual Testing Guide
 
 > **Status: Current.** Covers the React (`client/`) + Node/Express (`server/`) application as
-> implemented today, including My Library, the Lesson Plan Workspace, Workspace AI Assist, and
-> Print/Export. Every test case below was written against verified source behavior.
+> implemented today, including My Library, the Lesson Plan Workspace, Workspace AI Assist,
+> Print/Export, and the Quiz & Worksheet Generator. Every test case below was written against
+> verified source behavior.
 
 ## 1. Purpose
 
@@ -771,7 +772,154 @@ API key is **never** present in any request payload, response, or the client bun
 
 ---
 
-## 24. Test Execution Checklist
+## 24. U — Quiz & Worksheet Generator
+
+> The Generator creates classroom-ready quizzes/worksheets via AI, previews them for editing, and
+> saves them to My Library as **Assessment** resources (reusing the Resource model — no separate
+> store). AI cases require a valid `GEMINI_API_KEY`.
+
+### TC-GEN-001 — Navigate to the Generator
+**Preconditions:** Logged in as any user.
+**Steps:** Click **Generator** in the top navigation (or visit `/generator`).
+**Expected:** The "Quiz & Worksheet Generator" page loads with a config form (Format, Topic, Grade,
+Subject, Difficulty, Question type, Number of questions, Language, Additional instructions).
+
+### TC-GEN-002 — Generate a quiz (MCQ)
+**Steps:** Format **Quiz**, Topic `Fractions`, Grade `Class 3-5`, Subject `Mathematics`,
+Difficulty **Medium**, Question type **Multiple Choice**, Count `5`, Language English → **Generate**.
+**Expected:** A loading state appears; then a Preview shows a titled quiz with 5 numbered MCQs
+(options A–D) and a separate **Answer Key** section at the end.
+
+### TC-GEN-003 — Generate a worksheet
+**Steps:** Format **Worksheet**, Topic `Water cycle`, Count `6` → **Generate**.
+**Expected:** The preview includes a title, metadata, **Student Name / Date** lines, an Instructions
+section, questions, and a **Teacher Answer Key** section at the end.
+
+### TC-GEN-004 — Difficulty options
+**Steps:** Generate the same topic at **Easy**, **Medium**, and **Hard**.
+**Expected:** Each generates successfully; difficulty is reflected in the questions.
+
+### TC-GEN-005 — Question type: True / False
+**Steps:** Question type **True / False** → Generate.
+**Expected:** Questions are statements formatted for True/False; the answer key marks each.
+
+### TC-GEN-006 — Question type: Short Answer
+**Steps:** Question type **Short Answer** → Generate.
+**Expected:** Short-answer questions with space to write; answer key present.
+
+### TC-GEN-007 — Question type: Mixed
+**Steps:** Question type **Mixed** → Generate.
+**Expected:** A sensible blend of MCQ / True-False / short-answer questions.
+
+### TC-GEN-008 — Question count validation
+**Steps:** Try to set the count to `2` and to `31`.
+**Expected:** The input clamps to the allowed range **3–30** (min 3, max 30). Generation uses a value
+in range.
+
+### TC-GEN-009 — Language
+**Steps:** Set Language to **हिंदी** → Generate.
+**Expected:** The generated quiz/worksheet is in Hindi.
+
+### TC-GEN-010 — Additional instructions
+**Steps:** Add "Focus on real-life examples" → Generate.
+**Expected:** The output reflects the instruction (real-life framing) without breaking structure.
+
+### TC-GEN-011 — Missing topic validation
+**Steps:** Leave Topic empty → click Generate.
+**Expected:** Blocked with a "Please enter a topic" error; no request is sent (the Generate button is
+also disabled while Topic is empty).
+
+### TC-GEN-012 — Loading state / no duplicate requests
+**Steps:** Click Generate and immediately try clicking again.
+**Expected:** The button shows "Generating…" and is disabled; only one request runs.
+
+### TC-GEN-013 — Generation error handling
+**Steps:** Temporarily set an invalid `GEMINI_API_KEY`, restart the backend, and Generate.
+**Expected:** A clear error message appears (no crash); the form remains usable. Restore the key.
+
+### TC-GEN-014 — Preview and edit before saving
+**Steps:** After generating, use the **Edit ⇄ Preview** toggle; edit the **Title** and the **content**.
+**Expected:** Edits are reflected in the preview; nothing is saved yet.
+
+### TC-GEN-015 — Regenerate warning after editing
+**Steps:** Edit the generated content, then click **Regenerate**.
+**Expected:** A confirm warns that regenerating replaces the edited preview; Cancel keeps edits, OK
+regenerates.
+
+### TC-GEN-016 — Save to Library
+**Steps:** Click **Save to Library**.
+**Expected:** A "Saved to your library" toast; you are taken into the **Workspace**
+(`/library/:id/edit`) for the new resource.
+
+### TC-GEN-017 — Appears under the Assessment filter
+**Steps:** Go to **Library** → filter by **Assessment**.
+**Expected:** The saved quiz/worksheet appears (type = Assessment). Search by its title also finds it.
+
+### TC-GEN-018 — Reopen and edit in the Workspace
+**Steps:** Open the saved assessment → **Edit**; change something → **Save Changes** → reload.
+**Expected:** Edits persist (standard Workspace behavior).
+
+### TC-GEN-019 — Student print version (no answer key)
+**Preconditions:** In the Workspace for a saved quiz/worksheet that has an answer key.
+**Steps:** Click **Print / Export** → choose **Student version**.
+**Expected:** The print preview shows the questions and a "Student Version" label but **no answer
+key** anywhere.
+
+### TC-GEN-020 — Teacher print version (with answer key)
+**Steps:** **Print / Export** → **Teacher version**.
+**Expected:** The print preview shows the questions **and** the answer key, labelled "Teacher
+Version — includes answer key".
+
+### TC-GEN-021 — Answer-key isolation is structural
+**Steps:** With the **Student version** print preview open, inspect the page / use the browser's
+"view source of print" or select-all.
+**Expected:** The answer-key text is **not present in the document at all** for the student version
+(it is omitted from the DOM, not merely hidden with CSS).
+
+### TC-GEN-022 — AI follow-up: Make easier
+**Preconditions:** Workspace for a saved assessment.
+**Steps:** In **AI Assist**, click **Make easier** → preview → **Apply** → **Save Changes**.
+**Expected:** A suggestion is generated; Apply stages it (dirty, not saved); Save persists it. The
+answer key remains present and correct.
+
+### TC-GEN-023 — AI follow-up: Make harder
+**Steps:** Click **Make harder** → preview → Apply/Cancel.
+**Expected:** A harder version is suggested; preview→apply flow works; nothing auto-saves.
+
+### TC-GEN-024 — AI follow-up: Generate more questions
+**Steps:** Click **Generate more questions** → preview.
+**Expected:** The suggestion keeps existing questions and adds more, with the answer key extended.
+
+### TC-GEN-025 — AI follow-up: Simplify wording
+**Steps:** Click **Simplify wording** → preview.
+**Expected:** Question wording is simplified without changing the number of questions or answers.
+
+### TC-GEN-026 — Assessment actions only show for assessments
+**Steps:** Open a **non-assessment** resource (e.g. a lesson plan) in the Workspace.
+**Expected:** The four assessment-only actions (Make easier/harder, Generate more questions, Simplify
+wording) are **not** shown; the generic actions still appear.
+
+### TC-GEN-027 — Mobile layout
+**Steps:** At ~375px, use the Generator form, generate, preview, and save.
+**Expected:** Single-column form; no horizontal overflow; all controls usable.
+
+### TC-GEN-028 — Dark / light theme
+**Steps:** Toggle theme on the Generator page and the assessment Workspace.
+**Expected:** Both render correctly in both themes; print output stays white/dark regardless.
+
+### TC-GEN-029 — Keyboard accessibility
+**Steps:** Complete a full generate → save flow using only the keyboard; open the Print version menu.
+**Expected:** All controls are reachable/operable via keyboard with visible focus; the print menu is
+keyboard-navigable.
+
+### TC-GEN-030 — Authentication & ownership
+**Steps:** (a) Logged out, `POST http://localhost:3000/api/resources/generate` → expect **401**.
+(b) As Teacher B, open Teacher A's saved assessment via `/library/<A's id>/edit` → expect a 404 state.
+**Expected:** Generation requires auth; saved assessments remain owner-isolated like all resources.
+
+---
+
+## 25. Test Execution Checklist
 
 Legend: ⬜ Not Run · ✅ Pass · ❌ Fail · ⚠️ Blocked
 
@@ -910,5 +1058,35 @@ Legend: ⬜ Not Run · ✅ Pass · ❌ Fail · ⚠️ Blocked
 | TC-SEC-004 | Security | No API key in frontend | ⬜ | |
 | TC-SEC-005 | Security | Sensitive fields not returned | ⬜ | |
 | TC-SEC-006 | Security | AI suggestion not persisted | ⬜ | |
+| TC-GEN-001 | Generator | Navigate to the Generator | ⬜ | |
+| TC-GEN-002 | Generator | Generate a quiz (MCQ) | ⬜ | |
+| TC-GEN-003 | Generator | Generate a worksheet | ⬜ | |
+| TC-GEN-004 | Generator | Difficulty options | ⬜ | |
+| TC-GEN-005 | Generator | Question type: True/False | ⬜ | |
+| TC-GEN-006 | Generator | Question type: Short Answer | ⬜ | |
+| TC-GEN-007 | Generator | Question type: Mixed | ⬜ | |
+| TC-GEN-008 | Generator | Question count validation (3–30) | ⬜ | |
+| TC-GEN-009 | Generator | Language | ⬜ | |
+| TC-GEN-010 | Generator | Additional instructions | ⬜ | |
+| TC-GEN-011 | Generator | Missing topic validation | ⬜ | |
+| TC-GEN-012 | Generator | Loading state / no duplicates | ⬜ | |
+| TC-GEN-013 | Generator | Generation error handling | ⬜ | |
+| TC-GEN-014 | Generator | Preview and edit before saving | ⬜ | |
+| TC-GEN-015 | Generator | Regenerate warning after editing | ⬜ | |
+| TC-GEN-016 | Generator | Save to Library | ⬜ | |
+| TC-GEN-017 | Generator | Appears under Assessment filter | ⬜ | |
+| TC-GEN-018 | Generator | Reopen and edit in Workspace | ⬜ | |
+| TC-GEN-019 | Generator | Student print version (no key) | ⬜ | |
+| TC-GEN-020 | Generator | Teacher print version (with key) | ⬜ | |
+| TC-GEN-021 | Generator | Answer-key isolation is structural | ⬜ | |
+| TC-GEN-022 | Generator | AI: Make easier | ⬜ | |
+| TC-GEN-023 | Generator | AI: Make harder | ⬜ | |
+| TC-GEN-024 | Generator | AI: Generate more questions | ⬜ | |
+| TC-GEN-025 | Generator | AI: Simplify wording | ⬜ | |
+| TC-GEN-026 | Generator | Assessment actions only for assessments | ⬜ | |
+| TC-GEN-027 | Generator | Mobile layout | ⬜ | |
+| TC-GEN-028 | Generator | Dark / light theme | ⬜ | |
+| TC-GEN-029 | Generator | Keyboard accessibility | ⬜ | |
+| TC-GEN-030 | Generator | Authentication & ownership | ⬜ | |
 
-**Total: 122 test cases across 20 areas.**
+**Total: 152 test cases across 21 areas.**

@@ -11,6 +11,7 @@ import SettingsPage from './pages/SettingsPage';
 import LibraryPage from './pages/LibraryPage';
 import ResourceView from './pages/ResourceView';
 import ResourceWorkspace from './pages/ResourceWorkspace';
+import GeneratorPage from './pages/GeneratorPage';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -41,6 +42,7 @@ function AppRoutes() {
       <Route path="/library" element={<LibraryPage preferences={preferences} />} />
       <Route path="/library/:id" element={<ResourceView preferences={preferences} />} />
       <Route path="/library/:id/edit" element={<ResourceWorkspace preferences={preferences} />} />
+      <Route path="/generator" element={<GeneratorPage preferences={preferences} />} />
       <Route path="/settings" element={<SettingsPage preferences={preferences} />} />
       <Route
         path="/admin"

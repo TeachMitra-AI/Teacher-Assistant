@@ -58,7 +58,17 @@ export async function updateResource(id: string, input: UpdateResourceInput): Pr
 }
 
 // AI workspace action ids the server understands (see server/src/routes/resources.js).
-export type AiActionId = 'simplify' | 'add_activities' | 'add_assessment' | 'adapt_grade';
+// Generic actions apply to any resource; the *_ assessment actions are surfaced
+// only for assessments (quizzes / worksheets) in the workspace.
+export type AiActionId =
+  | 'simplify'
+  | 'add_activities'
+  | 'add_assessment'
+  | 'adapt_grade'
+  | 'make_easier'
+  | 'make_harder'
+  | 'more_questions'
+  | 'simplify_wording';
 
 export interface AiActionResult {
   suggestion: string;
@@ -81,4 +91,33 @@ export async function runAiAction(
 
 export async function deleteResource(id: string): Promise<void> {
   await api(`/resources/${id}`, { method: 'DELETE' });
+}
+
+// --- Quiz / Worksheet Generator ---
+export type AssessmentFormat = 'quiz' | 'worksheet';
+export type Difficulty = 'easy' | 'medium' | 'hard';
+export type QuestionType = 'mcq' | 'true_false' | 'short_answer' | 'mixed';
+
+export interface GenerateAssessmentInput {
+  format: AssessmentFormat;
+  grade?: string;
+  subject?: string;
+  topic: string;
+  difficulty: Difficulty;
+  questionType: QuestionType;
+  questionCount: number;
+  language?: string;
+  instructions?: string;
+}
+
+export interface GenerateAssessmentResult {
+  content: string;
+  requestId: string;
+}
+
+// Ask the server to generate a quiz/worksheet. The Gemini key stays server-side
+// and the result is NEVER persisted by this call — the teacher saves it
+// explicitly with createResource (type "assessment").
+export async function generateAssessment(input: GenerateAssessmentInput): Promise<GenerateAssessmentResult> {
+  return api<GenerateAssessmentResult>('/resources/generate', { method: 'POST', body: input });
 }
