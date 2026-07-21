@@ -81,6 +81,21 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // When the viewport crosses from desktop into mobile, the sidebar switches
+  // from an inline column to a fixed drawer — close it so it doesn't
+  // unexpectedly cover the screen. Only fires on the transition, so it never
+  // interferes with the user opening/closing the drawer while on mobile.
+  useEffect(() => {
+    let wasMobile = isMobileViewport();
+    function onResize() {
+      const nowMobile = isMobileViewport();
+      if (nowMobile && !wasMobile) setSidebarOpen(false);
+      wasMobile = nowMobile;
+    }
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   function scrollToBottom() {
     requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }));
   }
