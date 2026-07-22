@@ -45,14 +45,18 @@ export interface QuickAction {
   label: string;
   description: string;
   prompt: string;
+  // Presentation-only: hide this card on the mobile welcome view to keep the
+  // above-the-fold list short. The action remains fully available on tablet/
+  // desktop and its underlying functionality is unaffected.
+  hideOnMobile?: boolean;
 }
 
 export const QUICK_ACTIONS: QuickAction[] = [
   { icon: NotebookPen, label: 'Create a Lesson Plan', description: 'Structured plans with objectives and activities', prompt: 'Create a lesson plan for ' },
   { icon: Target, label: 'Create Classroom Activity', description: 'Engaging, ready-to-run classroom activities', prompt: 'Suggest a classroom activity for ' },
   { icon: Lightbulb, label: 'Explain a Concept', description: 'Simple explanations pitched to your grade', prompt: 'Explain this concept simply: ' },
-  { icon: ClipboardCheck, label: 'Create Assessment', description: 'Quizzes and worksheets to check learning', prompt: 'Create a short assessment for ' },
-  { icon: Users, label: 'Manage Classroom', description: 'Strategies for engagement and behaviour', prompt: 'How do I manage ' },
+  { icon: ClipboardCheck, label: 'Create Assessment', description: 'Quizzes and worksheets to check learning', prompt: 'Create a short assessment for ', hideOnMobile: true },
+  { icon: Users, label: 'Manage Classroom', description: 'Strategies for engagement and behaviour', prompt: 'How do I manage ', hideOnMobile: true },
 ];
 
 // Admin-only shortcuts on the welcome screen. Unlike quick actions, these

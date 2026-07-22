@@ -23,7 +23,7 @@ export default function WelcomeScreen({ name, isAdmin, onPickAction, onNavigate 
             <button
               type="button"
               key={action.label}
-              className="quick-action-card"
+              className={`quick-action-card${action.hideOnMobile ? ' quick-action-card--mobile-hidden' : ''}`}
               onClick={() => onPickAction(action.prompt)}
             >
               <span className="quick-action-icon" aria-hidden="true">

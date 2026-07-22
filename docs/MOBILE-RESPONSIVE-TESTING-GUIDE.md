@@ -23,7 +23,13 @@ where noted, a real phone (for safe-area and address-bar behavior).
 
 **Design intent (mobile ≤640px):** `Header → compact greeting → quick-action cards → context
 controls → composer → bottom navigation`, scrolling naturally, with no nested scroll in the
-welcome state.
+welcome state. On mobile (≤640px) the welcome screen shows only the **top 3** quick actions
+(_Create a Lesson Plan_, _Create Classroom Activity_, _Explain a Concept_) so the context controls
+and composer stay reachable with minimal scrolling; _Create Assessment_ and _Manage Classroom_ are
+hidden from the welcome list on mobile only (presentation-only — both remain fully available on
+tablet/desktop and through the Generator and other flows). This switch shares the same `≤640px`
+breakpoint as the bottom-nav/top-bar swap, so the mobile nav and the 3-card welcome always change
+together.
 
 ## 2. Test widths
 
@@ -98,18 +104,21 @@ appear above the bottom nav too.
 
 ### TC-MOB-020 — Single natural scroll (no nested scrollbar)
 **Steps:** Fresh Coach page (no messages) at 375px. Scroll the page.
-**Expected:** The whole page scrolls as one column: greeting → all quick-action cards → context
-controls → composer. There is **no** inner/nested scrollbar trapping the cards.
+**Expected:** The whole page scrolls as one column: greeting → the 3 mobile quick-action cards →
+context controls → composer. There is **no** inner/nested scrollbar trapping the cards.
 
-### TC-MOB-021 — All five quick actions reachable
-**Steps:** Scroll through the welcome content at 320/375/430px.
-**Expected:** All five quick-action cards are fully reachable and readable (title + wrapping
-description, not truncated); comfortable tap size.
+### TC-MOB-021 — Mobile shows exactly the top 3 quick actions
+**Steps:** Scroll through the welcome content at 320/360/375/390/430px.
+**Expected:** Exactly **3** quick-action cards are shown, in order: _Create a Lesson Plan_,
+_Create Classroom Activity_, _Explain a Concept_. **_Create Assessment_ and _Manage Classroom_ are
+NOT present** in the mobile welcome quick-action list (not merely scrolled off — absent from the
+DOM/accessibility tree, so not tab-focusable). The 3 cards are fully reachable and readable (title +
+wrapping description, not truncated); comfortable tap size.
 
 ### TC-MOB-022 — Order and density
-**Expected:** Order is greeting → subtitle → cards → context (Grade/Subject/Language/More) →
-composer. Spacing is compact but not cramped; at ~375px roughly 2.5–3 cards plus the greeting are
-visible before scrolling (device-height dependent).
+**Expected:** Order is greeting → subtitle → the 3 cards → context (Grade/Subject/Language/More) →
+composer. Spacing is compact but not cramped; at ~375px the greeting plus all 3 cards are typically
+visible with little or no scrolling before the context controls (device-height dependent).
 
 ### TC-MOB-023 — Composer reachable, nothing hidden
 **Steps:** Scroll to the bottom of the welcome content.
@@ -124,6 +133,14 @@ auto-submitted.
 ### TC-MOB-025 — No horizontal overflow
 **Steps:** At 320px, drag horizontally.
 **Expected:** No horizontal scrolling anywhere on the welcome screen.
+
+### TC-MOB-026 — Quick-action count at the 640px boundary
+**Steps:** On the fresh Coach welcome page, set the viewport to **640px**, then **641px**, then
+**768px**.
+**Expected:** At **≤640px** (mobile) exactly **3** cards show (Assessment/Manage Classroom hidden);
+at **≥641px** (tablet/desktop) **all 5** cards show. The count flips at the same `640px` boundary
+where the bottom nav gives way to the top-bar nav (verify TC-MOB-010 flips at the same width) — no
+range where the bottom nav is visible but all 5 cards are shown.
 
 ---
 
@@ -208,7 +225,8 @@ active item on these secondary pages — expected).
 **Steps:** For Coach (welcome + active), Library, Workspace, Generator, sweep 320 → 360 → 375 → 390
 → 430 → 768 → 1440.
 **Expected:** No header overlap, no horizontal scroll, no hidden content at any width. The mobile
-layer engages ≤640px; 768/1440 use the desktop layout unchanged.
+layer engages ≤640px; 768/1440 use the desktop layout unchanged. The Coach welcome quick-action
+count follows the same boundary: **3** cards at ≤640px, **5** at ≥641px (see TC-MOB-026).
 
 ### TC-MOB-061 — Dark & light
 **Steps:** Toggle theme at mobile widths across the pages above.
@@ -218,7 +236,8 @@ tokens only; no theme-breaking colors).
 ### TC-MOB-062 — Desktop/tablet unchanged
 **Steps:** At 768 and 1440, compare against the pre-mobile-redesign layout.
 **Expected:** Top-bar nav present, no bottom nav, sidebar inline (desktop) / drawer (≤768),
-Coach uses the fixed-viewport layout — visually unchanged from before.
+Coach uses the fixed-viewport layout — visually unchanged from before. The Coach welcome screen
+still shows **all 5** quick actions (including _Create Assessment_ and _Manage Classroom_).
 
 ### TC-MOB-063 — Address-bar show/hide (real device)
 **Steps:** On a phone, scroll the welcome page so the browser address bar collapses/expands.
@@ -262,11 +281,12 @@ Legend: ⬜ Not Run · ✅ Pass · ❌ Fail · ⚠️ Blocked
 | TC-MOB-015 | Bottom nav | Hidden in print | ⬜ | |
 | TC-MOB-016 | Bottom nav | Below modals/drawer, above content | ⬜ | |
 | TC-MOB-020 | Welcome scroll | Single natural scroll | ⬜ | |
-| TC-MOB-021 | Welcome scroll | All 5 quick actions reachable | ⬜ | |
+| TC-MOB-021 | Welcome scroll | Mobile shows exactly the top 3 quick actions | ⬜ | |
 | TC-MOB-022 | Welcome scroll | Order and density | ⬜ | |
 | TC-MOB-023 | Welcome scroll | Composer reachable, nothing hidden | ⬜ | |
 | TC-MOB-024 | Welcome scroll | Quick action seeds composer | ⬜ | |
 | TC-MOB-025 | Welcome scroll | No horizontal overflow | ⬜ | |
+| TC-MOB-026 | Welcome scroll | Quick-action count at the 640px boundary (3 ≤640 / 5 ≥641) | ⬜ | |
 | TC-MOB-030 | Active chat | Layout switches on first message | ⬜ | |
 | TC-MOB-031 | Active chat | Latest message fully visible | ⬜ | |
 | TC-MOB-032 | Active chat | Composer above the bottom nav | ⬜ | |
@@ -289,4 +309,4 @@ Legend: ⬜ Not Run · ✅ Pass · ❌ Fail · ⚠️ Blocked
 | TC-MOB-071 | A11y | Single primary landmark | ⬜ | |
 | TC-MOB-072 | A11y | Icon-only controls labelled | ⬜ | |
 
-**Total: 38 mobile/responsive test cases across 8 areas.**
+**Total: 39 mobile/responsive test cases across 8 areas.**
