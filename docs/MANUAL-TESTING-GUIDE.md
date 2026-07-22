@@ -263,6 +263,10 @@ shown, not a crash.
 and focused; it is **not** auto-submitted.
 
 ### TC-QA-002 — Each quick action
+**Preconditions:** Run at tablet/desktop width (≥641px), where the welcome screen shows all 5 quick
+actions. On mobile (≤640px) only the top 3 are shown — _Create Assessment_ and _Manage Classroom_
+are hidden there (presentation-only; both remain available on tablet/desktop and via the Generator).
+See TC-MOB-021/026 in the mobile guide.
 **Steps:** Repeat for **Create Classroom Activity**, **Explain a Concept**, **Create Assessment**,
 **Manage Classroom**.
 **Expected:** Each seeds its corresponding starter prompt into the composer.
@@ -634,7 +638,7 @@ readable.
 > This is a **concise regression pass**. Full mobile/responsive coverage — the bottom navigation,
 > essentials-only top bar, adaptive Coach scrolling, safe-area handling, per-page checks, and the
 > breakpoint/theme matrix — lives in
-> **[`MOBILE-RESPONSIVE-TESTING-GUIDE.md`](./MOBILE-RESPONSIVE-TESTING-GUIDE.md)** (38 cases,
+> **[`MOBILE-RESPONSIVE-TESTING-GUIDE.md`](./MOBILE-RESPONSIVE-TESTING-GUIDE.md)** (39 cases,
 > TC-MOB-###). Run that guide for a full mobile sign-off; run the five checks below as a quick
 > regression gate. Test at ~375px unless noted.
 
@@ -649,9 +653,11 @@ within its own container. *(Full sweep: TC-MOB-060.)*
 sidebar drawer opens/closes and does not permanently cover content. *(Detail: TC-MOB-010…016, 004.)*
 
 ### TC-RWD-003 — Coach welcome scrolls naturally
-**Steps:** On a fresh Coach page, scroll the welcome content.
-**Expected:** One natural page scroll (greeting → all quick actions → context → composer); no nested
-scrollbar; all five cards reachable; nothing hidden behind composer/nav. *(Detail: TC-MOB-020…025.)*
+**Steps:** On a fresh Coach page (~375px), scroll the welcome content.
+**Expected:** One natural page scroll (greeting → the 3 mobile quick actions → context → composer);
+no nested scrollbar; the 3 cards (_Create a Lesson Plan_, _Create Classroom Activity_, _Explain a
+Concept_) reachable; _Create Assessment_ and _Manage Classroom_ not shown on mobile; nothing hidden
+behind composer/nav. *(Detail: TC-MOB-020…026.)*
 
 ### TC-RWD-004 — Active chat + composer
 **Steps:** Send a question; scroll the thread; use response/follow-up actions.
@@ -1036,7 +1042,7 @@ Legend: ⬜ Not Run · ✅ Pass · ❌ Fail · ⚠️ Blocked
 | TC-RWD-003 | Responsive | Coach welcome scrolls naturally | ⬜ | |
 | TC-RWD-004 | Responsive | Active chat + composer | ⬜ | |
 | TC-RWD-005 | Responsive | Workspace / dialogs / print on mobile | ⬜ | |
-| _see_ | Responsive | Full mobile coverage → MOBILE-RESPONSIVE-TESTING-GUIDE.md (TC-MOB-###) | ⬜ | 38 cases |
+| _see_ | Responsive | Full mobile coverage → MOBILE-RESPONSIVE-TESTING-GUIDE.md (TC-MOB-###) | ⬜ | 39 cases |
 | TC-A11Y-001 | Accessibility | Tab navigation | ⬜ | |
 | TC-A11Y-002 | Accessibility | Visible focus rings | ⬜ | |
 | TC-A11Y-003 | Accessibility | Icon-only button labels | ⬜ | |
