@@ -49,12 +49,28 @@ function unescapeHtml(text: string): string {
 // newline repair and degenerate-form normalization run only inside
 // $...$/$$...$$ segments, where a "\n"-eaten \neq is unambiguous but a real
 // newline in prose is not.
+// Backspace (the "\b" of a JSON-eaten \beta/\binom) is handled with a plain
+// string scan rather than a regex: a regex can only express that character
+// as a control-character escape, which the no-control-regex lint rule
+// forbids (same approach as the server-side twin of this function).
+function repairBackspaceLatex(text: string): string {
+  if (!text.includes('\b')) return text;
+  let out = '';
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '\b' && /[a-z]/.test(text[i + 1] || '')) out += '\\b';
+    else out += ch;
+  }
+  return out;
+}
+
 function repairMangledLatex(text: string): string {
-  const repaired = text
-    .replace(/\t(?=[a-z])/g, '\\t')
-    .replace(/\f(?=[a-z])/g, '\\f')
-    .replace(/[\b](?=[a-z])/g, '\\b')
-    .replace(/\r(?=[a-z])/g, '\\r');
+  const repaired = repairBackspaceLatex(
+    text
+      .replace(/\t(?=[a-z])/g, '\\t')
+      .replace(/\f(?=[a-z])/g, '\\f')
+      .replace(/\r(?=[a-z])/g, '\\r')
+  );
   return repaired.replace(/\$\$[\s\S]+?\$\$|\$[^$\n]+\$/g, (segment) =>
     segment
       .replace(/\n(?=[a-z])/g, '\\n')

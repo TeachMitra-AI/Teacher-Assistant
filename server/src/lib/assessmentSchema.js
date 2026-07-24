@@ -32,12 +32,28 @@ const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
 // never legitimate content — it is the corpse of a JSON-eaten LaTeX command.
 // Restoring the backslash escape it came from reconstructs the command
 // exactly: TAB+"an" → \tan, FORMFEED+"rac" → \frac, CR+"ight" → \right.
+//
+// Backspace (the "\b" of a JSON-eaten \beta/\binom) is handled with a plain
+// string scan rather than a regex: a regex can only express that character
+// as the \x08 control-character escape, which no-control-regex forbids.
+function repairBackspaceLatex(text) {
+  if (!text.includes('\b')) return text;
+  let out = '';
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '\b' && /[a-z]/.test(text[i + 1] || '')) out += '\\b';
+    else out += ch;
+  }
+  return out;
+}
+
 function repairControlCharLatex(text) {
-  return text
-    .replace(/\t(?=[a-z])/g, '\\t')
-    .replace(/\f(?=[a-z])/g, '\\f')
-    .replace(/\x08(?=[a-z])/g, '\\b')
-    .replace(/\r(?=[a-z])/g, '\\r');
+  return repairBackspaceLatex(
+    text
+      .replace(/\t(?=[a-z])/g, '\\t')
+      .replace(/\f(?=[a-z])/g, '\\f')
+      .replace(/\r(?=[a-z])/g, '\\r')
+  );
 }
 
 // Degenerate command forms the model produces to dodge invalid JSON escapes
