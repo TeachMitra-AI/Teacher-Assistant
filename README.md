@@ -82,18 +82,42 @@ All features below are verified against the current source code.
   subject, **topic**, **difficulty** (Easy/Medium/Hard), **question type**
   (Multiple Choice / True-False / Short Answer / Mixed), **number of questions** (3–30), language,
   and optional additional instructions.
-- **Server-side AI generation** (`POST /api/resources/generate`) — validated with Zod, builds a
-  trusted Gemini prompt, reuses the existing Gemini reliability machinery; the key stays
-  server-side and **nothing is auto-saved**.
+- **Structured, schema-validated AI generation** (`POST /api/resources/generate`) — the request is
+  validated with Zod; Gemini returns **question content only** as JSON (validated against a Zod
+  schema, not a formatted document). The server — never the model — deterministically builds
+  question numbering, MCQ option letters (A–D), and the answer-key heading, so document structure
+  can't drift from one generation to the next. The key stays server-side and **nothing is
+  auto-saved**.
+- **Exam-paper letterhead ("Paper details")** — an optional, deterministic letterhead (school name,
+  exam name, teacher name, date/time toggles, maximum marks, custom instructions) rendered above
+  the questions in both preview and print, independent of the AI-generated content. Class/Subject/
+  Maximum Marks and Student Name/Roll No. lines always print (blank fill-in lines when unset);
+  Date/Time rows show only once toggled on. Per-paper values default from **site-wide paper
+  defaults** configurable on the **Settings** page (school name, teacher name, default
+  instructions, date/time visibility), pre-filled from the teacher's school/profile.
+- **Math notation (LaTeX via KaTeX)** — the generation prompt requires all mathematical notation
+  (equations, fractions, exponents, roots, trig functions, symbols) to be written as LaTeX
+  delimited with `$...$` / `$$...$$`; the client renders it as real mathematical notation with
+  [KaTeX](https://katex.org/) in both preview and print. AI-mangled LaTeX (from JSON-escaping
+  artifacts) is repaired before rendering; an unrenderable expression falls back to the escaped
+  source text rather than breaking the page.
 - **Preview & edit** the generated Markdown, then **Save to Library** as an **Assessment** resource
-  (reuses the existing Resource model — no separate quiz/worksheet tables). Saving opens it in the
+  (reuses the existing Resource model — no separate quiz/worksheet tables; the letterhead and
+  generator config are kept alongside it in `Resource.structured`). Saving opens it in the
   Workspace for full editing, AI assist, and printing.
 - **Structural answer-key separation** — the answer key is the final Markdown section under a
-  canonical heading (`## Answer Key` / `## Teacher Answer Key`). Printing offers a **Student
-  version** (questions only — the answer key is omitted from the print DOM, not merely CSS-hidden)
-  and a **Teacher version** (with the answer key).
+  canonical heading (`## Answer Key` / `## Teacher Answer Key`), guaranteed present by the
+  server-side rendering above. Printing offers a **Student version** (questions only — the answer
+  key is omitted from the print DOM, not merely CSS-hidden) and a **Teacher version** (with the
+  answer key). If no answer-key heading can be found (e.g. after a hand-edit that removed it), the
+  Student version print **fails closed**: the teacher must explicitly confirm before printing,
+  rather than silently printing content that might still contain answers. Assessments print as a
+  clean exam paper using the letterhead — unlike other resource types, they omit the app's generic
+  branded print header.
 - **Assessment AI follow-ups** (in the Workspace, for assessments): *Make easier*, *Make harder*,
-  *Generate more questions*, *Simplify wording* — same preview→apply→save flow as Workspace Assist.
+  *Generate more questions*, *Simplify wording* — go through the same structured JSON pipeline as
+  generation and re-render deterministically onto the resource's existing title/metadata, with the
+  same preview→apply→save flow as Workspace Assist. The letterhead is never touched by these.
 
 ### Admin & Super Admin
 - **Admin Dashboard** (`/admin`) — role-scoped usage analytics rendered with Recharts:
@@ -131,7 +155,7 @@ These are **not implemented** yet (see `docs/` and the code comments):
 
 | Layer | Technology |
 | --- | --- |
-| **Frontend** | React 18, TypeScript, Vite 5, React Router 6, Recharts, `vite-plugin-pwa`, Lucide icons |
+| **Frontend** | React 18, TypeScript, Vite 5, React Router 6, Recharts, `vite-plugin-pwa`, Lucide icons, KaTeX (math rendering) |
 | **Backend** | Node.js 18+ (CI uses 20), Express 4 |
 | **Database** | SQLite via Prisma ORM 6 (datasource is swappable to PostgreSQL — see `docs/`) |
 | **AI** | Google Gemini `2.5-flash` (`generateContent`), called only from the server |
@@ -154,9 +178,11 @@ Teacher-Assistant/
 │       │                           #   AdminPage, ManagePage
 │       ├── components/             # TopBar, BottomNav (mobile), Sidebar, Composer, ContextBar,
 │       │                           #   MessageList, MessageBubble, ResponseCard, FollowUpChips,
-│       │                           #   SaveToLibrary, WelcomeScreen, AdminTabs, Toast
+│       │                           #   SaveToLibrary, WelcomeScreen, AdminTabs, Toast,
+│       │                           #   ExamHeader / ExamHeaderEditor (paper letterhead)
 │       ├── hooks/                  # usePreferences (theme/font), useVoiceInput, useDismissable
-│       ├── lib/                    # api resources client, format (Markdown→HTML), tts, followUp
+│       ├── lib/                    # api resources client, format (Markdown→HTML), math (KaTeX),
+│       │                           #   assessment (answer-key split), examMeta, tts, followUp
 │       ├── api.ts                  # fetch wrapper: JWT bearer + silent refresh-on-401
 │       ├── auth.tsx                # auth context (login/register/me/logout)
 │       ├── config.ts              # languages, grades, subjects, roles, resource types
@@ -171,7 +197,8 @@ Teacher-Assistant/
 │   │   ├── middleware/auth.js      # JWT sign/verify, authRequired, requireRole, refresh helpers
 │   │   ├── routes/                 # auth.js, queries.js, resources.js, admin.js
 │   │   ├── safety/                 # inputGuard.js, outputGuard.js
-│   │   └── lib/                    # db.js, config.js, geminiPolicy.js, asyncHandler.js
+│   │   └── lib/                    # db.js, config.js, geminiPolicy.js, asyncHandler.js,
+│   │                               #   assessmentSchema.js (Zod schema + LaTeX repair)
 │   ├── prisma/
 │   │   ├── schema.prisma           # School, User, Session, Query, Feedback, Event, Resource
 │   │   └── migrations/             # SQLite migration history (4 migrations)

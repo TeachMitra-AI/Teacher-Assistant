@@ -2,8 +2,9 @@
 
 > **Status: Current.** Covers the React (`client/`) + Node/Express (`server/`) application as
 > implemented today, including My Library, the Lesson Plan Workspace, Workspace AI Assist,
-> Print/Export, and the Quiz & Worksheet Generator. Every test case below was written against
-> verified source behavior.
+> Print/Export, and the Quiz & Worksheet Generator — structured/schema-validated AI generation,
+> the exam-paper letterhead ("Paper details"), and KaTeX math rendering. Every test case below was
+> written against verified source behavior.
 >
 > **Mobile/responsive:** this guide keeps a concise mobile **regression** section (area P).
 > Detailed mobile coverage — the bottom navigation, essentials-only top bar, adaptive Coach
@@ -535,8 +536,12 @@ clicking **Generate**, a suggestion adapted to that grade is produced.
 AI Assist buttons, or toasts.
 
 ### TC-PRINT-003 — Content & metadata present
+**Preconditions:** A non-assessment resource (e.g. a lesson plan).
 **Expected:** The printed page includes subtle "Teacher Assistant" branding, the title, and the
 metadata line (type, grade, subject, language) plus the updated date, followed by the content.
+> **Exception — assessments:** a Quiz/Worksheet prints as a clean exam paper using the letterhead
+> (school name, exam name, Class/Subject, Name/Roll No., etc.) instead of the generic branding/
+> title/metadata block above. See TC-GEN-019/020/031 in Section 24.
 
 ### TC-PRINT-004 — White background & dark text
 **Expected:** The sheet has a white background with dark text.
@@ -787,7 +792,10 @@ API key is **never** present in any request payload, response, or the client bun
 
 > The Generator creates classroom-ready quizzes/worksheets via AI, previews them for editing, and
 > saves them to My Library as **Assessment** resources (reusing the Resource model — no separate
-> store). AI cases require a valid `GEMINI_API_KEY`.
+> store). Gemini supplies question content only, as schema-validated JSON; the app deterministically
+> builds numbering, option letters, and the answer-key heading. Math notation renders as real
+> mathematical notation via KaTeX, and an optional exam-paper letterhead ("Paper details") prints
+> above the questions. AI cases require a valid `GEMINI_API_KEY`.
 
 ### TC-GEN-001 — Navigate to the Generator
 **Preconditions:** Logged in as any user.
@@ -798,13 +806,18 @@ Subject, Difficulty, Question type, Number of questions, Language, Additional in
 ### TC-GEN-002 — Generate a quiz (MCQ)
 **Steps:** Format **Quiz**, Topic `Fractions`, Grade `Class 3-5`, Subject `Mathematics`,
 Difficulty **Medium**, Question type **Multiple Choice**, Count `5`, Language English → **Generate**.
-**Expected:** A loading state appears; then a Preview shows a titled quiz with 5 numbered MCQs
-(options A–D) and a separate **Answer Key** section at the end.
+**Expected:** A loading state appears; then a Preview shows the exam-style letterhead (title, a
+Class/Subject row, a Name/Roll No. row) above 5 sequentially numbered MCQs (options lettered A–D)
+and a separate **Answer Key** section at the end, with exactly 5 entries matching the questions
+1:1. Numbering, option letters, and the answer-key heading are produced by the app itself (not the
+AI), so they are consistent on every generation.
 
 ### TC-GEN-003 — Generate a worksheet
 **Steps:** Format **Worksheet**, Topic `Water cycle`, Count `6` → **Generate**.
-**Expected:** The preview includes a title, metadata, **Student Name / Date** lines, an Instructions
-section, questions, and a **Teacher Answer Key** section at the end.
+**Expected:** The preview shows the exam-style letterhead (title, Class/Subject row, Name/Roll No.
+row) followed by an Instructions section, 6 numbered questions, and a **Teacher Answer Key**
+section at the end. (The Student Name/Roll No. fill-in lines come from the letterhead, not
+AI-generated text — see TC-GEN-031.)
 
 ### TC-GEN-004 — Difficulty options
 **Steps:** Generate the same topic at **Easy**, **Medium**, and **Hard**.
@@ -847,6 +860,7 @@ also disabled while Topic is empty).
 ### TC-GEN-013 — Generation error handling
 **Steps:** Temporarily set an invalid `GEMINI_API_KEY`, restart the backend, and Generate.
 **Expected:** A clear error message appears (no crash); the form remains usable. Restore the key.
+*(See also TC-GEN-041 for the app's structural-validation error path.)*
 
 ### TC-GEN-014 — Preview and edit before saving
 **Steps:** After generating, use the **Edit ⇄ Preview** toggle; edit the **Title** and the **content**.
@@ -872,14 +886,18 @@ regenerates.
 
 ### TC-GEN-019 — Student print version (no answer key)
 **Preconditions:** In the Workspace for a saved quiz/worksheet that has an answer key.
-**Steps:** Click **Print / Export** → choose **Student version**.
-**Expected:** The print preview shows the questions and a "Student Version" label but **no answer
-key** anywhere.
+**Steps:** Click **Print / Export**; note the **Student version** menu item shows the hint
+"Questions only — no answers"; select it.
+**Expected:** The print preview shows the exam-paper letterhead followed by the questions, with
+**no answer key** anywhere and **no** "Student"/"Teacher" version label printed on the page itself
+(the choice only affects which content is included, not a visible badge — see the note in
+TC-PRINT-003).
 
 ### TC-GEN-020 — Teacher print version (with answer key)
-**Steps:** **Print / Export** → **Teacher version**.
-**Expected:** The print preview shows the questions **and** the answer key, labelled "Teacher
-Version — includes answer key".
+**Steps:** **Print / Export**; note the **Teacher version** menu item shows the hint "Includes
+answer key"; select it.
+**Expected:** The print preview shows the letterhead, the questions, **and** the answer key — with
+no separate on-page label (same layout as the student version, just with the answer key included).
 
 ### TC-GEN-021 — Answer-key isolation is structural
 **Steps:** With the **Student version** print preview open, inspect the page / use the browser's
@@ -927,6 +945,88 @@ keyboard-navigable.
 **Steps:** (a) Logged out, `POST http://localhost:3000/api/resources/generate` → expect **401**.
 (b) As Teacher B, open Teacher A's saved assessment via `/library/<A's id>/edit` → expect a 404 state.
 **Expected:** Generation requires auth; saved assessments remain owner-isolated like all resources.
+
+### TC-GEN-031 — Paper details (exam letterhead) configuration
+**Preconditions:** A generated quiz/worksheet is in Preview (Generator) or an assessment is open
+in the Workspace.
+**Steps:** Expand **Paper details**; fill School name, Exam / assessment name, Teacher name,
+Maximum marks, and Custom instructions; toggle **Date** and **Time / duration** on and fill them.
+**Expected:** The Preview updates live: the school name appears above the title, the exam name
+replaces the default title, a Teacher row appears, Date/Time rows appear only once toggled on, and
+the Custom instructions render as a "General Instructions" line. Nothing here is sent to the AI —
+it does not affect question content on Regenerate.
+
+### TC-GEN-032 — Paper details defaults and blank fill-in lines
+**Steps:** Leave **Paper details** untouched (all optional fields blank) and generate.
+**Expected:** Class, Subject, and Maximum Marks always print — as a blank line
+(`____________`) when unset — along with fixed Name / Roll No. fill-in lines. The Date and
+Time rows are omitted entirely (not shown as blank lines) since they were never toggled on.
+School name / Teacher / Custom instructions rows are omitted when empty.
+
+### TC-GEN-033 — Site-wide paper defaults (Settings) prefill the Generator
+**Preconditions:** In **Settings**, under the exam-paper letterhead defaults, set a School name,
+Teacher name, default Custom instructions, and enable **Show date by default**; save.
+**Steps:** Go to **Generator**, generate a new quiz.
+**Expected:** The new generation's **Paper details** are pre-filled from the saved defaults (school
+name, teacher name, instructions, Date row pre-toggled on). Editing them for this one paper does
+**not** change the saved Settings defaults; a later generation still starts from the saved defaults.
+
+### TC-GEN-034 — Mathematics with LaTeX/math expressions
+**Steps:** Format **Quiz**, Subject `Mathematics`, Topic `Trigonometric ratios` (or `Quadratic
+equations`), Question type **Mixed**, Count `5` → **Generate**.
+**Expected:** Equations, fractions, exponents, roots, and trig expressions render as real
+mathematical notation (via KaTeX) in the Preview — not raw `$...$`/`\frac{}{}`-style text — in both
+the question text and the Answer Key. The rendering is identical after **Save to Library**, in the
+Workspace preview, and in both **Student** and **Teacher** print versions.
+
+### TC-GEN-035 — Different subjects
+**Steps:** Generate one short quiz (3 questions) for each of **Science**, **English**, **Hindi**,
+**Social Studies**, **Languages**, and **General**, keeping other fields constant.
+**Expected:** Each generates successfully; question content is subject-appropriate; the document
+structure (numbering, options, Answer Key) is identical in shape across all subjects.
+
+### TC-GEN-036 — Different topics within the same subject/grade
+**Steps:** With Subject `Mathematics` and Grade `Class 6-8` fixed, generate separately for Topic
+`Fractions` and Topic `Algebra`.
+**Expected:** Each output is clearly specific to its own topic (no cross-contamination between the
+two generations); both are independently editable and saveable.
+
+### TC-GEN-037 — Structural determinism (layout/formatting validation)
+**Steps:** Generate a Mixed-type quiz of 8 questions; inspect the numbering and the Answer Key.
+**Expected:** Questions are numbered `1.`–`8.` with no gaps/repeats regardless of question type
+mix; every MCQ's options are lettered `A.`–`D.` in order; the Answer Key has exactly 8 entries,
+numbered to match, with an MCQ answer shown as a single option letter, True/False shown as
+"True"/"False", and short-answer shown as the model answer text.
+
+### TC-GEN-038 — Answer-key fail-closed warning on Student print
+**Preconditions:** In the Workspace for a saved assessment.
+**Steps:** In **Edit**, rename or delete the `## Answer Key` / `## Teacher Answer Key` heading so no
+recognizable answer-key section remains; **Save Changes**; click **Print / Export** → **Student
+version** (its hint now reads "No answer key detected — asks before printing").
+**Expected:** A confirm dialog warns that no answer-key section was detected and the student
+version will include everything exactly as shown in Edit; **Cancel** aborts printing, **OK**
+proceeds with the full content.
+
+### TC-GEN-039 — Regenerate keeps structure at the same count/type
+**Steps:** Generate, then click **Regenerate** (confirm the overwrite warning if the preview was
+edited) with the same Question type and Count.
+**Expected:** A new question set is produced with numbering, option lettering, and Answer Key
+still exactly matching the configured Question type and Count.
+
+### TC-GEN-040 — Paper details persist through the Workspace
+**Steps:** Save a generated assessment, reopen it in the Workspace, change a **Paper details**
+field (e.g. Maximum marks), **Save Changes**, then reload.
+**Expected:** The updated Paper details persist after reload and appear correctly in both the
+Workspace preview and Print / Export; the question content is untouched.
+
+### TC-GEN-041 — Structural AI-response validation (observational)
+**Context:** Gemini returns question content as JSON validated against a strict schema
+(`server/src/lib/assessmentSchema.js`) before the server renders the document — this differs from
+simply asking the model for a formatted document, and is difficult to force manually.
+**Expected (from source):** A response that fails JSON parsing, schema validation, or a mismatch
+against the request (wrong question count/type) is rejected server-side with a specific error
+("did not match the expected structure" / "did not match your request") rather than reaching the
+teacher malformed; the generator remains usable and Generate can be retried.
 
 ---
 
@@ -1097,7 +1197,18 @@ Legend: ⬜ Not Run · ✅ Pass · ❌ Fail · ⚠️ Blocked
 | TC-GEN-028 | Generator | Dark / light theme | ⬜ | |
 | TC-GEN-029 | Generator | Keyboard accessibility | ⬜ | |
 | TC-GEN-030 | Generator | Authentication & ownership | ⬜ | |
+| TC-GEN-031 | Generator | Paper details (exam letterhead) configuration | ⬜ | |
+| TC-GEN-032 | Generator | Paper details defaults & blank fill-in lines | ⬜ | |
+| TC-GEN-033 | Generator | Site-wide paper defaults (Settings) prefill | ⬜ | |
+| TC-GEN-034 | Generator | Mathematics with LaTeX/math expressions | ⬜ | |
+| TC-GEN-035 | Generator | Different subjects | ⬜ | |
+| TC-GEN-036 | Generator | Different topics, same subject/grade | ⬜ | |
+| TC-GEN-037 | Generator | Structural determinism (layout/formatting) | ⬜ | |
+| TC-GEN-038 | Generator | Answer-key fail-closed warning (Student print) | ⬜ | |
+| TC-GEN-039 | Generator | Regenerate keeps structure at same count/type | ⬜ | |
+| TC-GEN-040 | Generator | Paper details persist through the Workspace | ⬜ | |
+| TC-GEN-041 | Generator | Structural AI-response validation (observational) | ⬜ | |
 
-**Total: 149 test cases across 21 areas** (main guide). Detailed mobile/responsive coverage is in
+**Total: 160 test cases across 21 areas** (main guide). Detailed mobile/responsive coverage is in
 **[`MOBILE-RESPONSIVE-TESTING-GUIDE.md`](./MOBILE-RESPONSIVE-TESTING-GUIDE.md)** — a further **38**
 cases (TC-MOB-###).
