@@ -263,3 +263,74 @@ describe('GeminiService contract', () => {
     expect(result.text).toBe(SAFE_FALLBACK_MESSAGE);
   });
 });
+
+// Structured-output support (Phase 1 of the quiz/worksheet generator rework
+// — see server/src/routes/resources.js and server/src/lib/assessmentSchema.js).
+describe('GeminiService.generateContent — structured output (responseSchema)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const sampleSchema = {
+    type: 'OBJECT',
+    properties: { foo: { type: 'STRING' } },
+    required: ['foo'],
+  };
+
+  test('sets responseMimeType/responseSchema on the request when responseSchema is passed', async () => {
+    const { calls } = mockGeminiFetch([geminiSuccess('{"foo":"bar"}')]);
+    const service = makeService();
+
+    await service.generateContent({
+      systemInstruction: 'Return JSON.',
+      userText: '```\ntopic\n```',
+      responseSchema: sampleSchema,
+    });
+
+    const body = calls[0].body;
+    expect(body.generationConfig.responseMimeType).toBe('application/json');
+    expect(body.generationConfig.responseSchema).toEqual(sampleSchema);
+  });
+
+  test('does NOT set responseMimeType/responseSchema when responseSchema is omitted (free-form text unaffected)', async () => {
+    const { calls } = mockGeminiFetch([geminiSuccess('Some free-form text.')]);
+    const service = makeService();
+
+    await service.generateContent({ systemInstruction: 'Write something.', userText: '```\ntopic\n```' });
+
+    const body = calls[0].body;
+    expect(body.generationConfig.responseMimeType).toBeUndefined();
+    expect(body.generationConfig.responseSchema).toBeUndefined();
+  });
+
+  test('does NOT attempt a continuation on MAX_TOKENS when responseSchema is set (unsafe to splice JSON)', async () => {
+    const { mock } = mockGeminiFetch([
+      { status: 200, json: { candidates: [{ content: { parts: [{ text: '{"foo": "truncat' }] }, finishReason: 'MAX_TOKENS' }] } },
+    ]);
+    const service = makeService();
+
+    const result = await service.generateContent({
+      systemInstruction: 'Return JSON.',
+      userText: '```\ntopic\n```',
+      responseSchema: sampleSchema,
+    });
+
+    // Exactly one call — no continuation fetch — leaving the truncated JSON
+    // for the caller's own schema validation to reject.
+    expect(mock).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe('{"foo": "truncat');
+  });
+
+  test('DOES continue on MAX_TOKENS for free-form text when responseSchema is omitted (existing behavior unchanged)', async () => {
+    const { mock } = mockGeminiFetch([
+      geminiSuccess('Part one.', 'MAX_TOKENS'),
+      geminiSuccess('Part two.', 'STOP'),
+    ]);
+    const service = makeService();
+
+    const result = await service.generateContent({ systemInstruction: 'Write something.', userText: '```\ntopic\n```' });
+
+    expect(mock).toHaveBeenCalledTimes(2);
+    expect(result.text).toBe('Part one. Part two.');
+  });
+});

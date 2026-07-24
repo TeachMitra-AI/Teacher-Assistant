@@ -116,4 +116,70 @@ describe('auth', () => {
       .send({ schoolCode: fx.schoolA.code, name: fx.teacherA2.name, pin: '654321' });
     expect(reLogin.status).toBe(200);
   });
+
+  // Phase 3: exam-paper letterhead defaults (school name, teacher name,
+  // default instructions, show date/time) live inside preferences.examPaperDefaults.
+  describe('preferences.examPaperDefaults', () => {
+    test('accepts and persists a full examPaperDefaults object, merged with other preferences', async () => {
+      const login = await request(app)
+        .post('/api/auth/login')
+        .send({ schoolCode: fx.schoolA.code, name: fx.teacherA.name, pin: PIN });
+      const token = login.body.token;
+
+      const res = await request(app)
+        .patch('/api/auth/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          preferences: {
+            defaultGrade: 'Class 6-8',
+            examPaperDefaults: {
+              schoolName: 'Govt Model School',
+              teacherName: 'A. Teacher',
+              defaultInstructions: 'Answer all questions neatly.',
+              showDate: true,
+              showTime: false,
+            },
+          },
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.user.preferences.examPaperDefaults).toEqual({
+        schoolName: 'Govt Model School',
+        teacherName: 'A. Teacher',
+        defaultInstructions: 'Answer all questions neatly.',
+        showDate: true,
+        showTime: false,
+      });
+      // Sibling preference untouched by the merge.
+      expect(res.body.user.preferences.defaultGrade).toBe('Class 6-8');
+
+      const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+      expect(me.body.user.preferences.examPaperDefaults.schoolName).toBe('Govt Model School');
+    });
+
+    test('rejects an unknown key inside examPaperDefaults (strict schema)', async () => {
+      const login = await request(app)
+        .post('/api/auth/login')
+        .send({ schoolCode: fx.schoolA.code, name: fx.teacherA.name, pin: PIN });
+      const token = login.body.token;
+
+      const res = await request(app)
+        .patch('/api/auth/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ preferences: { examPaperDefaults: { schoolName: 'X', logoUrl: 'http://evil.example/x.png' } } });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects a schoolName over the length cap', async () => {
+      const login = await request(app)
+        .post('/api/auth/login')
+        .send({ schoolCode: fx.schoolA.code, name: fx.teacherA.name, pin: PIN });
+      const token = login.body.token;
+
+      const res = await request(app)
+        .patch('/api/auth/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ preferences: { examPaperDefaults: { schoolName: 'x'.repeat(121) } } });
+      expect(res.status).toBe(400);
+    });
+  });
 });

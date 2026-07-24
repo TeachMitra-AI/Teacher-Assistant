@@ -295,20 +295,6 @@ describe('My Library — /api/resources', () => {
       expect(res.status).toBe(400);
     });
 
-    test('accepts an assessment-specific action (make_harder) on an owned resource', async () => {
-      mockGeminiFetch([geminiSuccess('# Harder quiz\n1. Tough question\n## Answer Key\n1. Answer')]);
-      const created = await createFor(teacherAToken, { type: 'assessment', title: 'Quiz', content: '1. Easy?' });
-      const res = await asA(
-        request(app).post(`/api/resources/${created.body.resource.id}/ai-action`).send({ action: 'make_harder' })
-      );
-      expect(res.status).toBe(200);
-      expect(res.body.suggestion).toContain('Harder quiz');
-
-      // Not persisted — the stored content is unchanged until an explicit PATCH.
-      const row = await prisma.resource.findUnique({ where: { id: created.body.resource.id } });
-      expect(row.content).toBe('1. Easy?');
-    });
-
     test("another user cannot run an assessment action — returns 404", async () => {
       mockGeminiFetch([geminiSuccess('should never be reached')]);
       const created = await createFor(teacherAToken, { type: 'assessment', title: 'A quiz' });
@@ -319,10 +305,280 @@ describe('My Library — /api/resources', () => {
     });
   });
 
-  // Quiz / Worksheet Generator. Builds a trusted prompt from a validated config
-  // and returns AI-generated Markdown — it must NEVER persist a resource itself
-  // (saving stays an explicit POST /api/resources). Gemini's fetch is mocked so
-  // the real route + GeminiService run end-to-end without a network call.
+  // Phase 4: make_easier / make_harder / more_questions / simplify_wording go
+  // through the SAME structured JSON pipeline as initial generation — parse
+  // the resource's current content back into { instructions, questions },
+  // ask Gemini for a JSON revision, validate it, and re-render deterministically
+  // onto the ORIGINAL title/metadata preamble (never regenerated, never sent
+  // to the model). See handleAssessmentAction/parseAssessmentBody in
+  // server/src/routes/resources.js.
+  describe('assessment AI-assist actions — structured pipeline (Phase 4)', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    // Exactly what renderAssessmentMarkdown/renderAssessmentBody would
+    // produce for a mixed-type 3-question quiz — the shape parseAssessmentBody
+    // must recover losslessly.
+    const VALID_QUIZ_CONTENT = [
+      '# Science Quiz: Photosynthesis',
+      '',
+      '**Grade:** Class 6-8',
+      '**Subject:** Science',
+      '**Topic:** Photosynthesis',
+      '**Difficulty:** medium',
+      '',
+      '## Instructions',
+      '',
+      'Answer all questions carefully.',
+      '',
+      '## Questions',
+      '',
+      '1. What do plants need for photosynthesis?',
+      'A. Water only',
+      'B. Sunlight only',
+      'C. Water, sunlight, and carbon dioxide',
+      'D. Soil only',
+      '',
+      '2. Photosynthesis occurs in the leaves. — (True / False)',
+      '',
+      '3. Name the green pigment in plants.',
+      '',
+      '## Answer Key',
+      '',
+      '1. C',
+      '2. True',
+      '3. Chlorophyll',
+    ].join('\n');
+
+    const VALID_WORKSHEET_CONTENT = VALID_QUIZ_CONTENT.replace('## Answer Key', '## Teacher Answer Key');
+
+    function mcq(text, correctOptionIndex = 0) {
+      return { type: 'mcq', text, options: ['Opt A', 'Opt B', 'Opt C', 'Opt D'], correctOptionIndex, correctAnswer: '' };
+    }
+    function trueFalse(text, correctAnswer = 'True') {
+      return { type: 'true_false', text, options: [], correctOptionIndex: -1, correctAnswer };
+    }
+    function shortAnswer(text, correctAnswer = 'Some answer') {
+      return { type: 'short_answer', text, options: [], correctOptionIndex: -1, correctAnswer };
+    }
+
+    async function createQuiz(token, content = VALID_QUIZ_CONTENT) {
+      const res = await request(app)
+        .post('/api/resources')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          type: 'assessment',
+          title: 'Science Quiz: Photosynthesis',
+          grade: 'Class 6-8',
+          subject: 'Science',
+          content,
+          structured: JSON.stringify({
+            format: 'quiz', difficulty: 'medium', questionType: 'mixed', questionCount: 3, topic: 'Photosynthesis',
+            examMeta: { schoolName: 'Test School', examName: 'Unit Test 1', maxMarks: '20' },
+          }),
+        });
+      return res.body.resource;
+    }
+
+    const runAction = (token, id, body) =>
+      request(app).post(`/api/resources/${id}/ai-action`).set('Authorization', `Bearer ${token}`).send(body);
+
+    test('make_harder: replaces all 3 questions with the same count/types, preamble and letterhead untouched', async () => {
+      const resource = await createQuiz(teacherAToken);
+      mockGeminiFetch([geminiSuccess(JSON.stringify({
+        instructions: 'Answer all questions carefully, showing your reasoning.',
+        questions: [mcq('Harder Q1?', 2), trueFalse('Harder Q2.', 'False'), shortAnswer('Harder Q3?', 'Xanthophyll')],
+      }))]);
+
+      const res = await runAction(teacherAToken, resource.id, { action: 'make_harder' });
+      expect(res.status).toBe(200);
+      const { suggestion } = res.body;
+
+      // Title/metadata preamble preserved byte-for-byte from the original.
+      expect(suggestion).toContain('# Science Quiz: Photosynthesis');
+      expect(suggestion).toContain('**Grade:** Class 6-8');
+      expect(suggestion).toContain('**Topic:** Photosynthesis');
+
+      // New content, sequential numbering, canonical answer-key heading.
+      expect(suggestion).toMatch(/1\. Harder Q1\?/);
+      expect(suggestion).toContain('C. Opt C'); // correctOptionIndex 2 -> "C"
+      expect(suggestion).toMatch(/2\. Harder Q2\. — \(True \/ False\)/);
+      expect(suggestion).toContain('3. Harder Q3?');
+      expect(suggestion).toMatch(/## Answer Key[\s\S]*1\. C[\s\S]*2\. False[\s\S]*3\. Xanthophyll/);
+
+      // Resource.structured (Phase 3 examMeta) is never touched by an ai-action
+      // suggestion — it isn't even persisted here (saving is a separate PATCH).
+      const row = await prisma.resource.findUnique({ where: { id: resource.id } });
+      expect(row.content).toBe(VALID_QUIZ_CONTENT); // unchanged until Save
+      expect(JSON.parse(row.structured).examMeta.schoolName).toBe('Test School');
+    });
+
+    test('make_easier: same contract as make_harder, worksheet format keeps "Teacher Answer Key" heading', async () => {
+      const resource = await createQuiz(teacherAToken, VALID_WORKSHEET_CONTENT);
+      mockGeminiFetch([geminiSuccess(JSON.stringify({
+        instructions: 'Answer all questions.',
+        questions: [mcq('Easier Q1?', 0), trueFalse('Easier Q2.', 'True'), shortAnswer('Easier Q3?', 'Chlorophyll')],
+      }))]);
+
+      const res = await runAction(teacherAToken, resource.id, { action: 'make_easier' });
+      expect(res.status).toBe(200);
+      expect(res.body.suggestion).toContain('## Teacher Answer Key');
+      expect(res.body.suggestion).not.toContain('## Answer Key\n'); // not the quiz heading
+    });
+
+    test('simplify_wording: rejects a response that changes a correct answer', async () => {
+      const resource = await createQuiz(teacherAToken);
+      // Original Q1 correctOptionIndex is 2 (C); this response moves it to 0 (A).
+      mockGeminiFetch([geminiSuccess(JSON.stringify({
+        instructions: 'Answer all questions carefully.',
+        questions: [mcq('What do plants need for photosynthesis (simpler)?', 0), trueFalse('Photosynthesis happens in leaves.', 'True'), shortAnswer('Name the green pigment.', 'Chlorophyll')],
+      }))]);
+
+      const res = await runAction(teacherAToken, resource.id, { action: 'simplify_wording' });
+      expect(res.status).toBe(502);
+      expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+    });
+
+    test('simplify_wording: accepts a response that preserves every answer exactly', async () => {
+      const resource = await createQuiz(teacherAToken);
+      mockGeminiFetch([geminiSuccess(JSON.stringify({
+        instructions: 'Answer all questions carefully.',
+        questions: [mcq('What do plants need for photosynthesis (simpler)?', 2), trueFalse('Photosynthesis happens in leaves.', 'True'), shortAnswer('Name the green pigment.', 'Chlorophyll')],
+      }))]);
+
+      const res = await runAction(teacherAToken, resource.id, { action: 'simplify_wording' });
+      expect(res.status).toBe(200);
+      expect(res.body.suggestion).toContain('What do plants need for photosynthesis (simpler)?');
+    });
+
+    test('more_questions: appends exactly 5 new questions, keeping the existing 3 byte-identical', async () => {
+      const resource = await createQuiz(teacherAToken);
+      const newOnes = Array.from({ length: 5 }, (_, i) => mcq(`New question ${i + 1}?`, 1));
+      mockGeminiFetch([geminiSuccess(JSON.stringify({ instructions: 'Answer all questions carefully.', questions: newOnes }))]);
+
+      const res = await runAction(teacherAToken, resource.id, { action: 'more_questions' });
+      expect(res.status).toBe(200);
+      const { suggestion } = res.body;
+
+      // Existing 3 questions preserved verbatim (never round-tripped through the model).
+      expect(suggestion).toContain('1. What do plants need for photosynthesis?');
+      expect(suggestion).toContain('A. Water only');
+      expect(suggestion).toMatch(/2\. Photosynthesis occurs in the leaves\. — \(True \/ False\)/);
+      expect(suggestion).toContain('3. Name the green pigment in plants.');
+
+      // Exactly 5 new ones appended, numbered 4-8.
+      for (let i = 4; i <= 8; i++) expect(suggestion).toContain(`${i}. New question ${i - 3}?`);
+      const qMatches = [...suggestion.matchAll(/^(\d+)\.\s/gm)];
+      expect(qMatches).toHaveLength(16); // 8 questions + 8 answer-key lines
+
+      // Answer key extended to cover all 8, original 3 answers unchanged.
+      expect(suggestion).toMatch(/## Answer Key[\s\S]*1\. C[\s\S]*2\. True[\s\S]*3\. Chlorophyll[\s\S]*4\. B/);
+    });
+
+    test('more_questions: rejects a response with the wrong number of new questions', async () => {
+      const resource = await createQuiz(teacherAToken);
+      mockGeminiFetch([geminiSuccess(JSON.stringify({ instructions: 'x', questions: [mcq('Only one?', 0)] }))]);
+
+      const res = await runAction(teacherAToken, resource.id, { action: 'more_questions' });
+      expect(res.status).toBe(502);
+      expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+    });
+
+    test('more_questions: refuses to exceed the 30-question maximum without calling Gemini', async () => {
+      const manyQuestions = Array.from({ length: 28 }, (_, i) => `${i + 1}. Q${i + 1}?\n`).join('\n');
+      const content = [
+        '# Big Quiz', '', '**Grade:** Class 6-8', '**Subject:** Science', '**Topic:** X', '**Difficulty:** medium', '',
+        '## Instructions', '', 'Go.', '', '## Questions', '', manyQuestions,
+        '## Answer Key', '', ...Array.from({ length: 28 }, (_, i) => `${i + 1}. Answer${i + 1}`),
+      ].join('\n');
+      const resource = await createQuiz(teacherAToken, content);
+      const { mock } = mockGeminiFetch([geminiSuccess('should never be called')]);
+
+      const res = await runAction(teacherAToken, resource.id, { action: 'more_questions' });
+      expect(res.status).toBe(400);
+      expect(mock).not.toHaveBeenCalled();
+    });
+
+    test('rejects a make_harder response with a mismatched question count', async () => {
+      const resource = await createQuiz(teacherAToken);
+      mockGeminiFetch([geminiSuccess(JSON.stringify({ instructions: 'x', questions: [mcq('Only one?', 0), mcq('Two?', 1)] }))]);
+
+      const res = await runAction(teacherAToken, resource.id, { action: 'make_harder' });
+      expect(res.status).toBe(502);
+      expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+    });
+
+    test('rejects a response that changes a question\'s type', async () => {
+      const resource = await createQuiz(teacherAToken);
+      mockGeminiFetch([geminiSuccess(JSON.stringify({
+        instructions: 'x',
+        // Q1 was mcq, now returned as short_answer — not allowed.
+        questions: [shortAnswer('Now short answer?', 'x'), trueFalse('Q2.', 'True'), shortAnswer('Q3?', 'Chlorophyll')],
+      }))]);
+
+      const res = await runAction(teacherAToken, resource.id, { action: 'make_harder' });
+      expect(res.status).toBe(502);
+      expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+    });
+
+    test('rejects non-JSON AI output for a structured action', async () => {
+      const resource = await createQuiz(teacherAToken);
+      mockGeminiFetch([geminiSuccess('# Not JSON at all\nJust markdown.')]);
+
+      const res = await runAction(teacherAToken, resource.id, { action: 'make_easier' });
+      expect(res.status).toBe(502);
+      expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+    });
+
+    test('fails safely (422) on a resource whose content no longer matches the expected shape', async () => {
+      const resource = await createQuiz(teacherAToken, 'Just some free text, not a real quiz document.');
+      const { mock } = mockGeminiFetch([geminiSuccess('should never be called')]);
+
+      const res = await runAction(teacherAToken, resource.id, { action: 'make_easier' });
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe('UNPARSEABLE_CONTENT');
+      expect(mock).not.toHaveBeenCalled();
+
+      // Never touches the saved resource.
+      const row = await prisma.resource.findUnique({ where: { id: resource.id } });
+      expect(row.content).toBe('Just some free text, not a real quiz document.');
+    });
+
+    test('rejects an mcq answer key entry that is not a valid option letter', async () => {
+      const badContent = VALID_QUIZ_CONTENT.replace('1. C\n2. True', '1. Z\n2. True');
+      const resource = await createQuiz(teacherAToken, badContent);
+      const { mock } = mockGeminiFetch([geminiSuccess('should never be called')]);
+
+      const res = await runAction(teacherAToken, resource.id, { action: 'make_easier' });
+      expect(res.status).toBe(422);
+      expect(mock).not.toHaveBeenCalled();
+    });
+
+    test('assessment actions are rejected for a non-assessment resource type', async () => {
+      const created = await createFor(teacherAToken, { type: 'lesson_plan', content: VALID_QUIZ_CONTENT });
+      const res = await asA(
+        request(app).post(`/api/resources/${created.body.resource.id}/ai-action`).send({ action: 'make_easier' })
+      );
+      expect(res.status).toBe(400);
+    });
+
+    test('generic actions (e.g. simplify) still use the old Markdown passthrough, unaffected by Phase 4', async () => {
+      const resource = await createQuiz(teacherAToken);
+      mockGeminiFetch([geminiSuccess('# Simplified\nEasy words.')]);
+      const res = await runAction(teacherAToken, resource.id, { action: 'simplify' });
+      expect(res.status).toBe(200);
+      expect(res.body.suggestion).toBe('# Simplified\nEasy words.');
+    });
+  });
+
+  // Quiz / Worksheet Generator. Builds a trusted prompt from a validated
+  // config and asks Gemini for structured JSON question data (Phase 1 —
+  // see server/src/lib/assessmentSchema.js), which the route validates,
+  // normalizes, and renders into Markdown itself. It must NEVER persist a
+  // resource itself (saving stays an explicit POST /api/resources). Gemini's
+  // fetch is mocked so the real route + GeminiService run end-to-end
+  // without a network call.
   describe('generate — POST /api/resources/generate', () => {
     afterEach(() => {
       vi.unstubAllGlobals();
@@ -339,6 +595,50 @@ describe('My Library — /api/resources', () => {
       language: 'en',
     };
 
+    // Builds a schema-valid structured document matching `count` questions
+    // of `type` (mirrors what buildGeneratorPrompt/ASSESSMENT_RESPONSE_SCHEMA
+    // asks Gemini to return).
+    function mockMcqQuestion(i) {
+      return {
+        type: 'mcq',
+        text: `Question ${i}?`,
+        options: ['Option A', 'Option B', 'Option C', 'Option D'],
+        correctOptionIndex: i % 4,
+        correctAnswer: '',
+      };
+    }
+    function mockTrueFalseQuestion(i) {
+      return {
+        type: 'true_false',
+        text: `Statement ${i}.`,
+        options: [],
+        correctOptionIndex: -1,
+        correctAnswer: i % 2 === 0 ? 'True' : 'False',
+      };
+    }
+    function mockShortAnswerQuestion(i) {
+      return {
+        type: 'short_answer',
+        text: `Explain concept ${i}.`,
+        options: [],
+        correctOptionIndex: -1,
+        correctAnswer: `Model answer ${i}.`,
+      };
+    }
+    const QUESTION_BUILDERS = {
+      mcq: mockMcqQuestion,
+      true_false: mockTrueFalseQuestion,
+      short_answer: mockShortAnswerQuestion,
+    };
+    function mockAssessmentDoc({ count, type }) {
+      const builder = QUESTION_BUILDERS[type] || mockMcqQuestion;
+      return {
+        instructions: 'Answer all questions carefully.',
+        questions: Array.from({ length: count }, (_, i) => builder(i + 1)),
+      };
+    }
+    const mockAssessmentJsonResponse = (opts) => geminiSuccess(JSON.stringify(mockAssessmentDoc(opts)));
+
     const generate = (token, body) =>
       request(app).post('/api/resources/generate').set('Authorization', `Bearer ${token}`).send(body);
 
@@ -348,7 +648,7 @@ describe('My Library — /api/resources', () => {
     });
 
     test('valid request returns generated content and does NOT persist a resource', async () => {
-      mockGeminiFetch([geminiSuccess('# Quiz: Photosynthesis\n1. Q?\n## Answer Key\n1. A')]);
+      mockGeminiFetch([mockAssessmentJsonResponse({ count: 5, type: 'mcq' })]);
       const res = await generate(teacherAToken, validConfig);
       expect(res.status).toBe(200);
       expect(res.body.content).toContain('Photosynthesis');
@@ -359,8 +659,91 @@ describe('My Library — /api/resources', () => {
       expect(rows).toHaveLength(0);
     });
 
+    test('renders deterministic numbering, MCQ option letters, and a canonical answer-key heading', async () => {
+      mockGeminiFetch([mockAssessmentJsonResponse({ count: 3, type: 'mcq' })]);
+      const res = await generate(teacherAToken, { ...validConfig, questionCount: 3 });
+      expect(res.status).toBe(200);
+      const { content } = res.body;
+
+      // Sequential numbering, app-assigned — not sourced from the model.
+      expect(content).toMatch(/## Questions[\s\S]*1\. Question 1\?/);
+      expect(content).toMatch(/2\. Question 2\?/);
+      expect(content).toMatch(/3\. Question 3\?/);
+      // Options rendered as A–D on their own lines.
+      expect(content).toMatch(/A\. Option A\nB\. Option B\nC\. Option C\nD\. Option D/);
+      // Canonical, exact answer-key heading — guaranteed by the server now,
+      // not dependent on the model reproducing it verbatim.
+      expect(content).toContain('## Answer Key');
+    });
+
+    // The fixture strings use real JS escapes ('\t' = tab, '\f' = form feed) so
+    // JSON.stringify re-emits them as the "\t"/"\f" JSON escapes Gemini
+    // produces when it writes single-backslash LaTeX inside JSON — the exact
+    // corruption observed in real generated papers ("\tan" → tab+"an").
+    test('repairs JSON-escape-mangled LaTeX from the model before rendering', async () => {
+      const doc = {
+        instructions: 'Answer all questions carefully.',
+        questions: [
+          {
+            type: 'mcq',
+            text: 'If $\tan \theta = \frac{3}{4}$, what is $\text{cosec } \theta$?',
+            options: ['$\frac{5}{3}$', '$\frac{5}{4}$', '$\text{sqrt}(2)$', '$\tan 60^\text{o}$'],
+            correctOptionIndex: 0,
+            correctAnswer: '',
+          },
+          mockMcqQuestion(2),
+          mockMcqQuestion(3),
+        ],
+      };
+      mockGeminiFetch([geminiSuccess(JSON.stringify(doc))]);
+      const res = await generate(teacherAToken, { ...validConfig, questionCount: 3 });
+      expect(res.status).toBe(200);
+      const { content } = res.body;
+
+      expect(content).toContain('$\\tan \\theta = \\frac{3}{4}$');
+      expect(content).toContain('\\operatorname{cosec}');
+      expect(content).toContain('A. $\\frac{5}{3}$');
+      expect(content).toContain('$\\sqrt{2}$');
+      expect(content).toContain('$\\tan 60^{\\circ}$');
+      // No JSON-escape control characters survive into the stored document.
+      expect(content).not.toMatch(/[\t\f\x08]/);
+    });
+
+    test('worksheet format renders the Teacher Answer Key heading', async () => {
+      mockGeminiFetch([mockAssessmentJsonResponse({ count: 3, type: 'mcq' })]);
+      const res = await generate(teacherAToken, { ...validConfig, format: 'worksheet', questionCount: 3 });
+      expect(res.status).toBe(200);
+      expect(res.body.content).toContain('## Teacher Answer Key');
+    });
+
+    // Phase 3: Student Name / Roll No. / Date are no longer baked into the
+    // generated Markdown as hardcoded lines — that's now a teacher-configured
+    // letterhead (Resource.structured.examMeta) rendered client-side by
+    // ExamHeader.tsx, for both quiz and worksheet alike, never AI-authored text.
+    test('does NOT hardcode Student Name/Date lines into the document (superseded by the client-rendered letterhead)', async () => {
+      mockGeminiFetch([mockAssessmentJsonResponse({ count: 3, type: 'mcq' })]);
+      const res = await generate(teacherAToken, { ...validConfig, format: 'worksheet', questionCount: 3 });
+      expect(res.status).toBe(200);
+      expect(res.body.content).not.toContain('Student Name:');
+      expect(res.body.content).not.toContain('Date: __________');
+    });
+
+    test('true_false and short_answer question types render correctly', async () => {
+      mockGeminiFetch([mockAssessmentJsonResponse({ count: 3, type: 'true_false' })]);
+      let res = await generate(teacherAToken, { ...validConfig, questionType: 'true_false', questionCount: 3 });
+      expect(res.status).toBe(200);
+      expect(res.body.content).toMatch(/1\. Statement 1\. — \(True \/ False\)/);
+      expect(res.body.content).toMatch(/## Answer Key[\s\S]*1\. False/); // i=1 (1-indexed) -> i%2===0 is false in builder for i=1
+
+      mockGeminiFetch([mockAssessmentJsonResponse({ count: 3, type: 'short_answer' })]);
+      res = await generate(teacherAToken, { ...validConfig, questionType: 'short_answer', questionCount: 3 });
+      expect(res.status).toBe(200);
+      expect(res.body.content).toContain('1. Explain concept 1.');
+      expect(res.body.content).toMatch(/## Answer Key[\s\S]*1\. Model answer 1\./);
+    });
+
     test('accepts the maximum question count (30)', async () => {
-      mockGeminiFetch([geminiSuccess('# Quiz\n1. Q\n## Answer Key\n1. A')]);
+      mockGeminiFetch([mockAssessmentJsonResponse({ count: 30, type: 'mcq' })]);
       const res = await generate(teacherAToken, { ...validConfig, questionCount: 30 });
       expect(res.status).toBe(200);
     });
@@ -408,6 +791,114 @@ describe('My Library — /api/resources', () => {
       const res = await generate(teacherAToken, validConfig);
       expect(res.status).toBe(502);
       expect(res.body.code).toBe('UPSTREAM_UNAVAILABLE');
+    });
+
+    // --- Malformed / non-compliant AI response handling (Phase 1) ----------
+    // Previously (Markdown generation) there was no server-side check at all
+    // that the model's output actually matched what was asked for — these
+    // cases would have silently reached the teacher's preview looking
+    // "generated" even when broken. Now every one of these is rejected with
+    // a typed, non-200 error instead.
+    describe('malformed / non-compliant AI responses', () => {
+      test('rejects a response that is not valid JSON at all', async () => {
+        mockGeminiFetch([geminiSuccess('# Quiz: Photosynthesis\n1. Q?\n## Answer Key\n1. A')]);
+        const res = await generate(teacherAToken, validConfig);
+        expect(res.status).toBe(502);
+        expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+      });
+
+      test('rejects valid JSON that does not match the schema shape at all', async () => {
+        mockGeminiFetch([geminiSuccess(JSON.stringify({ foo: 'bar' }))]);
+        const res = await generate(teacherAToken, validConfig);
+        expect(res.status).toBe(502);
+        expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+      });
+
+      test('rejects an MCQ question with only 3 options', async () => {
+        const doc = mockAssessmentDoc({ count: 5, type: 'mcq' });
+        doc.questions[0].options = ['Only', 'Three', 'Options'];
+        mockGeminiFetch([geminiSuccess(JSON.stringify(doc))]);
+        const res = await generate(teacherAToken, validConfig);
+        expect(res.status).toBe(502);
+        expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+      });
+
+      test('rejects an MCQ question with an out-of-range correctOptionIndex', async () => {
+        const doc = mockAssessmentDoc({ count: 5, type: 'mcq' });
+        doc.questions[0].correctOptionIndex = 7;
+        mockGeminiFetch([geminiSuccess(JSON.stringify(doc))]);
+        const res = await generate(teacherAToken, validConfig);
+        expect(res.status).toBe(502);
+        expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+      });
+
+      test('rejects a true_false question whose correctAnswer is not "True"/"False"', async () => {
+        const doc = mockAssessmentDoc({ count: 3, type: 'true_false' });
+        doc.questions[0].correctAnswer = 'Maybe';
+        mockGeminiFetch([geminiSuccess(JSON.stringify(doc))]);
+        const res = await generate(teacherAToken, { ...validConfig, questionType: 'true_false', questionCount: 3 });
+        expect(res.status).toBe(502);
+        expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+      });
+
+      test('rejects a short_answer question with an empty correctAnswer', async () => {
+        const doc = mockAssessmentDoc({ count: 3, type: 'short_answer' });
+        doc.questions[0].correctAnswer = '';
+        mockGeminiFetch([geminiSuccess(JSON.stringify(doc))]);
+        const res = await generate(teacherAToken, { ...validConfig, questionType: 'short_answer', questionCount: 3 });
+        expect(res.status).toBe(502);
+        expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+      });
+
+      test('rejects a response with fewer questions than requested', async () => {
+        mockGeminiFetch([mockAssessmentJsonResponse({ count: 3, type: 'mcq' })]); // requested 5
+        const res = await generate(teacherAToken, validConfig);
+        expect(res.status).toBe(502);
+        expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+      });
+
+      test('rejects a response with more questions than requested', async () => {
+        mockGeminiFetch([mockAssessmentJsonResponse({ count: 8, type: 'mcq' })]); // requested 5
+        const res = await generate(teacherAToken, validConfig);
+        expect(res.status).toBe(502);
+        expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+      });
+
+      test('rejects a response whose question types do not match a non-mixed request', async () => {
+        mockGeminiFetch([mockAssessmentJsonResponse({ count: 5, type: 'true_false' })]); // requested mcq
+        const res = await generate(teacherAToken, validConfig); // questionType: 'mcq'
+        expect(res.status).toBe(502);
+        expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+      });
+
+      test('accepts a mixed-type response when questionType is "mixed"', async () => {
+        const doc = {
+          instructions: 'Answer everything.',
+          questions: [
+            mockMcqQuestion(1),
+            mockTrueFalseQuestion(2),
+            mockShortAnswerQuestion(3),
+          ],
+        };
+        mockGeminiFetch([geminiSuccess(JSON.stringify(doc))]);
+        const res = await generate(teacherAToken, { ...validConfig, questionType: 'mixed', questionCount: 3 });
+        expect(res.status).toBe(200);
+        expect(res.body.content).toContain('1. Question 1?');
+        expect(res.body.content).toMatch(/2\. Statement 2\. — \(True \/ False\)/);
+        expect(res.body.content).toContain('3. Explain concept 3.');
+      });
+
+      test('rejects a response cut off mid-JSON (truncation is not spliced/continued for structured output)', async () => {
+        // A response that reports MAX_TOKENS with a truncated JSON body.
+        // generateContent() skips its continuation loop when responseSchema
+        // is set, so this reaches the route as invalid JSON.
+        mockGeminiFetch([
+          { status: 200, json: { candidates: [{ content: { parts: [{ text: '{"instructions": "Answer all", "quest' }] }, finishReason: 'MAX_TOKENS' }] } },
+        ]);
+        const res = await generate(teacherAToken, validConfig);
+        expect(res.status).toBe(502);
+        expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+      });
     });
   });
 });

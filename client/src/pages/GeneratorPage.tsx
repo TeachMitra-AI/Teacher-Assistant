@@ -4,9 +4,14 @@ import {
   FileQuestion, ClipboardList, Sparkles, Loader2, Pencil, Eye, Save, ArrowRight,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
+import ExamHeader from '../components/ExamHeader';
+import ExamHeaderEditor from '../components/ExamHeaderEditor';
 import { useToast } from '../components/Toast';
+import { useAuth } from '../auth';
 import { usePreferences } from '../hooks/usePreferences';
 import { formatResponse } from '../lib/format';
+import { stripAssessmentPreamble } from '../lib/assessment';
+import { buildInitialExamMeta } from '../lib/examMeta';
 import { generateAssessment, createResource, type GenerateAssessmentInput } from '../lib/resources';
 import {
   ASSESSMENT_FORMATS, DIFFICULTIES, QUESTION_TYPES, LANGUAGES, GRADES, SUBJECTS,
@@ -14,6 +19,7 @@ import {
 } from '../config';
 import { ApiError } from '../api';
 import type { AssessmentFormat, Difficulty, QuestionType } from '../lib/resources';
+import type { ExamPaperMeta } from '../types';
 
 // Sensible default title for a generated assessment (editable before saving).
 function defaultTitle(format: AssessmentFormat, topic: string, grade: string): string {
@@ -26,6 +32,7 @@ function defaultTitle(format: AssessmentFormat, topic: string, grade: string): s
 export default function GeneratorPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
   const navigate = useNavigate();
   const { show } = useToast();
+  const { user } = useAuth();
 
   // Config form state.
   const [format, setFormat] = useState<AssessmentFormat>('quiz');
@@ -47,6 +54,11 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
   const [tab, setTab] = useState<'preview' | 'edit'>('preview');
   const [contentDirty, setContentDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Exam-paper letterhead (Phase 3) — deterministic teacher input, never sent
+  // to Gemini. Initialized fresh on each successful generation, prefilled
+  // from the teacher's site-wide defaults (Settings) and School/User identity.
+  const [examMeta, setExamMeta] = useState<ExamPaperMeta>({});
 
   async function handleGenerate(e?: FormEvent) {
     e?.preventDefault();
@@ -79,6 +91,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
       setTitle(defaultTitle(format, topic, grade));
       setContentDirty(false);
       setTab('preview');
+      if (user) setExamMeta(buildInitialExamMeta(user, user.preferences.examPaperDefaults));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not generate. Please try again.');
     } finally {
@@ -102,7 +115,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
         subject: subject.trim() || undefined,
         language,
         content,
-        structured: JSON.stringify({ format, difficulty, questionType, questionCount, topic: topic.trim() }),
+        structured: JSON.stringify({ format, difficulty, questionType, questionCount, topic: topic.trim(), examMeta }),
       });
       show('Saved to your library', 'success');
       // Continue into the full Workspace (edit / AI assist / student & teacher print).
@@ -253,6 +266,8 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
               />
             </label>
 
+            <ExamHeaderEditor value={examMeta} onChange={setExamMeta} />
+
             <div className="workspace-content">
               <div className="workspace-tabs" role="tablist" aria-label="Preview mode">
                 <button type="button" role="tab" aria-selected={tab === 'preview'} className={`workspace-tab${tab === 'preview' ? ' active' : ''}`} onClick={() => setTab('preview')}>
@@ -273,7 +288,13 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
                   spellCheck
                 />
               ) : (
-                <div className="response-body workspace-preview" dangerouslySetInnerHTML={{ __html: formatResponse(content || '') }} />
+                <div className="response-body workspace-preview exam-paper">
+                  <ExamHeader meta={examMeta} fallbackTitle={title} subject={subject} grade={grade} />
+                  {/* The letterhead already presents the title/metadata, so the
+                      generated preamble is stripped from display (never from
+                      the content that gets saved). */}
+                  <div dangerouslySetInnerHTML={{ __html: formatResponse(stripAssessmentPreamble(content) || '') }} />
+                </div>
               )}
             </div>
 

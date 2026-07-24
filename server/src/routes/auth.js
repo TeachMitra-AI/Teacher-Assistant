@@ -42,6 +42,21 @@ const credentialsSchema = z.object({
 
 const RESPONSE_STYLES = ['balanced', 'concise', 'detailed', 'step_by_step', 'practical'];
 
+// Site-wide defaults for the quiz/worksheet exam-paper letterhead (Phase 3 of
+// the quiz/worksheet generator rework). Purely presentational teacher input —
+// never sent to Gemini — so it's validated here only to keep the stored JSON
+// well-formed, not for any AI-safety reason. Per-resource overrides live in
+// Resource.structured (see server/src/routes/resources.js), not here.
+const examPaperDefaultsSchema = z
+  .object({
+    schoolName: z.string().trim().max(120).optional(),
+    teacherName: z.string().trim().max(80).optional(),
+    defaultInstructions: z.string().trim().max(500).optional(),
+    showDate: z.boolean().optional(),
+    showTime: z.boolean().optional(),
+  })
+  .strict();
+
 const preferencesSchema = z
   .object({
     defaultLanguage: z.string().trim().max(20).optional(),
@@ -50,6 +65,7 @@ const preferencesSchema = z
     defaultClassroomType: z.string().trim().max(60).optional(),
     responseStyle: z.enum(RESPONSE_STYLES).optional(),
     avatar: z.string().trim().max(20).optional(),
+    examPaperDefaults: examPaperDefaultsSchema.optional(),
   })
   .strict();
 
