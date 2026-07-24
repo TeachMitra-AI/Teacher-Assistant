@@ -21,6 +21,27 @@ export interface SplitAssessment {
   hasAnswerKey: boolean;
 }
 
+// Matches the generator's own document preamble: a leading "# Title" line
+// followed by the "**Grade:** ..."-style metadata lines (and blank lines), up
+// to but not including the first "##" section heading. On an exam paper this
+// information lives in the letterhead (components/ExamHeader.tsx) — showing
+// the preamble too printed the title and metadata twice (three times counting
+// the browser-window title Chrome adds). Content the teacher has hand-edited
+// away from this exact shape is returned unchanged — stripping is
+// display-only and must never guess.
+const GENERATED_PREAMBLE = /^\s*# [^\n]+\n(?:\s*\n|\*\*[^\n]+\n)*(?=\s{0,3}##\s)/;
+
+/**
+ * Removes the generated title/metadata preamble from an assessment's Markdown
+ * for display alongside the exam-paper letterhead (which already presents the
+ * same information). The stored content is never modified — the server's
+ * AI-assist parser still relies on the preamble being saved intact.
+ */
+export function stripAssessmentPreamble(markdown: string): string {
+  const text = markdown ?? '';
+  return text.replace(GENERATED_PREAMBLE, '');
+}
+
 export function splitAnswerKey(markdown: string): SplitAssessment {
   const text = markdown ?? '';
   const match = ANSWER_KEY_HEADING.exec(text);

@@ -6,15 +6,19 @@ import {
   TrendingDown, TrendingUp, ListPlus, Type, ChevronDown,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
+import ExamHeader from '../components/ExamHeader';
+import ExamHeaderEditor from '../components/ExamHeaderEditor';
 import { useToast } from '../components/Toast';
+import { useAuth } from '../auth';
 import { useDismissable } from '../hooks/useDismissable';
 import { usePreferences } from '../hooks/usePreferences';
 import { formatResponse } from '../lib/format';
+import { buildInitialExamMeta, mergeExamMeta, parseExamMeta } from '../lib/examMeta';
 import { getResource, updateResource, runAiAction, type AiActionId } from '../lib/resources';
-import { splitAnswerKey } from '../lib/assessment';
+import { splitAnswerKey, stripAssessmentPreamble } from '../lib/assessment';
 import { RESOURCE_TYPES, RESOURCE_TYPE_META, LANGUAGES, GRADES, SUBJECTS } from '../config';
 import { ApiError } from '../api';
-import type { LibraryResource, ResourceType } from '../types';
+import type { ExamPaperMeta, LibraryResource, ResourceType } from '../types';
 
 // How the print document should render an assessment.
 type PrintMode = 'full' | 'student' | 'teacher';
@@ -73,6 +77,9 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { show } = useToast();
+  const { user } = useAuth();
+  const userRef = useRef(user);
+  userRef.current = user;
 
   const [resource, setResource] = useState<LibraryResource | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
@@ -80,6 +87,15 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notFound, setNotFound] = useState(false);
+
+  // Exam-paper letterhead (Phase 3) — kept separate from FormState since it
+  // lives inside the opaque `structured` JSON column, not a first-class
+  // resource field. A resource that's never had its letterhead customized
+  // loads with sensible prefilled values (school/teacher identity + site
+  // defaults) rather than a blank one; `examMetaBaseline` is set to the SAME
+  // prefilled value so that alone doesn't count as an unsaved change.
+  const [examMeta, setExamMeta] = useState<ExamPaperMeta>({});
+  const [examMetaBaseline, setExamMetaBaseline] = useState<ExamPaperMeta>({});
 
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<'edit' | 'preview'>('edit');
@@ -99,12 +115,19 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
   useDismissable(printMenuOpen, printMenuRef, () => setPrintMenuOpen(false));
 
   const dirty = useMemo(
-    () => !!form && !!baseline && (Object.keys(form) as (keyof FormState)[]).some((k) => form[k] !== baseline[k]),
-    [form, baseline]
+    () =>
+      (!!form && !!baseline && (Object.keys(form) as (keyof FormState)[]).some((k) => form[k] !== baseline[k])) ||
+      JSON.stringify(examMeta) !== JSON.stringify(examMetaBaseline),
+    [form, baseline, examMeta, examMetaBaseline]
   );
 
   // Load the resource. 404 (missing OR not owned) gets a dedicated state so we
   // never imply another user's resource exists.
+  //
+  // `userRef` (not `user` itself) is read inside the effect so an unrelated
+  // user-object update elsewhere (e.g. Settings saving an unrelated
+  // preference) can't re-trigger this effect and blow away any in-progress
+  // local edits — only navigating to a different resource id should reload.
   useEffect(() => {
     let cancelled = false;
     if (!id) return;
@@ -118,6 +141,15 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
         const f = toForm(r);
         setForm(f);
         setBaseline(f);
+        const savedExamMeta = parseExamMeta(r.structured);
+        const currentUser = userRef.current;
+        const initialExamMeta = Object.keys(savedExamMeta).length > 0
+          ? savedExamMeta
+          : currentUser
+            ? buildInitialExamMeta(currentUser, currentUser.preferences.examPaperDefaults)
+            : {};
+        setExamMeta(initialExamMeta);
+        setExamMetaBaseline(initialExamMeta);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -157,16 +189,29 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
     return () => cancelAnimationFrame(raf);
   }, [printReq]);
 
+  // Fails closed: if a "Student version" is requested but no answer-key
+  // heading was found to split on, nothing could actually be hidden — rather
+  // than silently printing the full document (which may still contain an
+  // answer key under an unrecognized heading), require an explicit
+  // confirmation so the teacher isn't caught off guard.
   function startPrint(mode: PrintMode) {
+    if (mode === 'student' && isAssessment && !hasAnswerKey) {
+      const ok = window.confirm(
+        "No answer-key section was detected in this document, so nothing could be hidden — the student version will include everything exactly as shown in Edit. Please check it for answers before printing. Continue?"
+      );
+      if (!ok) return;
+    }
     setPrintMode(mode);
     setPrintMenuOpen(false);
     setPrintReq((n) => n + 1);
   }
 
-  // For an assessment with an answer key, offer Student / Teacher versions;
-  // otherwise print the whole document directly.
+  // For any assessment, always offer the Student / Teacher choice — this is
+  // a deliberate checkpoint even when no answer key was detected (see
+  // startPrint above), rather than silently printing the full document.
+  // Non-assessment resources have no such split and print directly.
   function onPrintClick() {
-    if (hasAnswerKey) setPrintMenuOpen((o) => !o);
+    if (isAssessment) setPrintMenuOpen((o) => !o);
     else startPrint('full');
   }
 
@@ -193,6 +238,9 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
     if (form.subject !== baseline.subject) patch.subject = form.subject.trim();
     if (form.language !== baseline.language) patch.language = form.language;
     if (form.content !== baseline.content) patch.content = form.content;
+    if (JSON.stringify(examMeta) !== JSON.stringify(examMetaBaseline)) {
+      patch.structured = mergeExamMeta(resource.structured, examMeta);
+    }
 
     if (Object.keys(patch).length === 0) {
       show('No changes to save', 'info');
@@ -206,6 +254,7 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
       const f = toForm(updated);
       setForm(f);
       setBaseline(f);
+      if ('structured' in patch) setExamMetaBaseline(examMeta);
       show('Changes saved', 'success');
     } catch (err) {
       show(err instanceof ApiError ? err.message : 'Could not save changes', 'error');
@@ -261,22 +310,32 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
                 className="btn-text workspace-print"
                 onClick={onPrintClick}
                 disabled={loading || notFound || !!error}
-                aria-haspopup={hasAnswerKey ? 'menu' : undefined}
-                aria-expanded={hasAnswerKey ? printMenuOpen : undefined}
+                aria-haspopup={isAssessment ? 'menu' : undefined}
+                aria-expanded={isAssessment ? printMenuOpen : undefined}
               >
                 <Printer size={16} aria-hidden="true" /> <span className="workspace-btn-label">Print / Export</span>
-                {hasAnswerKey && <ChevronDown size={14} aria-hidden="true" />}
+                {isAssessment && <ChevronDown size={14} aria-hidden="true" />}
               </button>
-              {hasAnswerKey && printMenuOpen && (
+              {isAssessment && printMenuOpen && (
                 <div className="workspace-print-menu" role="menu">
                   <button type="button" role="menuitem" className="workspace-print-menu-item" onClick={() => startPrint('student')}>
                     Student version
-                    <span className="workspace-print-menu-hint">Questions only — no answers</span>
+                    <span className="workspace-print-menu-hint">
+                      {hasAnswerKey ? 'Questions only — no answers' : 'No answer key detected — asks before printing'}
+                    </span>
                   </button>
                   <button type="button" role="menuitem" className="workspace-print-menu-item" onClick={() => startPrint('teacher')}>
                     Teacher version
-                    <span className="workspace-print-menu-hint">Includes answer key</span>
+                    <span className="workspace-print-menu-hint">
+                      {hasAnswerKey ? 'Includes answer key' : 'Prints the document as-is'}
+                    </span>
                   </button>
+                  {/* The browser's own printed URL/date header and footer can
+                      only be turned off inside the print dialog — no web page
+                      can disable it — so tell the teacher where the switch is. */}
+                  <p className="workspace-print-menu-note">
+                    For a clean paper, turn off “Headers and footers” under More&nbsp;settings in the print dialog.
+                  </p>
                 </div>
               )}
             </div>
@@ -371,6 +430,8 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
                 <datalist id="ws-subjects">{SUBJECTS.map((s) => <option key={s} value={s} />)}</datalist>
               </div>
 
+              {isAssessment && <ExamHeaderEditor value={examMeta} onChange={setExamMeta} />}
+
               <div className="workspace-content">
                 <div className="workspace-tabs" role="tablist" aria-label="Editor mode">
                   <button
@@ -404,10 +465,15 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
                     spellCheck
                   />
                 ) : (
-                  <div
-                    className="response-body workspace-preview"
-                    dangerouslySetInnerHTML={{ __html: formatResponse(form.content || '_Nothing to preview yet._') }}
-                  />
+                  <div className={`response-body workspace-preview${isAssessment ? ' exam-paper' : ''}`}>
+                    {isAssessment && (
+                      <ExamHeader meta={examMeta} fallbackTitle={form.title} subject={form.subject} grade={form.grade} />
+                    )}
+                    {/* For an assessment the letterhead already presents the
+                        title/metadata, so the generated preamble is stripped
+                        from display (never from the stored content). */}
+                    <div dangerouslySetInnerHTML={{ __html: formatResponse((isAssessment ? stripAssessmentPreamble(form.content) : form.content) || '_Nothing to preview yet._') }} />
+                  </div>
                 )}
               </div>
 
@@ -485,17 +551,23 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
       {/* Print-only document (Phase 3 + assessment student/teacher versions).
           Rendered from live form state so the teacher can print what they see,
           even before saving. For a student print of an assessment, ONLY the
-          questions half is put into the DOM — the answer key is never present. */}
+          questions half is put into the DOM — the answer key is never present.
+
+          An assessment prints as a clean exam paper: the letterhead
+          (ExamHeader) IS the paper's header, so none of the app-document
+          furniture (brand line, title, metadata row, updated date, version
+          badge) is rendered — those made the export look like a printed
+          webpage — and the generated Markdown preamble is stripped since the
+          letterhead already carries the same information. Other resource
+          types keep the original document-style header. */}
       {form && resource && !loading && !notFound && !error && (() => {
-        const printContent = hasAnswerKey && printMode === 'student' ? answerSplit.questions : form.content || '';
-        const versionLabel = hasAnswerKey
-          ? printMode === 'student'
-            ? 'Student Version'
-            : printMode === 'teacher'
-              ? 'Teacher Version — includes answer key'
-              : ''
-          : '';
-        return (
+        const rawPrintContent = hasAnswerKey && printMode === 'student' ? answerSplit.questions : form.content || '';
+        return isAssessment ? (
+          <div className="print-doc print-doc--exam" aria-hidden="true">
+            <ExamHeader meta={examMeta} fallbackTitle={form.title} subject={form.subject} grade={form.grade} />
+            <div className="response-body print-body" dangerouslySetInnerHTML={{ __html: formatResponse(stripAssessmentPreamble(rawPrintContent)) }} />
+          </div>
+        ) : (
           <div className="print-doc" aria-hidden="true">
             <div className="print-brand">Teacher Assistant</div>
             <h1 className="print-title">{form.title || 'Untitled resource'}</h1>
@@ -507,10 +579,9 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
                 `Language: ${LANGUAGES.find((l) => l.value === form.language)?.label ?? form.language}`,
               ].filter(Boolean).join('  ·  ')}
             </p>
-            {versionLabel && <p className="print-version">{versionLabel}</p>}
             <p className="print-date">Updated {formatDate(resource.updatedAt)}</p>
             <hr className="print-rule" />
-            <div className="response-body print-body" dangerouslySetInnerHTML={{ __html: formatResponse(printContent) }} />
+            <div className="response-body print-body" dangerouslySetInnerHTML={{ __html: formatResponse(rawPrintContent) }} />
           </div>
         );
       })()}

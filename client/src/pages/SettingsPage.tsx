@@ -17,6 +17,7 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
   const { theme, toggleTheme, fontScale, changeFont, canIncrease, canDecrease } = preferences;
 
   const prefs = user?.preferences ?? {};
+  const examDefaults = prefs.examPaperDefaults ?? {};
 
   // Profile + teaching defaults
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
@@ -27,6 +28,15 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
   const [defaultClassroomType, setDefaultClassroomType] = useState(prefs.defaultClassroomType ?? '');
   const [responseStyle, setResponseStyle] = useState<ResponseStyle>(prefs.responseStyle ?? 'balanced');
   const [savingProfile, setSavingProfile] = useState(false);
+
+  // Exam-paper letterhead defaults (Quiz/Worksheet Generator) — prefilled
+  // from the school/teacher identity the app already has, editable/overridable.
+  const [examSchoolName, setExamSchoolName] = useState(examDefaults.schoolName ?? user?.school.name ?? '');
+  const [examTeacherName, setExamTeacherName] = useState(examDefaults.teacherName ?? user?.displayName ?? user?.name ?? '');
+  const [examInstructions, setExamInstructions] = useState(examDefaults.defaultInstructions ?? '');
+  const [examShowDate, setExamShowDate] = useState(examDefaults.showDate ?? false);
+  const [examShowTime, setExamShowTime] = useState(examDefaults.showTime ?? false);
+  const [savingExamDefaults, setSavingExamDefaults] = useState(false);
 
   // PIN change
   const [currentPin, setCurrentPin] = useState('');
@@ -46,6 +56,10 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
       defaultSubject: defaultSubject || undefined,
       defaultClassroomType: defaultClassroomType || undefined,
       responseStyle,
+      // Preserved as-is — this form doesn't edit exam-paper defaults, and the
+      // server does a shallow merge of the whole `preferences` object, so
+      // omitting this key here would wipe it out otherwise.
+      examPaperDefaults: prefs.examPaperDefaults,
     };
     try {
       const res = await api<{ user: User }>('/auth/me', {
@@ -58,6 +72,36 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
       show(err instanceof ApiError ? err.message : 'Could not save settings', 'error');
     } finally {
       setSavingProfile(false);
+    }
+  }
+
+  async function handleExamDefaultsSave(e: FormEvent) {
+    e.preventDefault();
+    setSavingExamDefaults(true);
+    const preferencesPayload: TeacherPreferences = {
+      // Preserved as-is for the same reason as above, mirrored.
+      avatar: prefs.avatar,
+      defaultLanguage: prefs.defaultLanguage,
+      defaultGrade: prefs.defaultGrade,
+      defaultSubject: prefs.defaultSubject,
+      defaultClassroomType: prefs.defaultClassroomType,
+      responseStyle: prefs.responseStyle,
+      examPaperDefaults: {
+        schoolName: examSchoolName.trim() || undefined,
+        teacherName: examTeacherName.trim() || undefined,
+        defaultInstructions: examInstructions.trim() || undefined,
+        showDate: examShowDate,
+        showTime: examShowTime,
+      },
+    };
+    try {
+      const res = await api<{ user: User }>('/auth/me', { method: 'PATCH', body: { preferences: preferencesPayload } });
+      updateUser(res.user);
+      show('Paper defaults saved', 'success');
+    } catch (err) {
+      show(err instanceof ApiError ? err.message : 'Could not save paper defaults', 'error');
+    } finally {
+      setSavingExamDefaults(false);
     }
   }
 
@@ -190,6 +234,48 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
 
           <button className="btn-primary" type="submit" disabled={savingProfile}>
             {savingProfile ? 'Saving…' : 'Save changes'}
+          </button>
+        </form>
+
+        {/* Exam paper letterhead defaults */}
+        <form className="settings-card" onSubmit={handleExamDefaultsSave}>
+          <h2>Quiz &amp; Worksheet paper details</h2>
+          <p className="settings-hint">
+            Pre-fills the letterhead on generated quizzes and worksheets. Prefilled from your school/name below —
+            override anything, or leave blank to leave it off the printed paper.
+          </p>
+
+          <div className="settings-grid">
+            <div>
+              <label className="field-label" htmlFor="examSchool">School name</label>
+              <input id="examSchool" className="text-input" type="text" maxLength={120}
+                value={examSchoolName} onChange={(e) => setExamSchoolName(e.target.value)}
+                placeholder={user.school.name} />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="examTeacher">Teacher name (shown on paper)</label>
+              <input id="examTeacher" className="text-input" type="text" maxLength={80}
+                value={examTeacherName} onChange={(e) => setExamTeacherName(e.target.value)}
+                placeholder={user.displayName || user.name} />
+            </div>
+          </div>
+
+          <label className="field-label" htmlFor="examInstructions">Default custom instructions</label>
+          <textarea id="examInstructions" className="text-input" rows={2} maxLength={500}
+            value={examInstructions} onChange={(e) => setExamInstructions(e.target.value)}
+            placeholder="e.g. Use of calculator is not allowed." />
+
+          <div className="settings-row">
+            <span>Show a Date field by default</span>
+            <input type="checkbox" checked={examShowDate} onChange={(e) => setExamShowDate(e.target.checked)} aria-label="Show a Date field by default" />
+          </div>
+          <div className="settings-row">
+            <span>Show a Time/Duration field by default</span>
+            <input type="checkbox" checked={examShowTime} onChange={(e) => setExamShowTime(e.target.checked)} aria-label="Show a Time/Duration field by default" />
+          </div>
+
+          <button className="btn-primary" type="submit" disabled={savingExamDefaults}>
+            {savingExamDefaults ? 'Saving…' : 'Save paper defaults'}
           </button>
         </form>
 

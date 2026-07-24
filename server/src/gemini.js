@@ -105,13 +105,23 @@ class GeminiService {
   }
 
   /**
-   * @param {{ systemInstruction: string, userText: string }} params
+   * @param {{ systemInstruction: string, userText: string, responseSchema?: object }} params
+   *   `responseSchema` (optional): an OpenAPI-subset schema object. When
+   *   present, Gemini is asked to return `application/json` conforming to
+   *   it, instead of free-form text — used for structured generation (see
+   *   generateStructuredContent) so formatting never depends on the model
+   *   choosing to follow Markdown instructions correctly.
    */
-  buildRequestBody({ systemInstruction, userText }) {
+  buildRequestBody({ systemInstruction, userText, responseSchema }) {
+    const generationConfig = { ...GENERATION_CONFIG, maxOutputTokens: this.maxOutputTokens };
+    if (responseSchema) {
+      generationConfig.responseMimeType = 'application/json';
+      generationConfig.responseSchema = responseSchema;
+    }
     return {
       systemInstruction: { parts: [{ text: systemInstruction }] },
       contents: [{ role: 'user', parts: [{ text: userText }] }],
-      generationConfig: { ...GENERATION_CONFIG, maxOutputTokens: this.maxOutputTokens },
+      generationConfig,
       safetySettings: SAFETY_SETTINGS,
     };
   }
@@ -327,22 +337,30 @@ You are continuing a response that was cut off mid-way. The text already written
    * retry, continuation, and output-sanitization machinery so cost and latency
    * are bounded identically. Returns only { text, metrics } — no coaching
    * fields — and never persists anything itself.
-   * @param {{systemInstruction: string, userText: string, language?: string}} params
+   * @param {{systemInstruction: string, userText: string, language?: string, responseSchema?: object}} params
+   *   `responseSchema` (optional): requests structured JSON output (see
+   *   buildRequestBody). When present, the MAX_TOKENS continuation loop
+   *   below is skipped — continuation works by asking the model to resume
+   *   from a text splice, which is safe for prose but would very likely
+   *   produce invalid JSON for a structured response; a truncated JSON
+   *   response is left for the caller's schema validation to reject
+   *   cleanly instead.
    * @param {{correlationId?: string}} [options]
    */
-  async generateContent({ systemInstruction, userText, language = 'en' }, options = {}) {
+  async generateContent({ systemInstruction, userText, language = 'en', responseSchema }, options = {}) {
     const startTime = this.now();
     const tracker = this.createTracker();
 
     try {
       const first = this.extractCandidate(
-        await this.makeRequest(this.buildRequestBody({ systemInstruction, userText }), tracker)
+        await this.makeRequest(this.buildRequestBody({ systemInstruction, userText, responseSchema }), tracker)
       );
       let text = first.text;
       let finishReason = first.finishReason;
 
       for (
         let i = 0;
+        !responseSchema &&
         finishReason === 'MAX_TOKENS' &&
         i < this.maxContinuations &&
         text.length < MAX_OUTPUT_LENGTH &&

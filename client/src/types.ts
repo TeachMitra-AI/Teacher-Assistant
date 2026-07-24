@@ -10,6 +10,17 @@ export interface School {
 
 export type ResponseStyle = 'balanced' | 'concise' | 'detailed' | 'step_by_step' | 'practical';
 
+// Site-wide defaults for the quiz/worksheet exam-paper letterhead (see
+// ExamPaperMeta below for the per-resource shape these prefill). Purely
+// presentational teacher input — never sent to Gemini.
+export interface ExamPaperDefaults {
+  schoolName?: string;
+  teacherName?: string;
+  defaultInstructions?: string;
+  showDate?: boolean;
+  showTime?: boolean;
+}
+
 export interface TeacherPreferences {
   defaultLanguage?: string;
   defaultGrade?: string;
@@ -17,6 +28,28 @@ export interface TeacherPreferences {
   defaultClassroomType?: string;
   responseStyle?: ResponseStyle;
   avatar?: string;
+  examPaperDefaults?: ExamPaperDefaults;
+}
+
+// Per-resource exam-paper letterhead (quiz/worksheet only), saved as JSON
+// inside LibraryResource.structured alongside the existing generator config
+// ({ format, difficulty, questionType, questionCount, topic }) under the key
+// "examMeta". Deterministic teacher input, rendered by
+// components/ExamHeader.tsx — never baked into AI-generated content, and
+// never round-tripped through the /resources/generate request.
+export interface ExamPaperMeta {
+  schoolName?: string;
+  examName?: string;
+  teacherName?: string;
+  date?: string;
+  time?: string;
+  maxMarks?: string;
+  customInstructions?: string;
+  // Whether to show a Date/Time row at all — independent of whether a value
+  // has been typed yet, so "show it" and "leave the date blank on purpose"
+  // (a real printed exam paper commonly does the latter) are both possible.
+  showDate?: boolean;
+  showTime?: boolean;
 }
 
 export interface User {

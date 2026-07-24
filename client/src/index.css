@@ -719,10 +719,39 @@ button { font-family: inherit; cursor: pointer; }
   padding: 0.25rem 0.6rem;
 }
 .response-body { line-height: 1.7; }
+.response-body h1 { font-size: 1.3rem; margin: 0 0 0.6rem; }
+.response-body h2 { color: var(--orange); font-size: 1.15rem; margin-top: 1.3rem; }
 .response-body h3 { color: var(--orange); font-size: 1.05rem; margin-top: 1.2rem; }
+.response-body h4, .response-body h5, .response-body h6 { font-size: 1rem; margin-top: 1rem; }
 .response-body ul, .response-body ol { padding-left: 1.3rem; }
 .response-body li { margin: 0.3rem 0; }
+/* Numbered items carry their number as literal text (see format.ts) rather
+   than relying on <ol>'s own counter, so the browser's marker is hidden to
+   avoid a duplicate "1. 1. ...". */
+.response-body ol { list-style: none; padding-left: 0; }
 .response-body p { margin: 0.7rem 0; }
+/* Question number in bold, question text hanging-indented past it — the
+   professional exam-paper convention (number in the margin, text aligned). */
+.response-body .fmt-qnum { font-weight: 700; }
+.response-body li.fmt-li-ol { padding-left: 1.9em; text-indent: -1.9em; }
+/* text-indent inherits into every inline-block, and KaTeX output is built
+   from nested inline-blocks — without this reset the hanging indent above
+   shifts glyphs out of their (often zero-width) boxes and math turns
+   invisible. */
+.response-body .katex { text-indent: 0; }
+/* MCQ options: one grouped block per question (see format.ts), laid out as a
+   two-column grid aligned under the question text. */
+.response-body .fmt-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem 1.4rem;
+  margin: 0.35rem 0 0.75rem 1.9em;
+}
+.response-body .fmt-option { margin: 0; }
+.response-body .fmt-subpart { margin: 0.3rem 0 0.3rem 1.9em; }
+@media (max-width: 640px) {
+  .response-body .fmt-options { grid-template-columns: 1fr; }
+}
 
 .response-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.1rem; }
 .action-chip {
@@ -1628,6 +1657,113 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   outline-offset: 1px;
 }
 
+/* ---- Exam-paper letterhead (Phase 3) -------------------------------------- */
+/* .exam-header is used identically on-screen (inside the .exam-paper preview)
+   and in the hidden .print-doc. It is laid out like a real school examination
+   paper: large centred school name, centred exam title, Class/Subject and
+   Time/Maximum-Marks rows spread to the margins, Name/Roll-No fill-in lines,
+   and a General Instructions block, closed by a double rule. All colors come
+   from currentColor so the same rules produce ink-on-paper in the print doc
+   and in the white .exam-paper preview without a parallel color scheme. */
+.exam-header {
+  padding: 0 0 0.9rem;
+  margin: 0 0 1.1rem;
+  border-bottom: 3px double currentColor;
+  text-align: center;
+}
+.exam-header-school {
+  font-weight: 700;
+  font-size: 1.45rem;
+  line-height: 1.25;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.exam-header-name { font-size: 1.08rem; font-weight: 600; margin-top: 0.35rem; }
+.exam-header-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.85rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid currentColor;
+  font-size: 0.95rem;
+  text-align: left;
+}
+.exam-header-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.35rem 1.5rem; }
+.exam-header-right { margin-left: auto; text-align: right; }
+.exam-header-student { margin-top: 0.3rem; padding-top: 0.65rem; border-top: 1px dashed currentColor; }
+.exam-header-instructions {
+  font-size: 0.9rem;
+  font-style: italic;
+  text-align: left;
+  margin: 0.8rem 0 0;
+  padding-top: 0.6rem;
+  border-top: 1px solid currentColor;
+}
+.exam-header-instructions b { font-style: normal; }
+
+/* The on-screen preview of an assessment renders as a white sheet of paper —
+   ink text, serif type, brand colors suppressed — so what the teacher sees is
+   what the printed page will look like, in light AND dark theme alike. The
+   custom-property overrides repaint everything inside (headings, borders,
+   list text) without a parallel stylesheet. */
+.workspace-preview.exam-paper {
+  background: #ffffff;
+  color: #1a1a1a;
+  --text: #1a1a1a;
+  --text-muted: #444444;
+  --orange: #1a1a1a;
+  --border: #bbbbbb;
+  --surface-2: #ffffff;
+  font-family: Cambria, Georgia, 'Times New Roman', serif;
+}
+.exam-paper h2 {
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: center;
+  margin: 1.3rem 0 0.7rem;
+}
+.exam-paper .fmt-answer-key { border-top: 2px solid #bbbbbb; padding-top: 1rem; margin-top: 1.7rem; }
+/* KaTeX scales its glyphs up relative to the surrounding font; pull it back
+   slightly so inline math sits flush with the serif body text. */
+.exam-paper .katex { font-size: 1.06em; }
+
+.exam-editor { border: 1px solid var(--border); border-radius: var(--radius-sm); margin: 0.9rem 0 1.2rem; overflow: hidden; }
+.exam-editor-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.9rem;
+  background: var(--surface-2);
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text);
+  text-align: left;
+}
+.exam-editor-hint { font-weight: 400; color: var(--text-muted); font-size: 0.78rem; margin-left: auto; text-align: right; }
+.exam-editor-grid { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); gap: 0.8rem; padding: 0.9rem; }
+.exam-editor-grid .ws-label { display: flex; align-items: center; gap: 0.35rem; text-transform: none; letter-spacing: normal; font-size: 0.82rem; }
+.exam-editor-instructions { grid-column: 1 / -1; }
+.exam-editor-instructions textarea {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  font-family: inherit;
+  font-size: 0.88rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+}
+@media (max-width: 640px) {
+  .exam-editor-grid { grid-template-columns: 1fr; }
+  .exam-editor-hint { display: none; }
+}
+
 .workspace-tabs { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.75rem; }
 .workspace-tab {
   display: inline-flex;
@@ -1741,8 +1877,22 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 /* ---- Print / Export PDF (Phase 3) ---------------------------------------- */
 /* The print document is hidden on screen and revealed only when printing.
    Everything else in the app is hidden so the export is a clean, white,
-   classroom-ready sheet regardless of the active light/dark theme. */
-.print-doc { display: none; }
+   classroom-ready sheet regardless of the active light/dark theme.
+
+   Hidden by OFF-SCREEN POSITIONING, deliberately not display:none —
+   display:none content is never laid out, so the KaTeX math web fonts it
+   needs would not be fetched until the print dialog itself rendered, and
+   Chrome's print snapshot does not wait for late font loads: the first
+   print/PDF of a math paper came out with invisible math. Off-screen content
+   is laid out normally, so the fonts load with the page. */
+.print-doc {
+  position: absolute;
+  top: 0;
+  left: -100000px;
+  width: 210mm; /* lay out at A4 width so print layout matches */
+  visibility: hidden;
+  pointer-events: none;
+}
 
 @media print {
   /* Force a clean white sheet with dark text, ignoring the app theme. */
@@ -1751,6 +1901,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 
   .print-doc {
     display: block !important;
+    position: static !important;
+    visibility: visible !important;
+    width: auto !important;
     max-width: 100%;
     margin: 0;
     padding: 0;
@@ -1771,24 +1924,55 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   .print-date { font-size: 0.8rem; color: #666666; margin: 0; }
   .print-rule { border: none; border-top: 1px solid #cccccc; margin: 0.9rem 0 1.2rem; }
   .print-body { color: #111111; line-height: 1.6; font-size: 0.98rem; }
+  .print-body h1 { color: #111111; font-size: 1.4rem; margin: 0 0 0.5rem; page-break-after: avoid; break-after: avoid; }
+  .print-body h2 { color: #111111; font-size: 1.2rem; margin-top: 1.2rem; page-break-after: avoid; break-after: avoid; }
   .print-body h3 { color: #111111; font-size: 1.1rem; margin-top: 1.1rem; page-break-after: avoid; break-after: avoid; }
+  .print-body h4, .print-body h5, .print-body h6 { color: #111111; font-size: 1.02rem; margin-top: 1rem; page-break-after: avoid; break-after: avoid; }
   .print-body ul, .print-body ol { padding-left: 1.3rem; }
   .print-body li { margin: 0.25rem 0; }
+  .print-body ol { list-style: none; padding-left: 0; }
   .print-body p { margin: 0.6rem 0; }
-  .print-body p, .print-body li { page-break-inside: avoid; break-inside: avoid; }
-  .print-version {
-    display: inline-block;
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: #111111;
-    background: #f0f0f0;
-    border: 1px solid #cccccc;
-    border-radius: 4px;
-    padding: 0.1rem 0.5rem;
-    margin: 0 0 0.3rem;
-  }
+  .print-body .fmt-subpart { margin: 0.3rem 0 0.3rem 1.9em; }
+  .print-body p, .print-body li, .print-body .fmt-option, .print-body .fmt-subpart { page-break-inside: avoid; break-inside: avoid; }
+  .print-body p { orphans: 3; widows: 3; }
+  /* Keep a question and its options on the same page, together: never break
+     right after the question text, never break inside the option block. */
+  .print-body li.fmt-li-ol { page-break-after: avoid; break-after: avoid-page; margin: 0.5rem 0 0.2rem; }
+  .print-body .fmt-options { page-break-inside: avoid; break-inside: avoid; page-break-before: avoid; break-before: avoid-page; }
+  /* The answer key starts on its own page, so the question paper can be
+     handed out (or photocopied) without the answers riding on its last page. */
+  .print-body .fmt-answer-key { page-break-before: always; break-before: page; border-top: none; padding-top: 0; }
 
-  @page { margin: 1.6cm; }
+  /* Exam-paper print document: professionally typeset — serif body (which
+     KaTeX's own serif math blends into), ink-on-paper letterhead colors via
+     currentColor, and centred small-caps section headings. Hardcoded
+     print-safe colors (never CSS custom properties) so a printed page never
+     inherits the app's dark theme, same convention as every other .print-*
+     rule in this block. */
+  .print-doc--exam {
+    font-family: Cambria, Georgia, 'Times New Roman', serif;
+  }
+  .print-doc--exam .print-body { font-size: 11.5pt; line-height: 1.55; }
+  .print-doc--exam .print-body h2 {
+    font-size: 12pt;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: center;
+    margin: 1.1rem 0 0.6rem;
+  }
+  .print-doc--exam .katex { font-size: 1.06em; }
+  .exam-header { color: #111111; page-break-inside: avoid; break-inside: avoid; }
+
+  /* Explicit A4 so a generated paper has a predictable, consistent page size
+     regardless of the browser/OS print-dialog default (which varies by
+     region — e.g. Letter in the US). True per-page "Page X of Y" numbering
+     is intentionally NOT attempted here: CSS Paged Media's @page margin
+     boxes (counter(page)/counter(pages)) are not supported by Chrome,
+     Edge, or Firefox's print engines, so that CSS would silently do
+     nothing rather than degrade gracefully. Reliable page numbers need a
+     paginated renderer (e.g. paged.js) or server-side PDF generation —
+     tracked as later work, not attempted in this pass. */
+  @page { size: A4; margin: 1.6cm; }
 }
 
 /* ---- Print version chooser (assessment student/teacher) ------------------ */
@@ -1822,6 +2006,13 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .workspace-print-menu-item:hover { background: var(--surface-2); }
 .workspace-print-menu-item:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
 .workspace-print-menu-hint { font-size: 0.76rem; font-weight: 400; color: var(--text-muted); }
+.workspace-print-menu-note {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin: 0;
+  padding: 0.5rem 0.9rem 0.6rem;
+  border-top: 1px solid var(--border);
+}
 
 /* ---- Quiz / Worksheet Generator ----------------------------------------- */
 .generator-main { max-width: 900px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
