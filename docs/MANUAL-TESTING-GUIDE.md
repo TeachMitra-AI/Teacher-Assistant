@@ -55,7 +55,7 @@ cp .env.example .env              # Windows PowerShell: Copy-Item .env.example .
 cd ../server
 npx prisma migrate dev            # Windows: npx.cmd prisma migrate dev
 npx prisma generate               # Windows: npx.cmd prisma generate
-npm run seed                      # demo schools + accounts (all PIN 123456)
+npm run seed                      # demo schools + accounts (all password demo1234)
 
 # 4. Start the backend (terminal A)
 npm run dev                       # or: npm start
@@ -78,30 +78,44 @@ npx prisma studio                 # opens a local GUI at http://localhost:5555
 
 ## 4. Test Accounts / Roles
 
-All seeded demo accounts use PIN **`123456`** and are **development-only**. Sign in with
-**school code + name + PIN**.
+All seeded demo accounts use the password **`demo1234`** and are **development-only**. Sign in
+with **email + password** — no school code. A school code is required only when *creating* an
+account, to pick the tenant.
 
-| School code | Name | Role | Sees |
+| Email | School | Role | Sees |
 | --- | --- | --- | --- |
-| `RAMPUR01` | Demo Teacher | Teacher | Only their own history & library; Coach, Library, Settings |
-| `RAMPUR01` | Rampur Admin | School Admin | + Dashboard/Manage for their **own school** |
-| `RAMPUR01` | Rampur RP | Resource Person | + Dashboard/Manage for their **whole district** |
-| `RAMPUR01` | Super Admin | Super Admin | + Dashboard/Manage for **all schools**, create schools, change roles |
-| `RAMPUR02` | Sunita Devi | Teacher | Own data only (second school — useful for isolation tests) |
-| `DELHI01` | Ravi Kumar | Teacher | Own data only (third school) |
+| `teacher@example.com` | `RAMPUR01` | Teacher | Only their own history & library; Coach, Library, Settings |
+| `admin.rampur01@example.com` | `RAMPUR01` | School Admin | + Dashboard/Manage for their **own school** |
+| `rp.rampur01@example.com` | `RAMPUR01` | Resource Person | + Dashboard/Manage for their **whole district** |
+| `superadmin@example.com` | `RAMPUR01` | Super Admin | + Dashboard/Manage for **all schools**, create schools, change roles |
+| `sunita@example.com` | `RAMPUR02` | Teacher | Own data only (second school — useful for isolation tests) |
+| `ravi@example.com` | `DELHI01` | Teacher | Own data only (third school) |
+
+Seeded accounts are created `active` so they sign in immediately. **Accounts created through the
+Register tab start `pending`** and cannot sign in until an approver acts — see TC-AUTH-006.
 
 **Role visibility summary**
 - **Teacher:** Coach, Library, Settings. No Dashboard/Manage links or access.
 - **School Admin / Resource Person / Super Admin:** all of the above **plus** the Dashboard link
   and `/admin`, `/admin/manage`.
 - **Super Admin only:** create schools, change user roles.
+- **Approving/rejecting sign-ups:** `school_admin` (own school) and `super_admin` (any school)
+  only. A `resource_person` sees the pending queue but gets no Approve/Reject buttons.
+
+**Optional integrations.** Two features need external credentials and are simply switched off
+without them — neither blocks any other test:
+
+| Feature | Env vars | Unset behaviour |
+| --- | --- | --- |
+| Google Sign-In | `GOOGLE_CLIENT_ID` + client `VITE_GOOGLE_CLIENT_ID` | Google buttons hidden; `POST /auth/google` returns 503 |
+| Password-reset email | `BREVO_API_KEY`, `EMAIL_FROM`, `APP_URL` | "Forgot password" responds normally, but no email is sent |
 
 ---
 
 ## Manual Test Case Format
 
 Each case has a unique ID, preconditions, steps, and an expected result. Terms:
-- **"Log in as X"** = go to `/login`, enter that account's school code + name + PIN, submit.
+- **"Log in as X"** = go to `/login`, enter that account's email + password, submit.
 - **App URL** = `http://localhost:5173` (adjust if Vite prints a different port).
 
 ---
@@ -111,59 +125,139 @@ Each case has a unique ID, preconditions, steps, and an expected result. Terms:
 ### TC-AUTH-001 — Valid teacher login
 **Preconditions:** Demo data seeded; app open at `/login`.
 **Steps:**
-1. On the **Login** tab, enter school code `RAMPUR01`, name `Demo Teacher`, PIN `123456`.
-2. Click the login/submit button.
+1. On the **Sign in** tab, enter email `teacher@example.com` and password `demo1234`.
+   Note there is **no school code field** on this tab.
+2. Click the submit button.
 **Expected:** Authenticated; redirected to the Coach page (`/`). Primary nav shows **Coach**,
 **Library**, and **Generator** with a profile chip; **no** Dashboard link. (On desktop these are
 top-bar links; at ≤640px they appear in the fixed bottom navigation instead — see the
 [Mobile & Responsive Testing Guide](./MOBILE-RESPONSIVE-TESTING-GUIDE.md).)
 
-### TC-AUTH-002 — Invalid school code
+### TC-AUTH-002 — Unknown email
 **Preconditions:** At `/login`.
-**Steps:** Enter school code `NOPE99`, name `Demo Teacher`, PIN `123456`; submit.
-**Expected:** Login rejected with an "Invalid school code" style error; user stays on `/login`.
+**Steps:** Enter `ghost@example.com` / `demo1234`; submit.
+**Expected:** Rejected with "Incorrect email or password." — the **same** message a wrong password
+gives, so the response never reveals whether an account exists. Stays on `/login`.
 
-### TC-AUTH-003 — Unknown user name
-**Steps:** School code `RAMPUR01`, name `Ghost User`, PIN `123456`; submit.
-**Expected:** Rejected with an "Incorrect name or PIN" error (existence not confirmed); stays on `/login`.
+### TC-AUTH-003 — Wrong password
+**Steps:** `teacher@example.com` / `wrong-password`; submit.
+**Expected:** Rejected with the identical "Incorrect email or password." message as TC-AUTH-002.
 
-### TC-AUTH-004 — Invalid PIN
-**Steps:** School code `RAMPUR01`, name `Demo Teacher`, PIN `000000`; submit.
-**Expected:** Rejected with "Incorrect name or PIN".
+### TC-AUTH-004 — Malformed email
+**Steps:** Enter `not-an-email` / `demo1234`; submit.
+**Expected:** Rejected as a validation error (400), *not* a credentials error — a bad address
+format says nothing about who exists.
 
 ### TC-AUTH-005 — Account lockout after repeated failures
-**Steps:** With `Demo Teacher`, submit a wrong PIN 5 times in a row.
+**Steps:** With `teacher@example.com`, submit a wrong password 5 times in a row.
 **Expected:** After the 5th failure the account is locked; a "Too many attempts. Try again in N
-minute(s)." message appears (HTTP 423). A correct PIN is also refused until the lockout expires.
+minute(s)." message appears (HTTP 423). The **correct** password is also refused until the lockout
+expires.
 > Note: default lockout is 15 minutes. Use a **different** account for later tests, or wait it out.
+> A successful password reset (TC-AUTH-013) clears the lockout immediately.
 
-### TC-AUTH-006 — Teacher self-registration
+### TC-AUTH-006 — Self-registration creates a PENDING account
 **Preconditions:** At `/login`, **Register** tab.
-**Steps:** Enter a valid school code `RAMPUR01`, a new unique name (e.g. `QA Tester 1`), PIN `246810`; submit.
-**Expected:** Account created and logged in as a **teacher**; lands on Coach.
+**Steps:** Enter school code `RAMPUR01`, name `QA Tester 1`, email `qa1@example.com`,
+password `qa-pass-1234`; submit.
+**Expected:** A "your registration needs approval" screen appears. **No session is issued** — you
+are *not* taken to Coach. Signing in with those credentials now is refused with a
+`pending_approval` message.
 
-### TC-AUTH-007 — Register duplicate name at same school
-**Steps:** On **Register**, use `RAMPUR01` + `Demo Teacher` + any 6-digit PIN; submit.
-**Expected:** Rejected (409) with a "name is already registered" message.
+### TC-AUTH-007 — Approve a pending sign-up
+**Preconditions:** TC-AUTH-006 done. Logged in as `admin.rampur01@example.com` (or
+`superadmin@example.com`).
+**Steps:** Go to **Manage → Pending teachers**, find `qa1@example.com`, click **Approve**.
+**Expected:** The row disappears from the queue. `QA Tester 1` can now sign in normally and lands
+on Coach as a **teacher**. An audit `Event` of type `user_approved` is written, naming the
+acting admin.
 
-### TC-AUTH-008 — Logout
+### TC-AUTH-008 — Reject a pending sign-up
+**Preconditions:** Register a second account, e.g. `qa2@example.com`. Logged in as a
+`school_admin`/`super_admin`.
+**Steps:** In **Manage → Pending teachers**, click **Reject** on that row.
+**Expected:** Row disappears; an `user_rejected` Event is written. Signing in as that user is
+refused with a `registration_rejected` message.
+> Known limitation: rejection is **final**. The same email cannot re-register at that school (409),
+> and the account cannot be re-approved — it no longer appears in the pending queue.
+
+### TC-AUTH-009 — resource_person can see the queue but not act
+**Preconditions:** Logged in as `rp.rampur01@example.com`, with at least one pending sign-up.
+**Expected:** **Manage → Pending teachers** lists the pending rows, but **no** Approve/Reject
+buttons and no "Decision" column are rendered.
+
+### TC-AUTH-010 — Register duplicate email at same school
+**Steps:** On **Register**, use `RAMPUR01` + any name + `teacher@example.com` + any password.
+**Expected:** Rejected (409) with "An account with this email already exists at this school."
+
+### TC-AUTH-011 — The same NAME twice is now allowed
+**Steps:** Register `RAMPUR01` + name `Demo Teacher` + a **new** email + a password.
+**Expected:** Accepted (pending). Name is display-only and no longer the identity key — this is
+the collision problem the email migration was built to fix.
+
+### TC-AUTH-012 — Forgot password (needs `BREVO_API_KEY`)
+**Preconditions:** An **active** account that has a password (not Google-only).
+**Steps:** `/login` → **Forgot your password?** → enter the address → submit.
+**Expected:** A generic "check your inbox" response — **identical** whether or not the address
+exists. If email is configured, a reset message arrives with a link to
+`/reset-password/<token>`.
+> Requesting a second reset invalidates the first link.
+> Google-only accounts and pending/rejected accounts get the same generic response but **no** email.
+
+### TC-AUTH-013 — Reset password
+**Preconditions:** A valid link from TC-AUTH-012.
+**Steps:** Open the link, set a new password of at least 8 characters, submit.
+**Expected:** Success. The **old password no longer works**, the new one does, and **every existing
+session for that user is revoked** (other logged-in devices are signed out). Any account lockout is
+cleared.
+
+### TC-AUTH-014 — Reset link is single-use and expiring
+**Steps:** Re-open the same link from TC-AUTH-013 and submit again.
+**Expected:** "This reset link is invalid or has expired. Please request a new one." The **same**
+message is shown for an unknown, expired, or malformed token — no schema text or internal detail
+is ever exposed.
+
+### TC-AUTH-015 — Google sign-up (needs `GOOGLE_CLIENT_ID`)
+**Preconditions:** Both `GOOGLE_CLIENT_ID` and `VITE_GOOGLE_CLIENT_ID` set to the same value, and
+the app's origin (e.g. `http://localhost:5173`) added to **Authorized JavaScript origins** in the
+Google Cloud Console.
+**Steps:** **Register** tab → note the Google button is **greyed out and unclickable** until a
+school code is entered → type `RAMPUR01` → the button activates → continue with Google.
+**Expected:** Same approval path as TC-AUTH-006 — a pending account, no session. After an admin
+approves, Google sign-in works.
+
+### TC-AUTH-016 — Google sign-in without an account
+**Steps:** **Sign in** tab → continue with Google using an account that has never registered here.
+**Expected:** "No account here uses that Google address yet. Switch to Register and enter your
+school code to sign up." No account is created.
+> Note: sign-in matches on Google's stable `sub`, **not** on email. An address registered with a
+> *password* will therefore report not-registered on the Google button — that is deliberate, so a
+> Google token can never take over a password account.
+
+### TC-AUTH-017 — One email, accounts at two schools
+**Preconditions:** The same email registered and approved at two different school codes.
+**Steps:** Sign in with that email and password.
+**Expected:** Instead of a session, a **"which school?"** picker lists both. Choosing one issues a
+session scoped to that school.
+
+### TC-AUTH-018 — Logout
 **Preconditions:** Logged in.
 **Steps:** Open the profile menu (top-right) → **Sign out**.
 **Expected:** Session cleared; redirected to `/login`. Navigating to `/` redirects back to `/login`.
 
-### TC-AUTH-009 — Session persistence across reload
+### TC-AUTH-019 — Session persistence across reload
 **Preconditions:** Logged in.
 **Steps:** Refresh the browser (F5).
 **Expected:** Still logged in (session restored via `/api/auth/me`); the same page loads without
 returning to `/login`.
 
-### TC-AUTH-010 — Silent token refresh (long session)
+### TC-AUTH-020 — Silent token refresh (long session)
 **Preconditions:** Logged in. (Access token TTL is short, default 15m.)
 **Steps:** Leave the app idle past the access-token TTL, then perform an action (e.g. open Library).
 **Expected:** The action succeeds without a forced re-login — the client silently refreshes the
 token once (`POST /api/auth/refresh`). *(Optional/observational; may require waiting.)*
 
-### TC-AUTH-011 — Protected route requires auth
+### TC-AUTH-021 — Protected route requires auth
 **Preconditions:** Logged out.
 **Steps:** Manually visit `http://localhost:5173/library`.
 **Expected:** Redirected to `/login` (client route guard); no protected content shown.
@@ -590,7 +684,7 @@ a top-questions list are shown, populated from real data.
 
 ### TC-MANAGE-001 — User list (scoped)
 **Preconditions:** Logged in as an admin; open `/admin/manage`.
-**Expected:** A list of users within scope (name, role, school, last login) — no PIN hashes.
+**Expected:** A list of users within scope (name, email, role, school, status, last login) — no password hashes.
 
 ### TC-MANAGE-002 — Create a school (super admin)
 **Preconditions:** Logged in as `Super Admin`.
@@ -754,7 +848,7 @@ work is lost. Restart backend and save successfully.
 
 ### TC-DB-005 — Prisma Studio verification (optional)
 **Steps:** `npx prisma studio` → open `Resource` / `Query` tables.
-**Expected:** Rows match the UI state; `Resource.userId` matches the owning user; no PIN in plaintext
+**Expected:** Rows match the UI state; `Resource.userId` matches the owning user; no password in plaintext
 anywhere (`User.pinHash` is a bcrypt hash).
 
 ### TC-SEC-001 — Unauthenticated protected endpoint
@@ -936,17 +1030,27 @@ Legend: ⬜ Not Run · ✅ Pass · ❌ Fail · ⚠️ Blocked
 
 | Test ID | Area | Test Case | Status | Notes |
 |---------|------|-----------|--------|-------|
-| TC-AUTH-001 | Authentication | Valid teacher login | ⬜ | |
-| TC-AUTH-002 | Authentication | Invalid school code | ⬜ | |
-| TC-AUTH-003 | Authentication | Unknown user name | ⬜ | |
-| TC-AUTH-004 | Authentication | Invalid PIN | ⬜ | |
+| TC-AUTH-001 | Authentication | Valid teacher login (email + password) | ⬜ | |
+| TC-AUTH-002 | Authentication | Unknown email | ⬜ | |
+| TC-AUTH-003 | Authentication | Wrong password | ⬜ | |
+| TC-AUTH-004 | Authentication | Malformed email | ⬜ | |
 | TC-AUTH-005 | Authentication | Account lockout after failures | ⬜ | |
-| TC-AUTH-006 | Authentication | Teacher self-registration | ⬜ | |
-| TC-AUTH-007 | Authentication | Register duplicate name | ⬜ | |
-| TC-AUTH-008 | Authentication | Logout | ⬜ | |
-| TC-AUTH-009 | Authentication | Session persistence on reload | ⬜ | |
-| TC-AUTH-010 | Authentication | Silent token refresh | ⬜ | |
-| TC-AUTH-011 | Authentication | Protected route requires auth | ⬜ | |
+| TC-AUTH-006 | Authentication | Self-registration creates a PENDING account | ⬜ | |
+| TC-AUTH-007 | Authentication | Approve a pending sign-up | ⬜ | |
+| TC-AUTH-008 | Authentication | Reject a pending sign-up | ⬜ | |
+| TC-AUTH-009 | Authentication | resource_person sees queue but cannot act | ⬜ | |
+| TC-AUTH-010 | Authentication | Register duplicate email at same school | ⬜ | |
+| TC-AUTH-011 | Authentication | Same name twice is allowed | ⬜ | |
+| TC-AUTH-012 | Authentication | Forgot password (needs BREVO_API_KEY) | ⬜ | |
+| TC-AUTH-013 | Authentication | Reset password revokes sessions | ⬜ | |
+| TC-AUTH-014 | Authentication | Reset link single-use / expiring | ⬜ | |
+| TC-AUTH-015 | Authentication | Google sign-up (needs GOOGLE_CLIENT_ID) | ⬜ | |
+| TC-AUTH-016 | Authentication | Google sign-in without an account | ⬜ | |
+| TC-AUTH-017 | Authentication | One email, two schools -> picker | ⬜ | |
+| TC-AUTH-018 | Authentication | Logout | ⬜ | |
+| TC-AUTH-019 | Authentication | Session persistence on reload | ⬜ | |
+| TC-AUTH-020 | Authentication | Silent token refresh | ⬜ | |
+| TC-AUTH-021 | Authentication | Protected route requires auth | ⬜ | |
 | TC-RBAC-001 | RBAC | Teacher navigation | ⬜ | |
 | TC-RBAC-002 | RBAC | Teacher blocked from admin routes | ⬜ | |
 | TC-RBAC-003 | RBAC | School Admin scope | ⬜ | |

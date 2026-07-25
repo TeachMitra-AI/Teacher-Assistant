@@ -31,11 +31,18 @@ is easy and low-risk *when* it becomes true.
   `20260720060253_add_sessions`, `20260721153908_add_resources`), each plain
   Prisma-generated DDL — but written in **SQLite dialect** and not directly
   replayable against Postgres.
-- The schema now has seven models: `School`, `User`, `Session`, `Query`,
-  `Feedback`, `Event`, and `Resource` (the "My Library" / Lesson Plan Workspace
-  store, added in `…_add_resources`).
+- The schema now has eight models: `School`, `User`, `Session`, `Query`,
+  `Feedback`, `Event`, `Resource` (the "My Library" / Lesson Plan Workspace
+  store, added in `…_add_resources`), and `PasswordResetToken` (added in
+  `…_add_email_password_auth` alongside the move from name+PIN to
+  email+password identity).
 - `server/prisma/dev.db` is git-ignored and was never committed — no
   data-in-git risk during a future migration.
+- One caveat specific to `…_add_email_password_auth`: it is a **table-rewrite**
+  migration (SQLite cannot alter column nullability or swap a unique index in
+  place), so it drops and recreates `User`. Postgres can express the same change
+  with plain `ALTER TABLE`, which is why step 3 below regenerates DDL from
+  `schema.prisma` rather than replaying the SQLite migration history.
 - Every primary key is a `cuid()` string, not a SQLite autoincrement integer
   — rows can move to Postgres with their existing IDs completely unchanged,
   no foreign-key remapping needed. This is the single biggest simplifier for
@@ -63,7 +70,7 @@ is easy and low-risk *when* it becomes true.
    against an empty Postgres database, so Prisma generates fresh,
    Postgres-native DDL from the current `schema.prisma`.
 4. **Migrate the data**, respecting FK order:
-   `School → User → Session → Resource → Query → Feedback → Event`
+   `School → User → Session → PasswordResetToken → Resource → Query → Feedback → Event`
    (`Resource` references `User` (required) and `School` (optional), so it
    copies after both. `Event` **is** written by the app now — the coach route
    in `server/src/index.js` records AI-safety flags and notable reliability
