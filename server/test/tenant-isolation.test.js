@@ -3,7 +3,7 @@
 // data to another. These tests assert that never happens.
 const request = require('supertest');
 const { app, prisma } = require('./helpers/testApp');
-const { createFixtures, PIN } = require('./helpers/fixtures');
+const { createFixtures, PASSWORD } = require('./helpers/fixtures');
 const { loginAs } = require('./helpers/auth');
 
 describe('tenant isolation', () => {
@@ -15,10 +15,10 @@ describe('tenant isolation', () => {
 
   beforeAll(async () => {
     fx = await createFixtures(prisma, 'tenant');
-    schoolAdminAToken = await loginAs(app, fx.schoolA, fx.schoolAdminA, PIN);
-    resourcePersonAToken = await loginAs(app, fx.schoolA, fx.resourcePersonA, PIN);
-    teacherAToken = await loginAs(app, fx.schoolA, fx.teacherA, PIN);
-    teacherBToken = await loginAs(app, fx.schoolB, fx.teacherB, PIN);
+    schoolAdminAToken = await loginAs(app, fx.schoolA, fx.schoolAdminA, PASSWORD);
+    resourcePersonAToken = await loginAs(app, fx.schoolA, fx.resourcePersonA, PASSWORD);
+    teacherAToken = await loginAs(app, fx.schoolA, fx.teacherA, PASSWORD);
+    teacherBToken = await loginAs(app, fx.schoolB, fx.teacherB, PASSWORD);
   });
 
   test('school_admin only ever sees users from their own school', async () => {
@@ -53,6 +53,81 @@ describe('tenant isolation', () => {
     const names = res.body.users.map((u) => u.name);
     expect(names).toContain(fx.teacherA.name); // same district
     expect(names).not.toContain(fx.teacherB.name); // different district
+  });
+
+  // Approval endpoints are the newest way one school's admin could reach into
+  // another school's accounts, so they get the same scoping assertions as
+  // every other admin route.
+  describe('pending sign-ups', () => {
+    let pendingA;
+    let pendingB;
+
+    beforeAll(async () => {
+      const make = (schoolId, slug) =>
+        prisma.user.create({
+          data: {
+            schoolId,
+            name: `Pending ${slug}`,
+            email: `tenant-pending-${slug}@example.com`,
+            role: 'teacher',
+            status: 'pending',
+            passwordHash: 'not-used-by-these-tests',
+          },
+        });
+      pendingA = await make(fx.schoolA.id, 'a');
+      pendingB = await make(fx.schoolB.id, 'b');
+    });
+
+    test('school_admin only ever sees pending sign-ups from their own school', async () => {
+      const res = await request(app)
+        .get('/api/admin/users/pending')
+        .set('Authorization', `Bearer ${schoolAdminAToken}`);
+      expect(res.status).toBe(200);
+      const emails = res.body.users.map((u) => u.email);
+      expect(emails).toContain(pendingA.email);
+      expect(emails).not.toContain(pendingB.email);
+    });
+
+    test('resource_person sees their own district\'s pending sign-ups but not another district\'s', async () => {
+      const res = await request(app)
+        .get('/api/admin/users/pending')
+        .set('Authorization', `Bearer ${resourcePersonAToken}`);
+      expect(res.status).toBe(200);
+      const emails = res.body.users.map((u) => u.email);
+      expect(emails).toContain(pendingA.email); // same district
+      expect(emails).not.toContain(pendingB.email); // different district
+    });
+
+    test('school_admin cannot approve a pending sign-up at another school', async () => {
+      const res = await request(app)
+        .patch(`/api/admin/users/${pendingB.id}/approve`)
+        .set('Authorization', `Bearer ${schoolAdminAToken}`);
+      expect(res.status).toBe(403);
+
+      // Confirm the cross-school account genuinely wasn't let in.
+      const stillPending = await prisma.user.findUnique({ where: { id: pendingB.id } });
+      expect(stillPending.status).toBe('pending');
+    });
+
+    test('school_admin cannot reject a pending sign-up at another school', async () => {
+      const res = await request(app)
+        .patch(`/api/admin/users/${pendingB.id}/reject`)
+        .set('Authorization', `Bearer ${schoolAdminAToken}`);
+      expect(res.status).toBe(403);
+
+      const stillPending = await prisma.user.findUnique({ where: { id: pendingB.id } });
+      expect(stillPending.status).toBe('pending');
+    });
+
+    test('school_admin CAN approve a pending sign-up at their own school', async () => {
+      const res = await request(app)
+        .patch(`/api/admin/users/${pendingA.id}/approve`)
+        .set('Authorization', `Bearer ${schoolAdminAToken}`);
+      expect(res.status).toBe(200);
+
+      const approved = await prisma.user.findUnique({ where: { id: pendingA.id } });
+      expect(approved.status).toBe('active');
+    });
   });
 
   test('a teacher cannot delete another teacher\'s query', async () => {

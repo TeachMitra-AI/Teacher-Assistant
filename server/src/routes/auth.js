@@ -1,10 +1,27 @@
-// Authentication: teachers sign in with a school code + their name + a 6-digit PIN.
+// Authentication.
+//
+// Identity is the teacher's EMAIL, not their name — common names collide
+// within a single school, and email is also what Google hands back from a
+// verified ID token, so both sign-in methods key off the same field.
+//
+// The school code picks the tenant at sign-UP only. Sign-in resolves an
+// account by email alone, so a returning teacher never needs the code; if one
+// email happens to hold accounts at several schools, the client is asked to
+// choose one and re-submits with an explicit schoolId.
+//
+// Every new sign-up lands in `status: 'pending'` and gets no session until a
+// school_admin/super_admin approves it (see routes/admin.js).
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { z } = require('zod');
 
 const { prisma } = require('../lib/db');
 const { asyncHandler } = require('../lib/asyncHandler');
+const { sendPasswordResetEmail } = require('../lib/email');
+// Called through the module object rather than destructured, so the one
+// function that reaches out to Google stays substitutable from a test without
+// the route needing a seam of its own.
+const googleAuth = require('../lib/googleAuth');
 const {
   signAccessToken,
   authRequired,
@@ -33,12 +50,46 @@ async function issueSession(user, req) {
 
 const MAX_ATTEMPTS = parseInt(process.env.LOGIN_MAX_ATTEMPTS || '5', 10);
 const LOCKOUT_MINUTES = parseInt(process.env.LOGIN_LOCKOUT_MINUTES || '15', 10);
+const RESET_TOKEN_TTL_MINUTES = parseInt(process.env.PASSWORD_RESET_TTL_MINUTES || '60', 10);
 
-const credentialsSchema = z.object({
+// Emails are trimmed and lower-cased before validation, so the address a
+// teacher types is matched the same way however they capitalize it. The stored
+// value is always the normalized one.
+const emailField = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.email('Enter a valid email address.').max(160));
+
+// 72 bytes is bcrypt's own input limit — anything beyond it is silently
+// ignored by the hash, so it's rejected up front rather than truncated.
+const newPasswordField = z
+  .string()
+  .min(8, 'Password must be at least 8 characters.')
+  .max(72, 'Password must be at most 72 characters.');
+
+// Verifying an EXISTING password deliberately doesn't apply the length rule
+// above: rules belong on the path that sets a password, and applying them here
+// would turn a wrong-password 401 into a confusing 400.
+const existingPasswordField = z.string().min(1, 'Enter your password.').max(72);
+
+const registerSchema = z.object({
   schoolCode: z.string().trim().min(1).max(40),
   name: z.string().trim().min(2).max(60),
-  pin: z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits.'),
+  email: emailField,
+  password: newPasswordField,
 });
+
+const loginSchema = z.object({
+  email: emailField,
+  password: existingPasswordField,
+  // Only sent on the second attempt, after a needsSchoolSelection response.
+  schoolId: z.string().trim().min(1).max(40).optional(),
+});
+
+// One wording for every "we won't say which part was wrong" outcome: unknown
+// email, wrong password, or a Google-only account with no local password.
+const INVALID_CREDENTIALS = 'Incorrect email or password.';
 
 const RESPONSE_STYLES = ['balanced', 'concise', 'detailed', 'step_by_step', 'practical'];
 
@@ -76,13 +127,23 @@ const profileSchema = z
   })
   .strict();
 
-const pinChangeSchema = z.object({
-  currentPin: z.string().regex(/^\d{6}$/, 'Current PIN must be 6 digits.'),
-  newPin: z.string().regex(/^\d{6}$/, 'New PIN must be exactly 6 digits.'),
+const passwordChangeSchema = z.object({
+  currentPassword: existingPasswordField,
+  newPassword: newPasswordField,
 });
 
 function normalizeCode(code) {
   return code.trim().toUpperCase();
+}
+
+// The approval gate, shared by both sign-in methods so email+password and
+// Google can never drift apart on who is allowed in. Returns the error code to
+// send with a 403, or null when the account may proceed. These strings are a
+// contract the client branches on, not display copy.
+function statusGateError(user) {
+  if (user.status === 'pending') return 'pending_approval';
+  if (user.status === 'rejected') return 'registration_rejected';
+  return null;
 }
 
 function parsePreferences(raw) {
@@ -99,6 +160,7 @@ function publicUser(user, school) {
   return {
     id: user.id,
     name: user.name,
+    email: user.email,
     displayName: user.displayName || null,
     role: user.role,
     preferences: parsePreferences(user.preferences),
@@ -106,13 +168,17 @@ function publicUser(user, school) {
   };
 }
 
-// POST /api/auth/register — first-time teacher sign-up under a valid school code.
+// POST /api/auth/register — first-time teacher sign-up under a valid school
+// code. Deliberately issues NO session: the account is created `pending` and
+// cannot sign in until an admin approves it, so there is nothing to hand back
+// a token for. Fail-closed by construction — no JWT/authRequired changes were
+// needed to gate it.
 router.post('/register', asyncHandler(async (req, res) => {
-  const parsed = credentialsSchema.safeParse(req.body || {});
+  const parsed = registerSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid details.' });
   }
-  const { schoolCode, name, pin } = parsed.data;
+  const { schoolCode, name, email, password } = parsed.data;
 
   const school = await prisma.school.findUnique({ where: { code: normalizeCode(schoolCode) } });
   if (!school) {
@@ -120,42 +186,52 @@ router.post('/register', asyncHandler(async (req, res) => {
   }
 
   const existing = await prisma.user.findUnique({
-    where: { schoolId_name: { schoolId: school.id, name } },
+    where: { schoolId_email: { schoolId: school.id, email } },
   });
   if (existing) {
     return res.status(409).json({
-      error: 'This name is already registered at this school. Please log in, or add an initial to your name.',
+      error: 'An account with this email already exists at this school. Please sign in instead.',
     });
   }
 
-  const pinHash = await bcrypt.hash(pin, 10);
-  const user = await prisma.user.create({
-    data: { schoolId: school.id, name, pinHash, role: 'teacher', lastLogin: new Date() },
+  const passwordHash = await bcrypt.hash(password, 10);
+  await prisma.user.create({
+    data: { schoolId: school.id, name, email, passwordHash, role: 'teacher', status: 'pending' },
   });
 
-  const { token, refreshToken } = await issueSession(user, req);
-  return res.status(201).json({ token, refreshToken, user: publicUser(user, school) });
+  return res.status(201).json({ status: 'pending' });
 }));
 
-// POST /api/auth/login — returning teacher/admin sign-in.
+// POST /api/auth/login — returning teacher/admin sign-in with email +
+// password. No school code: the account is found by email across every
+// school. That lookup is intentionally non-unique, because the same address
+// could hold accounts at more than one school — when it matches several, the
+// client gets a school picker instead of a session and re-submits with an
+// explicit `schoolId`.
 router.post('/login', asyncHandler(async (req, res) => {
-  const parsed = credentialsSchema.safeParse(req.body || {});
+  const parsed = loginSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid details.' });
   }
-  const { schoolCode, name, pin } = parsed.data;
+  const { email, password, schoolId } = parsed.data;
 
-  const school = await prisma.school.findUnique({ where: { code: normalizeCode(schoolCode) } });
-  if (!school) {
-    return res.status(401).json({ error: 'Invalid school code.' });
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { schoolId_name: { schoolId: school.id, name } },
+  const matches = await prisma.user.findMany({
+    where: { email, ...(schoolId ? { schoolId } : {}) },
+    include: { school: true },
+    orderBy: { createdAt: 'asc' },
   });
-  if (!user) {
-    return res.status(401).json({ error: 'Incorrect name or PIN.' });
+
+  if (matches.length === 0) {
+    return res.status(401).json({ error: INVALID_CREDENTIALS });
   }
+  if (matches.length > 1) {
+    return res.json({
+      needsSchoolSelection: true,
+      schools: matches.map((u) => ({ id: u.school.id, name: u.school.name, code: u.school.code })),
+    });
+  }
+
+  const user = matches[0];
 
   // Account lockout after too many failed attempts.
   if (user.lockedUntil && user.lockedUntil > new Date()) {
@@ -163,7 +239,10 @@ router.post('/login', asyncHandler(async (req, res) => {
     return res.status(423).json({ error: `Too many attempts. Try again in ${minutes} minute(s).` });
   }
 
-  const ok = await bcrypt.compare(pin, user.pinHash);
+  // A Google-only account has no local password to compare against. Treated as
+  // a plain credential failure so this response can't be used to tell a
+  // Google-only account apart from a nonexistent one.
+  const ok = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
   if (!ok) {
     const failed = user.failedLoginCount + 1;
     const shouldLock = failed >= MAX_ATTEMPTS;
@@ -177,8 +256,15 @@ router.post('/login', asyncHandler(async (req, res) => {
     if (shouldLock) {
       return res.status(423).json({ error: `Too many attempts. Try again in ${LOCKOUT_MINUTES} minute(s).` });
     }
-    return res.status(401).json({ error: 'Incorrect name or PIN.' });
+    return res.status(401).json({ error: INVALID_CREDENTIALS });
   }
+
+  // Approval gate. Checked only after the password is proven, so an account's
+  // pending/rejected state is never disclosed to someone who doesn't hold the
+  // credential. These two error codes are contract, not prose — the client
+  // switches to a dedicated screen on each.
+  const statusError = statusGateError(user);
+  if (statusError) return res.status(403).json({ error: statusError });
 
   await prisma.user.update({
     where: { id: user.id },
@@ -186,7 +272,236 @@ router.post('/login', asyncHandler(async (req, res) => {
   });
 
   const { token, refreshToken } = await issueSession(user, req);
-  return res.json({ token, refreshToken, user: publicUser(user, school) });
+  return res.json({ token, refreshToken, user: publicUser(user, user.school) });
+}));
+
+const googleAuthSchema = z.object({
+  idToken: z.string().trim().min(20).max(4096),
+  // Present => this is a sign-UP (the code picks the tenant). Absent => sign-in.
+  schoolCode: z.string().trim().min(1).max(40).optional(),
+  // Display name from the sign-up form. Purely presentational; if omitted, the
+  // name on the verified Google profile is used instead.
+  name: z.string().trim().min(2).max(60).optional(),
+  // Only sent on the second attempt, after a needsSchoolSelection response.
+  schoolId: z.string().trim().min(1).max(40).optional(),
+});
+
+// POST /api/auth/google — one endpoint for both Google sign-up and Google
+// sign-in, branching on whether a schoolCode was supplied. It's a fully
+// parallel alternative to email+password, not a replacement: the two share the
+// same User rows, the same approval gate, and the same issueSession().
+//
+// Identity comes from Google's verified `sub`, not from the email in the
+// request body. Signing in is matched on `sub` alone — deliberately NOT on
+// email — so a Google token can never be used to take over an account created
+// with a password. (Linking a Google identity onto an existing manual account
+// is a separate feature, out of scope here.)
+router.post('/google', asyncHandler(async (req, res) => {
+  if (!googleAuth.isGoogleAuthConfigured()) {
+    return res.status(503).json({ error: 'google_not_configured' });
+  }
+
+  const parsed = googleAuthSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid Google sign-in request.' });
+  }
+  const { idToken, schoolCode, name, schoolId } = parsed.data;
+
+  let identity;
+  try {
+    identity = await googleAuth.verifyGoogleIdToken(idToken);
+  } catch (error) {
+    // Metadata only — an ID token is a credential and never belongs in a log.
+    console.warn('[auth] google_token_rejected', { name: error.name });
+    return res.status(401).json({ error: 'Google sign-in failed. Please try again.' });
+  }
+
+  // ---- Sign-UP: a school code was supplied ----
+  if (schoolCode) {
+    const school = await prisma.school.findUnique({ where: { code: normalizeCode(schoolCode) } });
+    if (!school) {
+      return res.status(400).json({ error: 'Invalid school code. Please check with your administrator.' });
+    }
+
+    const existing = await prisma.user.findFirst({
+      where: {
+        schoolId: school.id,
+        OR: [{ email: identity.email }, { googleSub: identity.sub }],
+      },
+    });
+    if (existing) {
+      return res.status(409).json({
+        error: 'An account with this email already exists at this school. Please sign in instead.',
+      });
+    }
+
+    await prisma.user.create({
+      data: {
+        schoolId: school.id,
+        // Google's profile name is a reasonable default, but the sign-up form's
+        // value wins when present. Falls back to the local part of the address
+        // so `name` is never blank.
+        name: name || identity.name || identity.email.split('@')[0],
+        email: identity.email,
+        googleSub: identity.sub,
+        role: 'teacher',
+        status: 'pending',
+      },
+    });
+
+    return res.status(201).json({ status: 'pending' });
+  }
+
+  // ---- Sign-IN: no school code ----
+  const matches = await prisma.user.findMany({
+    where: { googleSub: identity.sub, ...(schoolId ? { schoolId } : {}) },
+    include: { school: true },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  if (matches.length === 0) {
+    // Distinct from a failed token: the token was fine, there's just no
+    // account yet. The client uses this to offer sign-up instead.
+    return res.status(404).json({ error: 'google_not_registered' });
+  }
+  if (matches.length > 1) {
+    return res.json({
+      needsSchoolSelection: true,
+      schools: matches.map((u) => ({ id: u.school.id, name: u.school.name, code: u.school.code })),
+    });
+  }
+
+  const user = matches[0];
+
+  const statusError = statusGateError(user);
+  if (statusError) return res.status(403).json({ error: statusError });
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { failedLoginCount: 0, lockedUntil: null, lastLogin: new Date() },
+  });
+
+  const { token, refreshToken } = await issueSession(user, req);
+  return res.json({ token, refreshToken, user: publicUser(user, user.school) });
+}));
+
+const forgotPasswordSchema = z.object({ email: emailField });
+
+const resetPasswordSchema = z.object({
+  token: z.string().trim().min(20).max(200),
+  password: newPasswordField,
+});
+
+// POST /api/auth/forgot-password — start a self-service password reset.
+//
+// The response is byte-identical whether or not the address has an account, so
+// this endpoint can't be used to discover who is registered. Rate limiting
+// comes from the /api/auth-wide authLimiter in index.js.
+//
+// A reset token follows the same rules as a refresh token: generated from a
+// CSPRNG, and only its SHA-256 hash is stored, so the database never holds
+// anything replayable.
+router.post('/forgot-password', asyncHandler(async (req, res) => {
+  const parsed = forgotPasswordSchema.safeParse(req.body || {});
+  // A malformed address is a client-side format problem, not a statement about
+  // who exists, so rejecting it leaks nothing.
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Enter a valid email address.' });
+  }
+  const { email } = parsed.data;
+
+  // Only accounts that could actually sign in are resettable. A pending or
+  // rejected sign-up has no session to restore, and a Google-only account has
+  // no password to replace.
+  const users = await prisma.user.findMany({
+    where: { email, status: 'active', passwordHash: { not: null } },
+    include: { school: true },
+  });
+
+  // The same address may hold accounts at more than one school; each gets its
+  // own token and its own email, named so the teacher can tell them apart.
+  const namePerSchool = users.length > 1;
+
+  for (const user of users) {
+    // Issuing a new link retires any earlier unused one, so a forwarded or
+    // intercepted older email stops working the moment a fresh one is asked for.
+    await prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    const token = generateRefreshToken();
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashToken(token),
+        expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60000),
+      },
+    });
+
+    await sendPasswordResetEmail({
+      to: user.email,
+      token,
+      name: user.displayName || user.name,
+      schoolName: namePerSchool ? user.school.name : null,
+      expiresInMinutes: RESET_TOKEN_TTL_MINUTES,
+    });
+  }
+
+  return res.json({ ok: true });
+}));
+
+// POST /api/auth/reset-password — redeem a reset token and set a new password.
+//
+// Every existing session is revoked on success. A password reset is a
+// credential change, and whoever prompted it may not be the person holding the
+// old sessions — this mirrors the reuse-detection precedent in /auth/refresh,
+// which also revokes everything when a credential looks compromised.
+router.post('/reset-password', asyncHandler(async (req, res) => {
+  // Unknown, already-redeemed, expired and malformed tokens are all reported
+  // the same way — there's nothing useful a caller could do with the
+  // distinction, and the person holding a truncated link can't tell it from an
+  // expired one anyway.
+  const invalid = { error: 'This reset link is invalid or has expired. Please request a new one.' };
+
+  const parsed = resetPasswordSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    // A bad password IS actionable ("at least 8 characters"), so that message
+    // is kept. A bad token is not, so it gets the message above rather than
+    // raw schema text like "expected string to have >=20 characters".
+    const passwordIssue = parsed.error.issues.find((issue) => issue.path[0] === 'password');
+    return res.status(400).json(passwordIssue ? { error: passwordIssue.message } : invalid);
+  }
+  const { token, password } = parsed.data;
+
+  const record = await prisma.passwordResetToken.findUnique({
+    where: { tokenHash: hashToken(token) },
+  });
+
+  if (!record || record.usedAt || record.expiresAt < new Date()) {
+    return res.status(400).json(invalid);
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  await prisma.$transaction([
+    // Clearing the lockout counters matters: a teacher who locked themselves
+    // out by guessing is exactly who reaches for "forgot password", and they
+    // shouldn't hit a 423 immediately after successfully resetting.
+    prisma.user.update({
+      where: { id: record.userId },
+      data: { passwordHash, failedLoginCount: 0, lockedUntil: null },
+    }),
+    prisma.passwordResetToken.update({
+      where: { id: record.id },
+      data: { usedAt: new Date() },
+    }),
+    prisma.session.updateMany({
+      where: { userId: record.userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    }),
+  ]);
+
+  return res.json({ ok: true });
 }));
 
 // POST /api/auth/refresh — exchange a still-valid refresh token for a new
@@ -288,7 +603,8 @@ router.get('/me', authRequired, asyncHandler(async (req, res) => {
 }));
 
 // PATCH /api/auth/me — update the caller's own display name and/or preferences.
-// The login `name` is the identity credential and is intentionally NOT editable.
+// `email` is the identity key and `name` is what admins see in the Manage
+// table, so neither is editable here — only the display name is.
 router.patch('/me', authRequired, asyncHandler(async (req, res) => {
   const parsed = profileSchema.safeParse(req.body || {});
   if (!parsed.success) {
@@ -319,22 +635,36 @@ router.patch('/me', authRequired, asyncHandler(async (req, res) => {
   return res.json({ user: publicUser(updated, updated.school) });
 }));
 
-// PATCH /api/auth/me/pin — change the caller's own PIN after verifying the current one.
-router.patch('/me/pin', authRequired, asyncHandler(async (req, res) => {
-  const parsed = pinChangeSchema.safeParse(req.body || {});
+// PATCH /api/auth/me/password — change the caller's own password after
+// verifying the current one. This is the signed-in path; a teacher who has
+// forgotten their password uses /forgot-password instead.
+//
+// Unlike a reset, existing sessions are deliberately left alone: the caller
+// already proved they hold the current password, so signing them out of their
+// own other devices would be surprising rather than protective.
+router.patch('/me/password', authRequired, asyncHandler(async (req, res) => {
+  const parsed = passwordChangeSchema.safeParse(req.body || {});
   if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid PIN.' });
+    return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid password.' });
   }
-  const { currentPin, newPin } = parsed.data;
+  const { currentPassword, newPassword } = parsed.data;
 
   const user = await prisma.user.findUnique({ where: { id: req.user.id } });
   if (!user) return res.status(404).json({ error: 'User not found.' });
 
-  const ok = await bcrypt.compare(currentPin, user.pinHash);
-  if (!ok) return res.status(401).json({ error: 'Current PIN is incorrect.' });
+  // A Google-only account has no local password to verify against, so there is
+  // nothing to change here — say so plainly rather than failing as "incorrect".
+  if (!user.passwordHash) {
+    return res.status(400).json({
+      error: 'This account signs in with Google, so it has no password to change.',
+    });
+  }
 
-  const pinHash = await bcrypt.hash(newPin, 10);
-  await prisma.user.update({ where: { id: user.id }, data: { pinHash } });
+  const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!ok) return res.status(401).json({ error: 'Current password is incorrect.' });
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
   return res.json({ ok: true });
 }));
 

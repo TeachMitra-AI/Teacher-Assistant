@@ -6,7 +6,7 @@
 // correctly through the live route.
 const request = require('supertest');
 const { app, prisma } = require('./helpers/testApp');
-const { createFixtures, PIN } = require('./helpers/fixtures');
+const { createFixtures, PASSWORD } = require('./helpers/fixtures');
 const { loginAs } = require('./helpers/auth');
 const {
   mockGeminiFetch,
@@ -22,7 +22,7 @@ describe('AI safety — POST /api/coach', () => {
 
   beforeAll(async () => {
     fx = await createFixtures(prisma, 'aisafety');
-    token = await loginAs(app, fx.schoolA, fx.teacherA, PIN);
+    token = await loginAs(app, fx.schoolA, fx.teacherA, PASSWORD);
   });
 
   afterEach(() => {
@@ -220,7 +220,7 @@ describe('AI safety — emergency response mode', () => {
 
   beforeAll(async () => {
     fx = await createFixtures(prisma, 'emergency');
-    token = await loginAs(app, fx.schoolA, fx.teacherA, PIN);
+    token = await loginAs(app, fx.schoolA, fx.teacherA, PASSWORD);
   });
 
   afterEach(() => {

@@ -52,9 +52,16 @@ export interface ExamPaperMeta {
   showTime?: boolean;
 }
 
+// An account's approval state. Every new sign-up — email+password or Google —
+// starts `pending` and can't sign in until a school_admin/super_admin decides.
+export type UserStatus = 'active' | 'pending' | 'rejected';
+
 export interface User {
   id: string;
   name: string;
+  // The identity key: sign-in is by email, not by name (names collide within a
+  // school). `name` is display-only.
+  email: string;
   displayName?: string | null;
   role: Role;
   preferences: TeacherPreferences;
@@ -66,6 +73,50 @@ export interface AuthResponse {
   refreshToken: string;
   user: User;
 }
+
+// Just enough of a school to render the "which school?" picker, which appears
+// only when one email or Google identity holds accounts at more than one.
+export interface SchoolOption {
+  id: string;
+  name: string;
+  code: string;
+}
+
+export interface LoginCredentials {
+  email: string;
+  password: string;
+  // Sent only on the second attempt, after a needs_school outcome.
+  schoolId?: string;
+}
+
+export interface RegisterCredentials {
+  schoolCode: string;
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface GoogleAuthOptions {
+  // Present => this is a sign-UP under that school code. Absent => sign-in.
+  schoolCode?: string;
+  name?: string;
+  // Sent only on the second attempt, after a needs_school outcome.
+  schoolId?: string;
+}
+
+// Expected non-success results of an auth attempt. These are outcomes rather
+// than thrown errors because each one has its own screen to show — unlike a
+// wrong password or a network failure, which stay ApiErrors.
+export type AuthOutcome =
+  | { kind: 'signed_in' }
+  // Registered, now waiting on an admin.
+  | { kind: 'pending' }
+  | { kind: 'rejected' }
+  | { kind: 'needs_school'; schools: SchoolOption[] }
+  // Google token was valid, but no account here uses that Google identity.
+  | { kind: 'not_registered' }
+  // No GOOGLE_CLIENT_ID configured on the server.
+  | { kind: 'unavailable' };
 
 export interface QueryContext {
   grade?: string;
@@ -138,7 +189,9 @@ export interface AdminSchool {
 export interface AdminUser {
   id: string;
   name: string;
+  email: string;
   role: Role;
+  status: UserStatus;
   school?: string;
   schoolCode?: string;
   lastLogin?: string | null;

@@ -10,6 +10,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@react-oauth/google": "^0.13.5",
     "katex": "^0.16.47",
     "lucide-react": "^1.25.0",
     "react": "^18.3.1",

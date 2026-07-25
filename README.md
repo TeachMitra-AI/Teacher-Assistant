@@ -159,7 +159,7 @@ These are **not implemented** yet (see `docs/` and the code comments):
 | **Backend** | Node.js 18+ (CI uses 20), Express 4 |
 | **Database** | SQLite via Prisma ORM 6 (datasource is swappable to PostgreSQL — see `docs/`) |
 | **AI** | Google Gemini `2.5-flash` (`generateContent`), called only from the server |
-| **Auth & security** | JWT access tokens (`jsonwebtoken`), rotating server-tracked refresh tokens, `bcryptjs` PIN hashing, `helmet`, `cors`, `express-rate-limit`, `zod` validation |
+| **Auth & security** | JWT access tokens (`jsonwebtoken`), rotating server-tracked refresh tokens, `bcryptjs` password hashing, Google Sign-In (`google-auth-library`), password reset by email (Brevo), `helmet`, `cors`, `express-rate-limit`, `zod` validation |
 | **Testing** | Vitest + Supertest (server); `tsc` + ESLint + Vite build (client) |
 | **CI / Security** | GitHub Actions (secret scan + server + client jobs), gitleaks secret scanning, optional local pre-commit hook |
 | **Deployment** | Static frontend build + Node API; `npm start` runs `prisma migrate deploy` then boots (migrations-on-start) |
@@ -314,8 +314,13 @@ Document **names and purpose only** — never commit real values. `server/.env` 
 | `PORT` | `3000` | Backend port. |
 | `ACCESS_TOKEN_TTL` | `15m` | Access-token lifetime (kept short; refreshed silently). |
 | `REFRESH_TOKEN_TTL_DAYS` | `7` | Refresh-token lifetime ("stay logged in" window). |
-| `LOGIN_MAX_ATTEMPTS` | `5` | Failed PIN attempts before lockout. |
+| `LOGIN_MAX_ATTEMPTS` | `5` | Failed password attempts before lockout. |
 | `LOGIN_LOCKOUT_MINUTES` | `15` | Lockout duration. |
+| `BREVO_API_KEY` | — | Brevo key for password-reset email. Unset = no email sent; the app still runs. |
+| `EMAIL_FROM` | — | From address on reset email, as `Name <address>`. The address must be verified in Brevo. |
+| `APP_URL` | `http://localhost:5173` | Frontend URL used to build the reset link. |
+| `PASSWORD_RESET_TTL_MINUTES` | `60` | How long a reset link stays valid. |
+| `GOOGLE_CLIENT_ID` | — | Google OAuth Web client ID; verified as each ID token's audience. Unset = Google sign-in disabled (503). Must match the client's `VITE_GOOGLE_CLIENT_ID`. |
 | `RATE_LIMIT_WINDOW_MINUTES` | `15` | Rate-limit window for `POST /api/coach`. |
 | `RATE_LIMIT_MAX_REQUESTS` | `60` prod / `300` dev | Max coach requests per window per IP (env-aware default; explicit value always wins). |
 | `LLM_TIMEOUT_MS` | `30000` | Timeout for a single Gemini call. |
@@ -361,14 +366,33 @@ so pending migrations are applied automatically on server start.
 
 ## Authentication & Roles
 
-**Login identity:** school **code** + **name** + a **6-digit PIN**. PINs are hashed with bcrypt
-and never stored in plain text.
+**Login identity:** the teacher's **email address**. Passwords are hashed with bcrypt and never
+stored in plain text. A **school code** is required only at **sign-up**, to pick the tenant —
+signing back in needs just email + password. (If one email holds accounts at more than one school,
+sign-in shows a "which school?" picker.)
+
+**Sign-in methods** — two fully parallel options, both on the Sign in and Register tabs:
+
+1. **Email + password**, with self-service reset by email (`POST /auth/forgot-password` →
+   `POST /auth/reset-password`). Reset tokens are single-use, expire after
+   `PASSWORD_RESET_TTL_MINUTES`, are stored only as a SHA-256 hash, and revoke every existing
+   session when redeemed.
+2. **Google Sign-In.** The ID token is verified **server-side** against `GOOGLE_CLIENT_ID` as the
+   expected audience — a client-asserted email or subject is never trusted. Sign-in matches on
+   Google's stable `sub`, never on the email alone, so a Google token can't take over an account
+   created with a password.
+
+**Approval gate:** every new sign-up — by either method — is created with `status: 'pending'` and
+**receives no session at all** until a `school_admin` (their own school) or `super_admin` (any
+school) approves it from **Manage → Pending teachers**. A `resource_person` can see the queue but
+not act on it. Each decision writes a `user_approved` / `user_rejected` `Event` row for audit.
+This closes the earlier gap where a school code alone was enough to create an account.
 
 **Token model:** a short-lived **access token** (JWT, default 15 minutes) plus a **rotating
 refresh token** (default 7 days) whose hash is stored in the `Session` table. The client keeps
 both in `localStorage`; on a 401 it silently calls `POST /api/auth/refresh` once and retries.
 Refresh tokens rotate on every use; presenting an already-revoked token revokes all of the user's
-sessions (theft protection). Accounts lock after `LOGIN_MAX_ATTEMPTS` failed PINs.
+sessions (theft protection). Accounts lock after `LOGIN_MAX_ATTEMPTS` failed passwords.
 
 **Roles & what they can access:**
 
@@ -385,19 +409,20 @@ admin API route is protected server-side with `requireRole(...)`.
 
 ### Demo accounts (development only)
 
-`npm run seed` creates the following **development-only** demo accounts. All use PIN **`123456`**.
-Do not use these in production.
+`npm run seed` creates the following **development-only** demo accounts, all `active` and all
+using the password **`demo1234`**. Do not use these in production.
 
-| School code | Name | Role |
+| Email | School | Role |
 | --- | --- | --- |
-| `RAMPUR01` | Super Admin | Super Admin |
-| `RAMPUR01` | Rampur Admin | School Admin |
-| `RAMPUR01` | Rampur RP | Resource Person |
-| `RAMPUR01` | Demo Teacher | Teacher |
-| `RAMPUR02` | Sunita Devi | Teacher |
-| `DELHI01` | Ravi Kumar | Teacher |
+| `superadmin@example.com` | `RAMPUR01` | Super Admin |
+| `admin.rampur01@example.com` | `RAMPUR01` | School Admin |
+| `rp.rampur01@example.com` | `RAMPUR01` | Resource Person |
+| `teacher@example.com` | `RAMPUR01` | Teacher |
+| `sunita@example.com` | `RAMPUR02` | Teacher |
+| `ravi@example.com` | `DELHI01` | Teacher |
 
-New teachers can also self-register on the **Register** tab with a valid school code.
+New teachers self-register on the **Register** tab with a school code, name, email and password
+(or with Google). Remember that a fresh sign-up is **pending** until an admin approves it.
 
 ---
 
@@ -407,11 +432,16 @@ All routes are under `/api`. Protected routes require an `Authorization: Bearer 
 header; admin routes additionally enforce role.
 
 **Auth** (`server/src/routes/auth.js`)
-- `POST /auth/register` — first-time teacher sign-up under a valid school code
-- `POST /auth/login` — returning sign-in
+- `POST /auth/register` — sign-up under a valid school code; creates a **pending** account and
+  returns `201 { status: 'pending' }` with **no token**
+- `POST /auth/login` — email + password sign-in (no school code). May return
+  `{ needsSchoolSelection, schools }` instead of a session; `403 pending_approval` /
+  `403 registration_rejected` for accounts not yet let in
+- `POST /auth/google` — Google sign-up (with `schoolCode`) or sign-in (without), same outcomes
+- `POST /auth/forgot-password` · `POST /auth/reset-password` — self-service reset by email
 - `POST /auth/refresh` — exchange a refresh token for a new access+refresh pair
 - `POST /auth/logout` — revoke one refresh-token session
-- `GET /auth/me` · `PATCH /auth/me` · `PATCH /auth/me/pin` — profile, preferences, PIN change
+- `GET /auth/me` · `PATCH /auth/me` · `PATCH /auth/me/password` — profile, preferences, password change
 - `GET /auth/sessions` · `DELETE /auth/sessions/:id` — list / revoke the caller's own sessions
 
 **Coach / AI** (`server/src/index.js`)
@@ -431,6 +461,9 @@ header; admin routes additionally enforce role.
 - `GET /admin/analytics` — role-scoped usage analytics
 - `GET /admin/schools` · `POST /admin/schools` — super admin only
 - `GET /admin/users` — scoped user list
+- `GET /admin/users/pending` — scoped list of sign-ups awaiting approval (all admin roles)
+- `PATCH /admin/users/:id/approve` · `PATCH /admin/users/:id/reject` — decide on a pending sign-up
+  (`school_admin` / `super_admin` only; writes an audit `Event`)
 - `PATCH /admin/users/:id/role` — super admin changes a role
 - `POST /admin/users/:id/revoke-sessions` — revoke a user's sessions
 

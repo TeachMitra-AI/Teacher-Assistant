@@ -8,6 +8,35 @@
 
 ---
 
+## Follow-up log
+
+**2026-07-26 — `feature/auth1`: findings P2, S4 and S6 resolved.**
+
+The authentication rework closed three of this audit's findings. Rows for those findings are struck
+through below and annotated in place; nothing else in the report has been re-audited, so every other
+finding stands exactly as written on 2026-07-25.
+
+| Finding | Was | Now |
+|---|---|---|
+| **P2** / **S4** | Self-registration needed only a school code + name + PIN, with no approval step | Every sign-up — email+password *or* Google — is created `status: 'pending'` and **receives no session**. Approval is restricted to `school_admin` (own school) and `super_admin` (any school); `resource_person` sees the queue read-only. Each decision writes a `user_approved`/`user_rejected` audit `Event`. |
+| **S6** | bcrypt cost 10 over a 6-digit-PIN keyspace — brute-forceable if `pinHash` leaked | PINs removed. Credentials are bcrypt-hashed passwords of **8+ characters**, or Google identities with no local secret. `pinHash` stays in the schema (so the migration is non-destructive) but is never read or written. |
+
+Also delivered in the same change, beyond the audit's scope: identity moved from `name` to `email`
+(fixing name collisions within a school), Google Sign-In with server-side ID-token verification,
+and self-service password reset with single-use, expiring, hash-at-rest tokens that revoke all
+existing sessions on redemption.
+
+**Known gaps introduced by this work**, neither yet addressed:
+- **Rejection is terminal.** A rejected sign-up cannot re-register (409 on the same email) and
+  cannot be re-approved, since approve/reject only act on `pending`. There is no suspend or
+  delete path for an approved teacher either.
+- **No production path for creating admin accounts.** Both signup routes hardcode `role: 'teacher'`;
+  the only promotion route is `PATCH /admin/users/:id/role` (super_admin only), and the first
+  super_admin comes from `npm run seed` with the publicly-known password `demo1234`. That seeded
+  account **must not reach production** — see D1 below, which remains open.
+
+---
+
 ## 🚨 Act on this today, regardless of the rest of this report
 
 Three real-looking Google Gemini API keys are still present in this repo's git history (verified via `git log --all -p | grep -E "AIza[0-9A-Za-z_-]{35}"`). `docs/git-history-secret-purge.md` documents this exact incident and a purge runbook, but its own status line says the purge has never been run — and that is still true today. If this repo has ever been pushed to a remote (it has), assume these keys are already scraped by bots. **Rotate all three keys in Google AI Studio today, then run the documented purge.** Everything else in this report can wait; this can't.
@@ -47,7 +76,7 @@ pie showData
 | # | Sev | Finding | Why it matters at scale | Effort/Impact |
 |---|---|---|---|---|
 | P1 | **High** | UI chrome (nav, buttons, labels) is English-only; the 9-language support only controls the *AI response* language, not the interface | Undercuts the core accessibility promise for the least English-fluent teachers — exactly who the product targets | M / H |
-| P2 | **Medium** | Self-registration requires only a school code + name + PIN — no admin approval, invite token, or verification step | Anyone who obtains/guesses a school code can create an account under that tenant with zero verification (also a security finding, S4 below) | M / M |
+| P2 | ~~**Medium**~~ **RESOLVED** | ~~Self-registration requires only a school code + name + PIN — no admin approval, invite token, or verification step~~ Every sign-up (email+password *or* Google) is now created `status: 'pending'` with **no session issued**, and requires approval by a `school_admin` (own school) or `super_admin` (any school). Each decision writes a `user_approved`/`user_rejected` audit `Event`. | Closed — see S4 | M / M |
 | P3 | **Medium** | Admin `ManagePage` has no pagination, search, or filter on users/schools tables | Unusable past a few dozen rows — breaks immediately at real multi-school scale | M / H |
 | P4 | **Low** | No first-run tutorial beyond example-question chips | Minor; would reduce support load for low-digital-literacy users | S / M |
 | P5 | **Low** | No in-app support/bug-report channel beyond 👍/👎 feedback | No way to close the loop on a real problem a teacher hits | S / M |
@@ -99,16 +128,16 @@ pie showData
 
 *(OWASP-mapped; independently re-verified — see methodology note above.)*
 
-**Strengths, verified against code:** bcrypt PIN hashing at a real cost factor; refresh-token rotation with theft/reuse detection that revokes **all** sessions on reuse — textbook-correct; ownership always derived from the JWT, never from client-supplied IDs, across every route including the newer `resources.js`; tenant scoping centralized and covered by genuine negative-case tests; production fail-fast on missing `JWT_SECRET`/`GEMINI_API_KEY`/CORS; Prisma-only data access (no raw SQL anywhere — no SQL injection surface); the prompt-injection defense is structural (`systemInstruction` vs. `contents`), applied consistently across all four AI entry points including the new quiz generator; output-side leak detection for both system-prompt echo and API-key-shaped strings, independently tested; no cookies set anywhere — Bearer-token-only auth makes CSRF structurally moot; no file-upload surface exists.
+**Strengths, verified against code:** bcrypt credential hashing at a real cost factor (PINs at the time of audit; 8+ character passwords since `feature/auth1` — see the follow-up log above); refresh-token rotation with theft/reuse detection that revokes **all** sessions on reuse — textbook-correct; ownership always derived from the JWT, never from client-supplied IDs, across every route including the newer `resources.js`; tenant scoping centralized and covered by genuine negative-case tests; production fail-fast on missing `JWT_SECRET`/`GEMINI_API_KEY`/CORS; Prisma-only data access (no raw SQL anywhere — no SQL injection surface); the prompt-injection defense is structural (`systemInstruction` vs. `contents`), applied consistently across all four AI entry points including the new quiz generator; output-side leak detection for both system-prompt echo and API-key-shaped strings, independently tested; no cookies set anywhere — Bearer-token-only auth makes CSRF structurally moot; no file-upload surface exists.
 
 | # | Sev | OWASP | Finding | Effort |
 |---|---|---|---|---|
 | S1 | **Critical** | A05 | Leaked Gemini API keys still live in git history, unrotated — see top-of-report flag | S (rotate today) / M (purge) |
 | S2 | **High** | A01 | Same as B1 — `/api/resources/*` and `/api/queries` have no rate limiting, meaning unbounded AI-cost exposure per authenticated account | S |
 | S3 | **High** | A02 | `JWT_SECRET` checked only for presence, never length/entropy — a trivially weak secret boots successfully in production, enabling offline token forgery | S |
-| S4 | **High** | A04 | No approval step on self-registration — anyone holding a school code mints a `teacher` account in that tenant | M |
+| S4 | ~~**High**~~ **RESOLVED** | A04 | ~~No approval step on self-registration~~ Approval gate added: sign-ups start `pending` and receive no token until approved. Identity also moved from `name` to `email`, removing the name-collision weakness. `resource_person` can view the queue but not act. | M |
 | S5 | **High** | — | No dependency-vulnerability scanning in CI (no Dependabot/Renovate/`npm audit` gate) | S |
-| S6 | **Medium** | A02 | bcrypt cost factor 10 combined with 6-digit-PIN keyspace — a stolen `pinHash` table is brute-forceable in minutes-to-hours on commodity hardware | M |
+| S6 | ~~**Medium**~~ **RESOLVED** | A02 | ~~bcrypt cost factor 10 combined with 6-digit-PIN keyspace~~ PINs are gone. Credentials are now bcrypt-hashed passwords of at least 8 characters (or Google identities with no local secret at all), so the 10^6 keyspace no longer exists. `pinHash` remains in the schema but is never read or written. | M |
 | S7 | **Medium** | A07 | Lockout resets attempt counter to 0 on lock rather than escalating — brute force is throttled but never actually stopped | S |
 | S8 | **Medium** | A09 | No `Event`/audit entry on failed logins, lockouts, or admin role changes | S |
 | S9 | **Low** | A07 | Tokens in `localStorage`, not `httpOnly` cookies — a reasonable, defensible tradeoff given the narrow XSS surface, but should be a documented risk-acceptance rather than an implicit one | — |
@@ -237,7 +266,7 @@ Admin analytics and RBAC-gated management exist and are correctly enforced serve
 7. No admin audit trail, no bulk tenant onboarding, no AI cost-attribution story.
 
 ## High Priority Issues
-S1 (leaked keys — act today), B1/S2 (unrated AI-cost endpoints), B2 (no global error handling — crash risk), B3 (in-memory rate limiter), B4/D2 (wrong + unscalable analytics aggregation), D1 (no user-deletion path — compliance), D3 (district string-matching), S3 (JWT secret not length-validated), S4 (unapproved self-registration), S5/DO2 (no dependency scanning), T1 (no client tests), DO1 (no deployment config), P1 (English-only UI chrome), A1 (no AI response caching), A3 (no response-quality evaluation).
+S1 (leaked keys — act today), B1/S2 (unrated AI-cost endpoints), B2 (no global error handling — crash risk), B3 (in-memory rate limiter), B4/D2 (wrong + unscalable analytics aggregation), D1 (no user-deletion path — compliance), D3 (district string-matching), S3 (JWT secret not length-validated), ~~S4 (unapproved self-registration — **resolved**)~~, S5/DO2 (no dependency scanning), T1 (no client tests), DO1 (no deployment config), P1 (English-only UI chrome), A1 (no AI response caching), A3 (no response-quality evaluation).
 
 ## Medium Priority Issues
 B5–B8, D4–D6, S6–S8, F3–F7, A2/A4–A6, DO3–DO5, P2–P3, DOC1–DOC2, T2.
@@ -278,7 +307,7 @@ S9–S10, F6–F7, A7, DOC3, T3, P4–P6.
 - Keyword-based prompt-template routing — fine today, a classifier-based router is the natural next step, not urgent.
 
 ## Security Risks
-Ranked: (1) leaked git-history keys — critical, live; (2) unrated AI-cost endpoints; (3) weak-JWT-secret boot check; (4) unapproved self-registration abuse surface; (5) no dependency-vulnerability scanning; (6) PIN/bcrypt-cost brute-force math if a hash table is ever exfiltrated.
+Ranked: (1) leaked git-history keys — critical, live; (2) unrated AI-cost endpoints; (3) weak-JWT-secret boot check; ~~(4) unapproved self-registration abuse surface — **resolved**~~; (5) no dependency-vulnerability scanning; ~~(6) PIN/bcrypt-cost brute-force math — **resolved**, PINs replaced by 8+ character bcrypt passwords~~.
 
 ## Performance Risks
 In-JS analytics aggregation; zero AI response caching; no frontend code-splitting for a low-end-device target audience.
@@ -344,7 +373,7 @@ flowchart LR
 Rotate + purge leaked keys · rate-limit `/api/queries` and `/api/resources/*` · add global error-handling middleware · add Dependabot · fix `/api/health` to check DB · add a React error boundary · retire `IMPROVEMENTS.md`.
 
 **Phase 2 — Unblock real multi-school scale**
-Redis-backed rate limiting · SQL-native admin analytics (fixes accuracy and scale in one change) · pagination on all admin list endpoints · normalize `District` into a real entity · validate `JWT_SECRET` length at boot · add approval/invite step to self-registration.
+Redis-backed rate limiting · SQL-native admin analytics (fixes accuracy and scale in one change) · pagination on all admin list endpoints · normalize `District` into a real entity · validate `JWT_SECRET` length at boot · ~~add approval/invite step to self-registration~~ (**done**).
 
 **Phase 3 — Operational maturity**
 Commit deployment/IaC config · CD pipeline with staging + smoke tests · Sentry/APM · admin action audit log · user/school deletion path · execute the Postgres migration when write concurrency demands it.

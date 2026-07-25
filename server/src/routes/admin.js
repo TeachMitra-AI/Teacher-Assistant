@@ -6,6 +6,7 @@ const express = require('express');
 const { z } = require('zod');
 
 const { prisma } = require('../lib/db');
+const { asyncHandler } = require('../lib/asyncHandler');
 const { authRequired, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -157,27 +158,92 @@ router.post('/schools', authRequired, requireRole('super_admin'), async (req, re
   res.status(201).json({ school });
 });
 
-// GET /api/admin/users — users within the caller's scope (no PIN hashes).
+// Shared DTO for both user listings below — never includes a password hash,
+// a googleSub, or any other credential material.
+function userDto(u) {
+  return {
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: u.role,
+    status: u.status,
+    school: u.school?.name,
+    schoolCode: u.school?.code,
+    lastLogin: u.lastLogin,
+    createdAt: u.createdAt,
+  };
+}
+
+// GET /api/admin/users — users within the caller's scope (no credentials).
 router.get('/users', authRequired, requireRole(...ADMIN_ROLES), async (req, res) => {
   const scope = await schoolScope(req.user);
-  const where = scope === null ? {} : { schoolId: { in: scope } };
   const users = await prisma.user.findMany({
-    where,
+    where: scopeWhere(scope),
     orderBy: { createdAt: 'desc' },
     include: { school: { select: { name: true, code: true } } },
   });
-  res.json({
-    users: users.map((u) => ({
-      id: u.id,
-      name: u.name,
-      role: u.role,
-      school: u.school?.name,
-      schoolCode: u.school?.code,
-      lastLogin: u.lastLogin,
-      createdAt: u.createdAt,
-    })),
-  });
+  res.json({ users: users.map(userDto) });
 });
+
+// GET /api/admin/users/pending — sign-ups awaiting approval in the caller's
+// scope. Readable by every admin role (a resource_person can see the queue for
+// their district), but only school_admin/super_admin can act on it below.
+router.get('/users/pending', authRequired, requireRole(...ADMIN_ROLES), asyncHandler(async (req, res) => {
+  const scope = await schoolScope(req.user);
+  const users = await prisma.user.findMany({
+    where: { status: 'pending', ...scopeWhere(scope) },
+    orderBy: { createdAt: 'desc' },
+    include: { school: { select: { name: true, code: true } } },
+  });
+  res.json({ users: users.map(userDto) });
+}));
+
+// Approve or reject one pending sign-up. Ownership/scope is checked exactly
+// the way POST /users/:id/revoke-sessions does it, so an admin can never act
+// on an account outside their own school (or district, or all schools for a
+// super_admin). Each decision writes an Event row so there's a durable record
+// of who let a given teacher in.
+async function decidePendingUser(req, res, { status, eventType }) {
+  const target = await prisma.user.findUnique({ where: { id: req.params.id } });
+  if (!target) return res.status(404).json({ error: 'User not found.' });
+
+  const scope = await schoolScope(req.user);
+  if (scope !== null && !scope.includes(target.schoolId)) {
+    return res.status(403).json({ error: 'You do not have permission to do this.' });
+  }
+
+  // Only a pending account is a valid target — this keeps the endpoint from
+  // doubling as a way to deactivate an already-approved colleague, and makes a
+  // double-click from two admins at once a harmless 409 rather than a silent
+  // second decision.
+  if (target.status !== 'pending') {
+    return res.status(409).json({ error: 'This account is not awaiting approval.' });
+  }
+
+  const updated = await prisma.user.update({ where: { id: target.id }, data: { status } });
+  await prisma.event.create({
+    data: {
+      userId: req.user.id, // the admin who decided, not the teacher decided about
+      schoolId: target.schoolId,
+      type: eventType,
+      metadata: JSON.stringify({ targetUserId: target.id, targetEmail: target.email }),
+    },
+  });
+
+  return res.json({ id: updated.id, status: updated.status });
+}
+
+// PATCH /api/admin/users/:id/approve — school_admin/super_admin only.
+// resource_person is deliberately excluded: it matches the existing precedent
+// that account-mutating actions are restricted to those two roles.
+router.patch('/users/:id/approve', authRequired, requireRole('school_admin', 'super_admin'), asyncHandler(async (req, res) => {
+  return decidePendingUser(req, res, { status: 'active', eventType: 'user_approved' });
+}));
+
+// PATCH /api/admin/users/:id/reject — same gate as approve.
+router.patch('/users/:id/reject', authRequired, requireRole('school_admin', 'super_admin'), asyncHandler(async (req, res) => {
+  return decidePendingUser(req, res, { status: 'rejected', eventType: 'user_rejected' });
+}));
 
 const roleSchema = z.object({
   role: z.enum(['teacher', 'school_admin', 'resource_person', 'super_admin']),

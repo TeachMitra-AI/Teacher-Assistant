@@ -159,3 +159,9 @@ export const RESPONSE_STYLES: { value: ResponseStyle; label: string; hint: strin
 export const AVATAR_PRESETS = ['👩‍🏫', '👨‍🏫', '🧑‍🏫', '📚', '✏️', '🌟', '🍎', '🎓', '🧮', '🔬', '🎨', '🌈'];
 
 export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000/api';
+
+// Google OAuth Web-application client ID. Must be the SAME value the server
+// has as GOOGLE_CLIENT_ID — that's what it verifies each ID token's audience
+// against. Left unset, the Google buttons are simply not rendered and email +
+// password sign-in carries on untouched.
+export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
