@@ -14,9 +14,14 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
   const { user } = useAuth();
   const { show } = useToast();
   const isSuperAdmin = user?.role === 'super_admin';
+  // Every admin role can SEE the pending queue; only these two may decide on
+  // it, matching the server's gate on approve/reject. A resource_person gets
+  // read-only visibility.
+  const canDecide = user?.role === 'school_admin' || user?.role === 'super_admin';
 
   const [schools, setSchools] = useState<AdminSchool[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [pending, setPending] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
 
   // New-school form state.
@@ -30,12 +35,14 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
     let cancelled = false;
     (async () => {
       try {
-        const [usersRes, schoolsRes] = await Promise.all([
+        const [usersRes, pendingRes, schoolsRes] = await Promise.all([
           api<{ users: AdminUser[] }>('/admin/users'),
+          api<{ users: AdminUser[] }>('/admin/users/pending'),
           isSuperAdmin ? api<{ schools: AdminSchool[] }>('/admin/schools') : Promise.resolve({ schools: [] }),
         ]);
         if (cancelled) return;
         setUsers(usersRes.users);
+        setPending(pendingRes.users);
         setSchools(schoolsRes.schools);
       } catch (err) {
         if (!cancelled) show(err instanceof ApiError ? err.message : 'Failed to load data', 'error');
@@ -70,6 +77,27 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
       show(err instanceof ApiError ? err.message : 'Could not create school', 'error');
     } finally {
       setCreating(false);
+    }
+  }
+
+  // Same optimistic-update-then-roll-back-on-failure shape as changeRole
+  // below: the row leaves the queue immediately, and comes back if the server
+  // refuses. On approval the teacher also joins the Users table, so that list
+  // is kept in step without a refetch.
+  async function decide(target: AdminUser, action: 'approve' | 'reject') {
+    const previousPending = pending;
+    const previousUsers = users;
+    setPending((list) => list.filter((u) => u.id !== target.id));
+    if (action === 'approve') {
+      setUsers((list) => [{ ...target, status: 'active' }, ...list]);
+    }
+    try {
+      await api(`/admin/users/${target.id}/${action}`, { method: 'PATCH' });
+      show(action === 'approve' ? `${target.name} approved` : `${target.name} rejected`, 'success');
+    } catch (err) {
+      setPending(previousPending);
+      setUsers(previousUsers);
+      show(err instanceof ApiError ? err.message : `Could not ${action} this teacher`, 'error');
     }
   }
 
@@ -132,18 +160,61 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
               </section>
             )}
 
+            {/* Approval queue for new sign-ups. Shown to every admin role, but
+                the Approve/Reject buttons only appear for the two roles the
+                server actually lets act. */}
+            <section className="manage-section">
+              <h2>Pending teachers</h2>
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th><th>Email</th><th>School</th><th>Requested</th>
+                      {canDecide && <th>Decision</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pending.length === 0 && (
+                      <tr>
+                        <td colSpan={canDecide ? 5 : 4} className="table-empty">
+                          No sign-ups waiting for approval.
+                        </td>
+                      </tr>
+                    )}
+                    {pending.map((u) => (
+                      <tr key={u.id}>
+                        <td>{u.name}</td>
+                        <td>{u.email}</td>
+                        <td>{u.school || '—'}{u.schoolCode ? ` (${u.schoolCode})` : ''}</td>
+                        <td>{new Date(u.createdAt).toLocaleDateString()}</td>
+                        {canDecide && (
+                          <td>
+                            <button className="btn-primary" onClick={() => decide(u, 'approve')}>Approve</button>{' '}
+                            <button className="btn-text" onClick={() => decide(u, 'reject')}>Reject</button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
             <section className="manage-section">
               <h2>Users</h2>
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
-                    <tr><th>Name</th><th>School</th><th>Role</th><th>Last login</th></tr>
+                    <tr><th>Name</th><th>Email</th><th>School</th><th>Role</th><th>Last login</th></tr>
                   </thead>
                   <tbody>
-                    {users.length === 0 && <tr><td colSpan={4} className="table-empty">No users yet.</td></tr>}
+                    {users.length === 0 && <tr><td colSpan={5} className="table-empty">No users yet.</td></tr>}
                     {users.map((u) => (
                       <tr key={u.id}>
                         <td>{u.name}</td>
+                        {/* Email is shown because `name` is no longer unique
+                            within a school — two teachers can share one. */}
+                        <td>{u.email}</td>
                         <td>{u.school || '—'}{u.schoolCode ? ` (${u.schoolCode})` : ''}</td>
                         <td>
                           {isSuperAdmin ? (

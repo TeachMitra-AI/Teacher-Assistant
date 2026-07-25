@@ -3,7 +3,7 @@
 // not exist OR belongs to another user must return the same 404.
 const request = require('supertest');
 const { app, prisma } = require('./helpers/testApp');
-const { createFixtures, PIN } = require('./helpers/fixtures');
+const { createFixtures, PASSWORD } = require('./helpers/fixtures');
 const { loginAs } = require('./helpers/auth');
 const { mockGeminiFetch, geminiSuccess } = require('./helpers/geminiMock');
 
@@ -17,8 +17,8 @@ describe('My Library — /api/resources', () => {
 
   beforeAll(async () => {
     fx = await createFixtures(prisma, 'resources');
-    teacherAToken = await loginAs(app, fx.schoolA, fx.teacherA, PIN);
-    teacherBToken = await loginAs(app, fx.schoolB, fx.teacherB, PIN);
+    teacherAToken = await loginAs(app, fx.schoolA, fx.teacherA, PASSWORD);
+    teacherBToken = await loginAs(app, fx.schoolB, fx.teacherB, PASSWORD);
   });
 
   // Keep tests independent: clear resources created by the two test teachers

@@ -11,7 +11,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// A school is the tenant boundary. Teachers log in with the school `code`.
+// A school is the tenant boundary. The `code` picks the tenant at sign-UP;
+// sign-in needs only an email, so a returning teacher never has to know it.
 model School {
   id        String   @id @default(cuid())
   name      String
@@ -27,28 +28,68 @@ model School {
 }
 
 // Roles: teacher | school_admin | resource_person | super_admin
+//
+// Identity is `email` (not `name`): common teacher names collide within a
+// single school, and email unifies the manual signup path with Google
+// sign-in, which always supplies a verified email. `name` is retained purely
+// as a display field (Manage table, app header, exam letterhead) and is
+// deliberately NOT unique any more.
+//
+// `status` gates sign-in: every new signup — manual or Google — starts as
+// `pending` and only a school_admin/super_admin can move it to `active`.
 model User {
   id               String    @id @default(cuid())
   school           School    @relation(fields: [schoolId], references: [id])
   schoolId         String
   name             String
+  email            String
   displayName      String?
   preferences      String? // JSON string of teacher preferences (defaults + responseStyle + avatar)
   role             String    @default("teacher")
-  pinHash          String
+  // Set for accounts created through the email+password path. Null for
+  // Google-only accounts, which have no local secret to verify.
+  passwordHash     String?
+  // Google's stable subject claim (`sub`) from a verified ID token. Indexed
+  // because Google sign-in looks an identity up across every school at once.
+  googleSub        String?
+  status           String    @default("active") // active | pending | rejected
+  // Legacy: the pre-email name+PIN credential. Retained so the migration
+  // never has to drop a column; no current code path reads or writes it.
+  pinHash          String?
   failedLoginCount Int       @default(0)
   lockedUntil      DateTime?
   lastLogin        DateTime?
   createdAt        DateTime  @default(now())
 
-  queries   Query[]
-  feedback  Feedback[]
-  events    Event[]
-  sessions  Session[]
-  resources Resource[]
+  queries             Query[]
+  feedback            Feedback[]
+  events              Event[]
+  sessions            Session[]
+  resources           Resource[]
+  passwordResetTokens PasswordResetToken[]
 
-  // A teacher name is unique within a school.
-  @@unique([schoolId, name])
+  // A teacher's email is unique within a school. The same email may hold
+  // accounts at more than one school, which is why sign-in looks up by email
+  // across schools and asks the user to disambiguate when it matches several.
+  @@unique([schoolId, email])
+  @@index([googleSub])
+}
+
+// A single-use, time-limited password-reset token. Mirrors the Session model's
+// discipline exactly: the raw token goes out in the reset email and is never
+// stored — only its SHA-256 hash (see hashToken in middleware/auth.js), so a
+// database leak cannot be replayed into account takeovers. `usedAt` makes
+// redemption single-use even inside the expiry window.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  user      User      @relation(fields: [userId], references: [id])
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 // A refresh-token session, so a login can be revoked server-side instead of

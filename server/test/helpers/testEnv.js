@@ -21,6 +21,19 @@ const TEST_ENV = {
   CORS_ORIGINS: 'http://localhost:5173',
   LOGIN_MAX_ATTEMPTS: '5',
   LOGIN_LOCKOUT_MINUTES: '15',
+  // Password reset. The Brevo key is a dummy — password-reset.test.js stubs
+  // global fetch so no request ever leaves the process — but it has to be
+  // *set*, because lib/email.js treats an absent key as "email not configured"
+  // and skips the send entirely.
+  BREVO_API_KEY: 'test-dummy-brevo-key-not-real',
+  EMAIL_FROM: 'Teacher Assistant <test@example.com>',
+  APP_URL: 'http://localhost:5173',
+  PASSWORD_RESET_TTL_MINUTES: '60',
+  // Google sign-in. Dummy value: google-auth.test.js mocks verifyIdToken, so
+  // nothing is ever verified against Google. It must be set, though, because
+  // an absent client ID disables the feature (POST /auth/google -> 503), and
+  // it's asserted on as the expected audience.
+  GOOGLE_CLIENT_ID: 'test-dummy-google-client-id.apps.googleusercontent.com',
   RATE_LIMIT_WINDOW_MINUTES: '15',
   RATE_LIMIT_MAX_REQUESTS: '1000', // generous — rate limiting itself isn't under test here
   // Kept small so route-level retry tests stay fast. Only affects the shared

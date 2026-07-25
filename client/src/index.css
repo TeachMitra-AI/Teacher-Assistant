@@ -1124,7 +1124,13 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .auth-screen {
   min-height: 100vh;
   display: flex;
-  align-items: center;
+  /* Deliberately NOT `align-items: center`. The Register card (four fields,
+     help text, Google button) is taller than a laptop viewport, and a centered
+     flex item that overflows is clipped at BOTH ends — the top overflow being
+     unreachable by scrolling, which cut off the brand and tabs. Starting at
+     flex-start and centring via `margin: auto` on .auth-layout below keeps it
+     centred when it fits and scrollable when it doesn't. */
+  align-items: flex-start;
   justify-content: center;
   padding: 1.5rem;
   background:
@@ -1136,6 +1142,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .auth-theme { position: absolute; top: 1rem; right: 1rem; z-index: 2; }
 
 .auth-layout {
+  /* Absorbs the free space on both axes, so the card is centred on a roomy
+     screen but never clipped on a short one (see .auth-screen above). */
+  margin: auto;
   width: 100%;
   max-width: 960px;
   display: grid;
@@ -1372,7 +1381,17 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   animation: spin 0.7s linear infinite;
 }
 
-.auth-hint { color: var(--text-muted); font-size: 0.82rem; text-align: center; margin: 1.2rem 0 0; }
+/* line-height is set explicitly: body declares none, so this inherited the UA
+   default (~1.2). At 0.82rem that left the underline of "Forgot your password?"
+   almost touching the "First time here?" line below it, which read as the two
+   links overlapping. */
+.auth-hint {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  text-align: center;
+  line-height: 1.65;
+  margin: 1.2rem 0 0;
+}
 .auth-link {
   background: none;
   border: none;
@@ -1383,9 +1402,28 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
+  /* These links are a mix of <a> and <button>. Buttons don't sit on the text
+     baseline by default, so without this the button-based ones rode high and
+     crowded the line above. */
+  vertical-align: baseline;
+  line-height: inherit;
 }
 .auth-link:hover { color: var(--orange-dark); }
 .auth-link:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; border-radius: 3px; }
+
+/* Google renders its button inside an iframe whose look is fixed by Google's
+   branding rules, so we can only control the box around it: centre it so it
+   lines up with the full-width submit button above. */
+/* .auth-hint has no bottom margin, so the "or" above this sat flush against the
+   button while having 1.2rem of space above it. This restores the balance. */
+.auth-google { display: flex; justify-content: center; margin-top: 0.65rem; }
+
+/* On Register the school code picks the tenant, so Google can't run without
+   one. Rather than letting the account chooser open and fail afterwards, the
+   button is greyed out and click-blocked; the wrapper catches the click and
+   explains why. `pointer-events: none` leaves the iframe in the tab order, so
+   handleGoogleToken keeps its own guard for keyboard users. */
+.auth-google-blocked { opacity: 0.45; filter: grayscale(1); pointer-events: none; }
 
 @media (max-width: 820px) {
   .auth-layout { grid-template-columns: 1fr; max-width: 440px; }

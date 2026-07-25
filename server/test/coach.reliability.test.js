@@ -7,7 +7,7 @@
 // stay fast.
 const request = require('supertest');
 const { app, prisma } = require('./helpers/testApp');
-const { createFixtures, PIN } = require('./helpers/fixtures');
+const { createFixtures, PASSWORD } = require('./helpers/fixtures');
 const { loginAs } = require('./helpers/auth');
 const { mockGeminiFetch, geminiSuccess, geminiRateLimited, geminiInputBlocked } = require('./helpers/geminiMock');
 
@@ -17,7 +17,7 @@ describe('coach reliability — route contract', () => {
 
   beforeAll(async () => {
     fx = await createFixtures(prisma, 'coachrel');
-    token = await loginAs(app, fx.schoolA, fx.teacherA, PIN);
+    token = await loginAs(app, fx.schoolA, fx.teacherA, PASSWORD);
   });
 
   afterEach(() => {

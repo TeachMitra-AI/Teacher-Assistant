@@ -1,9 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider, useAuth } from './auth';
 import { ToastProvider } from './components/Toast';
 import { usePreferences } from './hooks/usePreferences';
-import { ADMIN_ROLES } from './config';
+import { ADMIN_ROLES, GOOGLE_CLIENT_ID } from './config';
 import LoginPage from './pages/LoginPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import CoachPage from './pages/CoachPage';
 import AdminPage from './pages/AdminPage';
 import ManagePage from './pages/ManagePage';
@@ -26,10 +29,15 @@ function AppRoutes() {
     );
   }
 
+  // Password reset happens while signed OUT, so both of its pages live in this
+  // tree alongside /login. The reset token travels in the path, which is what
+  // the link in the email points at.
   if (!user) {
     return (
       <Routes>
         <Route path="/login" element={<LoginPage preferences={preferences} />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage preferences={preferences} />} />
+        <Route path="/reset-password/:token" element={<ResetPasswordPage preferences={preferences} />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -62,7 +70,14 @@ function AppRoutes() {
 }
 
 export default function App() {
-  return (
+  // Mounted once, at the root. GoogleOAuthProvider calls
+  // google.accounts.id.initialize() on mount, so keeping it inside LoginPage
+  // re-ran that every time the Sign in/Register tab changed — which GSI warns
+  // about ("initialize() is called multiple times") and which leaves only the
+  // last instance live. Rendered here it initializes exactly once.
+  // Without a client ID we skip the provider entirely; LoginPage already hides
+  // the Google buttons in that case.
+  const tree = (
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
@@ -70,5 +85,11 @@ export default function App() {
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
+  );
+
+  return GOOGLE_CLIENT_ID ? (
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>{tree}</GoogleOAuthProvider>
+  ) : (
+    tree
   );
 }

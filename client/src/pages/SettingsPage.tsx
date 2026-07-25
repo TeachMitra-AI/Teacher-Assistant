@@ -38,11 +38,11 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
   const [examShowTime, setExamShowTime] = useState(examDefaults.showTime ?? false);
   const [savingExamDefaults, setSavingExamDefaults] = useState(false);
 
-  // PIN change
-  const [currentPin, setCurrentPin] = useState('');
-  const [newPin, setNewPin] = useState('');
-  const [confirmPin, setConfirmPin] = useState('');
-  const [savingPin, setSavingPin] = useState(false);
+  // Password change
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
 
   if (!user) return null;
 
@@ -105,27 +105,27 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
     }
   }
 
-  async function handlePinSave(e: FormEvent) {
+  async function handlePasswordSave(e: FormEvent) {
     e.preventDefault();
-    if (newPin !== confirmPin) {
-      show('New PIN and confirmation do not match', 'error');
+    if (newPassword !== confirmPassword) {
+      show('New password and confirmation do not match', 'error');
       return;
     }
-    if (!/^\d{6}$/.test(newPin)) {
-      show('New PIN must be exactly 6 digits', 'error');
+    if (newPassword.length < 8) {
+      show('New password must be at least 8 characters', 'error');
       return;
     }
-    setSavingPin(true);
+    setSavingPassword(true);
     try {
-      await api('/auth/me/pin', { method: 'PATCH', body: { currentPin, newPin } });
-      setCurrentPin('');
-      setNewPin('');
-      setConfirmPin('');
-      show('PIN updated', 'success');
+      await api('/auth/me/password', { method: 'PATCH', body: { currentPassword, newPassword } });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      show('Password updated', 'success');
     } catch (err) {
-      show(err instanceof ApiError ? err.message : 'Could not update PIN', 'error');
+      show(err instanceof ApiError ? err.message : 'Could not update password', 'error');
     } finally {
-      setSavingPin(false);
+      setSavingPassword(false);
     }
   }
 
@@ -143,8 +143,8 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
         <form className="settings-card" onSubmit={handleProfileSave}>
           <h2>Profile</h2>
           <p className="settings-hint">
-            You sign in as <strong>{user.name}</strong> ({ROLE_LABELS[user.role]}) at {user.school.name}.
-            Your login name cannot be changed here — set a display name for how you appear in the app.
+            You sign in as <strong>{user.email}</strong> ({ROLE_LABELS[user.role]}) at {user.school.name}.
+            Your sign-in email cannot be changed here — set a display name for how you appear in the app.
           </p>
 
           <label className="field-label">Avatar</label>
@@ -280,28 +280,32 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
         </form>
 
         {/* Security */}
-        <form className="settings-card" onSubmit={handlePinSave}>
-          <h2>Change PIN</h2>
-          <p className="settings-hint">Enter your current 6-digit PIN, then choose a new one.</p>
+        <form className="settings-card" onSubmit={handlePasswordSave}>
+          <h2>Change password</h2>
+          <p className="settings-hint">
+            Enter your current password, then choose a new one of at least 8 characters. If you have
+            forgotten it, sign out and use the &ldquo;Forgot your password?&rdquo; link instead.
+          </p>
           <div className="settings-grid">
             <div>
-              <label className="field-label" htmlFor="currentPin">Current PIN</label>
-              <input id="currentPin" className="text-input" type="password" inputMode="numeric" autoComplete="current-password"
-                maxLength={6} value={currentPin} onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, ''))} />
+              <label className="field-label" htmlFor="currentPassword">Current password</label>
+              <input id="currentPassword" className="text-input" type="password" autoComplete="current-password"
+                maxLength={72} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
             </div>
             <div>
-              <label className="field-label" htmlFor="newPin">New PIN</label>
-              <input id="newPin" className="text-input" type="password" inputMode="numeric" autoComplete="new-password"
-                maxLength={6} value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))} />
+              <label className="field-label" htmlFor="newPassword">New password</label>
+              <input id="newPassword" className="text-input" type="password" autoComplete="new-password"
+                minLength={8} maxLength={72} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
             </div>
             <div>
-              <label className="field-label" htmlFor="confirmPin">Confirm new PIN</label>
-              <input id="confirmPin" className="text-input" type="password" inputMode="numeric" autoComplete="new-password"
-                maxLength={6} value={confirmPin} onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))} />
+              <label className="field-label" htmlFor="confirmPassword">Confirm new password</label>
+              <input id="confirmPassword" className="text-input" type="password" autoComplete="new-password"
+                minLength={8} maxLength={72} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
             </div>
           </div>
-          <button className="btn-primary" type="submit" disabled={savingPin || !currentPin || !newPin || !confirmPin}>
-            {savingPin ? 'Updating…' : 'Update PIN'}
+          <button className="btn-primary" type="submit"
+            disabled={savingPassword || !currentPassword || !newPassword || !confirmPassword}>
+            {savingPassword ? 'Updating…' : 'Update password'}
           </button>
         </form>
 
