@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { PanelLeft, Sun, Moon, Settings, LogOut } from 'lucide-react';
+import { PanelLeft, Sun, Moon, Compass, Settings, LogOut } from 'lucide-react';
 import { useAuth } from '../auth';
+import { useOnboarding } from '../onboarding';
 import { usePreferences } from '../hooks/usePreferences';
 import { useDismissable } from '../hooks/useDismissable';
 import { ADMIN_ROLES, ROLE_LABELS } from '../config';
@@ -21,6 +22,7 @@ function initialsOf(name: string): string {
 
 export default function TopBar({ preferences, onSidebarToggle, sidebarOpen }: TopBarProps) {
   const { user, logout } = useAuth();
+  const { reopenIntro } = useOnboarding();
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = preferences;
@@ -121,6 +123,14 @@ export default function TopBar({ preferences, onSidebarToggle, sidebarOpen }: To
 
               {menuOpen && (
                 <div className="profile-dropdown" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="profile-dropdown-item"
+                    onClick={() => { setMenuOpen(false); reopenIntro(); navigate('/'); }}
+                  >
+                    <Compass size={15} aria-hidden="true" /> Getting started
+                  </button>
                   <button
                     type="button"
                     role="menuitem"

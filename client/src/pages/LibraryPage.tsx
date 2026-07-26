@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Trash2, Library as LibraryIcon } from 'lucide-react';
 import TopBar from '../components/TopBar';
+import OnboardingTip from '../components/OnboardingTip';
 import { useToast } from '../components/Toast';
 import { usePreferences } from '../hooks/usePreferences';
+import { useOnboardingTip } from '../hooks/useOnboardingTip';
 import { listResources, deleteResource } from '../lib/resources';
 import { RESOURCE_TYPES, RESOURCE_TYPE_META } from '../config';
 import { ApiError } from '../api';
@@ -21,6 +23,7 @@ function snippet(text: string, max = 140): string {
 export default function LibraryPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
   const { show } = useToast();
   const navigate = useNavigate();
+  const libraryTip = useOnboardingTip('library-intro');
 
   const [items, setItems] = useState<LibraryResource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,6 +80,12 @@ export default function LibraryPage({ preferences }: { preferences: ReturnType<t
           <h1 className="library-title">My Library</h1>
           <p className="library-subtitle">Your saved lesson plans, activities, assessments, and resources.</p>
         </header>
+
+        {libraryTip.visible && (
+          <OnboardingTip onDismiss={libraryTip.dismiss}>
+            Everything you save lands here. Open a resource to view it, then edit or print it in the Workspace.
+          </OnboardingTip>
+        )}
 
         <div className="library-controls">
           <div className="library-search">

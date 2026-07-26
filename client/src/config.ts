@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   NotebookPen, Target, Lightbulb, ClipboardCheck, Users,
   LayoutDashboard, ShieldCheck, FileText,
+  MessageCircle, Library, PencilRuler, Sparkles,
 } from 'lucide-react';
 import type { Role, ResponseStyle, ResourceType } from './types';
 
@@ -57,6 +58,30 @@ export const QUICK_ACTIONS: QuickAction[] = [
   { icon: Lightbulb, label: 'Explain a Concept', description: 'Simple explanations pitched to your grade', prompt: 'Explain this concept simply: ' },
   { icon: ClipboardCheck, label: 'Create Assessment', description: 'Quizzes and worksheets to check learning', prompt: 'Create a short assessment for ', hideOnMobile: true },
   { icon: Users, label: 'Manage Classroom', description: 'Strategies for engagement and behaviour', prompt: 'How do I manage ', hideOnMobile: true },
+];
+
+// First-run onboarding feature intro (Phase 1). Purely informational — unlike
+// QUICK_ACTIONS these neither seed a prompt nor navigate; they explain, once,
+// what each area of the app is for on a teacher's first visit (see
+// preferences.onboarding.seenWelcomeIntro for the shown-once gate). `adminOnly`
+// items appear only for admin roles, mirroring the ADMIN_SHORTCUTS split, so a
+// first-time admin also learns about the approval queue and dashboard. Adding a
+// future feature here is a one-line append — the same extensibility QUICK_ACTIONS
+// has — which is why onboarding copy lives in config, not hard-coded in the view.
+export interface OnboardingFeature {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  adminOnly?: boolean;
+}
+
+export const ONBOARDING_FEATURES: OnboardingFeature[] = [
+  { icon: MessageCircle, title: 'Coach', description: 'Ask any teaching question and get instant, classroom-ready guidance.' },
+  { icon: Library, title: 'My Library', description: 'Save answers you find useful and reopen them anytime.' },
+  { icon: ClipboardCheck, title: 'Generator', description: 'Build printable quizzes and worksheets with a ready answer key.' },
+  { icon: PencilRuler, title: 'Workspace', description: 'Open a saved resource to edit, refine, or print it.' },
+  { icon: Sparkles, title: 'AI Assist', description: 'In the Workspace, preview an AI edit, then apply and save it.' },
+  { icon: ShieldCheck, title: 'Manage & Dashboard', description: 'Approve new teachers and track your school’s usage.', adminOnly: true },
 ];
 
 // Admin-only shortcuts on the welcome screen. Unlike quick actions, these

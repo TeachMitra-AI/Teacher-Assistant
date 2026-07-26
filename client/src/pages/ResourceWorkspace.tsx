@@ -8,10 +8,12 @@ import {
 import TopBar from '../components/TopBar';
 import ExamHeader from '../components/ExamHeader';
 import ExamHeaderEditor from '../components/ExamHeaderEditor';
+import OnboardingTip from '../components/OnboardingTip';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../auth';
 import { useDismissable } from '../hooks/useDismissable';
 import { usePreferences } from '../hooks/usePreferences';
+import { useOnboardingTip } from '../hooks/useOnboardingTip';
 import { formatResponse } from '../lib/format';
 import { buildInitialExamMeta, mergeExamMeta, parseExamMeta } from '../lib/examMeta';
 import { getResource, updateResource, runAiAction, type AiActionId } from '../lib/resources';
@@ -80,6 +82,8 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
   const { user } = useAuth();
   const userRef = useRef(user);
   userRef.current = user;
+  const workspaceTip = useOnboardingTip('workspace-intro');
+  const aiAssistTip = useOnboardingTip('ai-assist-intro');
 
   const [resource, setResource] = useState<LibraryResource | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
@@ -373,6 +377,13 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
 
         {!loading && !error && !notFound && form && resource && (
           <>
+            {workspaceTip.visible && (
+              <OnboardingTip onDismiss={workspaceTip.dismiss}>
+                This is your Workspace — edit the text and details here, then{' '}
+                <strong>Save Changes</strong> to keep your edits. Nothing saves automatically.
+              </OnboardingTip>
+            )}
+
             <article className="workspace-doc">
               <label className="workspace-title-field">
                 <span className="ws-label">Title</span>
@@ -481,6 +492,12 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
               <section className="workspace-ai" aria-label="AI assist">
                 <h2 className="workspace-ai-title">AI Assist</h2>
                 <p className="workspace-ai-hint">Generate a suggested revision — you preview and apply it yourself.</p>
+                {aiAssistTip.visible && (
+                  <OnboardingTip icon={Wand2} onDismiss={aiAssistTip.dismiss}>
+                    AI Assist won&rsquo;t change your resource until you <strong>Apply</strong> a preview — and
+                    applied changes still need <strong>Save Changes</strong> to keep.
+                  </OnboardingTip>
+                )}
                 <div className="workspace-ai-actions">
                   {AI_ACTIONS.filter((a) => !a.assessmentOnly || isAssessment).map((a) => {
                     const Icon = a.icon;

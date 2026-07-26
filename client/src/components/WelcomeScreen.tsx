@@ -1,20 +1,27 @@
 import { ChevronRight } from 'lucide-react';
+import OnboardingIntro from './OnboardingIntro';
 import { QUICK_ACTIONS, ADMIN_SHORTCUTS } from '../config';
 
 interface WelcomeScreenProps {
   name: string;
   isAdmin: boolean;
+  // First-run onboarding intro: shown once above the greeting until the teacher
+  // dismisses it (the parent persists that via preferences.onboarding).
+  showIntro: boolean;
+  onDismissIntro: () => void;
   onPickAction: (prompt: string) => void;
   onNavigate: (to: string) => void;
 }
 
-export default function WelcomeScreen({ name, isAdmin, onPickAction, onNavigate }: WelcomeScreenProps) {
+export default function WelcomeScreen({ name, isAdmin, showIntro, onDismissIntro, onPickAction, onNavigate }: WelcomeScreenProps) {
   return (
     <div className="welcome-screen">
       <div className="welcome-hero">
         <h1 className="welcome-title">Namaste{name ? `, ${name}` : ''} 👋</h1>
         <p className="welcome-subtitle">How can I help you teach today?</p>
       </div>
+
+      {showIntro && <OnboardingIntro isAdmin={isAdmin} onDismiss={onDismissIntro} />}
 
       <div className="quick-action-grid">
         {QUICK_ACTIONS.map((action) => {

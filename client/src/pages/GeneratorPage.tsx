@@ -6,9 +6,11 @@ import {
 import TopBar from '../components/TopBar';
 import ExamHeader from '../components/ExamHeader';
 import ExamHeaderEditor from '../components/ExamHeaderEditor';
+import OnboardingTip from '../components/OnboardingTip';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../auth';
 import { usePreferences } from '../hooks/usePreferences';
+import { useOnboardingTip } from '../hooks/useOnboardingTip';
 import { formatResponse } from '../lib/format';
 import { stripAssessmentPreamble } from '../lib/assessment';
 import { buildInitialExamMeta } from '../lib/examMeta';
@@ -33,6 +35,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
   const navigate = useNavigate();
   const { show } = useToast();
   const { user } = useAuth();
+  const generatorTip = useOnboardingTip('generator-intro');
 
   // Config form state.
   const [format, setFormat] = useState<AssessmentFormat>('quiz');
@@ -142,6 +145,13 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
             Generate a classroom-ready quiz or worksheet with AI, review it, then save it to your Library.
           </p>
         </header>
+
+        {generatorTip.visible && (
+          <OnboardingTip onDismiss={generatorTip.dismiss}>
+            Pick a format and topic to generate a printable quiz or worksheet with an answer key. Your school
+            letterhead comes from your <strong>Settings</strong> paper defaults.
+          </OnboardingTip>
+        )}
 
         <form className="generator-form" onSubmit={handleGenerate}>
           <fieldset className="generator-fieldset">

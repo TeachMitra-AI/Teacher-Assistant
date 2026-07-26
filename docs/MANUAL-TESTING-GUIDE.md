@@ -373,6 +373,51 @@ and `/admin/manage`. Teachers do not see these.
 
 ---
 
+## 8A. D — Onboarding (welcome intro & contextual tips)
+
+First-run onboarding state persists per account in `preferences.onboarding`
+(`seenWelcomeIntro`, `dismissedTips[]`), so it follows the user across devices and survives a
+browser-data wipe. To re-test a first-run state, clear it in Prisma Studio (see TC-DB-005): set the
+user's `preferences` to `null`. Reopening the intro via **Getting started** is view-only and never
+resets the stored state.
+
+### TC-ONB-001 — First-run welcome intro
+**Preconditions:** A user who has never dismissed the intro (fresh account, or `preferences` cleared); fresh Coach page.
+**Expected:** Below the greeting, a "Getting started — Here's what you can do" card lists the app's
+features (Coach, My Library, Generator, Workspace, AI Assist). Teachers see 5; admins also see a
+**Manage & Dashboard** card.
+
+### TC-ONB-002 — The intro is shown only once
+**Steps:** Either click **Got it — let's start** / the ×, **or** just start using the app (submit a
+question) without dismissing. Reload the page (or log out and back in).
+**Expected:** The card disappears and does **not** reappear on the next session. The "seen" gate
+(`preferences.onboarding.seenWelcomeIntro = true`) is persisted on **either** an explicit dismissal
+**or** first engagement — so a teacher who starts using the app without clicking "Got it" is not
+re-onboarded next login. (Contextual tips, by contrast, persist only when closed with their own ×.)
+
+### TC-ONB-003 — "Getting started" re-entry
+**Steps:** Open the account menu (top-right) → **Getting started**.
+**Expected:** Navigates to Coach and re-shows the intro. Closing it again does not reset anything —
+reopening is view-only (the stored `seenWelcomeIntro` stays `true`).
+
+### TC-ONB-004 — Contextual tips on first visit
+**Preconditions:** A user who hasn't dismissed the tips (fresh, or `dismissedTips` cleared).
+**Expected:** An inline tip appears on first visit at the top of **My Library** and the **Generator**,
+at the top of the **Workspace** (open any saved resource to edit), and inside the Workspace
+**AI Assist** section. Each sits in normal flow and covers no controls.
+
+### TC-ONB-005 — Tips dismiss independently and persist
+**Steps:** Dismiss one tip (×). Reload the page, then visit the other features.
+**Expected:** Only the dismissed tip stays hidden; the others still appear on their first visit. Each
+dismissed id is appended to `preferences.onboarding.dismissedTips` (siblings and `seenWelcomeIntro`
+are preserved).
+
+### TC-ONB-006 — Theme / mobile
+**Expected:** Intro and tips render correctly in light and dark themes and at mobile width
+(single-column intro grid, full-width CTA, tips wrap with no horizontal scroll). See the mobile guide.
+
+---
+
 ## 9. E — Conversation History
 
 ### TC-HIST-001 — History entry is created

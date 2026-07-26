@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider, useAuth } from './auth';
+import { OnboardingProvider } from './onboarding';
 import { ToastProvider } from './components/Toast';
 import { usePreferences } from './hooks/usePreferences';
 import { ADMIN_ROLES, GOOGLE_CLIENT_ID } from './config';
@@ -81,7 +82,9 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
-          <AppRoutes />
+          <OnboardingProvider>
+            <AppRoutes />
+          </OnboardingProvider>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

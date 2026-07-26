@@ -138,6 +138,11 @@ All features below are verified against the current source code.
 - **Adaptive Coach scrolling** — the empty/welcome state scrolls as one natural page
   (greeting → quick actions → context → composer), while an active conversation uses a
   fixed-viewport layout (messages scroll; composer stays docked above the bottom nav).
+- **Onboarding** — a first-run "Getting started" intro on the welcome screen (feature overview,
+  role-aware for admins) plus one-time inline tips on My Library, the Generator, and the
+  Workspace / AI Assist. Dismissed state is stored per account in `preferences.onboarding`
+  (`seenWelcomeIntro`, `dismissedTips[]`), so it follows the user across devices; the intro is
+  re-openable anytime from the profile menu's **Getting started** item.
 - **Accessibility** — `:focus-visible` outlines, `aria-label`s on icon-only controls,
   `role`/`aria-*` on menus, tabs, and dialogs; the bottom nav marks the active route with
   `aria-current`.

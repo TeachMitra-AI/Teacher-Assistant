@@ -108,6 +108,20 @@ const examPaperDefaultsSchema = z
   })
   .strict();
 
+// First-run onboarding state (Phase 0 of the onboarding rework). Purely a
+// record of what onboarding surfaces the teacher has already seen/dismissed so
+// they aren't re-shown across devices — no AI or presentational payload. Rides
+// the same preferences JSON blob as examPaperDefaults, so no new table/migration
+// is needed. `dismissedTips` is an open-ended list of scoped tip ids future
+// phases append to; kept a flat string[] on purpose so a new tip needs no
+// schema change, only a new id.
+const onboardingSchema = z
+  .object({
+    seenWelcomeIntro: z.boolean().optional(),
+    dismissedTips: z.array(z.string().trim().min(1).max(60)).max(50).optional(),
+  })
+  .strict();
+
 const preferencesSchema = z
   .object({
     defaultLanguage: z.string().trim().max(20).optional(),
@@ -117,6 +131,7 @@ const preferencesSchema = z
     responseStyle: z.enum(RESPONSE_STYLES).optional(),
     avatar: z.string().trim().max(20).optional(),
     examPaperDefaults: examPaperDefaultsSchema.optional(),
+    onboarding: onboardingSchema.optional(),
   })
   .strict();
 

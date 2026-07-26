@@ -10,8 +10,10 @@ import { useToast } from '../components/Toast';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { usePreferences } from '../hooks/usePreferences';
 import { useAuth } from '../auth';
+import { useOnboarding } from '../onboarding';
 import { api, ApiError } from '../api';
 import { buildSuffixedQuery } from '../lib/followUp';
+import { persistOnboarding } from '../lib/onboarding';
 import { ADMIN_ROLES, SPEECH_LOCALE, type FollowUpAction } from '../config';
 import type { CoachResponse, HistoryItem, QueryContext, Turn } from '../types';
 
@@ -27,11 +29,18 @@ function newTurnId(): string {
 
 export default function CoachPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
   const { show } = useToast();
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
+  const { introReopened, closeIntro } = useOnboarding();
   const navigate = useNavigate();
   const prefs = user?.preferences ?? {};
   const displayName = user?.displayName || user?.name || '';
   const isAdmin = user ? ADMIN_ROLES.includes(user.role) : false;
+  // First-run onboarding intro: shown once, only in the empty welcome state,
+  // until the teacher dismisses it. The shown-once flag lives on the account
+  // (preferences.onboarding) so it follows them across devices — see Phase 0.
+  // `introReopened` is the Phase 2 "Getting Started" re-entry: it re-shows the
+  // same intro on demand without touching the persisted first-run gate.
+  const showIntro = introReopened || !prefs.onboarding?.seenWelcomeIntro;
 
   const [language, setLanguage] = useState(prefs.defaultLanguage || 'en');
   const [query, setQuery] = useState('');
@@ -96,6 +105,17 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  // "Getting Started" (Phase 2) can be triggered from any page, including while a
+  // conversation is on screen. The intro only lives in the empty welcome state,
+  // so clear the current thread to reveal it — the conversation itself is safe in
+  // history and reopenable from the sidebar, exactly like starting a new chat.
+  useEffect(() => {
+    if (!introReopened) return;
+    setTurns([]);
+    setQuery('');
+    if (isMobileViewport()) setSidebarOpen(false);
+  }, [introReopened]);
+
   function scrollToBottom() {
     requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }));
   }
@@ -116,7 +136,20 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     }
   }
 
+  // Persist the first-run welcome intro as "seen" (idempotent — a no-op once the
+  // gate is set). Called both on explicit dismissal and on first engagement, so a
+  // teacher who just starts using the app without clicking "Got it" still isn't
+  // re-shown the intro on their next login. Optimistic + non-blocking.
+  function markIntroSeen() {
+    if (!user || user.preferences.onboarding?.seenWelcomeIntro) return;
+    void persistOnboarding(user, updateUser, { ...user.preferences.onboarding, seenWelcomeIntro: true });
+  }
+
   async function submitTurn(queryText: string, lang: string, ctx: QueryContext) {
+    // Starting any turn means the user is done with the intro: hide it now and
+    // persist the "seen" gate so it doesn't come back next session.
+    closeIntro();
+    markIntroSeen();
     const id = newTurnId();
     setTurns((ts) => [...ts, { id, query: queryText, language: lang, context: ctx, status: 'pending', rating: null }]);
     scrollToBottom();
@@ -180,6 +213,14 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
       el.focus();
       el.selectionStart = el.selectionEnd = el.value.length;
     });
+  }
+
+  // Dismiss the intro. Always clears the transient reopen flag first, then marks
+  // the intro seen. On a "Getting Started" re-view the gate is already set, so
+  // markIntroSeen is a no-op — reopening never resets the persisted state.
+  function handleDismissIntro() {
+    closeIntro();
+    markIntroSeen();
   }
 
   async function handleDeleteHistory(item: HistoryItem) {
@@ -261,7 +302,14 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
           <div className="chat-scroll">
             <div className="chat-inner">
               {turns.length === 0 ? (
-                <WelcomeScreen name={displayName} isAdmin={isAdmin} onPickAction={pickPrompt} onNavigate={navigate} />
+                <WelcomeScreen
+                  name={displayName}
+                  isAdmin={isAdmin}
+                  showIntro={showIntro}
+                  onDismissIntro={handleDismissIntro}
+                  onPickAction={pickPrompt}
+                  onNavigate={navigate}
+                />
               ) : (
                 <MessageList
                   turns={turns}

@@ -393,4 +393,75 @@ describe('auth', () => {
       expect(res.status).toBe(400);
     });
   });
+
+  // Phase 0 of the onboarding rework: first-run onboarding state lives inside
+  // preferences.onboarding (seenWelcomeIntro flag + dismissedTips list). No UI
+  // consumes it yet — these tests only lock in that the persistence plumbing
+  // round-trips and stays backward-compatible with existing preferences.
+  describe('preferences.onboarding', () => {
+    let token;
+
+    beforeAll(async () => {
+      const login = await http.post('/api/auth/login')
+        .send({ email: fx.teacherA.email, password: PASSWORD });
+      token = login.body.token;
+    });
+
+    test('accepts and persists onboarding state, merged with other preferences', async () => {
+      const res = await http.patch('/api/auth/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          preferences: {
+            defaultSubject: 'Science',
+            onboarding: {
+              seenWelcomeIntro: true,
+              dismissedTips: ['workspace-assist', 'generator-letterhead'],
+            },
+          },
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.user.preferences.onboarding).toEqual({
+        seenWelcomeIntro: true,
+        dismissedTips: ['workspace-assist', 'generator-letterhead'],
+      });
+      // Sibling preference untouched by the merge.
+      expect(res.body.user.preferences.defaultSubject).toBe('Science');
+
+      const me = await http.get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+      expect(me.body.user.preferences.onboarding.seenWelcomeIntro).toBe(true);
+    });
+
+    test('leaves an unrelated preference (examPaperDefaults) intact when only onboarding is patched', async () => {
+      await http.patch('/api/auth/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ preferences: { examPaperDefaults: { schoolName: 'Sibling School' } } });
+
+      const res = await http.patch('/api/auth/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ preferences: { onboarding: { seenWelcomeIntro: true } } });
+      expect(res.status).toBe(200);
+      expect(res.body.user.preferences.examPaperDefaults.schoolName).toBe('Sibling School');
+    });
+
+    test('rejects an unknown key inside onboarding (strict schema)', async () => {
+      const res = await http.patch('/api/auth/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ preferences: { onboarding: { seenWelcomeIntro: true, completedTour: true } } });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects a non-boolean seenWelcomeIntro', async () => {
+      const res = await http.patch('/api/auth/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ preferences: { onboarding: { seenWelcomeIntro: 'yes' } } });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects a dismissedTips entry over the length cap', async () => {
+      const res = await http.patch('/api/auth/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ preferences: { onboarding: { dismissedTips: ['x'.repeat(61)] } } });
+      expect(res.status).toBe(400);
+    });
+  });
 });

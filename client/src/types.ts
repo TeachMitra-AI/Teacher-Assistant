@@ -21,6 +21,17 @@ export interface ExamPaperDefaults {
   showTime?: boolean;
 }
 
+// First-run onboarding state, persisted inside TeacherPreferences (Phase 0 of
+// the onboarding rework). Records only what a teacher has already seen/dismissed
+// so onboarding surfaces aren't re-shown across devices — no UI is driven by
+// this yet. `dismissedTips` is a flat list of scoped tip ids that future phases
+// append to (one id per contextual tip), so adding a tip never needs a type or
+// schema change.
+export interface OnboardingState {
+  seenWelcomeIntro?: boolean;
+  dismissedTips?: string[];
+}
+
 export interface TeacherPreferences {
   defaultLanguage?: string;
   defaultGrade?: string;
@@ -29,6 +40,7 @@ export interface TeacherPreferences {
   responseStyle?: ResponseStyle;
   avatar?: string;
   examPaperDefaults?: ExamPaperDefaults;
+  onboarding?: OnboardingState;
 }
 
 // Per-resource exam-paper letterhead (quiz/worksheet only), saved as JSON
