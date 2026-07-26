@@ -125,6 +125,11 @@ All features below are verified against the current source code.
   by-subject, by-issue-type, by-language, and top questions.
 - **Manage** (`/admin/manage`) — user list (scoped by role); super admins can create schools
   and change user roles.
+- **Paginated admin tables** — the Users, Pending teachers, and Schools tables are paginated,
+  searchable, and filterable **server-side**: 25 rows per page with a "showing 1–25 of N" count
+  and Prev/Next, a debounced search box (name/email for users, name/code/district for schools),
+  and Role + Status filters on the user list. The page size is clamped server-side (max 100), so
+  no admin list endpoint can return an unbounded result set regardless of what a client asks for.
 - **Session revocation** — admins can revoke a user's active sessions ("kill a compromised
   account"); teachers can view and revoke their own sessions.
 
@@ -464,9 +469,13 @@ header; admin routes additionally enforce role.
 
 **Admin** (`server/src/routes/admin.js`)
 - `GET /admin/analytics` — role-scoped usage analytics
-- `GET /admin/schools` · `POST /admin/schools` — super admin only
-- `GET /admin/users` — scoped user list
-- `GET /admin/users/pending` — scoped list of sign-ups awaiting approval (all admin roles)
+- `GET /admin/schools?page=&limit=&q=` · `POST /admin/schools` — super admin only; the listing is
+  paginated and searchable on name/code/district
+- `GET /admin/users?page=&limit=&q=&role=&status=&schoolId=` — scoped user list, paginated;
+  `q` matches name/email and every filter can only *narrow* the caller's school scope
+  (an out-of-scope `schoolId` is ignored, never applied)
+- `GET /admin/users/pending?page=&limit=&q=` — scoped list of sign-ups awaiting approval
+  (all admin roles), paginated
 - `PATCH /admin/users/:id/approve` · `PATCH /admin/users/:id/reject` — decide on a pending sign-up
   (`school_admin` / `super_admin` only; writes an audit `Event`)
 - `PATCH /admin/users/:id/role` — super admin changes a role
