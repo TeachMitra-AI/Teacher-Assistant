@@ -78,7 +78,7 @@ pie showData
 | P1 | **High** | UI chrome (nav, buttons, labels) is English-only; the 9-language support only controls the *AI response* language, not the interface | Undercuts the core accessibility promise for the least English-fluent teachers — exactly who the product targets | M / H |
 | P2 | ~~**Medium**~~ **RESOLVED** | ~~Self-registration requires only a school code + name + PIN — no admin approval, invite token, or verification step~~ Every sign-up (email+password *or* Google) is now created `status: 'pending'` with **no session issued**, and requires approval by a `school_admin` (own school) or `super_admin` (any school). Each decision writes a `user_approved`/`user_rejected` audit `Event`. | Closed — see S4 | M / M |
 | P3 | ~~**Medium**~~ **RESOLVED** | ~~Admin `ManagePage` has no pagination, search, or filter on users/schools tables~~ All three Manage tables (Users, Pending teachers, Schools) are now paginated 25-per-page with a "showing 1–25 of N" count and Prev/Next, a 300 ms-debounced search box, and Role + Status filters on the user list. All of it is **server-side** — see B5. Shared state lives in `usePagedList`, so the three tables cannot drift apart. | Closed — see B5 | M / H |
-| P4 | **Low** | No first-run tutorial beyond example-question chips | Minor; would reduce support load for low-digital-literacy users | S / M |
+| P4 | ~~**Low**~~ **RESOLVED** | ~~No first-run tutorial beyond example-question chips~~ A real onboarding surface now ships: a first-run **"Getting started"** feature intro on the Coach welcome screen (`OnboardingIntro`, role-aware — admin-only entries are filtered out for teachers), plus reusable first-visit **contextual tips** (`useOnboardingTip`) wired into Library, Generator, and the Workspace (`library-intro`, `generator-intro`, `workspace-intro`, `ai-assist-intro`). State persists **server-side** in `preferences.onboarding` (`seenWelcomeIntro` + `dismissedTips`) via `PATCH /auth/me`, not `localStorage`, so a teacher who signs in on a shared or replacement phone does not see the intro again. A **"Getting Started" re-entry point** in the TopBar re-shows the intro on demand without resetting the persisted first-run gate. Adding a further tip is just picking a new id. | Closed | S / M |
 | P5 | **Low** | No in-app support/bug-report channel beyond 👍/👎 feedback | No way to close the loop on a real problem a teacher hits | S / M |
 | P6 | **Resolved** | ~~No print stylesheet~~ — the quiz/worksheet feature shipped a real one (`index.css` `@media print`, `ExamHeader.tsx`) | Confirmed present as of current `HEAD`; the gap was real earlier in the audit but has since been closed by the new feature | — |
 
@@ -272,7 +272,7 @@ S1 (leaked keys — act today), B1/S2 (unrated AI-cost endpoints), B2 (no global
 B5–B8, D4–D6, S6–S8, F3–F7, A2/A4–A6, DO3–DO5, P2–P3, DOC1–DOC2, T2.
 
 ## Low Priority Issues
-S9–S10, F6–F7, A7, DOC3, T3, P4–P6.
+S9–S10, F6–F7, A7, DOC3, T3, P5–P6. (~~P4~~ resolved.)
 
 ## Quick Wins (small effort, real impact)
 - Rotate the three leaked keys today; run the documented purge this week.
