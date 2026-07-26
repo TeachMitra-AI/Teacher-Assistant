@@ -77,7 +77,7 @@ pie showData
 |---|---|---|---|---|
 | P1 | **High** | UI chrome (nav, buttons, labels) is English-only; the 9-language support only controls the *AI response* language, not the interface | Undercuts the core accessibility promise for the least English-fluent teachers — exactly who the product targets | M / H |
 | P2 | ~~**Medium**~~ **RESOLVED** | ~~Self-registration requires only a school code + name + PIN — no admin approval, invite token, or verification step~~ Every sign-up (email+password *or* Google) is now created `status: 'pending'` with **no session issued**, and requires approval by a `school_admin` (own school) or `super_admin` (any school). Each decision writes a `user_approved`/`user_rejected` audit `Event`. | Closed — see S4 | M / M |
-| P3 | **Medium** | Admin `ManagePage` has no pagination, search, or filter on users/schools tables | Unusable past a few dozen rows — breaks immediately at real multi-school scale | M / H |
+| P3 | ~~**Medium**~~ **RESOLVED** | ~~Admin `ManagePage` has no pagination, search, or filter on users/schools tables~~ All three Manage tables (Users, Pending teachers, Schools) are now paginated 25-per-page with a "showing 1–25 of N" count and Prev/Next, a 300 ms-debounced search box, and Role + Status filters on the user list. All of it is **server-side** — see B5. Shared state lives in `usePagedList`, so the three tables cannot drift apart. | Closed — see B5 | M / H |
 | P4 | **Low** | No first-run tutorial beyond example-question chips | Minor; would reduce support load for low-digital-literacy users | S / M |
 | P5 | **Low** | No in-app support/bug-report channel beyond 👍/👎 feedback | No way to close the loop on a real problem a teacher hits | S / M |
 | P6 | **Resolved** | ~~No print stylesheet~~ — the quiz/worksheet feature shipped a real one (`index.css` `@media print`, `ExamHeader.tsx`) | Confirmed present as of current `HEAD`; the gap was real earlier in the audit but has since been closed by the new feature | — |
@@ -106,7 +106,7 @@ pie showData
 | B2 | **Critical** | No unhandled-rejection/global error middleware — most route handlers (`auth.js`, `admin.js`, `resources.js` bodies) aren't wrapped in try/catch and there's no `app.use((err,req,res,next)=>...)` catch-all or `express-async-errors` | whole `server/src/routes/` | Since Node 15+, an unhandled promise rejection **crashes the process** — one bad request (a DB lock, a constraint violation) can take the entire API down for every school | S — add `express-async-errors` + one error-handling middleware |
 | B3 | **High** | `express-rate-limit`'s default store is in-memory, per-process | `index.js:178-198` | Breaks the moment you run more than one server instance (the exact scaling path this product needs) — each instance gets an independent counter | S-M — Redis-backed store |
 | B4 | **High** | `/api/admin/analytics` aggregates by pulling up to 5,000 raw rows into Node and reducing in JS | `admin.js:47-87` | Silently *wrong*, not just slow, once any tenant scope exceeds 5,000 queries — "top questions"/"by day" reflect only a recent slice, not the true window | M — SQL-native `groupBy`/aggregation |
-| B5 | **Medium** | `GET /admin/users` and `/admin/schools` return unbounded result sets — no pagination | `admin.js:117,161` | Multi-MB payloads / OOM risk at 10,000+ schools | S |
+| B5 | ~~**Medium**~~ **RESOLVED** | ~~`GET /admin/users` and `/admin/schools` return unbounded result sets — no pagination~~ All three admin listings take `page`/`limit` and return `{ rows, total, page, limit }`. The page size is **clamped server-side** (default 25, max 100) — that clamp, not client good behaviour, is what makes the endpoints bounded. `q`/`role`/`status`/`schoolId` filter server-side and can only ever *narrow* the caller's school scope. Ordering is `[createdAt desc, id desc]`; the `id` tiebreaker keeps rows from duplicating or vanishing across page boundaries when timestamps tie. | `admin.js` | Closed. Covered by `test/admin-pagination.test.js` (32 tests), incl. the clamp, scope-widening attempts on every new parameter, and page stability under tied `createdAt`. | S |
 | B6 | **Medium** | Login lockout has a read-then-write race on `failedLoginCount`; lockout counter also resets to 0 on lock (no escalating lockout) | `auth.js:161-181` | Concurrent/distributed brute-force attempts can exceed the intended attempt cap; repeated lockouts never escalate | S |
 | B7 | **Low** | No graceful shutdown (`SIGTERM`→`$disconnect()`) | `db.js`/`index.js` | Dropped in-flight requests on redeploy | S |
 | B8 | **Low** | No `DELETE` endpoint for users or schools despite schema clearly supporting it (`SET NULL` on delete) | `admin.js` | No offboarding story for a departing teacher or closed school | M |
@@ -282,7 +282,7 @@ S9–S10, F6–F7, A7, DOC3, T3, P4–P6.
 - Add a React error boundary around the app root.
 - Make `/api/health` run `SELECT 1` before reporting healthy.
 - Delete or clearly banner `IMPROVEMENTS.md` as historical.
-- Add pagination params to `/admin/users` and `/admin/schools`.
+- ~~Add pagination params to `/admin/users` and `/admin/schools`.~~ (**done** — see B5/P3.)
 
 ## Enterprise Improvements
 - Redis-backed rate limiting before any multi-instance deployment.
@@ -373,7 +373,7 @@ flowchart LR
 Rotate + purge leaked keys · rate-limit `/api/queries` and `/api/resources/*` · add global error-handling middleware · add Dependabot · fix `/api/health` to check DB · add a React error boundary · retire `IMPROVEMENTS.md`.
 
 **Phase 2 — Unblock real multi-school scale**
-Redis-backed rate limiting · SQL-native admin analytics (fixes accuracy and scale in one change) · pagination on all admin list endpoints · normalize `District` into a real entity · validate `JWT_SECRET` length at boot · ~~add approval/invite step to self-registration~~ (**done**).
+Redis-backed rate limiting · SQL-native admin analytics (fixes accuracy and scale in one change) · ~~pagination on all admin list endpoints~~ (**done**) · normalize `District` into a real entity · validate `JWT_SECRET` length at boot · ~~add approval/invite step to self-registration~~ (**done**).
 
 **Phase 3 — Operational maturity**
 Commit deployment/IaC config · CD pipeline with staging + smoke tests · Sentry/APM · admin action audit log · user/school deletion path · execute the Postgres migration when write concurrency demands it.
