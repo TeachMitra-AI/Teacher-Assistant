@@ -3,6 +3,10 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider, useAuth } from './auth';
 import { OnboardingProvider } from './onboarding';
 import { ToastProvider } from './components/Toast';
+// The AI Action Router's provider, not react-router's. Mounted innermost, so
+// the existing AuthProvider → ToastProvider → OnboardingProvider order — which
+// is load-bearing — is untouched, and deleting this feature removes one wrapper.
+import { RouterProvider } from './assistant/RouterProvider';
 import { usePreferences } from './hooks/usePreferences';
 import { ADMIN_ROLES, GOOGLE_CLIENT_ID } from './config';
 import LoginPage from './pages/LoginPage';
@@ -83,7 +87,9 @@ export default function App() {
       <AuthProvider>
         <ToastProvider>
           <OnboardingProvider>
-            <AppRoutes />
+            <RouterProvider>
+              <AppRoutes />
+            </RouterProvider>
           </OnboardingProvider>
         </ToastProvider>
       </AuthProvider>

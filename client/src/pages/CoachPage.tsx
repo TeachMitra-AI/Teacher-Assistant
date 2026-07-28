@@ -6,12 +6,17 @@ import WelcomeScreen from '../components/WelcomeScreen';
 import MessageList from '../components/MessageList';
 import ContextBar from '../components/ContextBar';
 import Composer from '../components/Composer';
+import AiClarifyPrompt from '../components/AiClarifyPrompt';
 import { useToast } from '../components/Toast';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { usePreferences } from '../hooks/usePreferences';
 import { useAuth } from '../auth';
 import { useOnboarding } from '../onboarding';
 import { api, ApiError } from '../api';
+// This page's ONLY import from the AI Action Router (milestone M6). Keeping the
+// coupling to a single line is what makes the feature deletable and what keeps
+// this file — the most-used path in the product — reviewable.
+import { useAssistantRouting, type RoutingOutcome } from '../assistant/RouterProvider';
 import { buildSuffixedQuery } from '../lib/followUp';
 import { persistOnboarding } from '../lib/onboarding';
 import { ADMIN_ROLES, SPEECH_LOCALE, type FollowUpAction } from '../config';
@@ -31,6 +36,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   const { show } = useToast();
   const { user, updateUser } = useAuth();
   const { introReopened, closeIntro } = useOnboarding();
+  const router = useAssistantRouting();
   const navigate = useNavigate();
   const prefs = user?.preferences ?? {};
   const displayName = user?.displayName || user?.name || '';
@@ -156,6 +162,17 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     await runTurn(id, queryText, lang, ctx);
   }
 
+  // Every router outcome ends in one of two places: the teacher has been taken
+  // somewhere, or their message goes to the coach exactly as it always has.
+  // 'asked' is the third state and needs nothing here — the question is on
+  // screen and the teacher's next action decides what happens to it.
+  function settleRouting(outcome: RoutingOutcome) {
+    if (outcome.result !== 'passthrough') return;
+    const text = outcome.utterance.trim();
+    if (!text) return;
+    submitTurn(text, language, context);
+  }
+
   function handleSubmit(e?: FormEvent) {
     e?.preventDefault();
     const trimmed = query.trim();
@@ -165,7 +182,19 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     }
     setQuery('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    submitTurn(trimmed, language, context);
+
+    // The AI Action Router's pre-pass (milestone M6). With the client flag off
+    // this is one boolean check and the original synchronous call below — no
+    // await, no request, and no behavioural difference from before the feature
+    // existed.
+    if (!router.enabled) {
+      submitTurn(trimmed, language, context);
+      return;
+    }
+    // The live textarea value is the second half of the stale-response guard
+    // (CHANGE-9): a response that lands after the teacher has started typing
+    // again must not navigate them away mid-thought.
+    void router.submit(trimmed, () => (textareaRef.current?.value ?? '') === '').then(settleRouting);
   }
 
   async function handleRetry(turn: Turn) {
@@ -201,6 +230,9 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     setTurns([]);
     setQuery('');
     setContext(EMPTY_CONTEXT);
+    // A new conversation must not inherit the previous one's remembered grade,
+    // subject or topic — a stale slot produces a confident, wrong worksheet.
+    router.resetSession();
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     if (isMobileViewport()) setSidebarOpen(false);
   }
@@ -324,12 +356,20 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
 
           <div className="composer-dock">
             <div className="composer-dock-inner">
+              {router.pendingAsk?.action.ask && (
+                <AiClarifyPrompt
+                  question={router.pendingAsk.action.ask.question}
+                  options={router.pendingAsk.action.ask.options}
+                  onChoose={(value) => settleRouting(router.answerWithOption(value))}
+                  onCancel={() => settleRouting(router.cancelAsk())}
+                />
+              )}
               <ContextBar language={language} onLanguageChange={setLanguage} context={context} onContextChange={setCtx} />
               <Composer
                 value={query}
                 onChange={setQuery}
                 onSubmit={handleSubmit}
-                loading={isSubmitting}
+                loading={isSubmitting || router.routing}
                 voice={voice}
                 textareaRef={textareaRef}
               />

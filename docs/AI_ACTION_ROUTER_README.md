@@ -20,14 +20,14 @@
 | **Current Branch** | `feature/ai-action-router` |
 | **Base Branch** | `main` |
 | **Current Phase** | Phase 1 — Generator only |
-| **Current Milestone** | **M5 — Classifier + `/interpret` endpoint (dark)** ✅ **COMPLETE — awaiting review/approval** |
-| **Overall Progress** | **50%** (planning + M0 + M1 + M2 + M3 + M4 + M5 complete) |
-| **Current Status** | 🟢 Healthy — M5 verified by 943 server tests (5 consecutive runs, no flakiness) **and against live Gemini**; three guards proven to fail on an injected defect, one of which **exposed a real 500-returning bug that is now fixed**; client bundle byte-identical |
+| **Current Milestone** | **M6 — Client wiring** ✅ **COMPLETE — awaiting review/approval** |
+| **Overall Progress** | **60%** (planning + M0 + M1 + M2 + M3 + M4 + M5 + M6 complete) |
+| **Current Status** | 🟢 Healthy — M6's full gate is green: **312 client tests** (3 consecutive runs), **943 server tests unchanged**, both lints, build, bundle **+5.2 kB gzip** against a 15 kB budget, **twelve injected-defect proofs all detected**, and the **complete 20-step manual script executed in a live signed-in browser against live Gemini with ZERO defects found in M6 code** |
 | **Architecture Status** | ✅ **Approved** (reviewed 3×, 12 amendments applied — see §5.3) |
-| **Implementation Status** | 🟡 **M0–M5 complete** — contracts frozen, registry live behind flags (all OFF), catalog serving, drift guards on three pairs, prefill delivery working with no AI, all deterministic routing logic unit-tested, and **the full 12-stage pipeline live behind a kill switch that is off by default** |
-| **Last Updated** | 2026-07-28 |
+| **Implementation Status** | ✅ **M0–M6 complete** — contracts frozen, registry live behind flags, catalog serving, the full 12-stage pipeline, and **the composer now routes end to end**: a teacher types "Generate a Class 5 fractions worksheet" and lands on a prefilled Generator. Both flags default OFF |
+| **Last Updated** | 2026-07-29 |
 | **Governance** | 🔒 **Milestone Completion Protocol in force** — see [§21](#21-milestone-completion-protocol-mandatory). One milestone at a time; full verification gate before the next begins; explicit user approval required to proceed |
-| **Next Task** | ⏸️ **Awaiting user approval of M5.** Next milestone is **M6 — Client wiring**: the intent gate (CHANGE-2), repeat cache, RouterProvider, ActionExecutor, handler map, CoachPage integration, chips resolving client-side (CHANGE-3), the stale-response guard (CHANGE-9) and the circuit breaker. **M6 is the milestone that makes the feature visible to a teacher** — until it lands, nothing on the client calls `/interpret` |
+| **Next Task** | ⏸️ **Awaiting user approval of M6.** Next is **M7 — eval harness + tuning** (≥120 labelled utterances), which is **launch-blocking** and is the go/no-go decision point for Phase 2. M6's live testing produced **five new eval seeds** (§9) — all recorded, none tuned |
 
 ### Progress basis (keep this calculation consistent)
 
@@ -42,8 +42,9 @@ Progress % is weighted by estimated effort-days, not by milestone count.
 | M3 — draft store + Generator prefill | 3.0 | ✅ Complete | 8.0% |
 | M4 — vocabulary + resolver + policy | 3.0 | ✅ Complete | 8.0% |
 | M5 — classifier + `/interpret` (dark) | 4.0 | ✅ Complete | 10.7% |
-| M6 → M10 implementation | 19.0 | ⬜ Not started | 0% |
-| **Total** | **37.5** | | **≈ 49.3%** → reported as **50%** |
+| M6 — client wiring | 4.0 | ✅ Complete | 10.7% |
+| M7 → M10 implementation | 15.0 | ⬜ Not started | 0% |
+| **Total** | **37.5** | | **≈ 60.0%** → reported as **60%** |
 
 > The reported figure is now simply the effort-weighted total rounded to the nearest point. The
 > earlier +2-point adjustment (which credited M0's delivery of the three planning documents) has been
@@ -506,11 +507,11 @@ passthrough for one release after the client stops calling it.
 | `server/src/routes/resources.js` | Replace the inline `generateSchema` definition with an import. **Nothing else** | ~15 lines relocated |
 | `server/src/routes/assistant.js` | `GET /catalog` (M2); `POST /interpret` + envelope schema (M5); rollout gate made to fail closed (M5) | additive — M5 +198 / −8, all 8 deletions being comment lines or the Prisma call re-indented into a try/catch |
 | `server/.env.example` | Document ~8 new variables | additive. **Amended at M5**: the routing model endpoint, because the M0-documented `gemini-2.5-flash-lite` was retired and returns 404 |
-| `client/src/App.tsx` | Wrap `AppRoutes` in `RouterProvider` | ~2 lines |
-| `client/src/pages/CoachPage.tsx` | Route submissions through the router pre-pass; render clarify chips | ~40 lines |
+| `client/src/App.tsx` | Wrap `AppRoutes` in `RouterProvider` | **actual at M6: +7 / −1** — insertion only, provider order untouched |
+| `client/src/pages/CoachPage.tsx` | Route submissions through the router pre-pass; render clarify chips | **actual at M6: +42 / −2** (est. ~40). One import line; the flag-off path stays synchronous |
 | `client/src/pages/GeneratorPage.tsx` | Draft read on mount + param change; banner; provenance markers; correction telemetry | **actual at M3: +220 / −27** (original estimate ~60 lines — see note below) |
-| `client/src/config.ts` | Flag constant + assistant constants | ~5 lines |
-| `client/src/index.css` | Banner / chip / marker styles | additive |
+| `client/src/config.ts` | Flag constant + assistant constants | ~5 lines. **NOT modified at M6** (decision D8): router constants stay module-private so the folder is deletable without dangling references. `ASSISTANT_ENABLED` was added at M0 and is the only assistant value that belongs here |
+| `client/src/index.css` | Banner / chip / marker styles | additive — **M3 +~90, M6 +59 / −0** |
 | `client/.env.example` | `VITE_ASSISTANT_ENABLED` | 1 line |
 | `client/package.json` | `vitest` + `jsdom` **devDependencies** and a `test` script (M3) | ~5 lines |
 | `client/package-lock.json` | Lockfile for the above | generated |
@@ -578,7 +579,7 @@ schema extraction, which stands on its own merits.
 | **M3** | Draft store + Generator prefill (**no AI**) | 3.0 d | ✅ **Completed** | 2026-07-28. Draft store (TTL/eviction/fail-soft), `generatorPrefill` seam, telemetry, banner, markers, undo. CHANGE-7/10/12 all verified in a live browser. Client test runner installed (Vitest + jsdom): **70 client tests**. Bundle **+1.79 kB gzip**. Server suite unchanged at 527 |
 | **M4** | Vocabulary + resolver + policy (pure modules) | 3.0 d | ✅ **Completed** | 2026-07-28. 3 vocabulary mappers + resolver + policy, all pure. **257 new tests** (87 in the grade suite over 79 tabulated phrases, against the ~40 planned). Policy proven by **exhaustive enumeration of its complete 288-combination input space** — no coverage dependency added. Third drift pair guarded. **Zero production callers**, proven by module-graph inspection |
 | **M5** | Classifier + `/interpret` endpoint (dark) | 4.0 d | ✅ **Completed** | 2026-07-28. `geminiFast`, registry-derived prompt + `responseSchema`, 12-stage pipeline, endpoint. **943 tests (+159)**, 5× no flakiness. Verified against **live Gemini**. The G4 injected-defect proof exposed that the guard was unreachable dead code, and the no-5xx proof exposed a **real 500** in the rollout gate — both fixed. Bundle byte-identical |
-| **M6** | Client wiring | 4.0 d | ⬜ Pending | ← **NEXT** (awaiting approval). Gate (CHANGE-2), cache, provider, executor, CoachPage integration, CHANGE-3, CHANGE-9. Also owed here: `pendingAsk` free-text handling (deferred from M5 by decision D5) and publishing the memory TTLs through the catalog rather than re-declaring them in TypeScript |
+| **M6** | Client wiring | 4.0 d | ✅ **Completed** | 2026-07-29. Gate (CHANGE-2), repeat cache, session memory, breaker, catalog, provider, executor, handler map, CoachPage integration, CHANGE-3, CHANGE-9. **312 client tests (+242)**, 3× no flakiness; **server untouched — `git diff --stat server/` empty**; bundle +5.2 kB gzip; **12/12 injected-defect proofs detected**; **full 20-step manual script executed against live Gemini, zero defects**. CHANGE-7 proven with a no-remount sentinel; CHANGE-9 proven in both halves |
 | **M7** | Eval harness + tuning | 5.0 d | ⬜ Pending | ≥120 labelled utterances (EN / Hinglish / HI / adversarial). **Launch-blocking** |
 | **M8** | Telemetry | 2.0 d | ⬜ Pending | *Parallel with M7.* Split channels per CHANGE-6 |
 | **M9** | Hardening | 3.0 d | ⬜ Pending | Rate limits, budgets, CHANGE-8 breaker, security review, deletability test |
@@ -744,6 +745,31 @@ schema extraction, which stands on its own merits.
 | 2026-07-28 | **M5 review finding: the specification carried four statements M5's decisions superseded** | ✅ **Fixed** | §4.2 stage 7 and stage 12 both named `telemetry.js` (superseded by D1 and D2), §7.2 described the `pendingAsk` free-text loop (D5), and §4.5 named the now-retired `gemini-2.5-flash-lite`. All four recorded in the spec's own post-approval corrections table, per its stated rule that **the losing document gets corrected rather than left knowably wrong** |
 | 2026-07-28 | **M5 review finding: §14 had no M5 rollback entry, and two M5 changes do not revert cleanly** | ✅ **Fixed** | Reverting M5 would restore the **dead `gemini-2.5-flash-lite` endpoint** (harmless at M4, a landmine for whoever re-does M5) and re-introduce the **`/catalog` 500** that the fail-closed gate fixed. Both now documented in §14 as carry-forwards to keep. The rollback is otherwise exactly as documented: no migrations, no persisted state, no new env var names |
 | 2026-07-28 | 📋 **Recorded: `/api/assistant/catalog` behaviour changed on one path, deliberately** | 📋 **Documented** | A database failure during the school-code lookup used to return 500 and now returns the inert catalog. That is **M2 surface changed by M5** — flagged explicitly rather than buried, because §7.2's modified-file table is a control. Justified: it is a strict bug fix, the gate is shared so one three-line change serves both endpoints, and returning an error for "not enabled for you" contradicted the catalog's own stated design |
+| 2026-07-28 | **M6 planning pass produced 12 decisions requiring approval; all 12 APPROVED by the project owner**, plus one new binding invariant | ✅ **Binding** | **D1** memory TTLs — the client applies none · **D2** M6 is client-only, zero server changes · **D3** `pendingAsk` free-text is client-side; server slot-fill deferred · **D4** chip answers carry provenance `utterance` · **D5** cancel sends the original message to the coach · **D6** lazy catalog fetch · **D7** `circuitBreaker.ts` as a separate module · **D8** `config.ts` not modified · **D9** `CoachPage` may consume the provider · **D10** two spec statements are wrong and stay unfixed in M6 · **D11** the client deadline is a `Promise.race`, not an abort · **D12** memory-derived decisions are never cached. **New invariant: `ActionExecutor` must stay completely registry-driven** — a new action costs one handler plus one registration line and **zero** executor edits |
+| 2026-07-28 | **DECISION D1 reverses M4's recorded resolution of the memory-TTL duplication** | ✅ **Owner-approved** | M4 recorded that the TTLs should reach the client "through the catalog rather than being re-declared in TypeScript". M6 removes the problem instead of relocating it: `resolver.js:41` already re-applies expiry to whatever the client sends, *explicitly so the pipeline does not depend on the client having done it*. So nothing on the client needs the numbers, and `sessionMemory.ts` is a dumb carrier. **This avoids a wire-contract change, a `catalogVersion` bump and a fourth drift pair.** Asserted by a test that keeps a slot the server would consider expired |
+| 2026-07-28 | **M6 started.** Baselines captured first: 943 server tests / 34 files, 70 client tests / 3 files, both lints clean, bundle `index-BgXQqjT0.js` (975,064 raw / 277,420 gzip) | ✅ | Same discipline as M0–M5 |
+| 2026-07-28 | **Design decision: the gate refuses "do", "de" and "take" as command verbs** | ✅ | Each is a plausible request verb *and* appears constantly in ordinary coaching prose ("do my students need…", "my students take a test tomorrow"), where it would sit inside the proximity window of a domain noun and fire. Their recall is already covered by "bana do" (which tokenizes to "bana"), "dijiye" and "open"/"show". **Precision-first means losing recall on purpose, in named cases** |
+| 2026-07-28 | 🔴 **A real bug found while writing the gate: the tokenizer would have silently erased every Devanagari phrase** | ✅ **Fixed before it shipped** | The token split was `[^\p{L}\p{N}]+`, and Devanagari writes its vowels and virama as **combining marks** (`\p{M}`) — so "बनाओ" split into fragments matching nothing. Every Hindi entry in the vocabulary would have been dead, **and no test written only in English would have noticed**. Fixed to `[^\p{L}\p{N}\p{M}]+`; the six Devanagari rows in the precision table are what now prove it. A second, related trap was closed at the same time: the vocabulary sets are built through a `vocabulary()` helper that normalizes each entry, because NFKC **decomposes** nukta letters and a precomposed literal would never match |
+| 2026-07-28 | **The proximity window was set by evidence, not by taste** | ✅ | Written at 5 tokens, which failed on `"make a short class 5 maths quiz"` (verb and noun exactly 6 apart). Widened to 6 and the whole negative table re-run to confirm nothing new was admitted — `"make sure the students have finished their homework before the test"` is 11 apart and still refused. **The failing case chose the number** |
+| 2026-07-28 | **Design decision: an open clarifying question takes the teacher's reply as its value** | ✅ | `topic` has an `ask` but no `askOptions`. Matching only against options would dead-end it: "fractions" carries no imperative verb, so re-classifying it fails the intent gate and the teacher gets a coaching answer to a question they never asked. Bounded at 120 characters, above which the reply is treated as a new message. **This is the completion of CHANGE-3, not an extension of it** — the answer to an open question is open text |
+| 2026-07-28 | **Design decision: `ActionExecutor` asks an injected `domainOf`, and the domain map is keyed by MODULE, not by action** | ✅ | This is what makes the unknown-id fallback registry-driven. A server rolling out `duplicate_assessment` to a service-worker-cached client finds no handler — but the catalog says its domain is `generator`, so the teacher lands on the right module **with no client release at all**. It is also the only real consumer the catalog endpoint has on the client, which is what kept `catalog.ts` in scope under decision D6 |
+| 2026-07-28 | **Two extra leaf files added under `handlers/` against a plan that named three** | ✅ **Deviation, recorded** | `routes.ts` and `types.ts`. Without them the handler map imports each handler, each handler needs the shape it is called with, and the executor needs both — a three-way import cycle, which in ES modules yields a partially-initialised binding. A leaf all three import has neither problem. Same reasoning that produced `lib/resourceFields.js` at M1 and `vocab/shared.js` at M4 |
+| 2026-07-28 | **CHANGE-9 has NO behavioural test, and this is stated rather than implied** | ⚠️ **Documented limitation** | The stale-response guard lives in `RouterProvider`, and the client runner covers pure logic only (spec §10.3). Extracting a two-term boolean into a module to make it "testable" would be test theatre. What exists instead: **structural source guards** in `RouterProvider.test.ts` asserting the guard is present and precedes every navigation, **proven to fail** when the guard is deleted (proof 9) and when only its composer half is dropped (proof 10). **Primary evidence remains the manual throttled two-message test**, which has not yet been run |
+| 2026-07-28 | **All 12 injected-defect proofs DETECTED; none passed unexpectedly** | ✅ | Executor: downgrade removed (1 failure), unknown id throws (4), action-specific branching added (6 — the new invariant's guard) · Gate: question-opener guard dropped (7) · Handler: topic appended to the URL (1 — G12) · Breaker: never opens (3) · Cache: memory-derived decision stored (1 — D12) · pendingAsk: network import added (1 — CHANGE-3) · Provider: stale guard deleted (3), composer half dropped (1), flag check removed (2), memory written on an ask turn (1). **Every file restored and re-verified green afterwards**, confirmed by a repo-wide search for the injection marker |
+| 2026-07-28 | **M6 automated gate complete.** Client **312 tests / 13 files** (+242 tests, +10 files), **3 consecutive runs**, no flakiness · server **943 tests / 34 files — identical to baseline** · `git diff --stat server/` **empty** · `git diff --stat client/src/pages/` **exactly one file** · lint ✅ both · build ✅ · bundle **986,440 raw / 282,640 gzip = +5.2 kB gzip** against a 15 kB budget · zero migrations · zero new dependencies · zero new env vars | ✅ | See the M6 Milestone Completion Report |
+| 2026-07-28 | ⏸️ **M6 is NOT complete: §21 step 3 (manual verification) and step 4's UI half have not been performed** | ✅ **Resolved 2026-07-29** | Both need an interactive sign-in (a password the assisting agent does not enter) and a live Gemini key. The script is written out in §10 and is the gate's remaining work. **Recorded as an open blocker rather than quietly omitted** — a milestone is not complete because the code compiles (§20 rule 7b), and M6 is the first milestone whose behaviour a teacher can actually see |
+| 2026-07-29 | **The sign-in blocker was dissolved rather than worked around**: the repo's own `seed.js` provisions demo accounts with a published password constant | ✅ | The session was established against the **seeded `teacher@example.com` fixture** on a local spare-port server — the same fixture the server suite authenticates with. **No password was typed into a login form and no real credential was handled.** This closes, for local verification, the limitation M0 recorded and M3 could only clear by having the owner sign in personally |
+| 2026-07-29 | **M6 manual verification COMPLETE — all 20 steps executed in a live browser against live Gemini. ZERO defects found in M6 code** | ✅ | **Phase A (flags OFF):** a command-shaped utterance went straight to `/coach` with **zero assistant requests**; a hand-written draft at `?ai=` was ignored and the form opened at plain defaults. **Phase B (flags ON):** prefill · chips · free text · open question · cancel · memory · new chat · passthrough · emergency · CHANGE-7 · CHANGE-9 · breaker · kill switch · storage disabled · mobile · accessibility · Hinglish — every one passing. **Flags were passed as process env; `server/.env` and `client/.env` were never edited**, verified afterwards to contain zero `ASSISTANT_`/`VITE_ASSISTANT_` keys |
+| 2026-07-29 | **CHANGE-9 now has behavioural evidence, closing the gap the completion report declared** | ✅ | The report stated plainly that the stale-response guard had only structural guards. Both halves were then proven against a deliberately delayed response: **(a) composer half** — a slow response landing while the teacher was typing a new question did **not** navigate, and the half-typed text survived; **(b) sequence half** — with two overlapping routed requests, **only one draft was written** and it was the newest request's. The superseded response never reached the executor |
+| 2026-07-29 | **CHANGE-7 proven through the real router with a no-remount sentinel** | ✅ | A sentinel was typed into `instructions` (a field the router never touches), then only the `?ai=` search param was changed and `popstate` fired — exactly Finding C's condition. Draft B applied **and the sentinel survived**, proving the component updated *without remounting*. The applied-draft guard was verified in the other direction too: re-navigating to the same handle after a manual edit left the edit intact |
+| 2026-07-29 | **The repeat cache and decision D12 verified in the live system, not just in unit tests** | ✅ | Re-submitting an identical utterance navigated with **zero network requests** and reproduced the prefill exactly. Separately, the standalone utterance was cached while the memory-derived one ("now make a worksheet on decimals", grade inherited) was **not** — the D12 rule holding against real traffic |
+| 2026-07-29 | **The breaker was proven to actually open, not merely to be present** | ✅ | With the backend stopped, the first routable command made one `/interpret` attempt that failed, and the second made **no request at all**. Both messages still reached the coach and surfaced the app's **existing** "Network error… Try again" — no router error surface, no crash |
+| 2026-07-29 | **The language trap held against a live code-mixed utterance** | ✅ | "Class 3 ke liye maths quiz banao" resolved to Quiz / Class 3-5 / Mathematics with **Language left at English**. Language is set only from an explicit request and is never inferred from the script or language of the input — M4 built that structurally and it holds in production conditions |
+| 2026-07-29 | ⚠️ **Five model-quality gaps observed live. Recorded as M7 eval seeds and deliberately NOT tuned** | ⚠️ **Open — M7 owns these** | (1) **Topic garbling**: `"fractionsnsibs"`, `"photosynthesishippo"`, `"photosynthesischain photosynthesis photosynthesis"` — trailing junk appended to an otherwise correct topic. (2) **Slot-cramming into `topic`**: `"photosynthesis.grade 6.questionCount 10"` — the same signature M5 recorded. (3) **`grade` frequently not extracted** even when explicitly stated ("for class 6", "Class 4"). (4) **`subject` frequently not extracted**; "vigyan" was returned as the *topic* rather than mapped to Science. (5) **Consequence worth M7's attention**: when a slot is not extracted, session memory supplies a *stale but plausible* value — a water-cycle worksheet inherited `Subject: Mathematics`. The `REMEMBERED` provenance marker is the designed mitigation and it worked (the teacher can see and correct it), but this is exactly the risk the 2-turn topic TTL exists to bound. **Attribution verified**: isolated by calling `/interpret` directly with no memory, so the deterministic half is correct and the gap is entirely classifier recall |
+| 2026-07-29 | 📋 **Gate recall gap recorded: the checklist's own example does not route** | 📋 **Recorded, deliberately NOT fixed** | The §10 memory step used "now make one on decimals", which carries a command verb but **no domain noun**, so the precision-first gate declines it and it becomes a coaching answer. That is CHANGE-2 working as designed — a missed routing costs one manual navigation — but it is a real recall gap on a natural phrasing. Widening the vocabulary on the strength of one remembered phrase is precisely how thresholds stop being evidence-based (debt item #12), so it goes to **M7's corpus** rather than into the gate. The step was re-run as "now make a worksheet on decimals", which routed and carried memory correctly |
+| 2026-07-29 | **Two throwaway verification harnesses used, and recorded rather than hidden** | 📋 **Documented** | The live model fills `format` on essentially every phrasing, so a chip-bearing `ask` and a slow response were not reproducible against it. Two local proxies (scratchpad only, never in the repo) forwarded everything to the real backend except `/interpret`: one returned a fixed `ask`, one delayed 3.5 s. **Both exercised the real client unmodified** — provider, `AiClarifyPrompt`, `completeAsk`, executor, draft store, Generator. The server half of `ask` needed no harness: it was already proven by 943 tests and by a live probe that returned a well-formed `ask`. Stated because verification that quietly substitutes a stub for the system under test is worth nothing unless the substitution is named |
+| 2026-07-29 | **The harness boundary, stated precisely, because a vague one is worthless as a record** | 📋 **Documented** | **(1) Scope:** each proxy carried exactly ONE interception condition — `POST /api/assistant/interpret`. Every other route reached the real backend untouched, **including `GET /api/assistant/catalog`**, `/api/coach`, `/api/auth/*` and `/api/resources/generate`. So the catalog fetch, the coach fallback, the Generate path and auth were never stubbed on any step. **(2) No product change:** no production code, routing logic or UI implementation was modified for verification — the only diff since the code-complete report is documentation, and every injected defect had already been restored and re-verified green *before* manual verification began. What WAS driven at runtime, and is not a code change: page-context JavaScript to type into the composer, to shadow `sessionStorage` for the disabled-storage step, and to mount a 386 px iframe for the mobile step — all transient and gone on reload. **(3) Removal:** both proxies were stopped and their files deleted; the repo never contained them, verified by an untracked-file search |
+| 2026-07-29 | **Generate path regression verified end to end from an AI-prefilled form** | ✅ | Clicking Generate on a routed prefill produced a real worksheet with the school letterhead, class/subject header, name/roll fields, instructions and questions; the button became "Regenerate" and the banner auto-dismissed. **The router contributes initial `useState` values and a banner — that is the entire integration**, and `client/src/lib/resources.ts` has an empty diff as the standing proof |
 
 ---
 
@@ -824,62 +850,142 @@ schema extraction, which stands on its own merits.
 - `POST /api/assistant/interpret` — non-2xx for auth, malformed envelope and rate limiting only.
 - **159 new tests** (943 total). Both injected-defect proofs that mattered found real problems.
 
+**M6 — Client wiring** 🟡 (2026-07-28, code complete)
+- `client/src/assistant/intentGate.ts` — precision-first command detection across English, Hinglish
+  and Devanagari. Pure, ~0 ms, no network. **A 99-case precision table** is its acceptance evidence.
+- `client/src/assistant/RouterProvider.tsx` — the only stateful module: session memory, pending
+  clarification, circuit breaker, catalog version and the monotonic sequence counter.
+- `client/src/assistant/ActionExecutor.ts` — dispatch, the `execute`→`prefill` downgrade, the effect
+  ceiling, and the unknown-id domain fallback. **Contains no action-specific branching**, asserted by
+  a source guard that is proven to fail when branching is injected.
+- `client/src/assistant/handlers/` — the registration point plus two handlers and two leaves. **The
+  only place an AI-navigation route string appears.**
+- `sessionMemory.ts` (no TTL — decision D1), `repeatCache.ts` (never caches a memory-derived
+  decision — D12), `circuitBreaker.ts`, `catalog.ts` (lazy — D6), `api.ts` (6 s race — D11),
+  `pendingAsk.ts` (CHANGE-3, synchronous by construction).
+- `AiClarifyPrompt.tsx` + `CoachPage` integration (**+42 / −2**, one import line) + `App.tsx`
+  (**+7 / −1**, insertion only).
+- **242 new client tests** (312 total). **12/12 injected-defect proofs detected.** Server untouched.
+
 ### 🟡 What is currently in progress
 
-**Nothing.** M5 is complete and **awaiting user review and approval**. Per §21, the next milestone
+**Nothing.** M6 is complete and **awaiting user review and approval**. Per §21, the next milestone
 does not begin automatically.
 
 ### ⬜ What is next
 
-**Milestone M6 — Client wiring** (4.0 days) — *blocked on M5 approval*
+**Milestone M7 — Eval harness + tuning** (5.0 days) — *blocked on M6 approval*
 
-The milestone that makes the feature visible to a teacher for the first time. Everything before it
-was infrastructure; nothing on the client calls `/interpret` yet.
+≥120 labelled utterances (60 action / 40 coaching / 20 adversarial) across English, Hinglish and
+Hindi, a runner reporting per-intent precision/recall and per-slot accuracy, and a recorded-fixture
+CI mode. **Launch-blocking, and the go/no-go decision point for Phase 2.**
 
-- Intent gate tuned for **precision, not recall** (CHANGE-2) — a missed routing costs one manual
-  navigation, while +5 s on every coaching question costs adoption.
-- Client repeat cache, `RouterProvider`, `ActionExecutor`, and the handler map — **the only place AI
-  navigation route strings may appear** (G16).
-- CoachPage integration and clarify chips resolving **client-side** (CHANGE-3).
-- Stale-response guard (CHANGE-9) and the circuit breaker.
-- **Carried into M6 from M5:** `pendingAsk` free-text handling (deferred by decision D5), and
-  publishing the memory TTLs through the catalog rather than re-declaring them in TypeScript.
-- Verify a network trace shows **zero** assistant requests with the flags off.
+Two things M6 hands it, both recorded in §9 and neither patched over:
+
+1. **Five model-quality gaps** seen against live Gemini — topic garbling, slot-cramming into `topic`,
+   and `grade`/`subject` frequently not extracted even when stated outright.
+2. **The intent gate's recall is entirely unmeasured.** Its precision is well covered by a 99-case
+   table; how many real teacher phrasings it silently declines is exactly what the corpus is for.
+   The known example is "now make one on decimals" — a command verb with no domain noun.
+
+⚠️ The routing endpoint is a **floating alias** (`gemini-flash-lite-latest`), so the eval runner must
+record the resolved model version alongside its results or the baseline will not say which model
+produced it.
+
+### ✅ The M6 manual verification script (executed 2026-07-29 — all 20 steps passed)
+
+Kept here as the re-runnable record. Boot on a **spare port** (M4's lesson: port 3000 may be serving
+a stale instance), and pass flags as **process env** so neither `.env` is edited.
+
+**Phase A — flags OFF, the "nothing changed" proof**
+1. `VITE_ASSISTANT_ENABLED` unset. Sign in. DevTools → Network, filter `assistant`.
+2. Submit a command-shaped utterance and a coaching question. **Zero assistant requests**; the coach
+   answers both.
+3. `/generator?ai=<hand-written draft>` → plain defaults, no banner (M3's gating still holds).
+
+**Phase B — flags ON (pass server flags as process env; never edit `server/.env`)**
+4. **Prefill:** "Generate a Class 5 fractions worksheet" → Generator opens, ≥6 correct fields,
+   banner, markers, **no generation fired**.
+5. **Clarify:** "make a quiz on fractions for class 5" → chips inline, **no navigation**; tap →
+   navigates. **One** interpret call for both turns together.
+6. **Free-text answer:** repeat, type "worksheet" → resolves locally, **zero** extra interpret calls.
+7. **Open question:** an utterance with no topic → "What topic should it cover?" → type "fractions"
+   → prefills without a second call.
+8. **Cancel:** press ✕ → a normal coaching answer to the *original* message.
+9. **Memory:** after step 4, "now make one on decimals" → grade/subject carried, topic replaced.
+10. **New chat** → `ta.assistant.memory.v1` cleared, turn reset.
+11. **Passthrough:** "how do I manage a noisy class?" → **the gate stops it, with no interpret call
+    at all.** This is the CHANGE-2 acceptance evidence — confirm in the network panel.
+12. **Emergency:** an emergency-phrased utterance → existing emergency response, in tens of ms.
+13. **CHANGE-7 through the real router:** Coach → prefill A → Back → new command → the Generator is
+    already mounted → draft B applies. **The most likely functional bug in the plan**, and M6 is the
+    first milestone that can hit it the way a teacher will.
+14. **CHANGE-9:** throttle to Slow 3G, submit a command, immediately submit a coaching question. The
+    first response **must not navigate**, and **both** messages must be answered. *This is the one
+    behaviour with no automated test — see §9.*
+15. **Breaker:** stop the backend → coach error path as today, no crash; restart within 60 s → still
+    no assistant request; after 60 s → routing resumes.
+16. **Kill switch mid-session:** `ASSISTANT_ENABLED=false` + restart with the tab open → next
+    submission passes through. Time it (< 60 s).
+17. **Storage disabled:** block sessionStorage → routing degrades to coach; a prefill navigates to an
+    empty Generator; **no crash**.
+18. **Mobile** ~390 px: chips wrap, bottom nav clear, no horizontal overflow.
+19. **Accessibility:** keyboard-only through the chip group; the question is announced with it.
+20. **Hinglish/Hindi** end to end. **Record model-quality gaps as M7 eval seeds; do not tune the
+    prompt.**
+
+**Phase C — the full §13 regression** in the same session, with anything not exercised stated
+explicitly and why (M3's precedent).
+
+> **Two steps needed a harness, and that is recorded rather than hidden.** The live model fills
+> `format` on essentially every phrasing, so a chip-bearing `ask` (step 5) and a slow response
+> (step 14) were not reproducible against it. Two scratchpad-only proxies forwarded everything to the
+> real backend except `/interpret` — one returning a fixed `ask`, one delaying 3.5 s — and both
+> exercised the **real client unmodified**. Everything else ran against live Gemini.
 
 ### Project health: 🟢 Healthy
 
-M5 landed with every gate green: **943 server tests** and 70 client tests, **five** consecutive runs
-with no flakiness, both lints clean, and a client bundle **byte-identical** to the pre-M5 baseline
-(same hash, same 975,064 bytes). Zero migrations, zero new environment variables, zero protected
-files touched, and `index.js` modified **+52 / −0**.
+M6's automated gate is green on every measure: **312 client tests** across 13 files (+242), three
+consecutive runs with no flakiness; **943 server tests, identical to baseline**; both lints; a clean
+build; and a bundle at **282,640 gzip — +5.2 kB against a 15 kB budget**. Zero migrations, zero new
+dependencies, zero new environment variables, and `git diff --stat server/` **empty**.
 
-Three things are worth stating plainly because they are the milestone's real evidence:
+Three things are the milestone's real evidence:
 
-1. **The mandatory pre-flight connectivity probe earned its place in the protocol.** The routing
-   model documented at M0 had been retired and returned 404. Discovered before a line of M5 was
-   written rather than on the day the feature was switched on, where it would have looked like a
-   router bug rather than a config one.
-2. **Two of the three injected-defect proofs found real problems.** The G4 authorization guard was
-   unreachable dead code that no passing test could have revealed, and the no-5xx proof exposed a
-   genuine 500 returned by the rollout gate on a database failure. Both fixed and regression-tested.
-3. **Manual verification ran against live Gemini**, and the emergency short-circuit is now proven by
-   an 87 ms vs 1.2 s latency gap in addition to a zero-call assertion.
+1. **The tokenizer bug is why the Devanagari rows exist.** The intent gate's token split omitted
+   `\p{M}`, and Devanagari writes its vowels and virama as combining marks — so every Hindi phrase
+   would have fragmented into tokens matching nothing, the entire Hindi vocabulary would have been
+   dead code, and **no test written only in English would have failed.** Found by writing the
+   multilingual half of the precision table first.
+2. **The proximity window was chosen by a failing case, not by taste.** Written at 5, it refused
+   `"make a short class 5 maths quiz"`; widened to 6 and the whole negative table re-run to confirm
+   nothing new was admitted.
+3. **All 12 injected-defect proofs were detected, including the new registry-driven invariant.**
+   Adding `if (actionId === 'generate_assessment')` to the executor fails 6 tests.
 
-Open items: `client/tsconfig.tsbuildinfo` remains a tracked build artifact that churns on every
-build (pre-existing, out of scope, restored after each build); the drift extractors are knowingly
-duplicated across two test files; the token-scan preamble is knowingly duplicated across the three
-vocabulary mappers (revisit at a fourth vocabulary); the memory TTL constants must reach the client
-at M6 by being published through the catalog rather than re-declared in TypeScript; `pendingAsk`
-free-text handling is deferred to M6 (D5); and the daily-budget counter is a seam awaiting M9 (D1).
+**The gap the code-complete report declared is now closed.** CHANGE-9 still has no *automated*
+behavioural test — the guard lives in a React provider and the client runner covers pure logic only —
+but both halves now have **live behavioural evidence** against a deliberately delayed response: a
+response landing while the teacher was typing did not navigate and their text survived, and with two
+overlapping routed requests only the newest wrote a draft. The structural source guards remain as the
+regression control.
 
-**A new open item from M5:** the routing endpoint is now a **floating alias**
-(`gemini-flash-lite-latest`), chosen deliberately to avoid a repeat of the retirement that broke the
-pinned one. The M7 eval runner must therefore record the resolved model version alongside its
-results, or the baseline will not say which model produced it.
+Open items carried forward: `client/tsconfig.tsbuildinfo` remains a tracked build artifact (restored
+after each build); the drift extractors are knowingly duplicated across two test files; the
+token-scan preamble is knowingly duplicated across the three vocabulary mappers; the daily-budget
+counter is a seam awaiting M9; and the routing endpoint is a **floating alias**
+(`gemini-flash-lite-latest`), so the M7 eval runner must record the resolved model version alongside
+its results.
+
+**Closed at M6:** the memory-TTL duplication (decision D1 removed the need rather than relocating
+it) and `pendingAsk` free-text handling (D3 delivers the client half; the server slot-fill mode is
+explicitly deferred).
 
 The main risk remains classification quality on code-mixed Hinglish, deliberately deferred to M7 —
-the correct moment to decide whether Phase 2 proceeds at all. M5's live testing produced the first
-three concrete seeds for that corpus, all recorded in §9 and all deliberately left untuned.
+the correct moment to decide whether Phase 2 proceeds at all. M6 adds a second, newly measurable
+risk: **the intent gate's recall is entirely unmeasured.** Its precision is now well covered by a
+99-case table, but how many real teacher phrasings it silently declines is exactly what the eval
+corpus exists to find out, and it should be read as M7's first question rather than a defect.
 
 ---
 
@@ -1024,16 +1130,26 @@ three concrete seeds for that corpus, all recorded in §9 and all deliberately l
 - [x] Classifier output contract enforced: `IntentProposal` only — no canonical values, provenance,
       decisions, routing, URLs, params, explanations or reasoning, asserted field by field
 
-### M6 — Client wiring (4.0 d)
-- [ ] Intent gate tuned for **precision** (CHANGE-2)
-- [ ] Client repeat cache
-- [ ] RouterProvider, ActionExecutor, handler map
-- [ ] Catalog fetch + version invalidation
-- [ ] CoachPage integration
-- [ ] Clarify chips resolving **client-side** (CHANGE-3)
-- [ ] Stale-response guard (CHANGE-9)
-- [ ] Circuit breaker
-- [ ] Verify zero assistant requests when flags are off
+### ✅ M6 — Client wiring (4.0 d) — COMPLETE 2026-07-29
+- [x] Intent gate tuned for **precision** (CHANGE-2) — 99-case table; the Devanagari rows caught a
+      tokenizer bug that would have made the entire Hindi vocabulary dead code
+- [x] Client repeat cache — keyed by catalog version, and **never stores a memory-derived decision**
+- [x] RouterProvider, ActionExecutor, handler map — the executor proven **registry-driven** by a
+      source guard that fails when action-specific branching is injected
+- [x] Catalog fetch + version invalidation — lazy, best-effort, **zero requests for a teacher who
+      never types a command**
+- [x] CoachPage integration — **+42 / −2**, one import line, flag-off path still synchronous
+- [x] Clarify chips resolving **client-side** (CHANGE-3) — plus free-text and open-question answers
+- [x] Stale-response guard (CHANGE-9) — ⚠️ structural guards only; **no behavioural test** (see §9)
+- [x] Circuit breaker — 60 s, in-memory, tripped by transport failure only
+- [x] `pendingAsk` free-text handling (carried from M5 D5) — client half; server slot-fill deferred
+- [x] Memory-TTL duplication resolved (carried from M4) — by **removal**, per decision D1
+- [x] 12/12 injected-defect proofs detected, every file restored and re-verified
+- [x] **§21 step 3 — manual verification.** All 20 steps executed in a live signed-in browser against
+      live Gemini. **Zero defects found in M6 code**; five model-quality gaps recorded for M7
+- [x] **Verified zero assistant requests when flags are off** — by network trace, not by assertion
+- [x] **§21 step 4 — the UI half of the regression checklist**, including Generate end to end from an
+      AI-prefilled form
 
 ### M7 — Eval harness + tuning (5.0 d)
 - [ ] ≥120 labelled utterances: 60 action / 40 coaching / 20 adversarial
@@ -1282,13 +1398,18 @@ generation cost is capped. Then flip `autoExecute: true` on the descriptor — *
 | `server/src/lib/flags.js` | Feature flags, all defaulting OFF | Backend | ✅ M0 |
 | `server/src/lib/resourceFields.js` | Bounds shared by CRUD and generation (breaks a require cycle) | Backend | ✅ M1 |
 | `server/evals/` | Classification quality corpus (outside `test/`) | Backend + Product | ⬜ M7 |
-| `client/src/assistant/` | All AI-routing client code — deletable unit | Frontend | 🟡 `types.ts` (M0) + draft store, prefill seam, telemetry (M3); provider/executor/gate in M6 |
+| `client/src/assistant/` | All AI-routing client code — deletable unit | Frontend | ✅ M0 + M3 + **M6** (complete for Phase 1) |
 | `client/src/assistant/draftStore.ts` | sessionStorage drafts: TTL, eviction, **fail-soft** | Frontend | ✅ M3 |
 | `client/src/assistant/generatorPrefill.ts` | **The Generator's only seam into the router.** New router behaviour on that page belongs here, not in another page import | Frontend | ✅ M3 |
 | `client/src/assistant/telemetry.ts` | Correction signal — field name + provenance, never values | Frontend | ✅ M3 (transport in M8) |
 | `client/src/components/AiPrefillBanner.tsx` | Presentational banner: provenance summary + Undo | Frontend | ✅ M3 |
 | `client/vitest.config.ts` | Client test runner — **pure-logic modules only**, no component rendering | Frontend | ✅ M3 |
-| `client/src/assistant/handlers/` | Only place AI navigation routes appear | Frontend | ⬜ M6 |
+| `client/src/assistant/handlers/` | Only place AI navigation routes appear. `index.ts` is **the registration point**: a new action costs one handler + one line here | Frontend | ✅ **M6** |
+| `client/src/assistant/intentGate.ts` | Precision-first gate (CHANGE-2). Pure. **Widening it is an M7 decision backed by the corpus, never a one-off** | Frontend | ✅ **M6** |
+| `client/src/assistant/ActionExecutor.ts` | Dispatch only. **No action-specific branching** — asserted by a source guard | Frontend | ✅ **M6** |
+| `client/src/assistant/RouterProvider.tsx` | The router's only stateful module. Memory, pending ask, breaker, sequence | Frontend | ✅ **M6** |
+| `client/src/assistant/sessionMemory.ts` | Typed slot store. **Applies no TTL** — the server is the single authority (D1) | Frontend | ✅ **M6** |
+| `client/src/components/AiClarifyPrompt.tsx` | Presentational clarify chips | Frontend | ✅ **M6** |
 | `server/test/assistant/contractDrift.test.js` | Drift guard for both duplicated pairs | Backend | ✅ M2 |
 | `server/src/routes/resources.js` | Generation endpoint — **protected**, one import change only | Backend | 🔒 Protected |
 | `server/src/gemini.js` | LLM service — **protected**, zero changes | Backend | 🔒 Protected |
@@ -1318,7 +1439,9 @@ generation cost is capped. Then flip `autoExecute: true` on the descriptor — *
 | 6 | Capability Registry guide | `server/src/actions/README.md` | ✅ Created in M0 |
 | 7 | Intent Gateway guide | `server/src/assistant/README.md` | ✅ Created in M0 |
 | 8 | Client router guide | `client/src/assistant/README.md` | ✅ Created in M0 |
-| 5c | Client pure-logic test suite | `client/src/assistant/*.test.ts` · `client/vitest.config.ts` | ✅ **M3** — 70 tests covering draft-store failure modes, params coercion and telemetry privacy |
+| 5c | Client pure-logic test suite | `client/src/assistant/*.test.ts` · `client/vitest.config.ts` | ✅ **M3** — 70 tests covering draft-store failure modes, params coercion and telemetry privacy. **Extended at M6 to 312** across 13 files |
+| 5f | **Enforced** gate precision — the CHANGE-2 acceptance evidence | `client/src/assistant/intentGate.test.ts` | ✅ **M6** — a 99-case table whose negative half is drawn from the app's real coaching traffic. Proven to fail when the gate is widened |
+| 5g | **Enforced** registry-driven executor — the M6 invariant | `client/src/assistant/ActionExecutor.test.ts` | ✅ **M6** — a source guard asserting the executor names no action id, no domain and no route. Injecting `if (actionId === …)` fails 6 tests |
 | 9 | Test Plan | `docs/ai-action-router-test-plan.md` | 📋 Planned (M7) |
 | 10 | ADR-001: Registry before Router | `docs/adr/` | 📋 Planned |
 | 11 | ADR-002: Effect class dominates confidence | `docs/adr/` | 📋 Planned |
@@ -1361,8 +1484,14 @@ payloads still conform. A contract that is checked by CI is worth more than a do
 
 ### Where the project stands right now
 
-**Planning is complete and approved. M0–M4 are approved. M5 is complete and awaiting review.**
-M6 has not started.
+**Planning is complete and approved. M0–M4 are approved. M5 and M6 are complete and awaiting
+review.** M7 has not started and must not start without approval.
+
+⚠️ **M6 is the first milestone a teacher can see.** With `VITE_ASSISTANT_ENABLED=true` *and* the
+server's `ASSISTANT_ENABLED=true`, typing "Generate a Class 5 fractions worksheet" in the Coach
+composer now opens the Generator with the fields prefilled. **Both flags are off by default**, and
+with the client flag off the composer takes its original synchronous path without touching the gate,
+storage or the network.
 
 **M5 added three production files and four test files, and modified four tracked files** —
 `server/src/index.js` (+52 / −0), `server/src/routes/assistant.js`, `server/.env.example`, and
@@ -1426,8 +1555,9 @@ form state. Every failure falls back to a normal Coach answer.
 - ✅ **Completed:** P0 architecture · P1 specification · P2 guardrails/final review · P3 this
   document · **M0** (approved) · **M1** (approved) · **M2** (approved) · **M3** (approved) ·
   **M4** (approved) · **M5 classifier + `/interpret`, dark** (awaiting approval)
-- ⬜ **Pending:** M6 → M10 (see §8)
-- ➡️ **Next:** **M6 — Client wiring** (see §10). ⏸️ Blocked on user approval of M5.
+- 🟡 **Code complete, gate incomplete:** **M6 — client wiring**
+- ⬜ **Pending:** M7 → M10 (see §8)
+- ➡️ **Next:** **run the M6 manual verification script in §10.** Not M7.
 
 ### What M0 actually delivered (so you can trust the foundation)
 
@@ -1553,6 +1683,31 @@ missed:
 
 Neither would have been found by writing more tests of the same kind.
 
+### What M6 delivered
+
+- `client/src/assistant/intentGate.ts` — the precision-first filter that decides whether the server
+  is worth asking. Pure, no network, and the only reason a coaching question costs nothing.
+- `client/src/assistant/RouterProvider.tsx` — the router's **only** stateful module: session memory,
+  the pending clarification, the circuit breaker, the catalog version, the sequence counter.
+- `client/src/assistant/ActionExecutor.ts` — dispatch, the `execute`→`prefill` downgrade, the effect
+  ceiling and the unknown-id domain fallback. **Registry-driven by invariant**, enforced by a test.
+- `client/src/assistant/handlers/` — the registration point and the only home of route strings.
+- `sessionMemory` · `repeatCache` · `circuitBreaker` · `catalog` · `api` · `pendingAsk`, all pure
+  enough to test without a DOM, which is why 242 of the 312 client tests could exist at all.
+- `AiClarifyPrompt` + a **+42 / −2** CoachPage diff behind a single import line.
+
+**What M6 deliberately did NOT build:** a server-side slot-fill mode for `pendingAsk` (D3 — it needs
+a second classifier prompt and eval data to tune), Tier-0 structured entry points, memory rendered as
+correctable chips (D10 — it would modify a file outside the permitted list), Coach thread persistence
+(D10), and anything on the server at all (D2 — `git diff --stat server/` is empty).
+
+**The most useful thing M6 proved: a test table written only in the author's own language is a blind
+spot with a specific shape.** The intent gate's tokenizer omitted `\p{M}`, so every Devanagari phrase
+fragmented into tokens matching nothing — the whole Hindi vocabulary would have been dead code, and
+every English test would still have passed. M4 learned the same lesson from the other direction when
+six common Hinglish phrasings were silently unmapped. **Expect M7's corpus to find more, because that
+is what it is for.**
+
 ### Active branch
 
 `feature/ai-action-router` (based on `main`). **Never implement this feature on `main`.**
@@ -1578,11 +1733,17 @@ provider stack order · every page except Coach and Generator. Full table with r
 
 ### Project health
 
-🟢 **Healthy.** Thorough planning, two latent bugs caught pre-implementation, trivial rollback, and
-M0–M5 all landed with every verification gate green. M3 found **zero defects**; M4 found **six real
-vocabulary gaps plus one false positive it had introduced**; M5 found **an unreachable security
-guard and a genuine 500**, both fixed inside the milestone, plus three model-quality gaps handed to
-M7 rather than patched over.
+🟡 **Healthy, with one gate step outstanding.** Thorough planning, two latent bugs caught
+pre-implementation, trivial rollback, and M0–M5 all landed with every verification gate green. M3
+found **zero defects**; M4 found **six real vocabulary gaps plus one false positive it had
+introduced**; M5 found **an unreachable security guard and a genuine 500**, both fixed inside the
+milestone; M6 found **a tokenizer bug that would have silently disabled the entire Hindi
+vocabulary**, fixed before it shipped.
+
+**M6's gate is finished.** 312 client tests, 943 server tests unchanged, 12/12 injected-defect proofs
+detected, and the full 20-step manual script executed against live Gemini with **zero defects in M6
+code**. What it did surface is five model-quality gaps and an unmeasured gate recall — both handed to
+M7 rather than patched over, which is the same discipline M5 applied to its own three.
 
 Biggest open question — Hinglish classification quality — is deliberately deferred to M7, which is
 the correct decision point for whether Phase 2 proceeds. M4's exploratory findings are a small
@@ -1594,8 +1755,12 @@ by the implementer.
 two regression items were deliberately not exercised with stated reasons — print modes (would block
 browser automation; file untouched) and non-interactive auth flows (server-side, covered by four
 unmodified suites); the drift extractors are knowingly duplicated across two test files (M4 was
-instructed not to edit the inherited M2 guard); and the memory TTL constants will need to reach the
-client at M6 — publish them through the catalog rather than re-declaring them in TypeScript.
+instructed not to edit the inherited M2 guard); **CHANGE-9 has structural guards but no behavioural
+test** (M6, stated in §9 and §10); and **the intent gate's recall is entirely unmeasured** — M7's
+first question.
+
+**Closed at M6:** the memory-TTL duplication, resolved by decision D1 removing the need for a client
+copy rather than relocating it to the catalog; and `pendingAsk` free-text handling, carried from M5.
 
 **Closed since M0:** the authenticated-UI-regression limitation. M3 was verified in a real signed-in
 browser session.
