@@ -12,6 +12,14 @@ const { prisma } = require('../lib/db');
 const { authRequired } = require('../middleware/auth');
 const { languageDirective, LANGUAGE_NAMES } = require('../prompts');
 const { assessmentDocumentSchema, checkAgainstRequest, normalizeAssessmentMath, OPTION_LETTERS } = require('../lib/assessmentSchema');
+const { MAX_META, MAX_LANGUAGE } = require('../lib/resourceFields');
+// The generation request schema is defined once, in the actions/ layer, and
+// imported by both this route and (from M2) the `generate_assessment` capability
+// descriptor — so the router can never validate against a drifted copy of the
+// contract this endpoint actually enforces.
+// MAX_QUESTIONS comes along because the `more_questions` AI-assist action below
+// enforces the same ceiling the original generation request was held to.
+const { generateAssessmentSchema, MAX_QUESTIONS } = require('../actions/schemas/generateAssessment');
 
 const router = express.Router();
 
@@ -25,9 +33,13 @@ const RESOURCE_TYPES = ['lesson_plan', 'classroom_activity', 'assessment', 'expl
 const MAX_TITLE = 200;
 const MAX_CONTENT = 50000;
 const MAX_STRUCTURED = 50000;
-const MAX_META = 80; // grade / subject
-const MAX_LANGUAGE = 20;
 const MAX_SOURCE_ID = 60;
+
+// MAX_META (grade / subject) and MAX_LANGUAGE are NOT declared here: the
+// generation schema in src/actions/schemas/generateAssessment.js needs the same
+// bounds, so they live in a leaf module both files import (see
+// lib/resourceFields.js for why that beats either file importing the other).
+// The bounds above stay local because only the CRUD schemas below use them.
 
 // Create payload. Note there is deliberately NO userId/ownerId/schoolId field:
 // ownership is taken from the token, so a client-supplied id cannot be honored.
@@ -157,27 +169,11 @@ The current resource content is provided next, delimited by triple backticks (\`
 // the model's raw text. This is what makes the printed page's structure
 // independent of whether Gemini "feels like" following Markdown formatting
 // instructions on any given call.
-const FORMATS = ['quiz', 'worksheet'];
-const DIFFICULTIES = ['easy', 'medium', 'hard'];
-const QUESTION_TYPES = ['mcq', 'true_false', 'short_answer', 'mixed'];
-const MIN_QUESTIONS = 3;
-const MAX_QUESTIONS = 30;
-const MAX_TOPIC = 200;
-const MAX_INSTRUCTIONS = 1000;
-
-const generateSchema = z
-  .object({
-    format: z.enum(FORMATS),
-    grade: z.string().trim().max(MAX_META).optional(),
-    subject: z.string().trim().max(MAX_META).optional(),
-    topic: z.string().trim().min(1).max(MAX_TOPIC),
-    difficulty: z.enum(DIFFICULTIES),
-    questionType: z.enum(QUESTION_TYPES),
-    questionCount: z.number().int().min(MIN_QUESTIONS).max(MAX_QUESTIONS),
-    language: z.string().trim().max(MAX_LANGUAGE).optional(),
-    instructions: z.string().trim().max(MAX_INSTRUCTIONS).optional(),
-  })
-  .strict();
+// The request schema and its option vocabularies (formats, difficulties,
+// question types, count bounds) now live in
+// src/actions/schemas/generateAssessment.js — imported at the top of this file.
+// They moved so the capability registry and this endpoint share ONE definition
+// instead of drifting copies; nothing about what is accepted changed.
 
 const QUESTION_TYPE_CONTENT_RULES = {
   mcq: 'Every question is multiple-choice with exactly four plausible options; exactly one is correct.',
@@ -260,7 +256,7 @@ The topic and any extra instructions are provided next as delimited user content
  * formatting choices, and the answer-key heading is now GUARANTEED present
  * and exact (unlike the previous Markdown-generation approach, where it
  * depended on the model reproducing the heading text verbatim).
- * @param {object} config the validated generateSchema request
+ * @param {object} config the validated generateAssessmentSchema request
  * @param {{instructions: string, questions: object[]}} doc the validated assessmentDocumentSchema response
  */
 function renderAssessmentMarkdown(config, doc) {
@@ -830,7 +826,7 @@ router.post('/resources/generate', authRequired, async (req, res) => {
     return res.status(503).json({ error: 'AI features are unavailable right now.', requestId });
   }
 
-  const parsed = generateSchema.safeParse(req.body || {});
+  const parsed = generateAssessmentSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid generation request.', requestId });
   }

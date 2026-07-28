@@ -25,6 +25,10 @@ const authRouter = require('./routes/auth');
 const dataRouter = require('./routes/queries');
 const adminRouter = require('./routes/admin');
 const resourcesRouter = require('./routes/resources');
+// AI Action Router (Phase 1). Requiring this validates the capability registry
+// at boot, so a malformed action descriptor stops the server here rather than
+// surfacing later as a strange routing failure.
+const assistantRouter = require('./routes/assistant');
 
 // Logs only non-sensitive metadata about an AI request/response — never the
 // raw query text, response text, upstream error body, API keys, tokens, or
@@ -186,6 +190,24 @@ const limiter = rateLimit({
   // that one means "the AI provider itself is rate-limiting us right now",
   // which more patience on the client side alone doesn't fix.
   message: { error: 'You have made too many requests. Please wait a few minutes and try again.' },
+});
+
+// Separate bucket for the assistant, deliberately NOT the /coach limiter above.
+// Sharing one would let catalog fetches and routing decisions eat the budget a
+// teacher needs for actual coaching answers — the optional feature must never
+// degrade the core one. Higher ceiling than /coach because these calls are
+// small and frequent (a catalog fetch per session, a routing decision per
+// message) rather than large and occasional.
+const ASSISTANT_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.ASSISTANT_RATE_LIMIT_MAX_REQUESTS, {
+  name: 'ASSISTANT_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 120 : 600, min: 1, max: 100000,
+});
+
+const assistantLimiter = rateLimit({
+  windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
+  max: ASSISTANT_RATE_LIMIT_MAX_REQUESTS,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many assistant requests. Please wait a few minutes and try again.' },
 });
 
 // Stricter limiter for auth endpoints to slow down credential guessing.
@@ -400,6 +422,13 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
 app.use('/api', dataRouter);
 app.use('/api', resourcesRouter);
 app.use('/api/admin', adminRouter);
+
+// AI Action Router. Mounted alongside the existing routers — after them, before
+// the global error handler — so no existing route's middleware chain changes.
+// Its own paths are new, so nothing here can shadow an established endpoint.
+// With ASSISTANT_ENABLED unset (the default) every response is an inert empty
+// catalog, and the application behaves exactly as it did before this line.
+app.use('/api/assistant', assistantLimiter, assistantRouter);
 
 // Global error handler — last line of defense. Routes wrapped in
 // asyncHandler (see lib/asyncHandler.js) forward a rejected promise here via

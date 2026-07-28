@@ -137,8 +137,20 @@ export const RESOURCE_TYPES: ResourceType[] = [
   'general',
 ];
 
-// --- Quiz / Worksheet Generator options (mirror server enums in
-// server/src/routes/resources.js). ---
+// --- Quiz / Worksheet Generator options ---
+//
+// These are the PICKER option lists (value + display label/hint). The values
+// must stay in step with the server's closed vocabularies in
+// server/src/actions/schemas/generateAssessment.js (FORMATS, DIFFICULTIES,
+// QUESTION_TYPES, MIN_QUESTIONS/MAX_QUESTIONS), which is the single runtime
+// authority: it validates every POST /api/resources/generate and, from
+// milestone M2, is the same object the AI Action Router's capability descriptor
+// references. Nothing here validates anything — offering an option the server
+// rejects would surface as a 400 the teacher cannot act on.
+//
+// CHANGE THESE AND THE SERVER MODULE IN THE SAME COMMIT. A drift guard covering
+// this pair is a mandatory acceptance criterion of M2 (see
+// docs/AI_ACTION_ROUTER_README.md §11).
 export const ASSESSMENT_FORMATS: { value: 'quiz' | 'worksheet'; label: string; hint: string }[] = [
   { value: 'quiz', label: 'Quiz', hint: 'Questions with a separate answer key' },
   { value: 'worksheet', label: 'Worksheet', hint: 'Printable sheet with name/date and teacher answer key' },
@@ -190,3 +202,17 @@ export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000/
 // against. Left unset, the Google buttons are simply not rendered and email +
 // password sign-in carries on untouched.
 export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+
+// AI Action Router — client-side gate. When false (the default, and the value
+// until the feature is deliberately switched on) the client never calls an
+// assistant endpoint, and the composer and Generator behave exactly as they did
+// before the feature existed.
+//
+// Deliberately opt-IN: any value other than an explicit "true" leaves it off, so
+// a mistyped or missing env var can only under-enable the feature.
+//
+// This is NOT the kill switch. The app is a PWA with service-worker caching, so
+// a change here reaches users on a later page load rather than immediately —
+// the server's ASSISTANT_ENABLED is the control that takes effect in under a
+// minute and covers already-loaded clients. See docs/ai-action-router-guardrails.md (G28).
+export const ASSISTANT_ENABLED = import.meta.env.VITE_ASSISTANT_ENABLED === 'true';
