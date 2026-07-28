@@ -20,14 +20,14 @@
 | **Current Branch** | `feature/ai-action-router` |
 | **Base Branch** | `main` |
 | **Current Phase** | Phase 1 — Generator only |
-| **Current Milestone** | **M4 — Vocabulary + resolver + policy** ✅ **COMPLETE — awaiting review/approval** |
-| **Overall Progress** | **39%** (planning + M0 + M1 + M2 + M3 + M4 complete) |
-| **Current Status** | 🟢 Healthy — M4 verified by unit tests (784 server tests, 3× no flakiness); three new guards each **proven to fail on an injected defect**; exploratory testing found and fixed 6 real vocabulary gaps |
+| **Current Milestone** | **M5 — Classifier + `/interpret` endpoint (dark)** ✅ **COMPLETE — awaiting review/approval** |
+| **Overall Progress** | **50%** (planning + M0 + M1 + M2 + M3 + M4 + M5 complete) |
+| **Current Status** | 🟢 Healthy — M5 verified by 943 server tests (5 consecutive runs, no flakiness) **and against live Gemini**; three guards proven to fail on an injected defect, one of which **exposed a real 500-returning bug that is now fixed**; client bundle byte-identical |
 | **Architecture Status** | ✅ **Approved** (reviewed 3×, 12 amendments applied — see §5.3) |
-| **Implementation Status** | 🟡 **M0–M4 complete** — contracts frozen, registry live behind flags (all OFF), catalog endpoint serving, drift guards active on three pairs, prefill delivery working with no AI, and **all deterministic routing logic written and unit-tested but reachable from nothing** |
+| **Implementation Status** | 🟡 **M0–M5 complete** — contracts frozen, registry live behind flags (all OFF), catalog serving, drift guards on three pairs, prefill delivery working with no AI, all deterministic routing logic unit-tested, and **the full 12-stage pipeline live behind a kill switch that is off by default** |
 | **Last Updated** | 2026-07-28 |
 | **Governance** | 🔒 **Milestone Completion Protocol in force** — see [§21](#21-milestone-completion-protocol-mandatory). One milestone at a time; full verification gate before the next begins; explicit user approval required to proceed |
-| **Next Task** | ⏸️ **Awaiting user approval of M4.** Next milestone is **M5 — Classifier + `/interpret` endpoint (dark)**, the first milestone that needs a live Gemini key — **confirm the key works before starting it, not at its completion gate**. M4 was the cleanest rollback point in the plan; from M5 the feature acquires a live server surface |
+| **Next Task** | ⏸️ **Awaiting user approval of M5.** Next milestone is **M6 — Client wiring**: the intent gate (CHANGE-2), repeat cache, RouterProvider, ActionExecutor, handler map, CoachPage integration, chips resolving client-side (CHANGE-3), the stale-response guard (CHANGE-9) and the circuit breaker. **M6 is the milestone that makes the feature visible to a teacher** — until it lands, nothing on the client calls `/interpret` |
 
 ### Progress basis (keep this calculation consistent)
 
@@ -41,8 +41,9 @@ Progress % is weighted by estimated effort-days, not by milestone count.
 | M2 — registry + catalog + drift guard | 2.0 | ✅ Complete | 5.3% |
 | M3 — draft store + Generator prefill | 3.0 | ✅ Complete | 8.0% |
 | M4 — vocabulary + resolver + policy | 3.0 | ✅ Complete | 8.0% |
-| M5 → M10 implementation | 23.0 | ⬜ Not started | 0% |
-| **Total** | **37.5** | | **≈ 38.7%** → reported as **39%** |
+| M5 — classifier + `/interpret` (dark) | 4.0 | ✅ Complete | 10.7% |
+| M6 → M10 implementation | 19.0 | ⬜ Not started | 0% |
+| **Total** | **37.5** | | **≈ 49.3%** → reported as **50%** |
 
 > The reported figure is now simply the effort-weighted total rounded to the nearest point. The
 > earlier +2-point adjustment (which credited M0's delivery of the three planning documents) has been
@@ -501,9 +502,10 @@ passthrough for one release after the client stops calling it.
 
 | Path | Change | Size |
 |---|---|---|
-| `server/src/index.js` | Mount assistant router; construct `geminiFast`; new env tunables; assistant limiter; **add a limiter to `/api/resources/generate`** | additive |
+| `server/src/index.js` | Mount assistant router; construct `geminiFast`; new env tunables; assistant limiter; **add a limiter to `/api/resources/generate`** | additive — **M2 +29 / −0, M5 +52 / −0** |
 | `server/src/routes/resources.js` | Replace the inline `generateSchema` definition with an import. **Nothing else** | ~15 lines relocated |
-| `server/.env.example` | Document ~8 new variables | additive |
+| `server/src/routes/assistant.js` | `GET /catalog` (M2); `POST /interpret` + envelope schema (M5); rollout gate made to fail closed (M5) | additive — M5 +198 / −8, all 8 deletions being comment lines or the Prisma call re-indented into a try/catch |
+| `server/.env.example` | Document ~8 new variables | additive. **Amended at M5**: the routing model endpoint, because the M0-documented `gemini-2.5-flash-lite` was retired and returns 404 |
 | `client/src/App.tsx` | Wrap `AppRoutes` in `RouterProvider` | ~2 lines |
 | `client/src/pages/CoachPage.tsx` | Route submissions through the router pre-pass; render clarify chips | ~40 lines |
 | `client/src/pages/GeneratorPage.tsx` | Draft read on mount + param change; banner; provenance markers; correction telemetry | **actual at M3: +220 / −27** (original estimate ~60 lines — see note below) |
@@ -575,8 +577,8 @@ schema extraction, which stands on its own merits.
 | **M2** | Registry + catalog endpoint | 2.0 d | ✅ **Completed** | 2026-07-28. Registry + 2 descriptors + `GET /catalog`; startup validation incl. **descriptor↔schema agreement in both directions**; drift guard live for **both** pairs and **proven to detect injected drift**. `index.js` **+29 / −0**. 527 tests (+70) |
 | **M3** | Draft store + Generator prefill (**no AI**) | 3.0 d | ✅ **Completed** | 2026-07-28. Draft store (TTL/eviction/fail-soft), `generatorPrefill` seam, telemetry, banner, markers, undo. CHANGE-7/10/12 all verified in a live browser. Client test runner installed (Vitest + jsdom): **70 client tests**. Bundle **+1.79 kB gzip**. Server suite unchanged at 527 |
 | **M4** | Vocabulary + resolver + policy (pure modules) | 3.0 d | ✅ **Completed** | 2026-07-28. 3 vocabulary mappers + resolver + policy, all pure. **257 new tests** (87 in the grade suite over 79 tabulated phrases, against the ~40 planned). Policy proven by **exhaustive enumeration of its complete 288-combination input space** — no coverage dependency added. Third drift pair guarded. **Zero production callers**, proven by module-graph inspection |
-| **M5** | Classifier + `/interpret` endpoint (dark) | 4.0 d | ⬜ Pending | ← **NEXT** (awaiting approval). `geminiFast`, `responseSchema`, 12-stage pipeline. Tested with `geminiMock` — no real API calls in CI. **Confirm the Gemini key works before starting** |
-| **M6** | Client wiring | 4.0 d | ⬜ Pending | Gate (CHANGE-2), cache, provider, executor, CoachPage integration, CHANGE-3, CHANGE-9 |
+| **M5** | Classifier + `/interpret` endpoint (dark) | 4.0 d | ✅ **Completed** | 2026-07-28. `geminiFast`, registry-derived prompt + `responseSchema`, 12-stage pipeline, endpoint. **943 tests (+159)**, 5× no flakiness. Verified against **live Gemini**. The G4 injected-defect proof exposed that the guard was unreachable dead code, and the no-5xx proof exposed a **real 500** in the rollout gate — both fixed. Bundle byte-identical |
+| **M6** | Client wiring | 4.0 d | ⬜ Pending | ← **NEXT** (awaiting approval). Gate (CHANGE-2), cache, provider, executor, CoachPage integration, CHANGE-3, CHANGE-9. Also owed here: `pendingAsk` free-text handling (deferred from M5 by decision D5) and publishing the memory TTLs through the catalog rather than re-declaring them in TypeScript |
 | **M7** | Eval harness + tuning | 5.0 d | ⬜ Pending | ≥120 labelled utterances (EN / Hinglish / HI / adversarial). **Launch-blocking** |
 | **M8** | Telemetry | 2.0 d | ⬜ Pending | *Parallel with M7.* Split channels per CHANGE-6 |
 | **M9** | Hardening | 3.0 d | ⬜ Pending | Rate limits, budgets, CHANGE-8 breaker, security review, deletability test |
@@ -717,6 +719,31 @@ schema extraction, which stands on its own merits.
 | 2026-07-28 | **M4 review finding: `policy.js` imported `PHASE1_DECISIONS` without using it, purely to re-export it** | ✅ **Fixed** | A pass-through re-export gives a frozen contract value a second import path — precisely what this project's drift guards exist to prevent. Removed; `contracts.js` is again the single path, and `policy.test.js` already imported it from there. The module still *enforces* the set (that is what `applyPhase1Clamp` does); it just no longer republishes it |
 | 2026-07-28 | **M4 review finding: spec §11's Definition of Done still required "policy 100% branch"**, which decision D1 superseded | ✅ **Fixed** | Corrected in the spec itself with the reasoning inline, and recorded in a new "post-approval corrections" table there alongside M3's §2.4 amendment. Left uncorrected, it would have been checked literally at M10 against a criterion nobody applied — which is how a completion protocol quietly stops meaning anything (§17 rule 1) |
 | 2026-07-28 | 📋 **Accepted trade-off: the token-scan preamble stays duplicated across the three vocabulary mappers** | 📋 **Recorded, deliberately NOT refactored** | `grades.js`, `subjects.js` and `languages.js` each open their scan with the same separator-handling block, and grades/subjects share a similar mentions-then-fallback-table shape. A `collectMentions(tokens, resolveToken)` helper in `shared.js` would collapse it. **Not done, on the project owner's instruction**, and the engineering case is genuinely two-sided: the three loops diverge in ways a shared helper would have to absorb as flags — grades needs the class-context gate and a pre-primary token set, subjects a flat synonym table, and languages **must not** collect separators at all because it has no ambiguous outcome. A helper carrying three behavioural switches is not obviously better than three explicit ten-line loops. Revisit if a fourth vocabulary arrives: at four, the duplication stops being a judgement call |
+| 2026-07-28 | **M4 APPROVED by project owner. M5 authorized**, with six scoping decisions taken up front | ✅ | **D1** budget = injectable seam only, no persistence/counter/telemetry · **D2** no `telemetry.js` in M5 · **D3** envelope schema stays local to `routes/assistant.js` · **D4** `interpret.js` stays database-free via dependency injection · **D5** **reduced from the proposal** — no `pendingAsk` shortcut logic; conversational shortcutting belongs to M6 · **D6** CHANGE-8 breaker stays deferred to M9 · **D7** continue the injected-defect proof discipline. Plus a standing requirement: the classifier's only output contract is `IntentProposal`, and one regression test must prove the response schema is derived entirely from the registry |
+| 2026-07-28 | ⚠️ **The M0-documented routing model was DEAD.** `gemini-2.5-flash-lite` returns **404 — "no longer available to new users"** | ✅ **Fixed before implementation** | Caught by the mandatory pre-M5 connectivity probe, which is exactly why §21 requires it *before* the milestone rather than at its gate. Had this been left, every routing call would have failed on the day the feature was switched on — and it would have looked like a router bug, not a config one. **Also learned: `models.list` cheerfully lists a model the key cannot call**, so a model must be verified with a real `generateContent` request, never with the listing |
+| 2026-07-28 | **Routing model changed to the floating alias `gemini-flash-lite-latest`** | ✅ **Owner decision** | Four candidates were probed with the real classifier request shape. Working: `gemini-flash-lite-latest` (1.0–1.6 s), `gemini-3.1-flash-lite` (1.0–1.1 s), `gemini-3.5-flash-lite` (1.0–1.5 s), `gemini-2.5-flash` (1.5–2.7 s). Dead: `2.5-flash-lite` (404), `2.0-flash-lite` (429). The owner chose the **alias over a pin**, accepting reproducibility loss to avoid a repeat of the retirement that had just broken the project. **Consequence recorded for M7 rather than discovered there: an eval baseline against an alias is not reproducible, so the eval runner must capture the resolved model version alongside its results** |
+| 2026-07-28 | **M5 started.** Baselines captured first: 784 server tests / 30 files, 70 client tests, both lints clean, bundle `index-BgXQqjT0.js` (975,064 bytes) | ✅ | Same discipline as M0–M4 |
+| 2026-07-28 | **Design decision: the classifier prompt AND the Gemini `responseSchema` are both generated from the role-filtered registry** | ✅ | What the app advertises and what it understands cannot drift apart, by construction rather than by anyone remembering. Two regression tests (one per half) prove that adding an action widens both with **no edit to `classifier.js` or `proposalSchema.js`** — the requirement the owner attached to the M5 authorization |
+| 2026-07-28 | 🔴 **The G4 injected-defect proof FAILED TO FAIL — and that was the most valuable result of the milestone** | ✅ **Architecture corrected** | Injecting the classic `\|\| descriptors[0]` fallback into the catalog re-verification changed nothing: **123 tests still passed.** Cause: `buildProposalSchema` built its `intent` zod enum from the *same* descriptor list it then authorized against, so zod always rejected a bad id first and **the authorization branch was structurally unreachable dead code**. The "G4 tests" were really testing the zod enum. Spec §4.4 gate 2 is explicitly *two* checks ("zod shape **and** id membership") and they had been collapsed into one. Split into `buildProposalSchema` (bounded string, shape only) and `parseProposal` (the single authorization site). **The identical defect now fails 9 tests across 3 files.** *A guard that cannot fail is not a guard* |
+| 2026-07-28 | 🔴 **The no-5xx injected-defect proof exposed a REAL BUG: `/interpret` and `/catalog` both returned 500** when the database failed during the school-code rollout lookup | ✅ **Fixed** | Disabling the pipeline's total catch failed 5 unit tests but **zero integration tests**, which meant something upstream of the pipeline was unprotected. It was `isWithinRollout`'s Prisma call — outside `interpret.js`'s catch, reaching the global error handler. Violates G22, M5's headline contract, and also broke the catalog's own design principle that "not enabled for you" is a normal state rather than an error. Now **fails closed**: a database that cannot be read is never treated as permission granted. Two regression tests added, one per endpoint. **The catalog half is an M2 bug fixed here because the gate is shared and the fix is three lines** |
+| 2026-07-28 | **Existing test file modified — raised and APPROVED rather than done quietly** | ✅ **Owner decision** | `assistant.catalog.test.js` carried an M2 placeholder asserting `POST /interpret` returns 404 "(arrives in M5)". Its own name scheduled its expiry, so this is not the failure mode G26 protects against — but protected area #12 makes any edit to an inherited test a blocking review item, so it was escalated. Rewritten (not deleted) to pin the router's surface to exactly `{catalog, interpret}` and nothing else, on either verb. **Strictly stronger than the assertion it replaces**: an unplanned third endpoint would now fail it, which the 404 check never covered |
+| 2026-07-28 | **Design decision: a timeout is a DECISION, not an error** — and every one of the nine passthrough reasons is tested individually | ✅ | The classifier maps `DEADLINE_EXCEEDED`, `TimeoutError`, `AbortError`, safety blocks, upstream 4xx/5xx, network failure and unparseable JSON onto reasons. Nothing in the module throws. Also deliberately separated: the per-request Gemini **call** budget (`BUDGET_EXHAUSTED`, a retry storm) reports `classifier_error`, never `budget_exhausted`, which is the per-user **daily** cap — conflating them would make an upstream incident look like normal quota usage |
+| 2026-07-28 | **Design decision: an internal defect reports `classifier_error` rather than gaining a tenth reason** | ✅ | `PASSTHROUGH_REASONS` is a frozen wire vocabulary and none of its members means "we have a bug". Adding one would be a contract change to describe something the teacher must never be able to tell apart anyway. The distinguishing detail goes to the decision log, where it is actionable, and is asserted **not** to reach the response |
+| 2026-07-28 | **Design decision: `.strict()` on the proposal envelope, but drop-don't-reject on slots** | ✅ | An unexpected top-level key means the model ignored the output contract (gate 2 — a security boundary, reject the whole proposal). An unexpected slot is ordinary noisy extraction (gate 3 — drop the offender, keep the rest). The cost is stated plainly in the code: a model that helpfully adds `reasoning` loses its whole proposal. That is the intended trade — silently stripping would let the contract erode with nobody noticing |
+| 2026-07-28 | **M5 verification complete.** Server **943 tests / 34 files** (+159 tests, +4 files), **5 consecutive runs**, no flakiness · `resources.test.js` 70/70 **unmodified** · lint ✅ both · client **70 tests** ✅ · client build ✅ **bundle byte-identical to baseline** (same hash, 975,064 bytes) · `index.js` **+52 / −0** · zero migrations · zero new env vars · all 14 protected areas empty-diff | ✅ | See the M5 Milestone Completion Report |
+| 2026-07-28 | **Manual verification performed against LIVE Gemini**, not asserted | ✅ | Real server booted on spare ports (M4's lesson about port 3000 serving a stale instance). **Flags OFF:** 401 unauthenticated, 200 + `disabled`, inert catalog, **zero decision logs** — no work done at all. **Flags ON:** prefill (`"Class 5"` → `Class 3-5`, correct provenance, correct `memoryUpdates`), `ask` with one chip question, `not_an_action` on a coaching question, Hinglish correctly resolved to `quiz`/`Class 3-5`/`Mathematics` with `topic` correctly reported missing, `open_generator` prefill, 400 on oversized and on an unknown key. **Flags were passed as process env — `server/.env` was never edited**, verified afterwards to contain zero `ASSISTANT_` keys |
+| 2026-07-28 | **The emergency short-circuit proven by LATENCY, not just by assertion** | ✅ | An emergency utterance returned in **87 ms** against ~1.2 s for a routed one — a 14× gap that is only explicable by the classifier never having been called. The unit and integration tests additionally assert the `fetch` mock recorded **zero** calls |
+| 2026-07-28 | **The two Gemini instances proven independent in production conditions** | ✅ | In the same live session `/api/coach` took **20.1 s** (its 60 s budget, unchanged) while routing took **~1.2 s** (its 5 s budget). `/api/resources/generate` produced a correct worksheet with an answer key. `gemini.js` diff empty; `gemini.reliability.test.js` and `gemini.contract.test.js` unmodified and green — the standing proof that adding `geminiFast` did not perturb the shared service |
+| 2026-07-28 | **G11 verified live by reading the actual logs**, not only by unit test | ✅ | Every `interpret_completed` line carried requestId, decision, actionId, confidence, margin, call count, missing/lowConfidence/contradiction/dropped counts and latency — **and no utterance text and no slot values**. Zero `Unhandled request error` entries across the whole session |
+| 2026-07-28 | **The language trap verified against a live model** | ✅ | A Devanagari utterance naming no language produced **no `language` param at all**. Confirmed the earlier `?????` in the console was a Windows codepage artifact, not data corruption — the topic was correctly stored as `भिन्न` |
+| 2026-07-28 | ⚠️ **Three model-quality gaps found in live testing. Recorded as M7 eval seeds and deliberately NOT tuned** | ⚠️ **Open — M7 owns these** | (1) The `language` slot is often unfilled **even when a language is explicitly named** ("a Marathi quiz", "in Hindi"). (2) On one utterance the model crammed several slots into `topic` as `"fractions.5thsgrade.subject:maths.language:Hindi"`. (3) It sometimes reports provenance `utterance` for a value the teacher never said (inferring `format: worksheet` from "I need something on photosynthesis"). **Attribution was verified rather than assumed**: `mapLanguage('Hindi') → 'hi'` and the resolver fills it with provenance `utterance`, so the deterministic half is correct and the gap is entirely classifier recall. Tuning a prompt against three anecdotes is how thresholds stop being evidence-based — M7's corpus is the place to measure this, and it is the Phase 2 go/no-go |
+| 2026-07-28 | 📋 **Observed: the registry-derived prompt measurably beat a hand-written one** | 📋 **Recorded** | During model selection a hand-written stand-in prompt made every candidate read `"Class 3 ke liye maths quiz banao"` as `topic: "quiz"` — the format mistaken for the subject matter. The real registry-derived prompt, which lists `format` as its own slot with its enum, resolved the same utterance correctly to `format: quiz` + `topic` missing. Evidence that generating the prompt from the registry is a correctness measure, not only a maintenance one |
+| 2026-07-28 | **M5 complete — awaiting user review and approval.** M6 not started | ⏸️ | Per §21 |
+| 2026-07-28 | **M5 review finding: three symbols exported with no consumer outside their own module** | ✅ **Fixed** | `PREAMBLE`, `allowWithinBudget` and `passthrough` are now module-private, each with a comment saying where its behaviour is asserted instead. None was dead *code* — all execute — but a module's public surface should be the part someone else uses. **The same finding M4's review made about six symbols**, which suggests the habit needs watching rather than the modules |
+| 2026-07-28 | **M5 review finding: `interpret.js` restated a policy rule that `policy.js` already owned** | ✅ **Fixed** | The orchestrator hardcoded `'not_an_action'` for a non-action intent while `policy.js` decided the same thing, and because interpret short-circuited first, **policy's version never ran in production** — two homes for one rule, with the authoritative one dead on that path. The branch itself is structural and stays (`resolveSlots` cannot take a null descriptor), but the *reason* is now asked of `decide()`. **Proven behaviour-identical across the branch's complete input space** — the 6 combinations of the two non-action intents × three confidences, which is exhaustive because `parseProposal` returns a null descriptor for nothing else. Without this, a Phase 2 change to how policy treats `coach_question` would have been silently bypassed |
+| 2026-07-28 | **M5 review finding: the specification carried four statements M5's decisions superseded** | ✅ **Fixed** | §4.2 stage 7 and stage 12 both named `telemetry.js` (superseded by D1 and D2), §7.2 described the `pendingAsk` free-text loop (D5), and §4.5 named the now-retired `gemini-2.5-flash-lite`. All four recorded in the spec's own post-approval corrections table, per its stated rule that **the losing document gets corrected rather than left knowably wrong** |
+| 2026-07-28 | **M5 review finding: §14 had no M5 rollback entry, and two M5 changes do not revert cleanly** | ✅ **Fixed** | Reverting M5 would restore the **dead `gemini-2.5-flash-lite` endpoint** (harmless at M4, a landmine for whoever re-does M5) and re-introduce the **`/catalog` 500** that the fail-closed gate fixed. Both now documented in §14 as carry-forwards to keep. The rollback is otherwise exactly as documented: no migrations, no persisted state, no new env var names |
+| 2026-07-28 | 📋 **Recorded: `/api/assistant/catalog` behaviour changed on one path, deliberately** | 📋 **Documented** | A database failure during the school-code lookup used to return 500 and now returns the inert catalog. That is **M2 surface changed by M5** — flagged explicitly rather than buried, because §7.2's modified-file table is a control. Justified: it is a strict bug fix, the gate is shared so one three-line change serves both endpoints, and returning an error for "not enabled for you" contradicted the catalog's own stated design |
 
 ---
 
@@ -783,52 +810,76 @@ schema extraction, which stands on its own merits.
 - Third drift pair guarded (`vocabDrift.test.js`); CHANGE-11 cross-reference comments both ways.
 - **257 new tests.** All three new guards proven to fail on an injected defect.
 
+**M5 — Classifier + `/interpret` endpoint (dark)** ✅ (2026-07-28)
+- `geminiFast` — a **second** `GeminiService` instance on `app.locals.geminiFast` (3.5 s per call,
+  5 s deadline, 1 retry, 2 calls, 512 output tokens). `gemini.js` untouched (G21); `index.js`
+  **+52 / −0**.
+- `server/src/assistant/proposalSchema.js` — the untrusted-model boundary. Builds the Gemini
+  `responseSchema` **from the role-filtered registry**, validates shape, and is the **single place an
+  action id is authorized** (G4).
+- `server/src/assistant/classifier.js` — the only file that talks to Gemini for routing. Prompt
+  assembled from the registry, so the catalog and the classifier cannot drift apart.
+- `server/src/assistant/interpret.js` — the 12-stage pipeline. Database-free through injected
+  dependencies, with the emergency short-circuit above the classifier and a total catch below.
+- `POST /api/assistant/interpret` — non-2xx for auth, malformed envelope and rate limiting only.
+- **159 new tests** (943 total). Both injected-defect proofs that mattered found real problems.
+
 ### 🟡 What is currently in progress
 
-**Nothing.** M4 is complete and **awaiting user review and approval**. Per §21, the next milestone
+**Nothing.** M5 is complete and **awaiting user review and approval**. Per §21, the next milestone
 does not begin automatically.
 
 ### ⬜ What is next
 
-**Milestone M5 — Classifier + `/interpret` endpoint, dark** (4.0 days) — *blocked on M4 approval*
+**Milestone M6 — Client wiring** (4.0 days) — *blocked on M5 approval*
 
-The first milestone with a live server surface, and the first that needs a working Gemini key.
+The milestone that makes the feature visible to a teacher for the first time. Everything before it
+was infrastructure; nothing on the client calls `/interpret` yet.
 
-- `geminiFast` as a **second** `GeminiService` instance — `gemini.js` stays untouched (G21).
-- The classifier prompt assembled **from the registry**, so what the app advertises and what it
-  understands cannot drift apart.
-- `proposalSchema.js` — the untrusted-model boundary in one file, with catalog re-verification after
-  parsing (G4).
-- The full 12-stage pipeline, including the **emergency short-circuit before the classifier runs**.
-- Tests for all nine passthrough reasons; **no path may return a 5xx** (G22).
-
-⚠️ **Confirm the Gemini key works before starting M5**, not at its completion gate (§21).
+- Intent gate tuned for **precision, not recall** (CHANGE-2) — a missed routing costs one manual
+  navigation, while +5 s on every coaching question costs adoption.
+- Client repeat cache, `RouterProvider`, `ActionExecutor`, and the handler map — **the only place AI
+  navigation route strings may appear** (G16).
+- CoachPage integration and clarify chips resolving **client-side** (CHANGE-3).
+- Stale-response guard (CHANGE-9) and the circuit breaker.
+- **Carried into M6 from M5:** `pendingAsk` free-text handling (deferred by decision D5), and
+  publishing the memory TTLs through the catalog rather than re-declaring them in TypeScript.
+- Verify a network trace shows **zero** assistant requests with the flags off.
 
 ### Project health: 🟢 Healthy
 
-M4 landed with every gate green: 784 server tests and 70 client tests, three consecutive runs with
-no flakiness, both lints clean, and a client bundle **byte-identical** to the pre-M4 baseline. Zero
-migrations, zero new environment variables, zero protected files touched, and exactly one tracked
-file modified in the whole repository (`client/src/config.ts`, +18 lines of comments).
+M5 landed with every gate green: **943 server tests** and 70 client tests, **five** consecutive runs
+with no flakiness, both lints clean, and a client bundle **byte-identical** to the pre-M5 baseline
+(same hash, same 975,064 bytes). Zero migrations, zero new environment variables, zero protected
+files touched, and `index.js` modified **+52 / −0**.
 
-Two things are worth stating plainly because they are the milestone's real evidence:
+Three things are worth stating plainly because they are the milestone's real evidence:
 
-1. **Exploratory testing found six genuine gaps that the unit tests did not** — `class five`,
-   `panchvi`, `chhati`, `pehli`, `angreji`, `environment` — and fixing cardinals then introduced a
-   false positive (`"ten questions on fractions"` → Class 9-10) which was caught and gated in the
-   same session. The table and the implementation had the same author; running the thing over real
-   phrasings is what broke that symmetry.
-2. **Every new guard was proven to fail on an injected defect**, not merely observed to pass.
+1. **The mandatory pre-flight connectivity probe earned its place in the protocol.** The routing
+   model documented at M0 had been retired and returned 404. Discovered before a line of M5 was
+   written rather than on the day the feature was switched on, where it would have looked like a
+   router bug rather than a config one.
+2. **Two of the three injected-defect proofs found real problems.** The G4 authorization guard was
+   unreachable dead code that no passing test could have revealed, and the no-5xx proof exposed a
+   genuine 500 returned by the rollout gate on a database failure. Both fixed and regression-tested.
+3. **Manual verification ran against live Gemini**, and the emergency short-circuit is now proven by
+   an 87 ms vs 1.2 s latency gap in addition to a zero-call assertion.
 
 Open items: `client/tsconfig.tsbuildinfo` remains a tracked build artifact that churns on every
 build (pre-existing, out of scope, restored after each build); the drift extractors are knowingly
-duplicated across two test files (D2 forbade editing the M2 guard); the token-scan preamble is
-knowingly duplicated across the three vocabulary mappers (accepted trade-off — see §9, revisit at a
-fourth vocabulary); and the memory TTL constants will need to reach the client at M6 — the
-resolution is to publish them through the catalog rather than re-declare them in TypeScript.
+duplicated across two test files; the token-scan preamble is knowingly duplicated across the three
+vocabulary mappers (revisit at a fourth vocabulary); the memory TTL constants must reach the client
+at M6 by being published through the catalog rather than re-declared in TypeScript; `pendingAsk`
+free-text handling is deferred to M6 (D5); and the daily-budget counter is a seam awaiting M9 (D1).
+
+**A new open item from M5:** the routing endpoint is now a **floating alias**
+(`gemini-flash-lite-latest`), chosen deliberately to avoid a repeat of the retirement that broke the
+pinned one. The M7 eval runner must therefore record the resolved model version alongside its
+results, or the baseline will not say which model produced it.
 
 The main risk remains classification quality on code-mixed Hinglish, deliberately deferred to M7 —
-the correct moment to decide whether Phase 2 proceeds at all.
+the correct moment to decide whether Phase 2 proceeds at all. M5's live testing produced the first
+three concrete seeds for that corpus, all recorded in §9 and all deliberately left untuned.
 
 ---
 
@@ -957,13 +1008,21 @@ the correct moment to decide whether Phase 2 proceeds at all.
 - [x] All three new guards proven to **fail on an injected defect**, then restored
 - [x] **Zero production callers**, proven by module-graph inspection rather than by grep
 
-### M5 — Classifier + interpret endpoint (4.0 d)
-- [ ] `geminiFast` instance with routing tunables
-- [ ] Prompt assembled **from the registry** (no free-text action descriptions in the classifier)
-- [ ] `responseSchema` + proposal validation + catalog re-verification
-- [ ] Full 12-stage pipeline including the emergency short-circuit
-- [ ] `POST /api/assistant/interpret`
-- [ ] Tests for all nine passthrough reasons; **no path returns 5xx**
+### ✅ M5 — Classifier + interpret endpoint (4.0 d) — COMPLETE 2026-07-28
+- [x] `geminiFast` instance with routing tunables — `index.js` **+52 / −0**, `gemini.js` untouched
+- [x] Prompt assembled **from the registry**, with a regression test proving a newly registered
+      action appears in the prompt, the `responseSchema` enum and the accepted intent set with **no
+      code change** to the classifier
+- [x] `responseSchema` + proposal validation + **catalog re-verification as a genuinely separate
+      gate** — the injected-defect proof showed the original design had made it unreachable dead code
+- [x] Full 12-stage pipeline including the emergency short-circuit, **proven by a 87 ms vs 1.2 s
+      latency gap** as well as by zero recorded `fetch` calls
+- [x] `POST /api/assistant/interpret`
+- [x] Tests for all nine passthrough reasons; **no path returns 5xx** — and the proof of this found a
+      real 500 in the rollout gate, now fixed and regression-tested on both endpoints
+- [x] Verified against **live Gemini**, with `server/.env` never edited (flags passed as process env)
+- [x] Classifier output contract enforced: `IntentProposal` only — no canonical values, provenance,
+      decisions, routing, URLs, params, explanations or reasoning, asserted field by field
 
 ### M6 — Client wiring (4.0 d)
 - [ ] Intent gate tuned for **precision** (CHANGE-2)
@@ -1130,6 +1189,24 @@ abandoning the feature is cheap.
 - **No orphans** → telemetry rows are write-only
 - **Existing data untouched** → resources, queries, feedback, preferences, sessions
 
+### Rollback at M5 — two things that do NOT revert cleanly
+
+Mechanically M5 reverts to M4 exactly as §14 describes: **zero migrations, zero persisted state,
+zero new environment variable names**, and `/interpret` is read-only apart from stdout logs, so
+removing it leaves nothing behind. Tier 1 (`ASSISTANT_ENABLED=false`) makes it inert in under a
+minute without touching code at all.
+
+Two carry-forwards would be silently undone by a plain `git revert` of the M5 commits, and both
+should be kept:
+
+| What | Why it must not be reverted |
+|---|---|
+| **The routing model endpoint** in `server/.env.example` | M5 changed it from `gemini-2.5-flash-lite` to `gemini-flash-lite-latest` because **the former returns 404 — "no longer available to new users."** Reverting restores a dead value. Harmless at M4 (nothing reads it, since there is no classifier), but it is a landmine for whoever re-does M5: every routing call would fail and it would look like a router bug. Note also that `models.list` lists models this key cannot call — **verify a model with a real `generateContent` request** |
+| **The fail-closed rollout gate** in `server/src/routes/assistant.js` | `isWithinRollout`'s school-code lookup previously threw on a database error, reaching the global error handler and returning a **500 from `/api/assistant/catalog`** — an M2 bug that predates M5 and is unrelated to the classifier. M5 fixed it (a database that cannot be read is never treated as permission granted). **Reverting M5 re-introduces that 500.** If M5 is rolled back, keep this three-line change |
+
+Neither affects the deletability property: both live in files M2 already owned, and deleting
+`assistant/` + `actions/` + `routes/assistant.js` removes them along with everything else.
+
 ### Rollback at M4 (the cleanest point)
 
 After M4, nothing user-visible is enabled: no classifier, no `/interpret`, no client wiring, no
@@ -1197,8 +1274,11 @@ generation cost is capped. Then flip `autoExecute: true` on the descriptor — *
 | `server/src/assistant/resolver.js` | Canonicalize → merge (`utterance > memory > profile > default`) → provenance → validate per field. Pure: no I/O, no AI, no clock | Backend | ✅ M4 |
 | `server/src/assistant/policy.js` | Rule 0 effect ceiling, then the Phase 1 clamp. Pure. **No input can emit `execute`** | Backend | ✅ M4 |
 | `server/test/actions/vocabDrift.test.js` | Drift guard for the third duplicated pair (vocab ↔ `config.ts`) | Backend | ✅ M4 |
-| `server/src/assistant/` | Intent Gateway — utterance → ResolvedAction | Backend | 🟡 `contracts.js` (M0) + resolver/policy (M4); classifier, pipeline and telemetry in M5/M8 |
-| `server/src/routes/assistant.js` | HTTP shell. `GET /catalog` live; `POST /interpret` in M5 | Backend | 🟡 M2 |
+| `server/src/assistant/` | Intent Gateway — utterance → ResolvedAction | Backend | ✅ M0 + M4 + M5; only `telemetry.js` remains (M8) |
+| `server/src/assistant/proposalSchema.js` | The untrusted-model boundary. Registry-derived `responseSchema`, zod SHAPE validation, and **the single site where an action id is authorized** (G4) | Backend | ✅ M5 |
+| `server/src/assistant/classifier.js` | Registry-derived prompt, the `geminiFast` call, response parse. **The only file that talks to Gemini for routing** | Backend | ✅ M5 |
+| `server/src/assistant/interpret.js` | The 12-stage pipeline. Orchestration only; database-free via injected dependencies; total catch so no path can 5xx | Backend | ✅ M5 |
+| `server/src/routes/assistant.js` | HTTP shell. `GET /catalog` (M2) and `POST /interpret` (M5). The rollout gate **fails closed** | Backend | ✅ M5 |
 | `server/src/lib/flags.js` | Feature flags, all defaulting OFF | Backend | ✅ M0 |
 | `server/src/lib/resourceFields.js` | Bounds shared by CRUD and generation (breaks a require cycle) | Backend | ✅ M1 |
 | `server/evals/` | Classification quality corpus (outside `test/`) | Backend + Product | ⬜ M7 |
@@ -1234,6 +1314,7 @@ generation cost is capped. Then flip `autoExecute: true` on the descriptor — *
 | 5a | **Enforced** contract — the drift guard that makes the freeze real | `server/test/assistant/contractDrift.test.js` | ✅ **M2** — covers duplicated pairs A and B; proven to fail on injected drift |
 | 5d | **Enforced** vocabulary — the third duplicated pair (GRADES/SUBJECTS/LANGUAGES ↔ `config.ts`) | `server/test/actions/vocabDrift.test.js` | ✅ **M4** — proven to fail on injected drift. A separate file by decision, so the inherited M2 guard is not edited |
 | 5b | Live capability catalog (what the app currently advertises) | `GET /api/assistant/catalog` · `server/src/actions/registry.js` | ✅ **M2** — inert until flags are set |
+| 5e | **Enforced** output contract — the classifier's `responseSchema` and prompt are both derived from the registry, so a new action widens them with no code change | `server/test/assistant/proposalSchema.test.js` · `server/test/assistant/classifier.test.js` | ✅ **M5** — a required acceptance criterion. Also asserts the schema has no field for a decision, route, URL, params, provenance or reasoning |
 | 6 | Capability Registry guide | `server/src/actions/README.md` | ✅ Created in M0 |
 | 7 | Intent Gateway guide | `server/src/assistant/README.md` | ✅ Created in M0 |
 | 8 | Client router guide | `client/src/assistant/README.md` | ✅ Created in M0 |
@@ -1280,13 +1361,24 @@ payloads still conform. A contract that is checked by CI is worth more than a do
 
 ### Where the project stands right now
 
-**Planning is complete and approved. M0–M3 are approved. M4 is complete and awaiting review.**
-M5 has not started.
+**Planning is complete and approved. M0–M4 are approved. M5 is complete and awaiting review.**
+M6 has not started.
 
-**M4 added six production files and seven test files, and modified exactly one tracked file in the
-repository** — `client/src/config.ts`, by +18 lines of comments. The client bundle is byte-identical
-to the pre-M4 baseline. Nothing in production imports the new modules; that is verified by loading
-the live route/registry graph and inspecting `require.cache`, not by grep.
+**M5 added three production files and four test files, and modified four tracked files** —
+`server/src/index.js` (+52 / −0), `server/src/routes/assistant.js`, `server/.env.example`, and
+`server/test/assistant.catalog.test.js` (an M2 placeholder whose rewrite was raised and approved).
+**Zero client files changed**, and the client bundle is byte-identical to the pre-M5 baseline —
+same hash, same 975,064 bytes.
+
+⚠️ **M5 is the first milestone with a live server surface.** `POST /api/assistant/interpret` exists
+and calls a real model — **but only when `ASSISTANT_ENABLED` is on, which it is not by default.**
+With the flags at their defaults the endpoint returns an inert passthrough and spends no model call,
+verified by HTTP probe against a real booted server. Nothing on the client calls it until M6.
+
+⚠️ **The routing model documented at M0 was dead.** `gemini-2.5-flash-lite` now returns 404 ("no
+longer available to new users"); the endpoint is `gemini-flash-lite-latest`. Note that `models.list`
+will list a model this key cannot call — **verify a model with a real `generateContent` request,
+never with the listing.**
 
 The working tree on `feature/ai-action-router` contains the M0–M3 change set: 4 new documents; the
 Capability Registry (`server/src/actions/`) with two descriptors and two schemas; the assistant
@@ -1333,10 +1425,9 @@ form state. Every failure falls back to a normal Coach answer.
 
 - ✅ **Completed:** P0 architecture · P1 specification · P2 guardrails/final review · P3 this
   document · **M0** (approved) · **M1** (approved) · **M2** (approved) · **M3** (approved) ·
-  **M4 vocabulary + resolver + policy** (awaiting approval)
-- ⬜ **Pending:** M5 → M10 (see §8)
-- ➡️ **Next:** **M5 — Classifier + `/interpret`, dark** (see §10). ⏸️ Blocked on user approval of M4,
-  and on confirming the Gemini key works.
+  **M4** (approved) · **M5 classifier + `/interpret`, dark** (awaiting approval)
+- ⬜ **Pending:** M6 → M10 (see §8)
+- ➡️ **Next:** **M6 — Client wiring** (see §10). ⏸️ Blocked on user approval of M5.
 
 ### What M0 actually delivered (so you can trust the foundation)
 
@@ -1430,6 +1521,38 @@ real blind spot. Six common phrasings — `class five`, `panchvi`, `chhati`, `pe
 for the first of them then introduced a false positive that the same exercise caught. Expect the
 eval corpus at M7 to find more; that is what it is for.
 
+### What M5 delivered
+
+- `server/src/assistant/proposalSchema.js` — the untrusted-model boundary. Builds the Gemini
+  `responseSchema` from the role-filtered catalog, validates **shape** with zod, and performs the
+  **one** authorization check that decides whether a model-named action may be acted on (G4).
+- `server/src/assistant/classifier.js` — the only file that talks to Gemini for routing. The prompt
+  is generated from the registry, carries no `paramSchema`/`requiredRoles`/`featureFlag`/route, and
+  puts the teacher's words in delimited `contents` rather than the system instruction.
+- `server/src/assistant/interpret.js` — the pipeline. Thin orchestration over M4's modules, with
+  every dependency injected so all nine passthrough reasons are unit-testable with no server.
+- `POST /api/assistant/interpret` in the existing route shell, plus a local envelope schema.
+
+**What M5 deliberately did NOT build:** `telemetry.js` (D2 — the per-decision log is a structured
+stdout line, zero DB writes), a real daily-budget counter (D1 — the branch and its test are live, the
+counter is M9), `pendingAsk` shortcut handling (D5 — M6), and the CHANGE-8 breaker (D6 — M9).
+
+**The most useful thing M5 proved: an injected-defect proof is worth running even when — especially
+when — you expect it to pass.** Two of the three found real problems that every passing test had
+missed:
+
+1. The **G4 catalog re-verification was unreachable dead code.** The zod `intent` enum and the
+   authorization check were built from the same list, so zod always rejected a bad id first.
+   Injecting the classic `|| descriptors[0]` fallback changed nothing — 123 tests still passed. The
+   guard was a comment that cost a function call. Splitting shape from permission fixed it; the same
+   defect now fails 9 tests.
+2. Disabling the pipeline's total catch failed 5 unit tests and **zero integration tests**, which
+   pointed at something unprotected *upstream* of the pipeline. It was the rollout gate's Prisma
+   lookup, which returned a genuine **500** from both `/interpret` and `/catalog` whenever the
+   database hiccuped.
+
+Neither would have been found by writing more tests of the same kind.
+
 ### Active branch
 
 `feature/ai-action-router` (based on `main`). **Never implement this feature on `main`.**
@@ -1456,8 +1579,10 @@ provider stack order · every page except Coach and Generator. Full table with r
 ### Project health
 
 🟢 **Healthy.** Thorough planning, two latent bugs caught pre-implementation, trivial rollback, and
-M0–M4 all landed with every verification gate green. M3 found **zero defects**; M4 found **six real
-vocabulary gaps plus one false positive it had introduced**, all fixed inside the milestone.
+M0–M5 all landed with every verification gate green. M3 found **zero defects**; M4 found **six real
+vocabulary gaps plus one false positive it had introduced**; M5 found **an unreachable security
+guard and a genuine 500**, both fixed inside the milestone, plus three model-quality gaps handed to
+M7 rather than patched over.
 
 Biggest open question — Hinglish classification quality — is deliberately deferred to M7, which is
 the correct decision point for whether Phase 2 proceeds. M4's exploratory findings are a small

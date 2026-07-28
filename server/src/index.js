@@ -106,6 +106,54 @@ const gemini = new GeminiService({
   maxOutputTokens: LLM_MAX_OUTPUT_TOKENS,
 });
 
+// ---- AI Action Router: the routing model (M5) ------------------------------
+//
+// A SECOND GeminiService instance, not a modified one. gemini.js already
+// accepts every tunable per instance, so routing needs no change to a service
+// that Coach, AI Assist and the Generator all share (guardrail G21) — editing
+// it to serve routing would put three working features at risk for one new one.
+//
+// The budgets below are the whole reason this instance exists. Coaching gets 30s
+// per call and 60s overall, which is right for writing a lesson plan and
+// catastrophic for a routing decision sitting in front of a text box: the
+// teacher is waiting to send a message, not to receive an essay. Routing gets
+// ~3.5s per call and a 5s overall deadline, and EXCEEDING THAT DEADLINE IS A
+// DECISION, NOT AN ERROR — the pipeline returns passthrough and the teacher
+// gets their coaching answer (guardrail G20).
+const ASSISTANT_GEMINI_ENDPOINT =
+  process.env.ASSISTANT_GEMINI_ENDPOINT ||
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent';
+
+const ASSISTANT_LLM_TIMEOUT_MS = parseIntEnv(process.env.ASSISTANT_LLM_TIMEOUT_MS, {
+  name: 'ASSISTANT_LLM_TIMEOUT_MS', defaultValue: 3500, min: 1000, max: 10000,
+});
+const ASSISTANT_LLM_TOTAL_TIMEOUT_MS = parseIntEnv(process.env.ASSISTANT_LLM_TOTAL_TIMEOUT_MS, {
+  name: 'ASSISTANT_LLM_TOTAL_TIMEOUT_MS', defaultValue: 5000, min: 2000, max: 15000,
+});
+const ASSISTANT_LLM_MAX_RETRIES = parseIntEnv(process.env.ASSISTANT_LLM_MAX_RETRIES, {
+  name: 'ASSISTANT_LLM_MAX_RETRIES', defaultValue: 1, min: 0, max: 2,
+});
+const ASSISTANT_LLM_MAX_CALLS = parseIntEnv(process.env.ASSISTANT_LLM_MAX_CALLS, {
+  name: 'ASSISTANT_LLM_MAX_CALLS', defaultValue: 2, min: 1, max: 3,
+});
+const ASSISTANT_LLM_MAX_OUTPUT_TOKENS = parseIntEnv(process.env.ASSISTANT_LLM_MAX_OUTPUT_TOKENS, {
+  name: 'ASSISTANT_LLM_MAX_OUTPUT_TOKENS', defaultValue: 512, min: 128, max: 1024,
+});
+
+const geminiFast = new GeminiService({
+  apiKey: GEMINI_API_KEY,
+  endpoint: ASSISTANT_GEMINI_ENDPOINT,
+  timeoutMs: ASSISTANT_LLM_TIMEOUT_MS,
+  totalTimeoutMs: ASSISTANT_LLM_TOTAL_TIMEOUT_MS,
+  maxRetries: ASSISTANT_LLM_MAX_RETRIES,
+  maxCallsPerRequest: ASSISTANT_LLM_MAX_CALLS,
+  // Zero continuations: a classification result is a small JSON object, and
+  // gemini.js already skips the continuation loop for structured responses.
+  // Stating it here means the intent survives if that ever changes.
+  maxContinuations: 0,
+  maxOutputTokens: ASSISTANT_LLM_MAX_OUTPUT_TOKENS,
+});
+
 // ---- App setup -------------------------------------------------------------
 
 const app = express();
@@ -114,6 +162,10 @@ app.disable('x-powered-by');
 // router's Lesson Plan Workspace AI actions) without re-constructing it or
 // leaking the API key. Read via req.app.locals.gemini.
 app.locals.gemini = gemini;
+// The routing instance, read by the assistant router as req.app.locals.geminiFast.
+// Kept a SEPARATE local rather than a field on `gemini` so that reaching for the
+// wrong one is a visibly wrong line of code rather than a subtle option.
+app.locals.geminiFast = geminiFast;
 // Railway (like most PaaS) puts exactly one reverse-proxy hop in front of
 // this app. Trusting that one hop lets Express derive req.ip from the
 // X-Forwarded-For header Railway sets, which express-rate-limit needs to

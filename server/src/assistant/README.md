@@ -1,11 +1,13 @@
 # `server/src/assistant/` — Intent Gateway
 
 **Scaffolded in M0 (`contracts.js`). Resolver and policy delivered in M4. Classifier, pipeline and
-telemetry arrive in M5/M8.**
+endpoint delivered in M5. Telemetry transport arrives in M8.**
 
-> **Nothing in this folder is reachable from production yet.** `resolver.js` and `policy.js` have no
-> caller until `interpret.js` lands in M5 — verified by module-graph inspection, not by grep alone.
-> That is deliberate: M4 is the plan's cleanest rollback point.
+> ⚠️ **This folder became reachable from production at M5.** Until M4 it had no caller at all, which
+> is what made M4 the plan's cleanest rollback point. `POST /api/assistant/interpret` now calls
+> `interpret.js` on every request — **but only when `ASSISTANT_ENABLED` is on, which it is not by
+> default.** With the flags at their defaults the endpoint returns an immediate inert passthrough and
+> spends no model call.
 
 This folder turns an utterance into a **ResolvedAction** — or, far more often, into a decision to
 get out of the way and let the existing coach answer the question.
@@ -17,12 +19,26 @@ It depends on [`../actions/`](../actions/README.md). **`actions/` never depends 
 | Path | Responsibility | Milestone |
 |---|---|---|
 | `contracts.js` | Frozen wire contracts — constants + typedefs. No logic | **M0** |
-| `proposalSchema.js` | The untrusted-model boundary: zod for `IntentProposal` + the Gemini `responseSchema` | M5 |
-| `classifier.js` | Prompt assembly from the registry, the `geminiFast` call, response parsing. **The only file here that talks to Gemini** | M5 |
+| `proposalSchema.js` | The untrusted-model boundary: the Gemini `responseSchema` built from the catalog, zod SHAPE validation, and the G4 authorization gate | **M5** ✅ |
+| `classifier.js` | Prompt assembly from the registry, the `geminiFast` call, response parsing. **The only file here that talks to Gemini** | **M5** ✅ |
 | `resolver.js` | Canonicalization, slot merge (`utterance > memory > profile > default`), provenance, memory TTL, contradiction detection, per-field param validation. No I/O, no AI, no clock | **M4** ✅ |
 | `policy.js` | The decision rules. Pure — signals in, decision out. Rule 0 (effect ceiling) then the Phase 1 clamp | **M4** ✅ |
-| `interpret.js` | Pipeline orchestration only. Thin, with no business rules of its own | M5 |
-| `telemetry.js` | Structured decision logs + low-volume outcome events | M8 |
+| `interpret.js` | Pipeline orchestration only. Thin, with no business rules of its own. Database-free via injected dependencies | **M5** ✅ |
+| `telemetry.js` | Low-volume `Event` rows for prefill-delivered + outcome. **Not created at M5** (decision D2) — the per-decision log is a structured stdout line emitted by the route, which costs no database write | M8 |
+
+## Gate 2 is two checks, not one — read this before touching `proposalSchema.js`
+
+Spec §4.4 gate 2 reads *"zod shape **and** id membership in the role-filtered catalog"*. Those are
+deliberately separate functions here, and collapsing them destroys the second:
+
+An M5 draft built the zod `intent` field as an enum of the catalog ids **and** then looked the
+descriptor up. Both came from the same list, so zod always rejected a bad id first and the
+authorization check became unreachable dead code. Injecting the classic `|| descriptors[0]` fallback
+defect into it changed nothing — 123 tests still passed. Splitting shape (`buildProposalSchema`,
+which validates a bounded string) from permission (`parseProposal`, which is the only place an id is
+authorized) is what gives G4 teeth; the same injected defect now fails 9 tests.
+
+**A guard that cannot fail is not a guard.**
 
 ## The governing idea
 
@@ -54,14 +70,47 @@ a **wrong suggestion**, never a **wrong effect**.
    `responseSchema` output, including correctly skipping the continuation loop for JSON responses.
    Needing to edit it means the design has drifted — escalate instead.
 
-## Pipeline order (M5)
+## Pipeline order (delivered M5)
+
+Stages 1–4 belong to the HTTP shell (`../routes/assistant.js`); stages 5–12 to `interpret.js`.
 
 Kill switch → auth → rate limit → envelope validation → normalize → **emergency short-circuit** →
 budget → catalog build → classify → proposal validation → canonicalize → slot merge → param
-validation → decision → telemetry.
+validation → decision → decision log.
 
 The emergency check is non-negotiable and precedes all router work: a teacher describing an active
 emergency must reach the existing emergency coach prompt with zero added latency and zero chance of
-being routed into a worksheet form.
+being routed into a worksheet form. **Measured at M5: an emergency utterance returns in ~87 ms
+against ~1.2 s for a routed one**, which is the visible proof that the classifier was never reached.
+
+Stages 5–12 run inside a total catch. A defect in any of them costs a routing opportunity and
+nothing else.
+
+## Where the failure boundaries actually are
+
+Two of them sit **outside** `interpret.js`'s catch, and both were found at M5 by deliberately
+breaking that catch and noticing which tests did *not* care:
+
+- **The rollout gate** (`isWithinRollout` in the route) does a Prisma lookup when a school allow-list
+  is configured. It now fails **closed** — a database it cannot read is never treated as permission
+  granted. Before that fix it returned a **500**, from both `/interpret` and `/catalog`.
+- **The profile read** is wrapped at its own call site, so a database failure costs prefilled fields
+  rather than the request.
+
+## Known model-quality gaps (M7 owns these — do NOT tune the prompt here)
+
+Observed against live Gemini during M5 verification and recorded as eval seeds. The deterministic
+half handles all three correctly once the model supplies the right slots; the gap is upstream:
+
+1. The `language` slot is often **not populated even when a language is explicitly named** ("a
+   Marathi quiz", "in Hindi"). Verified that `mapLanguage('Hindi') → 'hi'` and that the resolver
+   fills it with provenance `utterance`, so this is a classifier recall problem, not a mapper one.
+2. On one utterance the model crammed several slots into `topic` as a single string
+   (`"fractions.5thsgrade.subject:maths.language:Hindi"`) instead of using the separate fields.
+3. It sometimes reports a slot with provenance `utterance` that the teacher never said (inferring
+   `format: worksheet` from "I need something on photosynthesis").
+
+Tuning the prompt against a handful of anecdotes is how thresholds stop being evidence-based. M7's
+corpus is the place to measure and fix this.
 
 See [`docs/ai-action-router-phase1-spec.md`](../../../docs/ai-action-router-phase1-spec.md) §4.

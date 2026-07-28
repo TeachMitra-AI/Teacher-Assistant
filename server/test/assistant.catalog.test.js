@@ -287,14 +287,44 @@ describe('GET /api/assistant/catalog — additive only', () => {
     expect(res.status).toBe(404);
   });
 
-  test('POST /api/assistant/interpret does not exist yet (arrives in M5)', async () => {
+  // AMENDED AT M5, with approval, and recorded in the living README §9.
+  //
+  // This was written at M2 as `POST /api/assistant/interpret does not exist yet
+  // (arrives in M5)`, asserting a 404. M5 built the endpoint, so the assertion
+  // became false by design rather than by regression — its own name scheduled
+  // its own expiry.
+  //
+  // Editing an inherited test is a blocking review item (G26, protected area
+  // #12) and was therefore raised and approved rather than done quietly. What
+  // it guarded — that mounting this router exposes the surface the milestone
+  // intended AND NOTHING ELSE — is still worth guarding, so the assertion was
+  // rewritten to pin the current surface rather than deleted. It is now
+  // strictly stronger than the version it replaces: an unplanned third endpoint
+  // would fail it, which the 404 check never covered.
+  test('the assistant exposes exactly the M5 surface, and nothing more', async () => {
     enableAssistant();
+    const auth = { Authorization: `Bearer ${teacherToken}` };
 
-    const res = await request(app)
+    // The two intended endpoints exist...
+    const catalog = await request(app).get('/api/assistant/catalog').set(auth);
+    expect(catalog.status).toBe(200);
+
+    const interpret = await request(app)
       .post('/api/assistant/interpret')
-      .set('Authorization', `Bearer ${teacherToken}`)
+      .set(auth)
       .send({ utterance: 'Generate a Class 5 fractions worksheet' });
+    expect(interpret.status).toBe(200);
 
-    expect(res.status).toBe(404);
+    // ...and nothing else does, on either verb.
+    const unknownGet = await request(app).get('/api/assistant/not-a-real-endpoint').set(auth);
+    expect(unknownGet.status).toBe(404);
+
+    const unknownPost = await request(app).post('/api/assistant/execute').set(auth).send({});
+    expect(unknownPost.status).toBe(404);
+
+    // The catalog is still a GET-only surface: a POST to it must not quietly
+    // fall through to some other handler.
+    const catalogPost = await request(app).post('/api/assistant/catalog').set(auth).send({});
+    expect(catalogPost.status).toBe(404);
   });
 });

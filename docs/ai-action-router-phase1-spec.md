@@ -42,6 +42,10 @@ losing document gets corrected rather than left knowably wrong.
 |---|---|
 | M3 | §2.4 amended to list `client/src/assistant/generatorPrefill.ts` and `client/vitest.config.ts` |
 | **M4** | **§11 Definition of Done:** "policy 100% branch" → **exhaustive enumeration of the policy's complete input space** (decision D1). No coverage dependency is added |
+| **M5** | **§4.2 stage 7 (per-user daily budget)** names `telemetry.js` as its module. Superseded by **decision D1**: the budget is an **injectable seam in `interpret.js`** that counts and persists nothing. The stage, its `budget_exhausted` reason and its test are live; the counter itself is M9. Inventing per-user state at M5 would have meant either a migration (forbidden in Phase 1) or a process-local cache that lies after every restart |
+| **M5** | **§4.2 stage 12 (telemetry)** names `telemetry.js`. Superseded by **decision D2**: `telemetry.js` is **not created in M5**. The per-decision record is a structured stdout line emitted by `routes/assistant.js` (`logAssistantEvent`), which is what CHANGE-6 asks for and costs zero database writes. The module arrives at M8 with the low-volume `Event` rows it actually exists for |
+| **M5** | **§7.2** describes a free-text answer re-calling `/interpret` with `pendingAsk` populated. Superseded by **decision D5**: M5 **validates `pendingAsk` and otherwise ignores it**, so such a turn is simply classified normally — correct, if slightly less efficient. Conversational shortcutting is turn handling and belongs with the rest of it in **M6** |
+| **M5** | **§4.5** specifies `gemini-2.5-flash-lite` as the routing model. **That model now returns 404 — "no longer available to new users."** The endpoint is `gemini-flash-lite-latest`, a deliberate floating alias (see README §9 and §14). Verify any future model with a real `generateContent` call: `models.list` will list models the key cannot call |
 
 ---
 
