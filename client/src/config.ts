@@ -7,6 +7,15 @@ import {
 import type { Role, ResponseStyle, ResourceType } from './types';
 
 // Languages supported for AI responses (UI itself stays in English).
+//
+// SERVER COUNTERPART: server/src/actions/vocab/languages.js (LANGUAGE_CODES)
+// holds the same `value` codes, where the AI Action Router canonicalizes an
+// explicit request ("in Hindi", "हिंदी में") into one of them. Deliberate,
+// documented duplication (CHANGE-11 — CommonJS server vs ESM client), pinned by
+// server/test/actions/vocabDrift.test.js. CHANGE BOTH IN THE SAME COMMIT: a code
+// here with no counterpart there is a language the router can never select, and
+// one there with no counterpart here would be prefilled into a <select> that
+// cannot show it.
 export const LANGUAGES: { value: string; label: string }[] = [
   { value: 'en', label: 'English' },
   { value: 'hi', label: 'हिंदी' },
@@ -34,6 +43,15 @@ export const SPEECH_LOCALE: Record<string, string> = {
   hinglish: 'hi-IN',
 };
 
+// SERVER COUNTERPART: server/src/actions/vocab/grades.js (GRADES) and
+// server/src/actions/vocab/subjects.js (SUBJECTS) hold these same canonical
+// lists, where the AI Action Router maps what a teacher typed ("class 5",
+// "पाँचवीं", "maths") onto them. Deliberate, documented duplication (CHANGE-11 —
+// CommonJS server vs ESM client), pinned by server/test/actions/vocabDrift.test.js.
+//
+// CHANGE BOTH IN THE SAME COMMIT, and note that this pair drifts SILENTLY: the
+// router would prefill a band this datalist does not offer, which looks like a
+// typo the teacher made rather than an error. Nothing would fail.
 export const GRADES = ['Pre-Primary', 'Class 1-2', 'Class 3-5', 'Class 6-8', 'Class 9-10', 'Class 11-12'];
 export const SUBJECTS = ['Mathematics', 'Science', 'English', 'Hindi', 'Social Studies', 'Languages', 'General'];
 export const CLASSROOM_TYPES = ['Single Grade', 'Multi-Grade', 'Mixed Ability', 'Large Class (40+)', 'Small Class (<20)'];

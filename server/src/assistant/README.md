@@ -1,7 +1,11 @@
 # `server/src/assistant/` — Intent Gateway
 
-**Scaffolded in M0 (`contracts.js`). Populated in M4 (resolver, policy) and M5 (classifier,
-pipeline, telemetry).**
+**Scaffolded in M0 (`contracts.js`). Resolver and policy delivered in M4. Classifier, pipeline and
+telemetry arrive in M5/M8.**
+
+> **Nothing in this folder is reachable from production yet.** `resolver.js` and `policy.js` have no
+> caller until `interpret.js` lands in M5 — verified by module-graph inspection, not by grep alone.
+> That is deliberate: M4 is the plan's cleanest rollback point.
 
 This folder turns an utterance into a **ResolvedAction** — or, far more often, into a decision to
 get out of the way and let the existing coach answer the question.
@@ -15,8 +19,8 @@ It depends on [`../actions/`](../actions/README.md). **`actions/` never depends 
 | `contracts.js` | Frozen wire contracts — constants + typedefs. No logic | **M0** |
 | `proposalSchema.js` | The untrusted-model boundary: zod for `IntentProposal` + the Gemini `responseSchema` | M5 |
 | `classifier.js` | Prompt assembly from the registry, the `geminiFast` call, response parsing. **The only file here that talks to Gemini** | M5 |
-| `resolver.js` | Canonicalization, slot merge, provenance, param validation. No I/O, no AI | M4 |
-| `policy.js` | The decision rules. Pure — takes signals, returns a decision | M4 |
+| `resolver.js` | Canonicalization, slot merge (`utterance > memory > profile > default`), provenance, memory TTL, contradiction detection, per-field param validation. No I/O, no AI, no clock | **M4** ✅ |
+| `policy.js` | The decision rules. Pure — signals in, decision out. Rule 0 (effect ceiling) then the Phase 1 clamp | **M4** ✅ |
 | `interpret.js` | Pipeline orchestration only. Thin, with no business rules of its own | M5 |
 | `telemetry.js` | Structured decision logs + low-volume outcome events | M8 |
 

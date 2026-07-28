@@ -1,6 +1,6 @@
 # `server/src/actions/` — Capability Registry
 
-**Scaffolded in M0. Populated in M1 (schemas), M2 (registry + descriptors), M4 (vocab).**
+**Scaffolded in M0. Populated in M1 (schemas), M2 (registry + descriptors), M4 (vocab) — all complete.**
 
 This folder answers one question: **what can this application do, with what parameters, under what
 permissions?**
@@ -18,7 +18,27 @@ assistant existing at all.
 | `registry.js` | Explicit descriptor list, lookup by id, role/flag/status filtering, public catalog projection, `catalogVersion` | M2 |
 | `descriptors/` | One file per action. Pure data + a schema reference | M2 |
 | `schemas/` | Zod param schemas — **the** definition, shared with the real route | M1 |
-| `vocab/` | Controlled-vocabulary mappers (grade, subject, language). Pure, heavily unit-tested | M4 |
+| `vocab/` | Controlled-vocabulary mappers (grade, subject, language) + `shared.js` (normalization and the result contract) and `index.js` (id → mapper). Pure, heavily unit-tested | M4 |
+
+## The vocabulary result contract
+
+A mapper never returns a bare string. It returns one of four statuses, and the difference between
+them is what stops the router printing a confident, plausible, wrong worksheet:
+
+| Status | Meaning | What the resolver does |
+|---|---|---|
+| `mapped` | One canonical value | Uses it, provenance `utterance` |
+| `ambiguous` | Understood, but spans canonical values (`"class 5-6"`, `"primary"`) | Prefills the teacher's **raw phrase** and flags the field low-confidence |
+| `contradiction` | Two distinct readings were stated (`"class 5 or 8"`) | Leaves the slot empty and reports it; the policy asks, showing **both** readings |
+| `unmapped` | Nothing recognisable | Falls through to memory → profile → default. **Not a failure** |
+
+Two rules that are easy to get wrong:
+
+1. **Language never returns `ambiguous`.** A document has one language, and the ambiguous path
+   prefills raw words — which in a `<select>` silently shows nothing selected. Two languages is a
+   contradiction.
+2. **Cardinal number words and roman numerals are gated on class context.** Ungated, `"ten questions
+   on fractions"` reads as Class 9-10 and `"i want a worksheet"` as Class 1-2.
 
 ## Rules
 

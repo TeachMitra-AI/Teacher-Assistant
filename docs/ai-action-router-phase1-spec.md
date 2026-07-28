@@ -1,7 +1,7 @@
 # AI Action Router — Phase 1 Implementation Specification
 
 **Status:** Approved · **Scope:** Phase 1 (Generator only) · **Created:** 2026-07-27
-**Last amended:** 2026-07-28 (M0 — amendments incorporated)
+**Last amended:** 2026-07-28 (M4 — §11 Definition of Done corrected per decision D1)
 
 > **Companion documents**
 > - [`ai-action-router-architecture.md`](./ai-action-router-architecture.md) — *why*
@@ -31,6 +31,17 @@ No other module participates.
 | CHANGE-10 | Banner / onboarding-tip **stacking rule** (§6.8) |
 | CHANGE-11 | Vocabulary duplication **documented and cross-referenced** (§8.4) |
 | CHANGE-12 | **Accessibility** specified for new UI (§6.9) |
+
+### Post-approval corrections
+
+Applied after this document was approved, when implementation showed a statement here to be
+incomplete or superseded. The living README wins on any conflict (README §17 rule 1) — but the
+losing document gets corrected rather than left knowably wrong.
+
+| Milestone | Correction |
+|---|---|
+| M3 | §2.4 amended to list `client/src/assistant/generatorPrefill.ts` and `client/vitest.config.ts` |
+| **M4** | **§11 Definition of Done:** "policy 100% branch" → **exhaustive enumeration of the policy's complete input space** (decision D1). No coverage dependency is added |
 
 ---
 
@@ -914,11 +925,21 @@ question · coaching questions pass through · memory carries grade/subject, top
 undo and manual-edit behaviors match §6 · Generate/preview/`examMeta`/Save byte-identical ·
 `/generator` with no handle identical to today.
 
-**Quality** — full existing suite passes **unmodified** · new unit tests (vocab, policy 100% branch,
-resolver, registry, proposal) · integration covers every passthrough reason and the error contract ·
-client pure-logic tests exist · manual script executed by someone who did not write the code · eval
-baseline recorded (intent precision ≥90%, recall ≥75%, grade-slot accuracy ≥85%) · lint clean, client
-builds, CI green.
+**Quality** — full existing suite passes **unmodified** · new unit tests (vocab, **policy proven by
+exhaustive enumeration of its complete input space**, resolver, registry, proposal) · integration
+covers every passthrough reason and the error contract · client pure-logic tests exist · manual
+script executed by someone who did not write the code · eval baseline recorded (intent precision
+≥90%, recall ≥75%, grade-slot accuracy ≥85%) · lint clean, client builds, CI green.
+
+> **Amended at M4 (decision D1).** This criterion previously read "policy 100% branch". The policy's
+> input space is finite and small, so the delivered tests **enumerate it completely** — every effect
+> class × confidence × margin × completeness × contradiction × `autoExecute` combination is generated
+> and asserted, rather than sampled until a coverage percentage is reached. That is a stronger claim
+> than line-instrumented branch coverage (it exercises every combination of inputs, not merely every
+> line), and it requires no coverage tooling, so `server/package.json` stays untouched. Corrected
+> here rather than only in the living README, because a Definition of Done that is checked at M10
+> against a criterion nobody actually applied is how a completion protocol quietly stops meaning
+> anything.
 
 **Safety** — every descriptor `autoExecute: false`, validated at startup · no action above `draft` ·
 fabricated IDs produce passthrough · `paramSchema`/`requiredRoles` never in a response · no utterance

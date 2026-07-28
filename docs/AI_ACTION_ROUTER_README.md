@@ -20,14 +20,14 @@
 | **Current Branch** | `feature/ai-action-router` |
 | **Base Branch** | `main` |
 | **Current Phase** | Phase 1 — Generator only |
-| **Current Milestone** | **M3 — Draft store + Generator prefill** ✅ **COMPLETE — awaiting review/approval** |
-| **Overall Progress** | **31%** (planning + M0 + M1 + M2 + M3 complete) |
-| **Current Status** | 🟢 Healthy — M3 verified end to end in a real authenticated browser session; all gates green; **zero defects found** |
+| **Current Milestone** | **M4 — Vocabulary + resolver + policy** ✅ **COMPLETE — awaiting review/approval** |
+| **Overall Progress** | **39%** (planning + M0 + M1 + M2 + M3 + M4 complete) |
+| **Current Status** | 🟢 Healthy — M4 verified by unit tests (784 server tests, 3× no flakiness); three new guards each **proven to fail on an injected defect**; exploratory testing found and fixed 6 real vocabulary gaps |
 | **Architecture Status** | ✅ **Approved** (reviewed 3×, 12 amendments applied — see §5.3) |
-| **Implementation Status** | 🟡 **M0–M3 complete** — contracts frozen, registry live behind flags (all OFF), catalog endpoint serving, drift guard active, **prefill delivery mechanism working end to end with no AI** |
+| **Implementation Status** | 🟡 **M0–M4 complete** — contracts frozen, registry live behind flags (all OFF), catalog endpoint serving, drift guards active on three pairs, prefill delivery working with no AI, and **all deterministic routing logic written and unit-tested but reachable from nothing** |
 | **Last Updated** | 2026-07-28 |
 | **Governance** | 🔒 **Milestone Completion Protocol in force** — see [§21](#21-milestone-completion-protocol-mandatory). One milestone at a time; full verification gate before the next begins; explicit user approval required to proceed |
-| **Next Task** | ⏸️ **Awaiting user approval of M3.** Next milestone is **M4 — Vocabulary + resolver + policy**, pure server-side modules verified by unit tests rather than by UI. M4 is also the **cleanest rollback point** in the plan |
+| **Next Task** | ⏸️ **Awaiting user approval of M4.** Next milestone is **M5 — Classifier + `/interpret` endpoint (dark)**, the first milestone that needs a live Gemini key — **confirm the key works before starting it, not at its completion gate**. M4 was the cleanest rollback point in the plan; from M5 the feature acquires a live server surface |
 
 ### Progress basis (keep this calculation consistent)
 
@@ -40,8 +40,9 @@ Progress % is weighted by estimated effort-days, not by milestone count.
 | M1 — schema extraction | 0.5 | ✅ Complete | 1.3% |
 | M2 — registry + catalog + drift guard | 2.0 | ✅ Complete | 5.3% |
 | M3 — draft store + Generator prefill | 3.0 | ✅ Complete | 8.0% |
-| M4 → M10 implementation | 26.0 | ⬜ Not started | 0% |
-| **Total** | **37.5** | | **≈ 30.7%** → reported as **31%** |
+| M4 — vocabulary + resolver + policy | 3.0 | ✅ Complete | 8.0% |
+| M5 → M10 implementation | 23.0 | ⬜ Not started | 0% |
+| **Total** | **37.5** | | **≈ 38.7%** → reported as **39%** |
 
 > The reported figure is now simply the effort-weighted total rounded to the nearest point. The
 > earlier +2-point adjustment (which credited M0's delivery of the three planning documents) has been
@@ -513,6 +514,16 @@ passthrough for one release after the client stops calling it.
 | `client/package-lock.json` | Lockfile for the above | generated |
 | `.github/workflows/ci.yml` | **Conditional** — only if a client test runner is added. Added at M3 | ~6 lines |
 
+> **What this table does and does not cover (clarified at M4).** It is the complete list of
+> **shipped application files** that may be modified. It has never covered documentation — this
+> README, the three planning documents, and the per-folder `README.md` files — whose upkeep is
+> *mandated* by §19 and §17 rather than merely permitted. Nor does it cover **additions** under
+> `server/test/` and `client/src/assistant/*.test.ts`, which every milestone makes and which
+> protected area #12 already governs ("additions only"). M4 modified exactly one file on this table
+> (`client/src/config.ts`, comments only) plus two folder READMEs and this document. Stated
+> explicitly because the alternative is each milestone quietly deciding for itself what the control
+> means.
+
 > **Why `package.json` and the lockfile are on this list.** They were missing from the original
 > table, which called itself the complete set of permitted modifications. Adding the client test
 > runner was approved as an M0 decision and executed in M3, and that cannot be done without touching
@@ -563,8 +574,8 @@ schema extraction, which stands on its own merits.
 | **M1** | Schema extraction (pure refactor) | 0.5 d | ✅ **Completed** | 2026-07-28. Schema moved to `actions/schemas/generateAssessment.js`; shared bounds to `lib/resourceFields.js`. **`resources.test.js` passed 70/70 unmodified.** Exactly one definition repo-wide. 457 tests (unchanged — correct for a pure refactor) |
 | **M2** | Registry + catalog endpoint | 2.0 d | ✅ **Completed** | 2026-07-28. Registry + 2 descriptors + `GET /catalog`; startup validation incl. **descriptor↔schema agreement in both directions**; drift guard live for **both** pairs and **proven to detect injected drift**. `index.js` **+29 / −0**. 527 tests (+70) |
 | **M3** | Draft store + Generator prefill (**no AI**) | 3.0 d | ✅ **Completed** | 2026-07-28. Draft store (TTL/eviction/fail-soft), `generatorPrefill` seam, telemetry, banner, markers, undo. CHANGE-7/10/12 all verified in a live browser. Client test runner installed (Vitest + jsdom): **70 client tests**. Bundle **+1.79 kB gzip**. Server suite unchanged at 527 |
-| **M4** | Vocabulary + resolver + policy (pure modules) | 3.0 d | ⬜ **Pending** | ← **NEXT** (awaiting approval). ~40 grade-phrase cases. 100% branch coverage on policy. **Cleanest rollback point** |
-| **M5** | Classifier + `/interpret` endpoint (dark) | 4.0 d | ⬜ Pending | `geminiFast`, `responseSchema`, 12-stage pipeline. Tested with `geminiMock` — no real API calls in CI |
+| **M4** | Vocabulary + resolver + policy (pure modules) | 3.0 d | ✅ **Completed** | 2026-07-28. 3 vocabulary mappers + resolver + policy, all pure. **257 new tests** (87 in the grade suite over 79 tabulated phrases, against the ~40 planned). Policy proven by **exhaustive enumeration of its complete 288-combination input space** — no coverage dependency added. Third drift pair guarded. **Zero production callers**, proven by module-graph inspection |
+| **M5** | Classifier + `/interpret` endpoint (dark) | 4.0 d | ⬜ Pending | ← **NEXT** (awaiting approval). `geminiFast`, `responseSchema`, 12-stage pipeline. Tested with `geminiMock` — no real API calls in CI. **Confirm the Gemini key works before starting** |
 | **M6** | Client wiring | 4.0 d | ⬜ Pending | Gate (CHANGE-2), cache, provider, executor, CoachPage integration, CHANGE-3, CHANGE-9 |
 | **M7** | Eval harness + tuning | 5.0 d | ⬜ Pending | ≥120 labelled utterances (EN / Hinglish / HI / adversarial). **Launch-blocking** |
 | **M8** | Telemetry | 2.0 d | ⬜ Pending | *Parallel with M7.* Split channels per CHANGE-6 |
@@ -677,6 +688,35 @@ schema extraction, which stands on its own merits.
 | 2026-07-28 | **M3 review finding: the `GeneratorPage.tsx` size estimate (~60 lines) understated the actual +220 / −27** | ✅ **Fixed** | Both §7.2 and spec §2.5 now carry the actual figure with an explanation: the *logic* did land near the estimate; the excess is comment density matching the surrounding file plus the JSX restructuring needed to host a provenance marker in each of the eight field labels. All 27 deletions accounted for; no behavioural code removed |
 | 2026-07-28 | **Spec §2.4 amended to list `generatorPrefill.ts` and `client/vitest.config.ts`** | ✅ **Fixed** | Per §17 rule 1, the README wins over documents 1–3 — but the losing document should then be *corrected*, not left knowably incomplete. The entry records why the module exists (the G14 reconciliation) so the reasoning is not lost with this conversation |
 | 2026-07-28 | Two review observations recorded but **deliberately NOT changed** (documentation-only pass) | 📋 **Recorded** | (1) `GeneratorPage` holds two parallel field→setter dispatch structures over the same eight fields (apply, and undo). A `setters` map would collapse them, but a heterogeneous map of setters types badly in TS without casts, and a cast there would weaken the type-safety the coercion layer exists to provide. (2) `createDraft`, `drainTelemetry` and the three `DRAFT_*` constants have **zero production callers** until M6/M8 — intentional and tree-shaken, but a reviewer is entitled to ask. Revisit both at M6 when the write path acquires its first real caller |
+| 2026-07-28 | **M3 APPROVED by project owner. M4 authorized**, with two decisions taken up front | ✅ | **D1:** prove the policy by exhaustive truth-table enumeration; **do not** add a coverage dependency or touch `server/package.json`. **D2:** put the CHANGE-11 drift guard in a dedicated `vocabDrift.test.js`; **do not** modify `contractDrift.test.js`. Plus binding constraints: M4 stays unreachable from production, no route/middleware/startup/Prisma/registry/descriptor/client-runtime/flag changes, no new env vars, no migrations, new tests only |
+| 2026-07-28 | **M4 started.** Baselines captured first: server 527 tests / 23 files, client 70 tests, both lints clean, bundle `index-BgXQqjT0.js` (975,064 raw / 277,420 gzip) | ✅ | Same discipline as M0–M3: "unchanged" has to be provable, not asserted |
+| 2026-07-28 | **Design decision: mappers return a four-status RESULT, never a bare string** (`mapped` / `ambiguous` / `contradiction` / `unmapped`) | ✅ | The caller must be able to tell "this is the answer" from "this is my best guess" from "the teacher said two things". Collapsing them into a string is how a router prefills a plausible, confident, wrong grade. `unmapped` is a first-class SAFE outcome — it falls through to the teacher's own default, which is usually right |
+| 2026-07-28 | **Design decision: `ambiguous` prefills the teacher's RAW phrase**, not a chosen candidate | ✅ | Matches architecture §8.2. Safe because the raw string passes through the same per-field schema validation as everything else, so it can only survive in a field that genuinely accepts free text |
+| 2026-07-28 | **Design decision: the language mapper never returns `ambiguous`** | ✅ | A document has one language, so two languages is a question, not a span. And the `ambiguous` path prefills raw words — which in the Generator's `<select>` would silently show nothing selected. "Hindi and English" and "Hindi or English" are therefore both contradictions |
+| 2026-07-28 | **Design decision: language codes are deliberately NOT accepted as input**, only language names | ✅ | `or` is Odia's ISO code **and** the English word separating two alternatives, so a table containing codes would read "Hindi or English" as a request for Odia. Teachers write names; a bare code falls through to the profile default, which is the safe direction |
+| 2026-07-28 | **The language trap enforced structurally rather than by discipline** | ✅ | `mapLanguage` takes one slot value, matches language NAMES only, and there is no script detection anywhere in it or its caller — so there is no code path from input script to output language. Asserted by tests that feed it Devanagari and Hinglish requests naming no language and require `unmapped` |
+| 2026-07-28 | **Design decision: per-FIELD schema validation, with a whole-object parse only when complete** | ✅ | A legitimate prefill is often *incomplete* (no topic — the form is the question), which a whole-object parse cannot distinguish from *invalid*. Field-by-field lets one bad value be dropped while the rest survive, which is exactly the spec's gate-3 "drop offending slots, downgrade" behaviour |
+| 2026-07-28 | **Design decision: a contradiction does NOT fall through to memory or profile** | ✅ | Quietly filling from memory would hide the fact that the teacher said two different things — the one outcome the design refuses. The slot stays empty and the policy asks, showing both readings |
+| 2026-07-28 | **Design decision: an unlisted slot gets the SHORTEST memory TTL, not session** | ✅ | A slot added later should have to earn a long memory rather than inherit one by being forgotten about in the table |
+| 2026-07-28 | ⚠️ **New duplication risk recorded: memory TTLs will need to reach the client at M6** | ⚠️ **Open — decide at M6** | The client owns session memory, so it will need the same numbers. Resolution named in the code comment: **publish them through the catalog rather than re-declaring them in TypeScript.** The guardrails say to stop and consolidate when knowledge reaches a fifth home; this is the moment that rule would bind |
+| 2026-07-28 | **Fifth file added to `actions/vocab/`: `shared.js`** (normalization + the result contract), against a plan that named four | ✅ **Deviation, recorded** | Three mappers would otherwise each carry a copy of the same normalization. A shared leaf both import is the same reasoning that produced `lib/resourceFields.js` in M1 |
+| 2026-07-28 | **Exploratory testing found six real vocabulary gaps the test table missed** | ✅ **Fixed** | `class five`, `panchvi`, `chhati`, `pehli`, `angreji` and `environment` all fell through to `unmapped`. Every one is a common phrasing; none was in the table because the table and the implementation had the same author. Cardinal number words and Hinglish ordinals added. **This is the value of §21 step 3 even for a milestone with no UI** |
+| 2026-07-28 | **Adding cardinal number words introduced a false positive, caught in the same session and fixed** | ✅ | `"ten questions on fractions"` mapped to Class 9-10 and `"one to one teaching"` to Class 1-2. Cardinals are now gated on class context — the same gate roman numerals already had, for the same reason. Recall verified preserved (`class five`, `five` still map); the false positives are refused |
+| 2026-07-28 | **Policy proven by exhaustive enumeration of its complete input space** (D1) | ✅ | 4 effects × 3 confidences × 2 margins × 3 completeness cases × 2 contradiction cases × 2 `autoExecute` = **288 combinations, all generated rather than sampled**, each asserted against the approved §5.2 ordering transcribed independently as rules. Stronger than line-instrumented branch coverage, and needs no new dependency — `server/package.json` is untouched |
+| 2026-07-28 | **The `execute` graduation branch written and tested although unreachable** | ✅ | `effectCeiling('draft', {autoExecute: true, confidence: 'high', missingCount: 0})` returns `execute`, and the Phase 1 clamp then reduces it to `prefill`. This proves the clamp is load-bearing rather than decorative, and makes architecture §8.4's "flip one field" promise real instead of aspirational |
+| 2026-07-28 | **All three new guards proven to FAIL on an injected defect**, not merely to pass | ✅ | Drift guard: changed `Class 6-8` → `Class 6-9` in `config.ts` ⇒ one correctly-named failure. Policy: neutered the Phase 1 clamp ⇒ 5 failures including the exhaustive sweep. Resolver: disabled utterance precedence ⇒ 8 failures including **both** fixture-conformance tests. All three restored and re-verified green. *A guard that has only ever passed is not evidence of anything* (M2 precedent) |
+| 2026-07-28 | **Resolver asserted to reproduce the specification's own example payloads** | ✅ | `test/helpers/assistantFixtures.js` holds spec §7.2's `prefill` and `ask` payloads, authored independently of this implementation. The resolver reproduces both `params` and `provenance` exactly, and the policy reproduces the documented `ask` object. Same technique M2 used for the catalog: a documented example that nothing asserts is how a spec quietly stops being true |
+| 2026-07-28 | **M4 verification complete.** Server **784 tests / 30 files** (+257 tests, +7 files), 3 consecutive runs, no flakiness · `resources.test.js` 70/70 **unmodified** · `git diff --stat server/test/` **empty** (no existing test touched) · lint ✅ both · client 70 tests ✅ · client build ✅ · **bundle byte-identical to baseline** (same hash, 975,064 raw / 277,420 gzip) · zero migrations · zero new env vars | ✅ | See the M4 Milestone Completion Report |
+| 2026-07-28 | **Unreachability from production proven by module-graph inspection, not by grep** | ✅ | Loading `routes/assistant.js`, `routes/resources.js` and `actions/registry.js` and then inspecting `require.cache` shows **zero** M4 modules present. A clean server boot on a spare port confirmed health 200, catalog 401, generate 401, coach 401 — unchanged. The only repo-wide mentions of the new modules outside themselves are three code COMMENTS |
+| 2026-07-28 | ⚠️ **First probe attempt was invalid and was redone** | ✅ **Corrected** | Port 3000 was already serving a pre-existing instance, so the first health/catalog probes hit code that predated the change and proved nothing. Re-run on port 3111 against a freshly booted instance. Recorded because a verification step that silently measures the wrong thing is worse than one that is skipped |
+| 2026-07-28 | **Manual verification: N/A by design, stated rather than implied** | 📋 **Documented** | §21's per-milestone table says M4's verification is unit tests, not the UI, and this milestone has no reachable runtime surface to exercise. What WAS done instead: a clean server boot, the four-endpoint probe above, and the exploratory mapper run that found the six gaps |
+| 2026-07-28 | **Known duplication accepted: the drift extractors now exist in two test files** | 📋 **Recorded** | `vocabDrift.test.js` re-implements ~20 lines of the TypeScript-as-text extractors already in `contractDrift.test.js`. Deliberate — D2 forbade editing the M2 guard, and a milestone should not edit a control it inherited. Fold both onto a shared helper when a fourth pair appears |
+| 2026-07-28 | **Found and fixed during the M4 documentation pass: §7.2 declares itself "the complete list — nothing else may change" but has never covered documentation or test additions**, both of which every milestone necessarily makes | ✅ **Fixed** | A scope note added to §7.2. The same class of finding as M3's (`package.json` omission): the *change* was authorised, the *table* was inaccurate. Fixed rather than reasoned around, because a control each milestone reinterprets for itself is not a control (rule 25) |
+| 2026-07-28 | **M4 complete — awaiting user review and approval.** M5 not started | ⏸️ | Per §21 |
+| 2026-07-28 | **M4 review finding: six symbols were exported with no consumer outside their own module** | ✅ **Fixed** | `MAX_RAW_LENGTH`, `NUMBER_TO_BAND`, `UNKNOWN_EFFECT_CEILING`, `MEMORY_RESTRICTED_EFFECTS`, `fieldAccepts` are now module-private, each with a comment saying why and where the behaviour is asserted instead. None was dead *code* — all execute — but a module's public surface should be the part someone else uses |
+| 2026-07-28 | **M4 review finding: `policy.js` imported `PHASE1_DECISIONS` without using it, purely to re-export it** | ✅ **Fixed** | A pass-through re-export gives a frozen contract value a second import path — precisely what this project's drift guards exist to prevent. Removed; `contracts.js` is again the single path, and `policy.test.js` already imported it from there. The module still *enforces* the set (that is what `applyPhase1Clamp` does); it just no longer republishes it |
+| 2026-07-28 | **M4 review finding: spec §11's Definition of Done still required "policy 100% branch"**, which decision D1 superseded | ✅ **Fixed** | Corrected in the spec itself with the reasoning inline, and recorded in a new "post-approval corrections" table there alongside M3's §2.4 amendment. Left uncorrected, it would have been checked literally at M10 against a criterion nobody applied — which is how a completion protocol quietly stops meaning anything (§17 rule 1) |
+| 2026-07-28 | 📋 **Accepted trade-off: the token-scan preamble stays duplicated across the three vocabulary mappers** | 📋 **Recorded, deliberately NOT refactored** | `grades.js`, `subjects.js` and `languages.js` each open their scan with the same separator-handling block, and grades/subjects share a similar mentions-then-fallback-table shape. A `collectMentions(tokens, resolveToken)` helper in `shared.js` would collapse it. **Not done, on the project owner's instruction**, and the engineering case is genuinely two-sided: the three loops diverge in ways a shared helper would have to absorb as flags — grades needs the class-context gate and a pre-primary token set, subjects a flat synonym table, and languages **must not** collect separators at all because it has no ambiguous outcome. A helper carrying three behavioural switches is not obviously better than three explicit ten-line loops. Revisit if a fourth vocabulary arrives: at four, the duplication stops being a judgement call |
 
 ---
 
@@ -731,43 +771,61 @@ schema extraction, which stands on its own merits.
 - Client test runner installed (Vitest + jsdom, devDependencies only): **70 tests**.
 - Verified in a **real authenticated browser session** — the M0 limitation is closed.
 
+**M4 — Vocabulary + resolver + policy** ✅ (2026-07-28)
+- `server/src/actions/vocab/` — grade, subject and language mappers over a four-status result
+  contract (`mapped` / `ambiguous` / `contradiction` / `unmapped`), plus a shared normalization leaf
+  and an id → mapper registry. **87 tests in the grade suite over 79 tabulated phrases**, against
+  the ~40 planned.
+- `server/src/assistant/resolver.js` — canonicalization, precedence, provenance, memory TTL,
+  contradiction handling, and per-field validation against **the same schema the endpoint uses**.
+- `server/src/assistant/policy.js` — Rule 0 effect ceiling, then the Phase 1 clamp. **288
+  combinations enumerated**, so the truth table is complete rather than sampled.
+- Third drift pair guarded (`vocabDrift.test.js`); CHANGE-11 cross-reference comments both ways.
+- **257 new tests.** All three new guards proven to fail on an injected defect.
+
 ### 🟡 What is currently in progress
 
-**Nothing.** M3 is complete and **awaiting user review and approval**. Per §21, the next milestone
+**Nothing.** M4 is complete and **awaiting user review and approval**. Per §21, the next milestone
 does not begin automatically.
 
 ### ⬜ What is next
 
-**Milestone M4 — Vocabulary + resolver + policy** (3.0 days) — *blocked on M3 approval*
+**Milestone M5 — Classifier + `/interpret` endpoint, dark** (4.0 days) — *blocked on M4 approval*
 
-Pure server-side modules with no UI and no AI. Verification is unit tests, and the README should say
-so explicitly rather than claiming manual verification.
+The first milestone with a live server surface, and the first that needs a working Gemini key.
 
-- Grade mapper (~40 cases including Hindi, Hinglish, ordinals, and deliberately ambiguous ranges),
-  subject mapper (~20 cases).
-- **Language set only from an explicit statement** — never inferred from the script the teacher
-  typed in. Getting this wrong prints a worksheet in the wrong language.
-- Slot merge with precedence (`utterance > memory > profile > default`) and provenance.
-- Contradiction detection, and the decision policy at **100% branch coverage**.
-- Cross-reference comments for the GRADES/SUBJECTS duplication (CHANGE-11).
+- `geminiFast` as a **second** `GeminiService` instance — `gemini.js` stays untouched (G21).
+- The classifier prompt assembled **from the registry**, so what the app advertises and what it
+  understands cannot drift apart.
+- `proposalSchema.js` — the untrusted-model boundary in one file, with catalog re-verification after
+  parsing (G4).
+- The full 12-stage pipeline, including the **emergency short-circuit before the classifier runs**.
+- Tests for all nine passthrough reasons; **no path may return a 5xx** (G22).
 
-**M4 is the cleanest rollback point in the plan** — after it, nothing user-visible is enabled.
+⚠️ **Confirm the Gemini key works before starting M5**, not at its completion gate (§21).
 
 ### Project health: 🟢 Healthy
 
-M3 landed with **zero defects found in verification** and no fixes required. Every gate is green:
-lint, type-check and build on both packages, 70 client tests and 527 server tests each run three
-times without flakiness, zero migrations, zero protected files touched, and exactly one page
-modified. Bundle growth is **+1.79 kB gzip** against a 15 kB budget.
+M4 landed with every gate green: 784 server tests and 70 client tests, three consecutive runs with
+no flakiness, both lints clean, and a client bundle **byte-identical** to the pre-M4 baseline. Zero
+migrations, zero new environment variables, zero protected files touched, and exactly one tracked
+file modified in the whole repository (`client/src/config.ts`, +18 lines of comments).
 
-The delivery mechanism the whole feature depends on now works end to end **with no AI involved**,
-which was the point of sequencing M3 before M5: when the classifier arrives and something breaks,
-it will be the classifier.
+Two things are worth stating plainly because they are the milestone's real evidence:
+
+1. **Exploratory testing found six genuine gaps that the unit tests did not** — `class five`,
+   `panchvi`, `chhati`, `pehli`, `angreji`, `environment` — and fixing cardinals then introduced a
+   false positive (`"ten questions on fractions"` → Class 9-10) which was caught and gated in the
+   same session. The table and the implementation had the same author; running the thing over real
+   phrasings is what broke that symmetry.
+2. **Every new guard was proven to fail on an injected defect**, not merely observed to pass.
 
 Open items: `client/tsconfig.tsbuildinfo` remains a tracked build artifact that churns on every
-build (pre-existing, out of scope, restored after each build so milestone diffs stay clean); and two
-regression items were deliberately not exercised for stated reasons (print modes, non-interactive
-auth flows — see §9).
+build (pre-existing, out of scope, restored after each build); the drift extractors are knowingly
+duplicated across two test files (D2 forbade editing the M2 guard); the token-scan preamble is
+knowingly duplicated across the three vocabulary mappers (accepted trade-off — see §9, revisit at a
+fourth vocabulary); and the memory TTL constants will need to reach the client at M6 — the
+resolution is to publish them through the catalog rather than re-declare them in TypeScript.
 
 The main risk remains classification quality on code-mixed Hinglish, deliberately deferred to M7 —
 the correct moment to decide whether Phase 2 proceeds at all.
@@ -877,14 +935,27 @@ the correct moment to decide whether Phase 2 proceeds at all.
 - [x] Client test runner installed (Vitest + jsdom, pure logic only) — **70 tests**
 - [x] Draft read gated on `VITE_ASSISTANT_ENABLED`, verified unreachable with the flag off
 
-### M4 — Vocabulary + resolver + policy (3.0 d)
-- [ ] Grade mapper (~40 cases incl. Hindi, Hinglish, ordinals, ambiguous ranges)
-- [ ] Subject mapper (~20 cases)
-- [ ] Language: **explicit statements only** — never infer from input script
-- [ ] Slot merge with precedence + provenance
-- [ ] Contradiction detection
-- [ ] Decision policy — 100% branch coverage
-- [ ] Cross-reference comments for the GRADES/SUBJECTS duplication (CHANGE-11)
+### ✅ M4 — Vocabulary + resolver + policy (3.0 d) — COMPLETE 2026-07-28
+- [x] Grade mapper — **87 tests over 79 tabulated phrases** incl. Hindi, Hinglish, ordinals, cardinals, roman numerals,
+      ambiguous ranges, contradictions and the class-context gate that stops `"ten questions on
+      fractions"` reading as Class 9-10
+- [x] Subject mapper — 50 cases incl. Devanagari, transliteration and folded sub-subjects
+- [x] Language: **explicit statements only** — enforced structurally (names-only matching, no script
+      detection anywhere in the module or its caller), with Devanagari and Hinglish requests naming
+      no language asserted to yield nothing
+- [x] Slot merge with precedence + provenance, memory TTL by volatility, and the rule that memory
+      may never satisfy a required slot for a `write`/`destructive` action
+- [x] Contradiction detection — both readings reported, never resolved by guessing, and **no
+      fall-through to memory or profile** that would hide it
+- [x] Decision policy — **288-combination exhaustive enumeration** (D1: no coverage dependency
+      added, `server/package.json` untouched), plus an explicit 14-row table with literal expected
+      outputs
+- [x] Cross-reference comments for the GRADES/SUBJECTS/LANGUAGES duplication (CHANGE-11), **and** a
+      dedicated `vocabDrift.test.js` converting the convention into a control (D2:
+      `contractDrift.test.js` not modified)
+- [x] Resolver and policy proven to reproduce the specification's own §7.2 example payloads
+- [x] All three new guards proven to **fail on an injected defect**, then restored
+- [x] **Zero production callers**, proven by module-graph inspection rather than by grep
 
 ### M5 — Classifier + interpret endpoint (4.0 d)
 - [ ] `geminiFast` instance with routing tunables
@@ -1122,8 +1193,11 @@ generation cost is capped. Then flip `autoExecute: true` on the descriptor — *
 | `server/src/actions/registry.js` | Explicit descriptor list, filtering, projection, self-validating | Backend | ✅ M2 |
 | `server/src/actions/descriptors/` | One file per action | Backend | ✅ M2 (2 actions) |
 | `server/src/actions/schemas/` | Zod param schemas (THE definition) | Backend | ✅ M1 + M2 |
-| `server/src/actions/vocab/` | Vocabulary mappers — long-term asset | Backend | ⬜ M4 |
-| `server/src/assistant/` | Intent Gateway — utterance → ResolvedAction | Backend | 🟡 `contracts.js` only (M0); rest in M4/M5 |
+| `server/src/actions/vocab/` | Vocabulary mappers — long-term asset. Four-status result contract; `shared.js` is the normalization leaf, `index.js` the id → mapper registry | Backend | ✅ M4 |
+| `server/src/assistant/resolver.js` | Canonicalize → merge (`utterance > memory > profile > default`) → provenance → validate per field. Pure: no I/O, no AI, no clock | Backend | ✅ M4 |
+| `server/src/assistant/policy.js` | Rule 0 effect ceiling, then the Phase 1 clamp. Pure. **No input can emit `execute`** | Backend | ✅ M4 |
+| `server/test/actions/vocabDrift.test.js` | Drift guard for the third duplicated pair (vocab ↔ `config.ts`) | Backend | ✅ M4 |
+| `server/src/assistant/` | Intent Gateway — utterance → ResolvedAction | Backend | 🟡 `contracts.js` (M0) + resolver/policy (M4); classifier, pipeline and telemetry in M5/M8 |
 | `server/src/routes/assistant.js` | HTTP shell. `GET /catalog` live; `POST /interpret` in M5 | Backend | 🟡 M2 |
 | `server/src/lib/flags.js` | Feature flags, all defaulting OFF | Backend | ✅ M0 |
 | `server/src/lib/resourceFields.js` | Bounds shared by CRUD and generation (breaks a require cycle) | Backend | ✅ M1 |
@@ -1157,7 +1231,8 @@ generation cost is capped. Then flip `autoExecute: true` on the descriptor — *
 | 3 | **Implementation Guardrails & Impact Analysis** — *what must not break* | [`ai-action-router-guardrails.md`](./ai-action-router-guardrails.md) | ✅ **Persisted 2026-07-28** (amendments incorporated) |
 | 4 | **Living Project Document** | `docs/AI_ACTION_ROUTER_README.md` | ✅ **This file** |
 | 5 | Executable API contract | `server/src/assistant/contracts.js` · `client/src/assistant/types.ts` · `server/test/helpers/assistantFixtures.js` | ✅ **Frozen in M0** — supersedes the planned standalone API doc |
-| 5a | **Enforced** contract — the drift guard that makes the freeze real | `server/test/assistant/contractDrift.test.js` | ✅ **M2** — covers both duplicated pairs; proven to fail on injected drift |
+| 5a | **Enforced** contract — the drift guard that makes the freeze real | `server/test/assistant/contractDrift.test.js` | ✅ **M2** — covers duplicated pairs A and B; proven to fail on injected drift |
+| 5d | **Enforced** vocabulary — the third duplicated pair (GRADES/SUBJECTS/LANGUAGES ↔ `config.ts`) | `server/test/actions/vocabDrift.test.js` | ✅ **M4** — proven to fail on injected drift. A separate file by decision, so the inherited M2 guard is not edited |
 | 5b | Live capability catalog (what the app currently advertises) | `GET /api/assistant/catalog` · `server/src/actions/registry.js` | ✅ **M2** — inert until flags are set |
 | 6 | Capability Registry guide | `server/src/actions/README.md` | ✅ Created in M0 |
 | 7 | Intent Gateway guide | `server/src/assistant/README.md` | ✅ Created in M0 |
@@ -1205,8 +1280,13 @@ payloads still conform. A contract that is checked by CI is worth more than a do
 
 ### Where the project stands right now
 
-**Planning is complete and approved. M0, M1 and M2 are approved. M3 is complete and awaiting
-review.** M4 has not started.
+**Planning is complete and approved. M0–M3 are approved. M4 is complete and awaiting review.**
+M5 has not started.
+
+**M4 added six production files and seven test files, and modified exactly one tracked file in the
+repository** — `client/src/config.ts`, by +18 lines of comments. The client bundle is byte-identical
+to the pre-M4 baseline. Nothing in production imports the new modules; that is verified by loading
+the live route/registry graph and inspecting `require.cache`, not by grep.
 
 The working tree on `feature/ai-action-router` contains the M0–M3 change set: 4 new documents; the
 Capability Registry (`server/src/actions/`) with two descriptors and two schemas; the assistant
@@ -1252,10 +1332,11 @@ form state. Every failure falls back to a normal Coach answer.
 ### Milestones
 
 - ✅ **Completed:** P0 architecture · P1 specification · P2 guardrails/final review · P3 this
-  document · **M0** (approved) · **M1** (approved) · **M2** (approved) · **M3 draft store +
-  Generator prefill** (awaiting approval)
-- ⬜ **Pending:** M4 → M10 (see §8)
-- ➡️ **Next:** **M4 — Vocabulary + resolver + policy** (see §10). ⏸️ Blocked on user approval of M3.
+  document · **M0** (approved) · **M1** (approved) · **M2** (approved) · **M3** (approved) ·
+  **M4 vocabulary + resolver + policy** (awaiting approval)
+- ⬜ **Pending:** M5 → M10 (see §8)
+- ➡️ **Next:** **M5 — Classifier + `/interpret`, dark** (see §10). ⏸️ Blocked on user approval of M4,
+  and on confirming the Gemini key works.
 
 ### What M0 actually delivered (so you can trust the foundation)
 
@@ -1322,6 +1403,33 @@ by hand-writing `sessionStorage` records, with no server and no model.
 **The most useful thing M3 proved:** the delivery mechanism works end to end with no AI. When the
 classifier lands and something misbehaves, the classifier is the suspect.
 
+### What M4 delivered
+
+- `server/src/actions/vocab/` — the durable vocabulary asset. Three mappers over one **four-status
+  result contract**: `mapped`, `ambiguous` (keep the teacher's raw phrase, flag the field),
+  `contradiction` (ask, showing both readings), `unmapped` (fall through — a *safe* outcome, not a
+  failure). `shared.js` holds the normalization all three share; `index.js` maps a vocabulary id to
+  its mapper, so the resolver never imports a specific vocabulary.
+- `server/src/assistant/resolver.js` — the deterministic core. Canonicalize, merge by precedence,
+  record provenance for **every** field, expire memory by slot volatility, and validate **per field**
+  against the same schema object `POST /api/resources/generate` uses. Per-field rather than
+  whole-object is load-bearing: a legitimate prefill is often incomplete, and incomplete must never
+  be confused with invalid.
+- `server/src/assistant/policy.js` — Rule 0 (the registry-declared effect caps the decision at any
+  confidence) followed by the Phase 1 clamp. The `execute` graduation branch is written and tested
+  although unreachable, which makes architecture §8.4's "flip one field" promise real — and proves
+  the clamp is load-bearing rather than decorative.
+
+**What M4 deliberately did NOT build:** any caller. `interpret.js`, the classifier and the endpoint
+are M5. Nothing in production imports these modules, which is exactly why M4 is the plan's cleanest
+rollback point (guardrails Part 7).
+
+**The most useful thing M4 proved:** that a test table and an implementation sharing an author is a
+real blind spot. Six common phrasings — `class five`, `panchvi`, `chhati`, `pehli`, `angreji`,
+`environment` — were silently unmapped until the mappers were run over realistic input, and the fix
+for the first of them then introduced a false positive that the same exercise caught. Expect the
+eval corpus at M7 to find more; that is what it is for.
+
 ### Active branch
 
 `feature/ai-action-router` (based on `main`). **Never implement this feature on `main`.**
@@ -1348,16 +1456,21 @@ provider stack order · every page except Coach and Generator. Full table with r
 ### Project health
 
 🟢 **Healthy.** Thorough planning, two latent bugs caught pre-implementation, trivial rollback, and
-M0–M3 all landed with every verification gate green. M3 found **zero defects** and required no fixes.
+M0–M4 all landed with every verification gate green. M3 found **zero defects**; M4 found **six real
+vocabulary gaps plus one false positive it had introduced**, all fixed inside the milestone.
 
 Biggest open question — Hinglish classification quality — is deliberately deferred to M7, which is
-the correct decision point for whether Phase 2 proceeds.
+the correct decision point for whether Phase 2 proceeds. M4's exploratory findings are a small
+preview of it: the router's recall on real teacher phrasing is not knowable from unit tests written
+by the implementer.
 
 **Open items:** `client/tsconfig.tsbuildinfo` is a tracked build artifact that churns on every build
-(pre-existing repo hygiene, out of scope; restored after each build so milestone diffs stay clean),
-and two regression items were deliberately not exercised with stated reasons — print modes (would
-block browser automation; file untouched) and non-interactive auth flows (server-side, covered by
-four unmodified suites).
+(pre-existing repo hygiene, out of scope; restored after each build so milestone diffs stay clean);
+two regression items were deliberately not exercised with stated reasons — print modes (would block
+browser automation; file untouched) and non-interactive auth flows (server-side, covered by four
+unmodified suites); the drift extractors are knowingly duplicated across two test files (M4 was
+instructed not to edit the inherited M2 guard); and the memory TTL constants will need to reach the
+client at M6 — publish them through the catalog rather than re-declaring them in TypeScript.
 
 **Closed since M0:** the authenticated-UI-regression limitation. M3 was verified in a real signed-in
 browser session.
