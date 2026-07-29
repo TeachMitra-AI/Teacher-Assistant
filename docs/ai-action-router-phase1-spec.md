@@ -53,6 +53,7 @@ losing document gets corrected rather than left knowably wrong.
 | **M8** | **§4.1** stated "Exactly two" endpoints. **A third, `POST /api/assistant/events`, was approved and shipped at M8** — see the amended §4.1 for why the two-endpoint shape could not carry the field-edit rate without biasing it. Recorded here because a spec that quietly grows an endpoint is a spec nobody can check an implementation against |
 | **M8** | **§4.8** requires an `Event` retention policy "before enabling telemetry". Delivered at M8 as **90 days**, enforced by `server/tools/pruneAssistantEvents.js` (scoped to the two `assistant_*` types and structurally unable to reach safety-flag or user-approval rows) rather than by an in-process sweeper, which would have put deletes on the very request path CHANGE-6 exists to keep quiet |
 | **M7** | **§11 Definition of Done** requires an "eval baseline recorded (intent precision ≥90%, recall ≥75%, **grade-slot accuracy ≥85%**)". The first two are met and exceeded (95.8% / 85.8%, and 100% Hinglish against the architecture's ~85% Phase 2 gate). **Grade-slot accuracy is measured at ~20% and is NOT met.** It is not an oversight and not a measurement artifact: `mapGrade` handles 79 tabulated phrases correctly, so the deterministic half is not implicated, and M7b tried two independent prompt mechanisms to raise extraction — both measurably made it worse. Recorded as `golden_failures.md` GF-2 with the descriptor `examples` named as the untried lever. **M10 must check this criterion against the recorded measurement rather than assuming it was met**, which is precisely what this corrections table exists to prevent |
+| **M10** | **§11 Definition of Done — the launch criterion is AMENDED, by owner decision C, taken with the M7 measurement in front of it.** The Quality group's "grade-slot accuracy ≥85%" is **not** met (~20%) and cannot be met by anything inside a rollout milestone: raising it means changing the prompt, the descriptors or the model, all of which M10 forbids by construction. The criterion is therefore **replaced, not dropped**: the launch gate is the **production field-edit rate (< 20%)**, and grade-slot accuracy is carried as **recorded quality debt** owned by the post-rollout tuning milestone. <br><br>**Why this is a defensible amendment rather than a convenient one.** Decision D16 has held since P0 that the correction signal — not model confidence, and not a corpus proxy — is the honest accuracy metric, because a router can look excellent in its own numbers while teachers rewrite half the fields. Grade-slot accuracy was always the *available* measurement, never the *right* one; the field-edit rate is the right one and only became obtainable when real teachers arrived. If `grade` is in fact the field teachers correct most, `correctionsByField` will say so and the rollout will hold on the < 20% gate — the gate catches the debt rather than ignoring it. **The three earlier eval criteria still stand and are still met** (precision 96.9% ≥ 90%, recall 89.6% ≥ 75%, Hinglish precision 95.5%). Recorded here, in the README, and in the M10 completion report, because a Definition of Done quietly re-scored at the last milestone is worth nothing |
 
 ---
 
@@ -877,6 +878,7 @@ documented duplication with a scheduled resolution is a tradeoff.
 | **M9** | Safe to expose | Limiters, budget, breaker, security review, log audit, deletability test | Limiter tests; deliberate attempt to reach a destructive action | 3.0 d |
 | | ✅ **Delivered 2026-07-29.** The named acceptance test — a deliberate attempt to reach a destructive action — lives in `server/test/assistant/security.test.js` and assumes a **fully compromised classifier**. Two real defects were found and fixed by the review (a request-body fragment in the log together with a 5xx from `/interpret`; an unbounded telemetry write path), and deletability was **performed**, reproducing the M0 bundle hash exactly. See [`ai-action-router-security-review.md`](./ai-action-router-security-review.md) | | | |
 | **M10** | Real teachers, small numbers | Staged rollout, monitoring | §11 Definition of Done | 5.0 d |
+| | 🟡 **Rollout engineering delivered 2026-07-29 with zero application-code changes.** Every stage configuration — dark, team ring, pilot ring, all schools, per-action withdrawal, ring retreat, kill switch — rehearsed against a real server (16/16 gate checks), live routing confirmed in the Stage 1 configuration, the retention prune verified against a copy of a real database, and the operational artifact written: [`ai-action-router-rollout-runbook.md`](./ai-action-router-rollout-runbook.md). **Outstanding: the four staged holds against real teachers**, which need production access and ~12 calendar days. Two criteria in §11 were amended by owner decision — see the corrections table | | | |
 
 > Every milestone additionally ends with the **Milestone Completion Protocol** (§21 of the living
 > README): review, verify, manually test, regression test, compare against these documents, update
@@ -962,7 +964,16 @@ undo and manual-edit behaviors match §6 · Generate/preview/`examMeta`/Save byt
 exhaustive enumeration of its complete input space**, resolver, registry, proposal) · integration
 covers every passthrough reason and the error contract · client pure-logic tests exist · manual
 script executed by someone who did not write the code · eval baseline recorded (intent precision
-≥90%, recall ≥75%, grade-slot accuracy ≥85%) · lint clean, client builds, CI green.
+≥90%, recall ≥75%) · **the production field-edit rate is < 20% — the launch gate** · lint clean,
+client builds, CI green.
+
+> **Amended at M10 (owner decision C).** This criterion previously required **grade-slot accuracy
+> ≥85%**; it is measured at ~20% and is now carried as recorded quality debt for the post-rollout
+> tuning milestone instead of blocking the rollout. The launch gate moves to the metric decision D16
+> named from the start — the share of pre-filled fields a teacher actually corrects — which no
+> corpus can produce and which only exposure makes obtainable. **The debt is not waived: if `grade`
+> is what teachers correct, the < 20% gate holds the rollout and `correctionsByField` names the
+> culprit.** Full reasoning in the post-approval corrections table above.
 
 > **Amended at M4 (decision D1).** This criterion previously read "policy 100% branch". The policy's
 > input space is finite and small, so the delivered tests **enumerate it completely** — every effect
@@ -979,8 +990,18 @@ fabricated IDs produce passthrough · `paramSchema`/`requiredRoles` never in a r
 text in any log or `Event` · emergency short-circuit verified (zero Gemini calls) · limiters on
 `/interpret` **and** `/resources/generate` · per-user budget enforced · security review signed off.
 
-**Operations** — kill switch verified in staging (<60 s) · circuit breaker verified by killing the
-backend · monitoring live · field-edit rate computable · rollback tiers 1 and 2 rehearsed.
+**Operations** — kill switch verified **in production during Stage 0** (<60 s) · circuit breaker
+verified by killing the backend · monitoring live · field-edit rate computable · rollback **tiers 0
+and 1** rehearsed · retention prune scheduled.
+
+> **Amended at M10 (owner decisions E and K).** "Verified in staging" is unsatisfiable as written:
+> there is no staging environment (engineering audit DO3), and standing one up is platform work this
+> milestone deliberately does not do. **Stage 0 is a production environment with the feature switched
+> off**, which makes it a stronger place to time the kill switch than staging would have been. Tier 2
+> (a client rebuild) is replaced by **Tier 0** (retreat one rollout ring) in the rehearsal
+> requirement: Tier 2 is explicitly *not* an incident control — the client is a PWA — so rehearsing
+> it as one would teach the wrong reflex. Tier 2 remains rehearsed only as a *measurement*: how long
+> a rebuilt client actually takes to reach already-loaded browsers.
 
 **Documentation** — README updated (endpoints, env vars, flags) · `.env.example` complete both sides
 · "how to add an action" written as the four-artifact checklist · eval baseline recorded.

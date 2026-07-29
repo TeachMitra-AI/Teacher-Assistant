@@ -535,7 +535,28 @@ Or run under a process manager (pm2, systemd, or a PaaS start command).
 - Provide `GEMINI_API_KEY`, a strong `JWT_SECRET`, and `DATABASE_URL` as environment variables —
   never commit them.
 - For higher write concurrency or multiple instances, switch Prisma to PostgreSQL and re-run
-  migrations (see `docs/postgres-migration-plan.md`).
+  migrations (see `docs/postgres-migration-plan.md`). ⚠️ **Before going multi-instance**, note that
+  the assistant's per-user daily budget is process-local and would multiply — see the runbook below.
+
+### AI Action Router — operating a feature-flagged rollout
+
+The assistant (a teacher types "Generate a Class 5 fractions worksheet" and lands on a pre-filled
+Generator) ships **switched off**. Every gate defaults to off, so a deployment that configures none
+of them runs a completely inert assistant.
+
+- **Kill switch:** `ASSISTANT_ENABLED=false` + restart. Effective in seconds, and it is the **only**
+  reliable incident control — the client is a PWA, so `VITE_ASSISTANT_ENABLED` is a build-time
+  convenience, never an emergency lever.
+- **Staged exposure:** `ASSISTANT_ALLOWED_SCHOOL_CODES` narrows the rollout to named schools.
+  ⚠️ **An empty value means ALL schools** — it is a filter, not a gate.
+- **Read the launch metric:** `npm run assistant:metrics` (field-edit rate; `n/a` means no evidence,
+  not 0%).
+- **Retention:** schedule `npm run assistant:prune-events` weekly once the feature is enabled —
+  assistant telemetry is kept 90 days and nothing prunes it automatically, on purpose.
+
+Every variable is documented in `server/.env.example`. **The operational procedures — stage matrix,
+daily watchlist, rollback tiers, incident steps — live in
+[`docs/ai-action-router-rollout-runbook.md`](docs/ai-action-router-rollout-runbook.md).**
 
 ---
 

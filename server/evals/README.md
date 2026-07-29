@@ -65,6 +65,27 @@ inside one turn, so N passes cost more than N x the per-turn rate. Raise
 `--pace-ms` for repeat runs or they trip the limiter — M7b's first variance
 attempt did exactly that and had to be discarded.
 
+## Running evals while the feature is rolled out (M10)
+
+**The corpus and the teachers draw on the same Gemini quota.** A full live pass
+costs ~200 requests against a 500/day free-tier ceiling, and an unpaced pass will
+trip the CHANGE-8 breaker — which pauses routing **for every tenant** until the
+cooldown elapses (the breaker is global by design; security review F7).
+
+**Never start a live run during a rollout stage's teaching hours.**
+
+| Gate | Run |
+|---|---|
+| Before any deploy | `npm run eval:replay` — offline, free, deterministic. Must be green |
+| Before Stage 1 (team) | `npm run eval -- --half dev` — live, ~100 calls, outside teaching hours |
+| Before Stage 2 (pilot) | replay only, unless something changed |
+| Before Stage 3 (all teachers) | one full live pass, recorded, compared via `compare.js --frozen` |
+
+The corpus, the cassettes and both baselines are **frozen for the whole rollout**
+— M10 changes no prompt, descriptor, vocabulary or threshold, so a live run
+during it is a *measurement*, never an input to a change. Tuning resumes only in
+the post-rollout tuning milestone.
+
 ## Layout
 
 | Path | What it is |

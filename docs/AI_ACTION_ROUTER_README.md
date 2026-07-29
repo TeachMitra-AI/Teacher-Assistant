@@ -20,14 +20,14 @@
 | **Current Branch** | `feature/ai-action-router` |
 | **Base Branch** | `main` |
 | **Current Phase** | Phase 1 — Generator only |
-| **Current Milestone** | **M9 — Hardening** ✅ **COMPLETE — awaiting review/approval** |
-| **Overall Progress** | **86%** (planning + M0 → M6 + M7a + M7b + M8 + M9 complete) |
-| **Current Status** | 🟢 Healthy. **Every cost and availability control the design specified is now live and exercised against a running server**: the per-user daily budget spends no model call when exhausted, the CHANGE-8 breaker opens on upstream 429s **while the Coach keeps answering**, and the generation endpoint finally has a limiter. **The security review found two real defects and fixed both** — a body fragment leaking into the log (and a 5xx from `/interpret`), and an unbounded telemetry write path. **Deletability is no longer a claim: the deleted build reproduces the M0 bundle hash and test count exactly.** Kill switch measured at **4 seconds**. All flags still default OFF |
+| **Current Milestone** | **M10 — Internal rollout** 🟡 **Rollout engineering COMPLETE and rehearsed — staged exposure pending production execution** |
+| **Overall Progress** | **92%** (planning + M0 → M9 complete; M10 prepared, not yet executed in production) |
+| **Current Status** | 🟢 Healthy. **The rollout is prepared, rehearsed and documented, and it changed no application code.** Every stage configuration in the flag matrix — Stage 0 dark, Stage 1 team ring, Stage 2 pilot ring, Stage 3 all schools, the per-action flag, the Tier 0 ring retreat and the Tier 1 kill switch — was driven against a **real server** with flags passed as process env: **16/16 gate checks passed**, all but one spending **zero** model calls, and live routing confirmed end to end in the exact Stage 1 configuration (`prefill`, effect `draft`, 6 params, 1.7 s). The retention prune is **verified against a real database copy** and the [Rollout Runbook](./ai-action-router-rollout-runbook.md) now exists. **What remains is not engineering: it is the four staged holds against real teachers**, which need production access and ~12 calendar days |
 | **Architecture Status** | ✅ **Approved** (reviewed 3×, 12 amendments applied — see §5.3). **Amended at M8: the assistant now exposes THREE endpoints**, not two — approved before implementation, reasoning in §5.1 D21 |
-| **Implementation Status** | ✅ **M0–M6 + M7a + M7b + M8 + M9 complete** — contracts frozen, registry live behind flags, catalog serving, the full 12-stage pipeline, the composer routing end to end, a frozen measured baseline, one evidence-backed tuning change, the correction signal reaching a queryable store, and **the feature now safe to expose**. All flags default OFF |
+| **Implementation Status** | ✅ **M0–M9 complete** — contracts frozen, registry live behind flags, catalog serving, the full 12-stage pipeline, the composer routing end to end, a frozen measured baseline, one evidence-backed tuning change, the correction signal reaching a queryable store, and the feature safe to expose. 🟡 **M10 prepared:** flag matrix rehearsed, runbook written, retention prune verified, **zero application-code changes**. All flags still default OFF |
 | **Last Updated** | 2026-07-29 |
-| **Governance** | 🔒 **Milestone Completion Protocol in force** — see [§21](#21-milestone-completion-protocol-mandatory). One milestone at a time; full verification gate before the next begins; explicit user approval required to proceed |
-| **Next Task** | ⏸️ **Awaiting user approval of M9.** Then **M10 — internal rollout** (staged: dark → team → pilot school → all teachers), which is the last milestone. **One M9 finding needs an owner decision: F5**, the English-only emergency short-circuit (see the [Security Review](./ai-action-router-security-review.md) §2). Three M7 decisions also remain open and are untouched by M9: **D5 descriptor `examples`**, **D4 routing temperature** (needs the protected `gemini.js`), and **GF-6** (the `open_generator` / `generate_assessment` boundary) |
+| **Governance** | 🔒 **Milestone Completion Protocol in force** — see [§21](#21-milestone-completion-protocol-mandatory). One milestone at a time; full verification gate before the next begins; explicit user approval required to proceed. **M10 runs the gate per stage** (owner decision K: code review once, production verification per stage, stage report per stage, final report at completion) |
+| **Next Task** | ▶️ **Execute the M10 rollout in production**, following the [Rollout Runbook](./ai-action-router-rollout-runbook.md): merge → deploy → Stage 0 (2 d) → Stage 1 (3 d) → Stage 2 (7 d) → Stage 3. Blocked only on production access and the ring/operator confirmations (approval G). **No tuning work may begin until the rollout closes** — D4, D5, GF-6 and the F5 emergency-detection gap are all deferred to a post-rollout tuning milestone by owner decision |
 
 ### Progress basis (keep this calculation consistent)
 
@@ -47,8 +47,15 @@ Progress % is weighted by estimated effort-days, not by milestone count.
 | **M7b — tuning + re-measure** | **1.5** | ✅ **Complete** | **4.0%** |
 | **M8 — telemetry** | **2.0** | ✅ **Complete** | **5.3%** |
 | **M9 — hardening** | **3.0** | ✅ **Complete** | **8.0%** |
-| M10 — internal rollout | 5.0 | ⬜ Not started | 0% |
-| **Total** | **37.5** | | **≈ 86.7%** → reported as **86%** |
+| **M10 — internal rollout** | **5.0** | 🟡 **2.0 d complete** (rollout engineering: pre-flight, rehearsal, runbook, docs). **3.0 d outstanding** — the staged exposure itself | **5.3%** |
+| **Total** | **37.5** | | **≈ 92.0%** → reported as **92%** |
+
+> **Why M10 is credited partially rather than not at all.** The weighting is by effort-days, and the
+> preparation half of this milestone — pre-flight verification, the stage-by-stage rehearsal against a
+> real server, tooling verification, the runbook, the documentation — is done and evidenced. The
+> outstanding 3.0 days is **elapsed-time work that cannot be compressed or simulated**: four holds
+> against real teachers, which is precisely the evidence no earlier milestone could manufacture.
+> Reporting 100% before a teacher has ever used the feature would be the dishonest direction.
 
 > **M7's 5.0 d is split into M7a (3.5 d, measurement) and M7b (1.5 d, tuning)** at the
 > project owner's instruction. The split is not cosmetic: spec §1.2's fourth ordering rule is
@@ -621,7 +628,7 @@ schema extraction, which stands on its own merits.
 | **M7b** | Prompt/schema tuning + re-measure | 1.5 d | ✅ **Completed** | 2026-07-29. **4 candidates measured, 1 accepted.** C4 (free-text slots bounded in the response schema, registry-derived) cut GF-1 10 → 7 and lifted recall 85.8% → 89.6%; **C3, C1 and C2 were rejected on evidence and recorded in `TUNING_LOG.md`**. **Grade extraction unchanged at ~20% — the primary target was NOT met**, and two independent prompt mechanisms aimed at it measurably hurt it. Frozen baseline, corpus and cassettes untouched; `gemini.js` untouched |
 | **M8** | Telemetry | 2.0 d | ✅ **Completed** | 2026-07-29. Both CHANGE-6 channels live; `POST /api/assistant/events` (the approved third endpoint); `assistant/telemetry.js`; client transport with the **≤2-rows-per-session ceiling proven at both layers**; the `generated` outcome via an observer effect with **zero lines inside `handleGenerate`**; 90-day retention + prune script; metrics script. **1052 server tests (+46), 333 client (+16)**, 3× no flakiness; bundle **+0.08 kB gzip**; **4/4 injected-defect proofs detected**; **a real privacy hole found and closed by the new suite**. Field-edit rate demonstrated end to end against a live server |
 | **M9** | Hardening | 3.0 d | ✅ **Completed** | 2026-07-29. Per-user daily budget (D25/D26), CHANGE-8 breaker (D27), limiter on `/api/resources/generate`, telemetry write bound. **1133 server tests (+81)**, 3 consecutive runs; **client untouched — `git diff --stat client/` empty, bundle byte-identical**; `index.js` **+100 / −0**; **8/8 injected-defect proofs detected**; **the security review found and fixed two real defects** (a body fragment in the log + a 5xx from `/interpret`; an unbounded telemetry write path). **Deletability PERFORMED: the deleted build reproduces the M0 bundle hash `index-B4SBMDAV.js` and its 413-test count exactly.** Kill switch timed at **4 s**. Every guard exercised against a live server, including the Coach answering while the breaker was open |
-| **M10** | Internal rollout | 5.0 d | ⬜ Pending | Dark → team → pilot school → all teachers |
+| **M10** | Internal rollout | 5.0 d | 🟡 **Prepared 2026-07-29; exposure pending** | Dark → team → pilot school → all teachers. **An operational milestone: zero application-code changes, zero new env vars, zero new tests.** Delivered: pre-flight (1133 server tests × 3, 333 client, both lints, clean build, replay gate 5/5 safety gates, zero migrations), a **16/16 rehearsal of every stage configuration against a real server**, live routing confirmed in the Stage 1 configuration, the retention prune verified against a real database copy, and the [Rollout Runbook](./ai-action-router-rollout-runbook.md). Outstanding: the four staged holds, which need production access and ~12 calendar days |
 
 **Status legend:** ✅ Completed · 🟡 In Progress · ⬜ Pending · ❌ Blocked · ⏸️ Paused
 
@@ -875,6 +882,15 @@ schema extraction, which stands on its own merits.
 | 2026-07-29 | **Kill switch rehearsed and TIMED: 4 seconds** from flip to inert, against a < 60 s target | ✅ | `catalogVersion` drops to 0, which is how a client holding a cached catalog learns its assumptions are void |
 | 2026-07-29 | **M9 verification complete.** Server **1133 tests / 46 files** (+81, +5 files), **3 consecutive runs, no flakiness** · client **333 tests**, unchanged · both lints ✅ · client build ✅ **bundle byte-identical** (`index-CdDgI2Zg.js`, 282.72 kB gzip) · `git diff --stat client/` **empty** · `index.js` **+100 / −0** · **zero migrations, zero new dependencies** · every protected file diff-empty · `server/test/` additions only | ✅ | See the M9 Milestone Completion Report |
 | 2026-07-29 | **M9 complete — awaiting user review and approval.** M10 not started | ⏸️ | Per §21. **One finding needs an owner decision: F5** (English-only emergency detection) |
+| 2026-07-29 | **M9 APPROVED. M10 authorized as a ROLLOUT milestone** with eleven rulings (A–K) taken before any work began | ✅ **Binding** | **A** M9 accepted · **B** F5 accepted, assigned to a separate follow-up milestone, no protected-area work in M10 · **C** DoD amended — the **production field-edit rate is the launch criterion**, grade-slot accuracy becomes recorded quality debt · **D** D4, D5 and GF-6 deferred to a post-rollout tuning milestone · **E** Stage 0 production verification instead of building a staging environment · **F** the extra Stage 0 interpret round trip accepted; no client optimisation during rollout · **G** proceed once rings, accounts, operator and backup are confirmed · **H** planned merge and deployment workflow approved · **I** platform scheduler for the retention prune · **J** **no code changes for observability** — existing logs and metrics only · **K** gate = code review once, production verification per stage, stage report per stage, final report at completion |
+| 2026-07-29 | **Standing M10 constraints recorded** | ✅ **Binding** | Minimum possible code changes, preferring configuration and documentation · every stage reversible **without a new deployment** wherever possible · production issues use the existing rollback controls **before** any code is considered · protected areas and frozen evaluation artifacts preserved · **no tuning work during M10** |
+| 2026-07-29 | **M10 pre-flight verification green on the M9 tree** | ✅ | Server **1133 tests / 46 files, three consecutive runs**, no flakiness · client **333 tests / 16 files** · both lints clean · client build clean, bundle `index-CdDgI2Zg.js` **282.72 kB gzip** (M0 pre-feature baseline 276.32 → **+6.40 kB against a 15 kB budget**) · **zero migration folders added by the feature** (`git diff main...HEAD -- server/prisma/` empty) · `client/src/pages/` shows **exactly two files** (protected area #14) · `server/test/` **additions only** · replay eval gate green with **5/5 safety gates PASS**, precision 96.9%, recall 89.6% |
+| 2026-07-29 | **Every rollout stage configuration REHEARSED against a real server** — spare port, flags as process env, `server/.env` never edited | ✅ | **16/16 gate checks passed.** Stage 0 inert (`catalogVersion 0`, `/interpret` → `disabled`) · Stage 1 ring gating (in-ring exposed, out-of-ring excluded **with zero model calls**) · role gate holds for a `super_admin` inside the ring school · catalog leaks no `paramSchema`/`requiredRoles`/`featureFlag`/`autoExecute` · per-action flag withdraws one action while routing continues · Stage 2 two rings in, a third school out · **Stage 3 empty-list trap demonstrated** · Tier 0 ring retreat **365 ms** · Tier 1 kill switch **515 ms** |
+| 2026-07-29 | **Live routing confirmed in the exact Stage 1 configuration** | ✅ | One real Gemini call: `decision: prefill`, effect `draft`, **6 params**, 1 693 ms, `calls: 1`. The decision log line carried **ids, counts, enums and a latency only** — no utterance, no slot value (G11), and the response echoed no teacher text outside `params` |
+| 2026-07-29 | **Retention prune verified against a copy of a REAL database, not a fixture** | ✅ | 19 institutional rows (`ai_safety_flag`, `user_approved`, `ai_rate_limit_exhausted`) plus 3 assistant rows. `--dry-run` reported 2; the real run deleted **exactly those 2**, both `assistant_*` and both past the cutoff; **the recent assistant row and all 19 institutional rows survived**. The throwaway database was deleted afterwards; `prisma/dev.db` was never written to |
+| 2026-07-29 | ⚠️ **`npm run assistant:metrics` reports `n/a`, and that is the correct reading** | ✅ **Not a defect** | No prefills have been delivered in the local database's retention window, so the field-edit rate has an empty denominator. The script prints `n/a (no prefills delivered)` rather than `0.0%` **by design** — a rate over nothing would look like a perfect score in exactly the situation with no evidence at all. Recorded because the first production reading will look the same until real teachers arrive |
+| 2026-07-29 | **[Rollout Runbook](./ai-action-router-rollout-runbook.md) written** — the operational artifact M10 exists to leave behind | ✅ | Kill switch first, on page one. Flag matrix per stage · the empty-list trap · smoke check · the daily watchlist with the command that produces each number · the two ways to misread the metrics · Tiers 0–4 with the **four** carry-forwards a revert must not remove · incident procedure · prune scheduling · accepted risks (F3, F4, F5, F7, F8) each with its operator lever · eval cadence and the quota-contention rule |
+| 2026-07-29 | **Rollout engineering complete with ZERO application-code changes** | ✅ | `git diff --stat` for `server/src`, `client/src`, `server/test`, `client/src/**/*.test.ts`, `prisma/` and both `.env.example` files is **empty for M10**. The milestone's entire diff is documentation. This was the point of constraint 1, and it is also why nothing in M10 could have regressed the feature it exposes |
 
 ---
 
@@ -988,28 +1004,32 @@ schema extraction, which stands on its own merits.
 
 ### 🟡 What is currently in progress
 
-**Nothing.** M9 is complete and **awaiting user review and approval**. Per §21, the next milestone
-does not begin automatically.
+**M10 — Internal rollout, at the boundary between preparation and exposure.**
+
+Everything that can be done without production access is **done and evidenced**: pre-flight
+verification, a 16/16 rehearsal of every stage configuration against a real server, live routing
+confirmed in the Stage 1 configuration, the retention prune verified against a real database copy,
+the [Rollout Runbook](./ai-action-router-rollout-runbook.md), and this documentation.
+
+**What remains cannot be simulated:**
+
+| Outstanding | Why it needs production |
+|---|---|
+| Merge to `main`, deploy both artifacts | Platform credentials and a deploy window |
+| Stage 0 (2 d) → Stage 1 (3 d) → Stage 2 (7 d) → Stage 3 | ~12 calendar days of holds against **real teachers** |
+| **The production field-edit rate** — the launch criterion (decision C) | The one number no amount of engineering can manufacture. It requires a teacher correcting a real prefill |
+| Tier 0 and Tier 1 re-timed in production | Local timings (365 ms / 515 ms) come from a developer machine, not a platform restart |
+| PWA propagation measured | Only real, already-loaded clients can answer it |
+| Breaker thresholds validated against real quota pressure | Reasoned, never measured (M9 residual) |
+| Prune scheduled on the platform scheduler (approval I) | Requires the platform |
 
 ### ⬜ What is next
 
-**Milestone M10 — Internal rollout** (5.0 days elapsed) — *blocked on M9 approval*. **The last
-milestone.**
-
-Staged exposure with hold periods — dark → team → pilot school → all teachers — with the §21 gate
-run **per stage, not once**. The Definition of Done in the spec's §11 is checked here.
-
-Four things M9 hands it:
-
-1. **One finding needs an owner decision before exposure widens: F5**, the English-only emergency
-   short-circuit. Safety holds; the zero-latency guarantee does not, for Hindi and Hinglish. The
-   remedy touches protected area #11 and deserves its own review.
-2. **The retention prune still is not scheduled.** `npm run assistant:prune-events` exists and works;
-   scheduling it is an M10 step, and until then the table grows.
-3. **The breaker's thresholds are reasoned, not measured.** 5 rate-limited calls in 60 s, a 5-minute
-   cooldown. Stage 0 is the moment to watch them against real traffic.
-4. **The rollback procedure gained a carry-forward (F6):** keep the `/api/resources/generate`
-   limiter if the feature is ever rolled back — see §14.
+1. **Execute the rollout** from the runbook, stage by stage, with the §21 gate run per stage as
+   ruled in approval K.
+2. **Then stop.** Post-rollout tuning (D4 routing temperature, D5 descriptor `examples`, GF-6, the
+   grade-slot debt) and the F5 emergency-detection follow-up are all **deferred by owner decision**
+   and must not begin as part of M10.
 
 <details>
 <summary>Superseded — the M9 "what is next" entry, kept for history</summary>
@@ -1388,13 +1408,38 @@ corpus, the frozen cassettes and the frozen baseline are all untouched.**
 - [x] Telemetry writes bounded per user — a review finding (F2), not in the original checklist
 - [x] 8/8 injected-defect proofs detected
 
-### M10 — Internal rollout (5.0 d elapsed)
-- [ ] Stage 0 Dark (2 days hold)
-- [ ] Stage 1 Team (3 days hold)
-- [ ] Stage 2 Pilot school (1 week hold)
-- [ ] Stage 3 All teachers
-- [ ] Monitoring + alerts live
-- [ ] Definition of Done satisfied
+### 🟡 M10 — Internal rollout (5.0 d) — PREPARED 2026-07-29, exposure outstanding
+
+**An operational milestone. Zero application-code changes, zero new environment variables, zero new
+tests — the entire M10 diff is documentation.**
+
+Rollout engineering — complete:
+- [x] Pre-flight verification on the M9 tree — 1133 server tests × 3 runs, 333 client tests, both
+      lints, clean build, replay gate **5/5 safety gates**, **zero migrations**, protected areas
+      diff-clean
+- [x] **Every stage configuration rehearsed against a real server — 16/16 gate checks**, flags as
+      process env, `.env` never edited
+- [x] Live routing confirmed in the exact Stage 1 configuration (`prefill`, `draft`, 6 params, 1.7 s)
+- [x] **Tier 0 ring retreat rehearsed** (365 ms) and **Tier 1 kill switch rehearsed** (515 ms) — both
+      local, both to be re-measured in production
+- [x] The **empty-list trap demonstrated**, not just documented: an empty
+      `ASSISTANT_ALLOWED_SCHOOL_CODES` exposes every school
+- [x] Retention prune verified against a copy of a real database — 2 assistant rows deleted, 19
+      institutional rows untouched
+- [x] `assistant:metrics` exercised; its `n/a`-is-not-zero behaviour confirmed
+- [x] [Rollout Runbook](./ai-action-router-rollout-runbook.md) written
+- [x] Documentation updated; DoD amended per approval C
+
+Staged exposure — outstanding, needs production access and ~12 calendar days:
+- [ ] Merge to `main` and deploy both artifacts
+- [ ] Stage 0 Dark (2-day hold) — Coach baseline, PWA propagation, Tier 0/1 re-timed
+- [ ] Stage 1 Team (3-day hold) — first real model spend; watch the breaker
+- [ ] Stage 2 Pilot school (7-day hold) — first teachers who did not build it
+- [ ] Stage 3 All teachers — an approved action, never a cleanup (§6.2 of the runbook)
+- [ ] Monitoring cadence run daily through every hold, numbers written down
+- [ ] Retention prune scheduled on the platform scheduler
+- [ ] **Production field-edit rate < 20%** — the launch criterion
+- [ ] Amended Definition of Done satisfied and signed off
 
 ---
 
@@ -1438,7 +1483,7 @@ corpus, the frozen cassettes and the frozen baseline are all untouched.**
 
 | Risk | Horizon | Note |
 |---|---|---|
-| `Event` write volume on single-writer SQLite | Phase 1 → 2 | **Addressed at M8**: ≤2 rows per routed session, proven by test at both the client (which collapses corrections) and the endpoint. **Retention policy now exists** — 90 days, `npm run assistant:prune-events`. **Closed properly at M9**: that ceiling was a *client* promise with no server counterpart, so a hostile or looping client could still sustain ~160 rows/minute. A per-user daily bound on `POST /events` now backs it server-side (finding F2). ⚠️ Residual: nothing *schedules* the prune yet; that is an M10 rollout step, and until then the table grows |
+| `Event` write volume on single-writer SQLite | Phase 1 → 2 | **Addressed at M8**: ≤2 rows per routed session, proven by test at both the client (which collapses corrections) and the endpoint. **Retention policy now exists** — 90 days, `npm run assistant:prune-events`. **Closed properly at M9**: that ceiling was a *client* promise with no server counterpart, so a hostile or looping client could still sustain ~160 rows/minute. A per-user daily bound on `POST /events` now backs it server-side (finding F2). **M10 verified the prune against a copy of a real database** — it deleted exactly the two out-of-window `assistant_*` rows and left all 19 institutional rows untouched. ⚠️ Residual: **scheduling it on the platform is a production step** (approval I), and until that is done the table still grows |
 | **Per-user budget accuracy across restarts / instances** | Phase 1 → 2 | Accepted at M9 (D25). Resets on restart, per process — identical to `express-rate-limit`'s MemoryStore, which has backed `/api/coach` since before this project. **Revisit before the deployment becomes multi-instance, not after** |
 | Shared Gemini quota between Coach and Router | Phase 1 | CHANGE-8 breaker. Router must never starve coaching |
 | Classifier prompt grows with the catalog | Phase 3 | ~2–3k tokens at 20 actions. Cheap fix: cap examples per action in the prompt |
@@ -1505,13 +1550,18 @@ corpus, the frozen cassettes and the frozen baseline are all untouched.**
 
 | Tier | Action | Time | Removes |
 |---|---|---|---|
-| **1** | `ASSISTANT_ENABLED=false` + restart | **< 60 s** | All routing behavior |
+| **0** *(added at M10)* | Remove a school code from `ASSISTANT_ALLOWED_SCHOOL_CODES` + restart | **< 60 s** (365 ms rehearsed) | One ring's exposure — the feature keeps working everywhere else |
+| **1** | `ASSISTANT_ENABLED=false` + restart | **< 60 s** (4 s at M9; 515 ms rehearsed at M10) | All routing behavior |
 | **2** | Tier 1 + `VITE_ASSISTANT_ENABLED=false` + client redeploy | ⚠️ **Not deterministic (PWA)** | Client code paths |
 | **3** | Revert the assistant commits | ~1 hr | The code |
 | **4** | Delete `assistant/` + `actions/`, revert modified files | ~2 hr | Everything except the M1 refactor |
 
-**Tier 1 is the only one that should ever be needed in an incident.** Tiers 2–4 exist so that
-abandoning the feature is cheap.
+**Tier 0 first, Tier 1 second, and stop there.** Tier 0 was added at M10 because a staged rollout has
+a failure mode the earlier tiers do not address: *this ring is unhappy, everyone else is fine.*
+Retreating one ring is strictly cheaper than switching the feature off for schools where it is
+working, and it was rehearsed against a real server before it was written down here. Tiers 2–4 exist
+so that abandoning the feature is cheap; **none of them is an incident tool** — see the
+[Rollout Runbook](./ai-action-router-rollout-runbook.md) §6.
 
 ### Why rollback is genuinely safe
 
@@ -1538,6 +1588,18 @@ should be kept:
 
 Neither affects the deletability property: both live in files M2 already owned, and deleting
 `assistant/` + `actions/` + `routes/assistant.js` removes them along with everything else.
+
+### Rollback during the staged rollout (M10)
+
+**Use Tier 0 before Tier 1.** The stage matrix, the exact retreat command per stage, and the incident
+procedure live in the [Rollout Runbook](./ai-action-router-rollout-runbook.md). Two rules that belong
+here because they are architectural, not operational:
+
+1. **Never rebuild the client as an incident response.** Layer 5 is build-time and PWA-cached; its
+   propagation is not a control loop. Every incident lever is server-side.
+2. **A code change is never a rollback.** If a production problem can only be fixed by editing code —
+   and especially by editing a protected area or adding a migration — the stage is retreated first
+   and the fix is a separate, reviewed change.
 
 ### Rollback at M9 — a third thing that does NOT revert cleanly
 
@@ -1665,7 +1727,9 @@ generation cost is capped. Then flip `autoExecute: true` on the descriptor — *
 | 2 | **Phase 1 Implementation Specification** — *what to build, in what order* | [`ai-action-router-phase1-spec.md`](./ai-action-router-phase1-spec.md) | ✅ **Persisted 2026-07-28** (amendments incorporated) |
 | 3 | **Implementation Guardrails & Impact Analysis** — *what must not break* | [`ai-action-router-guardrails.md`](./ai-action-router-guardrails.md) | ✅ **Persisted 2026-07-28** (amendments incorporated) |
 | 4 | **Living Project Document** | `docs/AI_ACTION_ROUTER_README.md` | ✅ **This file** |
-| 4a | **Security Review (M9)** — the threat model executed as an attack, the log audit, live verification, and the deletability result | [`ai-action-router-security-review.md`](./ai-action-router-security-review.md) | ✅ **M9** — nine findings, all dispositioned. **F5 is the one item awaiting an owner decision** |
+| 4a | **Security Review (M9)** — the threat model executed as an attack, the log audit, live verification, and the deletability result | [`ai-action-router-security-review.md`](./ai-action-router-security-review.md) | ✅ **M9** — nine findings, all dispositioned. **F5 accepted at M10** and assigned to a separate follow-up milestone |
+| 4c | **M10 Milestone Completion Report** — verification evidence, the 16/16 rehearsal, the amended Definition of Done, and an explicit list of what still requires production | [`ai-action-router-m10-completion-report.md`](./ai-action-router-m10-completion-report.md) | ✅ **M10** |
+| 4b | **Rollout Runbook (M10)** — *what to type.* Kill switch first, flag matrix per stage, the daily watchlist with the command that produces each number, Tiers 0–4 with the four carry-forwards, incident procedure, accepted risks with their operator levers | [`ai-action-router-rollout-runbook.md`](./ai-action-router-rollout-runbook.md) | ✅ **M10** — written for whoever is on call, **not** for whoever built the feature |
 | 5 | Executable API contract | `server/src/assistant/contracts.js` · `client/src/assistant/types.ts` · `server/test/helpers/assistantFixtures.js` | ✅ **Frozen in M0** — supersedes the planned standalone API doc |
 | 5a | **Enforced** contract — the drift guard that makes the freeze real | `server/test/assistant/contractDrift.test.js` | ✅ **M2** — covers duplicated pairs A and B; proven to fail on injected drift |
 | 5d | **Enforced** vocabulary — the third duplicated pair (GRADES/SUBJECTS/LANGUAGES ↔ `config.ts`) | `server/test/actions/vocabDrift.test.js` | ✅ **M4** — proven to fail on injected drift. A separate file by decision, so the inherited M2 guard is not edited |
@@ -1719,8 +1783,34 @@ payloads still conform. A contract that is checked by CI is worth more than a do
 
 ### Where the project stands right now
 
-**Planning is complete and approved. M0–M8 are approved. M9 is complete and awaiting review.**
-M10 has not started and must not start without approval.
+**Planning is complete and approved. M0–M9 are approved. M10 — the last milestone — is prepared,
+rehearsed and documented; its staged exposure has not been executed.**
+
+**What M10 changed, in one paragraph.** Nothing, in the application — and that is the deliverable.
+M10 is a *rollout* milestone, and its entire diff is documentation: the
+[Rollout Runbook](./ai-action-router-rollout-runbook.md) plus these updates. What it produced instead
+of code is **evidence that the rollout controls do what the design says they do**: every stage
+configuration in the flag matrix was driven against a real server with flags passed as process env,
+16/16 gate checks passed, and all but one spent zero model calls. An out-of-ring teacher gets
+`catalogVersion 0` and a `disabled` passthrough **before any model call is made**; a `super_admin`
+inside the ring school is still excluded; one action can be withdrawn while routing continues; the
+Tier 0 ring retreat and the Tier 1 kill switch both took well under a second locally; and the
+**empty-list trap was demonstrated rather than merely warned about** — an empty
+`ASSISTANT_ALLOWED_SCHOOL_CODES` exposes every school, which is why Stage 3 must be an approved
+action and never a cleanup. One live call confirmed real routing in the exact Stage 1 configuration.
+The retention prune was verified against a copy of a real database: exactly the two out-of-window
+`assistant_*` rows deleted, all 19 safety-flag / approval / rate-limit rows untouched.
+
+⚠️ **The thing M10 cannot manufacture is the reason it exists.** The launch criterion is now the
+**production field-edit rate** (owner decision C), and it requires a real teacher correcting a real
+prefill. Locally `npm run assistant:metrics` correctly reports `n/a`, not `0.0%` — the first
+production reading will look the same until teachers arrive, and reading `n/a` as "perfect" is the
+mistake the script is written to prevent.
+
+**Deferred by owner decision, and not to be started with M10:** D4 (routing temperature), D5
+(descriptor `examples`), GF-6 (the `open_generator` / `generate_assessment` boundary), the
+grade-slot accuracy debt (~20% against the old 85% criterion), and F5 (English-only emergency
+detection — safety holds, the zero-latency guarantee does not).
 
 **What M9 changed, in one paragraph.** Every cost and availability control the design has specified
 since P0 is now live and has been exercised against a running server. The per-user daily budget

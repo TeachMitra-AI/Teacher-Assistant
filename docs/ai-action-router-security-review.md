@@ -295,16 +295,43 @@ Spot-checked against the Part 6 blocking checklist. Each answer is backed by a d
 
 Stated plainly, because a review that ends with "no residual risk" has not been done.
 
-1. **F5 — Hindi/Hinglish emergency detection.** The only Medium finding still open. Safety holds;
-   the zero-latency guarantee does not. **Needs an owner decision.**
+1. **F5 — Hindi/Hinglish emergency detection.** ✅ **Dispositioned at M10 (owner decision B):
+   accepted for the duration of the rollout and assigned to a separate follow-up milestone.** The
+   safety outcome holds — an emergency in any language still reaches the Coach and is never routed
+   into a worksheet form; what does not hold for Hindi and Hinglish is the zero-latency
+   short-circuit. Widening the app's most safety-critical matcher requires its own corpus and
+   false-positive analysis, and doing it inside a rollout milestone would be the riskier choice.
+   Recorded in the [Rollout Runbook](./ai-action-router-rollout-runbook.md) §7.4 as an accepted risk
+   with no operator action.
 2. **The budget is process-local (F3).** Correct for one instance. A revisit trigger, not a defect.
-3. **Nothing schedules the retention prune.** `npm run assistant:prune-events` exists and works;
-   scheduling it is an M10 rollout step. Until then the table grows.
+   **Restated in the runbook** so an operator meets it before a second instance is provisioned, not
+   after.
+3. **The retention prune is verified but not yet scheduled.** ✅ **Verified at M10** against a copy of
+   a real database: with 19 institutional rows (`ai_safety_flag`, `user_approved`,
+   `ai_rate_limit_exhausted`) and 3 assistant rows present, it deleted **exactly the 2 assistant rows
+   past the cutoff** and touched nothing else; the `--dry-run` count matched the real run. ⚠️
+   **Scheduling it on the platform (owner decision I) is a production step and is still outstanding
+   — until it is done, the table grows.**
 4. **Classification quality is unchanged by M9.** Grade-slot accuracy remains ~20% against an 85%
    target (GF-2), and the `open_generator` / `generate_assessment` boundary (GF-6) is still undrawn.
    Neither is a security matter; both remain launch considerations.
 5. **The breaker's thresholds are untuned by real traffic.** 5 rate-limited calls in 60 s, 5-minute
-   cooldown, are reasoned defaults, not measured ones. Watch them during M10 stage 0.
+   cooldown, are reasoned defaults, not measured ones. Watch them during M10 stage 0. **Carried into
+   the runbook's daily watchlist** (§5.2 item 5) with the env levers named, so the first real
+   evidence has somewhere to land.
+
+### Findings F6 and F7 — status after M10
+
+**F6 is closed.** The rollback carry-forward is recorded in three places rather than one: README §14,
+the runbook §6.1, and the M10 completion report. It is now one of **four** things a full revert must
+not remove, alongside the routing model endpoint, the fail-closed rollout gate and the malformed-JSON
+fix.
+
+**F7 (the breaker is global across tenants) remains accepted by design**, and the rollout does not
+change that reasoning: the quota being protected is global too, so a per-tenant breaker would let one
+school's storm keep draining the pool every other school's coaching depends on. It is stated in the
+runbook so an operator seeing "routing paused everywhere" recognises it as the design working rather
+than a fault.
 
 ---
 
