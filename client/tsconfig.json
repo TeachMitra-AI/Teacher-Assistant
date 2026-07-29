@@ -18,5 +18,14 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
+  // The AI Action Router's corpus evaluation (M7a) reads the shared labelled
+  // corpus from server/evals/ with node:fs, so it needs Node types that this
+  // project deliberately does not have. It is excluded from the BUILD's
+  // type-check rather than solved by adding @types/node, because that would make
+  // Node globals visible to all client source and could let a real mistake — a
+  // `process.env` in app code — type-check cleanly. Vitest runs the file with
+  // its own resolution, so it is still executed and still fails on a real error.
+  // Narrowly scoped on purpose: every other *.test.ts stays type-checked.
+  "exclude": ["src/**/*.eval.test.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

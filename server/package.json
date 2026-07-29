@@ -14,9 +14,12 @@
     "migrate": "prisma migrate dev",
     "studio": "prisma studio",
     "generate": "prisma generate",
-    "lint": "eslint src",
+    "lint": "eslint src evals",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "eval": "node evals/run.js --mode live",
+    "eval:replay": "node evals/run.js --mode replay",
+    "eval:compare": "node evals/compare.js"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

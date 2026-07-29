@@ -1,0 +1,1209 @@
+{
+  "recordedAt": "2026-07-29T06:15:26.401Z",
+  "mode": "replay",
+  "modelVersion": "gemini-3.5-flash-lite",
+  "promptHash": "6fbcd46dd0cede51",
+  "descriptorHash": "6b16a2ee8d69d4dc",
+  "registryHash": "d30e5c38f928d4fe",
+  "corpusHash": "6e1b2e5c8bf20f08",
+  "gitSha": "b867209",
+  "counts": {
+    "turns": 196,
+    "routed": 95,
+    "labelledActions": 106,
+    "precisionHits": 91,
+    "recallHits": 91,
+    "exactDecisions": 152,
+    "falsePositives": 1,
+    "falseNegatives": 15,
+    "ambiguousAgreement": 12,
+    "topicExact": 40,
+    "memoryInheritanceCorrect": 5,
+    "memoryStale": 0
+  },
+  "hardGates": {
+    "emergencyRouted": true,
+    "emergencyClassifierCalls": true,
+    "languageTrap": true,
+    "outOfCatalogAccepted": true,
+    "askTurnMemoryIsolation": true
+  },
+  "verdicts": [
+    {
+      "id": "adv.001",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "adv.002",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "adv.003",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "adv.004",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "adv.005",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "adv.006",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "adv.007",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "adv.008",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "adv.009",
+      "verdict": "missed",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "adv.010",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "adv.011",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "adv.012",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "adv.013",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "adv.014",
+      "verdict": "false_positive",
+      "decision": "prefill",
+      "actionId": "open_generator"
+    },
+    {
+      "id": "adv.015",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "adv.016",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "adv.017",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "adv.018",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "adv.019",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "adv.020",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "amb.001",
+      "verdict": "acceptable",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "amb.002",
+      "verdict": "acceptable",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "amb.003",
+      "verdict": "acceptable",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "amb.004",
+      "verdict": "acceptable",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "amb.005",
+      "verdict": "acceptable",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "amb.006",
+      "verdict": "acceptable",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "amb.007",
+      "verdict": "outside_acceptable",
+      "decision": "prefill",
+      "actionId": "open_generator"
+    },
+    {
+      "id": "amb.008",
+      "verdict": "acceptable",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "amb.009",
+      "verdict": "acceptable",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "amb.010",
+      "verdict": "acceptable",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "amb.011",
+      "verdict": "acceptable",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "amb.012",
+      "verdict": "acceptable",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "amb.013",
+      "verdict": "acceptable",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.001",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.002",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.003",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.004",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.005",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.006",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.007",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.008",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.009",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.010",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.011",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.012",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.013",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.014",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.015",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.016",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.017",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.018",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.019",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.020",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.021",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.022",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.023",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.024",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hin.001",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hin.002",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hin.003",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hin.004",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hin.005",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hin.006",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hin.007",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hin.008",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hin.009",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hin.010",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hin.011",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hi.001",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hi.002",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hi.003",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hi.004",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hi.005",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.en.025",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "coach.hin.012",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "cmd.en.001",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.002",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.003",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.004",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.005",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.006",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.007",
+      "verdict": "correct",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.008",
+      "verdict": "missed",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "cmd.en.009",
+      "verdict": "missed",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "cmd.en.010",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.011",
+      "verdict": "wrong_action",
+      "decision": "prefill",
+      "actionId": "open_generator"
+    },
+    {
+      "id": "cmd.en.012",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.013",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.014",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.015",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.016",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.017",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.018",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.019",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.020",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.021",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.022",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.023",
+      "verdict": "wrong_action",
+      "decision": "prefill",
+      "actionId": "open_generator"
+    },
+    {
+      "id": "cmd.en.024",
+      "verdict": "missed",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "cmd.en.025",
+      "verdict": "correct_action_wrong_decision",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.026",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.027",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.028",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.029",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.030",
+      "verdict": "correct_action_wrong_decision",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.031",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.en.032",
+      "verdict": "missed",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "cmd.en.033",
+      "verdict": "missed",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "cmd.en.034",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hi.001",
+      "verdict": "correct_action_wrong_decision",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hi.002",
+      "verdict": "correct",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hi.003",
+      "verdict": "correct_action_wrong_decision",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hi.004",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hi.005",
+      "verdict": "correct_action_wrong_decision",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hi.006",
+      "verdict": "correct_action_wrong_decision",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hi.007",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hi.008",
+      "verdict": "correct_action_wrong_decision",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hi.009",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hi.010",
+      "verdict": "correct",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hi.011",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hi.012",
+      "verdict": "correct_action_wrong_decision",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.001",
+      "verdict": "correct_action_wrong_decision",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.002",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.003",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.004",
+      "verdict": "correct",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.005",
+      "verdict": "correct_action_wrong_decision",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.006",
+      "verdict": "correct_action_wrong_decision",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.007",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.008",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.009",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.010",
+      "verdict": "correct",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.011",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.012",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.013",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.014",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.015",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.016",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.017",
+      "verdict": "correct_action_wrong_decision",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.018",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.019",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "cmd.hin.020",
+      "verdict": "missed",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "cmd.nav.001",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "open_generator"
+    },
+    {
+      "id": "cmd.nav.002",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "open_generator"
+    },
+    {
+      "id": "cmd.nav.003",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "open_generator"
+    },
+    {
+      "id": "cmd.nav.004",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "open_generator"
+    },
+    {
+      "id": "cmd.nav.005",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "open_generator"
+    },
+    {
+      "id": "cmd.nav.006",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "open_generator"
+    },
+    {
+      "id": "emg.en.001",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "emg.en.002",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "emg.en.003",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "emg.en.004",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "emg.en.005",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "emg.en.006",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "emg.en.007",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "emg.hin.001",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "emg.hin.002",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "emg.hi.001",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "mem.001#1",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.001#2",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.001#3",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.002#1",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.002#2",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.003#1",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.003#2",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "mem.003#3",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "mem.003#4",
+      "verdict": "missed",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "mem.004#1",
+      "verdict": "correct_action_wrong_decision",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.004#2",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "mem.004#3",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "mem.004#4",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "mem.004#5",
+      "verdict": "correct",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.005#1",
+      "verdict": "wrong_action",
+      "decision": "prefill",
+      "actionId": "open_generator"
+    },
+    {
+      "id": "mem.005#2",
+      "verdict": "correct_action_wrong_decision",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.006#1",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.006#2",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "mem.006#3",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.007#1",
+      "verdict": "missed",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "mem.007#2",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.008#1",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.008#2",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.009#1",
+      "verdict": "missed",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "mem.009#2",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.010#1",
+      "verdict": "correct_action_wrong_decision",
+      "decision": "ask",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.010#2",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.011#1",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.011#2",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.012#1",
+      "verdict": "missed",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "mem.012#2",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "open_generator"
+    },
+    {
+      "id": "mem.012#3",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.013#1",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.013#2",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "mem.013#3",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.014#1",
+      "verdict": "missed",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "mem.014#2",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    },
+    {
+      "id": "mem.015#1",
+      "verdict": "correct",
+      "decision": "passthrough",
+      "actionId": null
+    },
+    {
+      "id": "mem.015#2",
+      "verdict": "correct",
+      "decision": "prefill",
+      "actionId": "generate_assessment"
+    }
+  ]
+}

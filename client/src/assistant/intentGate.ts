@@ -19,10 +19,17 @@
 // fractions worksheet" passes. "How do I make a worksheet?" does not, and that
 // is correct — it is a question about teaching, and the coach answers it well.
 //
-// The recall gap this leaves is REAL and deliberately unmeasured here. M7's eval
-// corpus measures it against labelled utterances; widening the vocabulary below
-// on the strength of one remembered phrasing is exactly how thresholds stop
-// being evidence-based (technical-debt item #12).
+// The recall gap this leaves is REAL, and M7 MEASURED it rather than leaving it
+// to intuition: over the 196-turn labelled corpus the gate scores 96.1% precision
+// and 92.5% recall, declining 8 utterances that were labelled as actions (see
+// intentGate.eval.test.ts, which reads that corpus directly). CHANGE-2's
+// precision-first bet costs less than its own author feared.
+//
+// Those 8 are the measured price, and they are named rather than guessed at.
+// Widening the vocabulary below on the strength of one remembered phrasing is
+// still exactly how thresholds stop being evidence-based (technical-debt item
+// #12) — the eval pins the gate's counts, so any change here must re-promote
+// them deliberately.
 //
 // This module is pure: no network, no storage, no DOM, no React.
 

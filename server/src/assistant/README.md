@@ -97,7 +97,7 @@ breaking that catch and noticing which tests did *not* care:
 - **The profile read** is wrapped at its own call site, so a database failure costs prefilled fields
   rather than the request.
 
-## Known model-quality gaps (M7 owns these — do NOT tune the prompt here)
+## Known model-quality gaps — MEASURED at M7, and still open
 
 Observed against live Gemini during M5 verification and recorded as eval seeds. The deterministic
 half handles all three correctly once the model supplies the right slots; the gap is upstream:
@@ -110,7 +110,21 @@ half handles all three correctly once the model supplies the right slots; the ga
 3. It sometimes reports a slot with provenance `utterance` that the teacher never said (inferring
    `format: worksheet` from "I need something on photosynthesis").
 
-Tuning the prompt against a handful of anecdotes is how thresholds stop being evidence-based. M7's
-corpus is the place to measure and fix this.
+M7 measured all three against a 196-turn labelled corpus, and the outcome is recorded in
+[`../../evals/golden_failures.md`](../../evals/golden_failures.md) and
+[`../../evals/TUNING_LOG.md`](../../evals/TUNING_LOG.md):
+
+- Gap 1 (`language` not populated) and gap 3 (slots reported that were never said) are part of the
+  same finding: the model reliably fills `format` and `topic` and treats every other slot as
+  optional. **Grade extraction is ~20% against a Definition-of-Done target of 85%** (GF-2).
+- Gap 2 (slot-cramming) is rare in the corpus — 2 of 75 scored topics (GF-3).
+- The related degeneration failure (GF-1) was reduced from 10/196 to 7/196 at M7b by bounding
+  free-text slots in the response schema. It is **not closed**.
+
+**STILL DO NOT TUNE THE PROMPT HERE.** That is not a scheduling note any more, it is a measured
+result: M7b tried two independent prompt mechanisms aimed at slot recall (an explicit recall
+instruction, and a few-shot worked example) and **both made extraction and routing worse**. The
+preamble is not the lever. Changing it requires a full live re-baseline, and the evidence says it
+will not help.
 
 See [`docs/ai-action-router-phase1-spec.md`](../../../docs/ai-action-router-phase1-spec.md) §4.

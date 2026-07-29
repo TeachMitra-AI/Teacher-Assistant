@@ -47,6 +47,18 @@ const { CONFIDENCE_LEVELS, NON_ACTION_INTENTS } = require('./contracts');
  */
 const MAX_SLOT_VALUE_LENGTH = 200;
 
+/**
+ * What the model is ASKED to stay within, as opposed to what the application
+ * will ACCEPT (MAX_SLOT_VALUE_LENGTH above). Added at M7b as candidate C4.
+ *
+ * The two are deliberately different numbers and the gap is the point: the
+ * request bound gives the decoder somewhere to stop, while the accept bound
+ * stays where it was so this change cannot reject anything the application
+ * previously took. 120 characters is roughly four times the longest legitimate
+ * topic in the M7a corpus, so it constrains nothing a teacher would write.
+ */
+const REQUESTED_SLOT_MAX_LENGTH = 120;
+
 /** At most two alternatives are read; the policy only ever compares against the top one. */
 const MAX_ALTERNATIVES = 2;
 
@@ -82,6 +94,25 @@ function allowedSlotNames(descriptors) {
 }
 
 /**
+ * Which slot names are FREE TEXT, according to the registry.
+ *
+ * Registry-driven rather than a hardcoded `'topic'`: a future action's free-text
+ * slot picks up the same treatment with no edit here, which is the same
+ * four-artifact property the intent enum already has. A slot named in two
+ * descriptors with different types is treated as text if either says so — the
+ * conservative direction, since the bound is a ceiling.
+ */
+function freeTextSlotNames(descriptors) {
+  const names = new Set();
+  for (const descriptor of descriptors) {
+    for (const slot of descriptor.slots) {
+      if (slot.type === 'text') names.add(slot.name);
+    }
+  }
+  return names;
+}
+
+/**
  * Build the Gemini `responseSchema` for a request, from the role-filtered
  * catalog. OpenAPI subset (uppercase type names), which is what
  * gemini.js#buildRequestBody forwards to the API.
@@ -95,6 +126,7 @@ function allowedSlotNames(descriptors) {
  */
 function buildResponseSchema(descriptors) {
   const intents = allowedIntents(descriptors);
+  const freeText = freeTextSlotNames(descriptors);
   const slotProperties = {};
   for (const name of allowedSlotNames(descriptors)) {
     // Every slot is a STRING regardless of the underlying field's type.
@@ -102,6 +134,23 @@ function buildResponseSchema(descriptors) {
     // reports what the teacher SAID ("ten", "10 questions"), and turning that
     // into a bounded integer is the resolver's job, not the model's.
     slotProperties[name] = { type: 'STRING' };
+
+    // FREE-TEXT SLOTS ARE BOUNDED (M7b, candidate C4). An unbounded string gives
+    // the decoder nowhere to stop, and M7a measured the consequence: on ~5% of
+    // turns the model got the intent and the slots right and then degenerated
+    // inside `topic`, repeating fragments until it hit `maxOutputTokens` and
+    // truncated the JSON so it would not parse. The teacher got a coaching
+    // answer to a clear command (golden_failures GF-1).
+    //
+    // Only free-text slots are bounded, because only they were ever observed to
+    // degenerate — every enum and vocab slot is short by construction. Bounding
+    // all of them would have been broader than the evidence justified.
+    //
+    // The bound is a CEILING, not a target: no real value approaches it, the
+    // application's own accept bound (MAX_SLOT_VALUE_LENGTH) is unchanged, and
+    // the resolver still validates every value against the generation schema
+    // afterwards — so this cannot admit or reject anything it did not before.
+    if (freeText.has(name)) slotProperties[name].maxLength = REQUESTED_SLOT_MAX_LENGTH;
   }
 
   return {

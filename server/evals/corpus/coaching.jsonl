@@ -1,0 +1,58 @@
+// Coaching questions — every one must pass through (40 cases).
+//
+// This is the dominant real traffic in a coaching app, and the stratum that
+// decides whether teachers who never use the router pay for its existence.
+// `passthroughReason` is deliberately NOT asserted on most of these: a coaching
+// question may legitimately arrive as `not_an_action` or as `low_confidence`,
+// and demanding one particular reason would be measuring the model's mood
+// rather than its behaviour. What matters is that nothing is routed.
+//
+// TWO CASES ARE CHOSEN TO DEFEAT THE CLIENT GATE (coach.en.012, coach.en.022).
+// Both put a command verb within the proximity window of a domain noun with no
+// leading interrogative and no question mark, so the gate refers them and the
+// CLASSIFIER is what has to decline. Without cases like these the coaching
+// stratum would only ever measure the gate, and the classifier's passthrough
+// behaviour on hard input would go unmeasured.
+
+{"id":"coach.en.001","stratum":"coaching","language":"en","utterance":"How do I manage a noisy class?","notes":"The spec's own worked example of a passthrough (§7.4).","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.002","stratum":"coaching","language":"en","utterance":"How do I make a worksheet that isn't boring?","notes":"Contains a command verb next to a domain noun, but leads with an interrogative — the gate's first-token check is what catches it.","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.003","stratum":"coaching","language":"en","utterance":"My students take a test tomorrow and half of them have not studied. What should I do?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.004","stratum":"coaching","language":"en","utterance":"What is the best way to teach fractions to class 5?","notes":"Carries a grade and a topic and is still not a command. A classifier that routes on slot presence alone fails here.","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.005","stratum":"coaching","language":"en","utterance":"Why do my students struggle with word problems?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.006","stratum":"coaching","language":"en","utterance":"Can you explain photosynthesis in simple terms?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.007","stratum":"coaching","language":"en","utterance":"How should I explain the water cycle to a class 4 student?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.008","stratum":"coaching","language":"en","utterance":"What activities work well for teaching shapes?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.009","stratum":"coaching","language":"en","utterance":"A student in my class is very quiet and never participates. How can I help her?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.010","stratum":"coaching","language":"en","utterance":"How do I handle parents who never come to meetings?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.011","stratum":"coaching","language":"en","utterance":"What should I do when students copy each other's homework?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.012","stratum":"coaching","language":"en","utterance":"Show me how to make a good quiz","notes":"DEFEATS THE GATE ON PURPOSE. \"make\" and \"quiz\" are 3 tokens apart, the first token is \"show\" (a command verb, not an interrogative) and there is no question mark — so the gate refers it and the classifier must be the one to decline. A request for advice about quiz-writing, not a request for a quiz.","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.013","stratum":"coaching","language":"en","utterance":"How can I improve my students' reading speed?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.014","stratum":"coaching","language":"en","utterance":"My class has 60 students and only 30 textbooks. Any suggestions?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.015","stratum":"coaching","language":"en","utterance":"What is a good way to start a lesson on the solar system?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.016","stratum":"coaching","language":"en","utterance":"How do I keep class 1 students engaged for a full period?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.017","stratum":"coaching","language":"en","utterance":"Should I correct every spelling mistake in a student's notebook?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.018","stratum":"coaching","language":"en","utterance":"Explain the difference between a simile and a metaphor","notes":"An imperative with no domain noun — the gate declines on the noun check rather than the verb check.","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.019","stratum":"coaching","language":"en","utterance":"What are some good classroom management techniques for large classes?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.020","stratum":"coaching","language":"en","utterance":"My students are afraid of maths. How do I build their confidence?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.021","stratum":"coaching","language":"en","utterance":"How do I teach English to students who only speak Marathi at home?","notes":"Names two languages and is not a request for output in either. Nothing may be routed, so the language trap cannot fire — but a classifier that treats a named language as a routing signal shows up here.","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.022","stratum":"coaching","language":"en","utterance":"Give me tips to create a better worksheet","notes":"DEFEATS THE GATE ON PURPOSE, like coach.en.012 — \"create\" and \"worksheet\" are 3 tokens apart with an imperative opener. Advice about worksheets, not a worksheet.","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.023","stratum":"coaching","language":"en","utterance":"Make sure the students have finished their homework before the test","notes":"The gate's own documented negative: verb and noun are eleven tokens apart, outside the six-token window.","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.024","stratum":"coaching","language":"en","utterance":"Ideas for a science exhibition project for class 7","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hin.001","stratum":"coaching","language":"hinglish","utterance":"Bacchon ko fractions kaise samjhaun?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hin.002","stratum":"coaching","language":"hinglish","utterance":"Meri class mein bahut shor hota hai, kya karun?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hin.003","stratum":"coaching","language":"hinglish","utterance":"Class 5 ke bachche padhai mein dhyan nahi dete, kaise thik karun?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hin.004","stratum":"coaching","language":"hinglish","utterance":"Kya homework roz dena chahiye?","notes":"Contains \"chahiye\", which IS a gate command verb, but no domain noun — the noun check is what declines it.","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hin.005","stratum":"coaching","language":"hinglish","utterance":"Angreji bolna kaise sikhaayein?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hin.006","stratum":"coaching","language":"hinglish","utterance":"Vigyan ko interesting kaise banayein?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hin.007","stratum":"coaching","language":"hinglish","utterance":"Parents ko meeting mein kaise bulayein?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hin.008","stratum":"coaching","language":"hinglish","utterance":"Maths mein weak bachchon ki madad kaise karun?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hin.009","stratum":"coaching","language":"hinglish","utterance":"Ek achha lesson plan kaise banaye?","notes":"\"banaye\" is a gate command verb and \"plan\" is not a Phase 1 domain noun — the scoped noun list is what keeps this on the coach path.","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hin.010","stratum":"coaching","language":"hinglish","utterance":"Test se pehle revision kaise karvayein?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hin.011","stratum":"coaching","language":"hinglish","utterance":"Bade class mein discipline kaise banaye rakhein?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hi.001","stratum":"coaching","language":"hi","utterance":"बच्चों को भिन्न कैसे समझाएँ?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hi.002","stratum":"coaching","language":"hi","utterance":"मेरी कक्षा में बहुत शोर होता है, क्या करूँ?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hi.003","stratum":"coaching","language":"hi","utterance":"कक्षा 3 के बच्चों को पढ़ने में रुचि कैसे जगाएँ?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hi.004","stratum":"coaching","language":"hi","utterance":"विज्ञान पढ़ाने का सबसे अच्छा तरीका क्या है?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hi.005","stratum":"coaching","language":"hi","utterance":"छात्रों का आत्मविश्वास कैसे बढ़ाएँ?","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.en.025","stratum":"coaching","language":"en","utterance":"How do I make a worksheet that keeps class 2 interested","notes":"An interrogative opener with NO question mark. Added at M7a after an injected-defect proof showed the corpus could not detect the gate's question-opener guard being deleted: every other coaching case carried a '?', so the cheaper punctuation check masked it. Teachers frequently omit the mark.","expected":{"decision":"passthrough","actionId":null,"slots":{}}}
+{"id":"coach.hin.012","stratum":"coaching","language":"hinglish","utterance":"Kaise ek achha quiz banaye bina bore kiye","notes":"The Hinglish half of coach.en.025 — interrogative opener, no question mark, command verb and domain noun within the proximity window.","expected":{"decision":"passthrough","actionId":null,"slots":{}}}

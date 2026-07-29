@@ -20,14 +20,14 @@
 | **Current Branch** | `feature/ai-action-router` |
 | **Base Branch** | `main` |
 | **Current Phase** | Phase 1 — Generator only |
-| **Current Milestone** | **M6 — Client wiring** ✅ **COMPLETE — awaiting review/approval** |
-| **Overall Progress** | **60%** (planning + M0 + M1 + M2 + M3 + M4 + M5 + M6 complete) |
-| **Current Status** | 🟢 Healthy — M6's full gate is green: **312 client tests** (3 consecutive runs), **943 server tests unchanged**, both lints, build, bundle **+5.2 kB gzip** against a 15 kB budget, **twelve injected-defect proofs all detected**, and the **complete 20-step manual script executed in a live signed-in browser against live Gemini with ZERO defects found in M6 code** |
+| **Current Milestone** | **M7b — Prompt/schema tuning** ✅ **COMPLETE — awaiting review/approval** |
+| **Overall Progress** | **73%** (planning + M0 → M6 + M7a + M7b complete) |
+| **Current Status** | 🟡 Healthy, with the primary target unmet — **one of four candidates survived measurement**. C4 (a registry-derived response-schema bound) cut GF-1 degeneration 10 → 7 and lifted routing recall 85.8% → 89.6%; **three prompt candidates were measured and rejected**. **Grade extraction — M7b's primary target — is unchanged at ~20%**, and two independent prompt mechanisms aimed at it made it worse. All five safety gates PASS. The frozen M7a baseline, corpus and cassettes are byte-identical |
 | **Architecture Status** | ✅ **Approved** (reviewed 3×, 12 amendments applied — see §5.3) |
-| **Implementation Status** | ✅ **M0–M6 complete** — contracts frozen, registry live behind flags, catalog serving, the full 12-stage pipeline, and **the composer now routes end to end**: a teacher types "Generate a Class 5 fractions worksheet" and lands on a prefilled Generator. Both flags default OFF |
+| **Implementation Status** | ✅ **M0–M6 + M7a + M7b complete** — contracts frozen, registry live behind flags, catalog serving, the full 12-stage pipeline, the composer routing end to end, a frozen measured baseline, and **one evidence-backed tuning change accepted out of four tried**. Both flags default OFF |
 | **Last Updated** | 2026-07-29 |
 | **Governance** | 🔒 **Milestone Completion Protocol in force** — see [§21](#21-milestone-completion-protocol-mandatory). One milestone at a time; full verification gate before the next begins; explicit user approval required to proceed |
-| **Next Task** | ⏸️ **Awaiting user approval of M6.** Next is **M7 — eval harness + tuning** (≥120 labelled utterances), which is **launch-blocking** and is the go/no-go decision point for Phase 2. M6's live testing produced **five new eval seeds** (§9) — all recorded, none tuned |
+| **Next Task** | ⏸️ **Awaiting user approval of M7b.** Three decisions now have evidence behind them: **D5 descriptor `examples`** (the only untried lever for slot extraction, now that preamble tuning is measured to fail), **D4 routing temperature** (GF-1 survives a schema bound; needs the protected `gemini.js`), and **GF-6** (every remaining non-noise failure is a bare topic-less command). Then **M8 — telemetry** |
 
 ### Progress basis (keep this calculation consistent)
 
@@ -43,8 +43,16 @@ Progress % is weighted by estimated effort-days, not by milestone count.
 | M4 — vocabulary + resolver + policy | 3.0 | ✅ Complete | 8.0% |
 | M5 — classifier + `/interpret` (dark) | 4.0 | ✅ Complete | 10.7% |
 | M6 — client wiring | 4.0 | ✅ Complete | 10.7% |
-| M7 → M10 implementation | 15.0 | ⬜ Not started | 0% |
-| **Total** | **37.5** | | **≈ 60.0%** → reported as **60%** |
+| **M7a — eval corpus, harness, baseline** | **3.5** | ✅ **Complete** | **9.3%** |
+| **M7b — tuning + re-measure** | **1.5** | ✅ **Complete** | **4.0%** |
+| M8 → M10 implementation | 10.0 | ⬜ Not started | 0% |
+| **Total** | **37.5** | | **≈ 73.3%** → reported as **73%** |
+
+> **M7's 5.0 d is split into M7a (3.5 d, measurement) and M7b (1.5 d, tuning)** at the
+> project owner's instruction. The split is not cosmetic: spec §1.2's fourth ordering rule is
+> *"evals before tuning — the corpus exists before any threshold moves"*, and eight recorded
+> failure seeds were waiting to be tuned against. Tuning before a baseline existed would have
+> meant never being able to prove the tuning helped.
 
 > The reported figure is now simply the effort-weighted total rounded to the nearest point. The
 > earlier +2-point adjustment (which credited M0's delivery of the three planning documents) has been
@@ -492,7 +500,9 @@ passthrough for one release after the client stops calling it.
 | `server/src/assistant/` | **Intent Gateway.** Utterance → ResolvedAction. Depends on `actions/`; never the reverse |
 | `server/src/routes/assistant.js` | HTTP shell only: auth, rate limit, envelope validation, delegate, shape response |
 | `server/src/lib/flags.js` | Boolean env parsing (mirrors the `config.js` clamp-and-warn style) |
-| `server/evals/` | Classification quality corpus + runner. **Outside `test/`** — not a CI gate |
+| `server/evals/` | Classification quality corpus + runner (M7a/M7b). **Outside `test/`** — the LIVE corpus is not a CI gate. `corpus/`, `cassettes/`, `baselines/`, `golden_failures.md`, `TUNING_LOG.md` and `lib/` are tracked; `runs/` is gitignored. **The M7a corpus, cassettes and baseline are FROZEN and the freeze is enforced in code** |
+| `server/test/evals/` | The deterministic half (M7a): corpus integrity, the scorer's own tests, cassette record/replay, and the **full-corpus replay CI gate**. Measures the pipeline, never the model |
+| `client/src/assistant/intentGate.eval.test.ts` | Gate precision/recall over the **same** corpus (M7a). Test-only file read; zero bundle impact |
 | `client/src/assistant/` | Everything AI-routing. Self-contained and deletable |
 | `client/src/assistant/handlers/` | The ONLY place AI navigation route strings appear |
 | `client/src/components/AiPrefillBanner.tsx` | Presentational only |
@@ -506,6 +516,7 @@ passthrough for one release after the client stops calling it.
 | `server/src/index.js` | Mount assistant router; construct `geminiFast`; new env tunables; assistant limiter; **add a limiter to `/api/resources/generate`** | additive — **M2 +29 / −0, M5 +52 / −0** |
 | `server/src/routes/resources.js` | Replace the inline `generateSchema` definition with an import. **Nothing else** | ~15 lines relocated |
 | `server/src/routes/assistant.js` | `GET /catalog` (M2); `POST /interpret` + envelope schema (M5); rollout gate made to fail closed (M5) | additive — M5 +198 / −8, all 8 deletions being comment lines or the Prisma call re-indented into a try/catch |
+| `server/src/assistant/proposalSchema.js` | **M7b**: free-text slots declare `maxLength` in the Gemini response schema (candidate C4), derived from the registry's own `slot.type` rather than naming `topic`. The application's accept bound is unchanged, so it can neither admit nor reject anything it did not before | additive — **+49 / −0** |
 | `server/.env.example` | Document ~8 new variables | additive. **Amended at M5**: the routing model endpoint, because the M0-documented `gemini-2.5-flash-lite` was retired and returns 404 |
 | `client/src/App.tsx` | Wrap `AppRoutes` in `RouterProvider` | **actual at M6: +7 / −1** — insertion only, provider order untouched |
 | `client/src/pages/CoachPage.tsx` | Route submissions through the router pre-pass; render clarify chips | **actual at M6: +42 / −2** (est. ~40). One import line; the flag-off path stays synchronous |
@@ -516,6 +527,9 @@ passthrough for one release after the client stops calling it.
 | `client/package.json` | `vitest` + `jsdom` **devDependencies** and a `test` script (M3) | ~5 lines |
 | `client/package-lock.json` | Lockfile for the above | generated |
 | `.github/workflows/ci.yml` | **Conditional** — only if a client test runner is added. Added at M3 | ~6 lines |
+| `server/package.json` | **M7a**: `eval` / `eval:replay` / `eval:compare` scripts, and `lint` extended from `eslint src` to `eslint src evals`. Unlinted JavaScript is how a typo'd scorer reports 100% | +5 / −2 |
+| `client/tsconfig.json` | **M7a**: `"exclude": ["src/**/*.eval.test.ts"]`. The gate eval reads the shared corpus with `node:fs`, which this browser tsconfig has no types for. Excluded from the build's type-check rather than solved with `@types/node`, which would make Node globals visible to **all** client source and could let a real `process.env` mistake in app code type-check cleanly. Every other `*.test.ts` stays type-checked | +9 (8 comment) |
+| `.gitignore` | **M7a**: `server/evals/runs/` — per-run working artifacts. The corpus, cassettes and promoted baseline are tracked | +4 |
 
 > **What this table does and does not cover (clarified at M4).** It is the complete list of
 > **shipped application files** that may be modified. It has never covered documentation — this
@@ -580,7 +594,8 @@ schema extraction, which stands on its own merits.
 | **M4** | Vocabulary + resolver + policy (pure modules) | 3.0 d | ✅ **Completed** | 2026-07-28. 3 vocabulary mappers + resolver + policy, all pure. **257 new tests** (87 in the grade suite over 79 tabulated phrases, against the ~40 planned). Policy proven by **exhaustive enumeration of its complete 288-combination input space** — no coverage dependency added. Third drift pair guarded. **Zero production callers**, proven by module-graph inspection |
 | **M5** | Classifier + `/interpret` endpoint (dark) | 4.0 d | ✅ **Completed** | 2026-07-28. `geminiFast`, registry-derived prompt + `responseSchema`, 12-stage pipeline, endpoint. **943 tests (+159)**, 5× no flakiness. Verified against **live Gemini**. The G4 injected-defect proof exposed that the guard was unreachable dead code, and the no-5xx proof exposed a **real 500** in the rollout gate — both fixed. Bundle byte-identical |
 | **M6** | Client wiring | 4.0 d | ✅ **Completed** | 2026-07-29. Gate (CHANGE-2), repeat cache, session memory, breaker, catalog, provider, executor, handler map, CoachPage integration, CHANGE-3, CHANGE-9. **312 client tests (+242)**, 3× no flakiness; **server untouched — `git diff --stat server/` empty**; bundle +5.2 kB gzip; **12/12 injected-defect proofs detected**; **full 20-step manual script executed against live Gemini, zero defects**. CHANGE-7 proven with a no-remount sentinel; CHANGE-9 proven in both halves |
-| **M7** | Eval harness + tuning | 5.0 d | ⬜ Pending | ≥120 labelled utterances (EN / Hinglish / HI / adversarial). **Launch-blocking** |
+| **M7a** | Eval corpus, harness, baseline (**measurement only**) | 3.5 d | ✅ **Completed** | 2026-07-29. **196 labelled turns** (157 single + 15 sessions) across 8 strata; record/replay harness at the `fetchImpl` seam; deterministic full-corpus CI gate; **62 new server tests + 5 client**; baseline recorded against `gemini-3.5-flash-lite` with **precision 95.8%, recall 85.8%, Hinglish precision 100%**, and **grade slot accuracy 23.9%** against a DoD target of 85%. All five hard gates pass. **Seven failure classes recorded in `golden_failures.md`; nothing tuned** |
+| **M7b** | Prompt/schema tuning + re-measure | 1.5 d | ✅ **Completed** | 2026-07-29. **4 candidates measured, 1 accepted.** C4 (free-text slots bounded in the response schema, registry-derived) cut GF-1 10 → 7 and lifted recall 85.8% → 89.6%; **C3, C1 and C2 were rejected on evidence and recorded in `TUNING_LOG.md`**. **Grade extraction unchanged at ~20% — the primary target was NOT met**, and two independent prompt mechanisms aimed at it measurably hurt it. Frozen baseline, corpus and cassettes untouched; `gemini.js` untouched |
 | **M8** | Telemetry | 2.0 d | ⬜ Pending | *Parallel with M7.* Split channels per CHANGE-6 |
 | **M9** | Hardening | 3.0 d | ⬜ Pending | Rate limits, budgets, CHANGE-8 breaker, security review, deletability test |
 | **M10** | Internal rollout | 5.0 d | ⬜ Pending | Dark → team → pilot school → all teachers |
@@ -770,6 +785,37 @@ schema extraction, which stands on its own merits.
 | 2026-07-29 | **Two throwaway verification harnesses used, and recorded rather than hidden** | 📋 **Documented** | The live model fills `format` on essentially every phrasing, so a chip-bearing `ask` and a slow response were not reproducible against it. Two local proxies (scratchpad only, never in the repo) forwarded everything to the real backend except `/interpret`: one returned a fixed `ask`, one delayed 3.5 s. **Both exercised the real client unmodified** — provider, `AiClarifyPrompt`, `completeAsk`, executor, draft store, Generator. The server half of `ask` needed no harness: it was already proven by 943 tests and by a live probe that returned a well-formed `ask`. Stated because verification that quietly substitutes a stub for the system under test is worth nothing unless the substitution is named |
 | 2026-07-29 | **The harness boundary, stated precisely, because a vague one is worthless as a record** | 📋 **Documented** | **(1) Scope:** each proxy carried exactly ONE interception condition — `POST /api/assistant/interpret`. Every other route reached the real backend untouched, **including `GET /api/assistant/catalog`**, `/api/coach`, `/api/auth/*` and `/api/resources/generate`. So the catalog fetch, the coach fallback, the Generate path and auth were never stubbed on any step. **(2) No product change:** no production code, routing logic or UI implementation was modified for verification — the only diff since the code-complete report is documentation, and every injected defect had already been restored and re-verified green *before* manual verification began. What WAS driven at runtime, and is not a code change: page-context JavaScript to type into the composer, to shadow `sessionStorage` for the disabled-storage step, and to mount a 386 px iframe for the mobile step — all transient and gone on reload. **(3) Removal:** both proxies were stopped and their files deleted; the repo never contained them, verified by an untracked-file search |
 | 2026-07-29 | **Generate path regression verified end to end from an AI-prefilled form** | ✅ | Clicking Generate on a routed prefill produced a real worksheet with the school letterhead, class/subject header, name/roll fields, instructions and questions; the button became "Regenerate" and the banner auto-dismissed. **The router contributes initial `useState` values and a banner — that is the entire integration**, and `client/src/lib/resources.ts` has an empty diff as the standing proof |
+| 2026-07-29 | **M7 SPLIT into M7a (measurement) and M7b (tuning)** by owner instruction, with four further adjustments: thresholds stay informational until the first baseline is reviewed; every baseline records `modelVersion` + `promptHash` + `descriptorHash` + `registryHash`; a tracked `golden_failures.md`; and replay CI must always execute the complete corpus | ✅ **Binding** | Spec §1.2 rule 4 is "evals before tuning". Eight failure seeds from M5/M6 were waiting to be tuned against, and tuning before a baseline existed would have meant never being able to prove the tuning helped |
+| 2026-07-29 | **M7a pre-flight probe: the floating alias HAS MOVED.** `gemini-flash-lite-latest` now resolves to **`gemini-3.5-flash-lite`** | ✅ | Exactly the risk M5 accepted when it chose an alias over a pin, and exactly why adjustment 3 requires `modelVersion` in every baseline. Verified with a real `generateContent` call in the classifier's own request shape — never `models.list`, per M5's lesson |
+| 2026-07-29 | **Design decision: record/replay at `GeminiService`'s `fetchImpl` seam, not at `classify`** | ✅ | The constructor already accepts `fetchImpl`, so this needed **zero new seams and zero production-file changes**, including none to the protected `gemini.js`. Replay therefore exercises gemini.js's parsing, the classifier, the proposal gate, the resolver and the policy **for real** — only the socket is substituted. Recording at `classify` would have stubbed four of those and turned the CI gate into a test of the scorer |
+| 2026-07-29 | **Design decision: the corpus is DATA, read by both sides** | ✅ | `client/src/assistant/intentGate.eval.test.ts` reads the same `server/evals/corpus/*.jsonl` the server runner reads. Copying it into `client/` would have made a fifth home for knowledge; porting `isCommand` into the runner would have been a second implementation of the gate. Test-only file read — the bundle is byte-identical and the client build does not depend on `server/` existing |
+| 2026-07-29 | 🔴 **First smoke run scored a RATE LIMITER as model quality** — 64 calls in 34 s tripped the upstream per-minute cap and produced 22 consecutive `classifier_error` turns, counted as false negatives | ✅ **Fixed** | Live runs are now paced (default 4.2 s/turn ≈ 14 rpm) and every run records its upstream HTTP status counts, so an `infra` attribution is self-diagnosing instead of leaving the reader to guess. **The attribution column is what caught this** — it flagged the failures as CODE/OPS rather than letting them enter a baseline as a model result |
+| 2026-07-29 | ⚠️ **Pacing was first implemented INSIDE the fetch seam, which sat inside gemini.js's own 5 s deadline** and starved the real call | ✅ **Fixed** | Moved to between `interpret()` calls. Recorded because the failure looked exactly like the problem it was meant to solve |
+| 2026-07-29 | 🔴 **A cassette MISS was being scored as `classifier_error`** — i.e. as model quality | ✅ **Fixed** | `interpret.js` runs stages 5-12 inside a total catch and `classifier.js` maps any thrown error to a passthrough reason. That design — correct on its own terms — silently swallowed the replayer's "loud" miss error. **The throw alone was not the guarantee**: misses are now recorded in the seam's state and the runner refuses to report any run that had one, naming every missing case. Found because one case (`cmd.hin.014`) had no cassette and the run still reported a number |
+| 2026-07-29 | 🔴 **A recorded 503 was baked into the cassettes**, where it would have replayed forever as a deterministic "model failure" | ✅ **Fixed** | `saveCassettes` now refuses to persist any non-2xx response and names what it dropped. The poisoned entry (`coach.en.023`) was purged and re-recorded |
+| 2026-07-29 | **Design decision: ambiguous cases are QUARANTINED from the headline metrics** | ✅ | 13 cases carry an `acceptable` set and are excluded from precision, recall and the FP/FN counts. Anti-gaming: if they counted, the cheapest way to raise precision would be to relabel the awkward ones, and a threshold could be met without changing behaviour. Moving a case into the bucket after seeing a score is forbidden, which is why corpus review precedes any run |
+| 2026-07-29 | **Two vocabulary gaps found while authoring, and deliberately NOT fixed** | ✅ **Recorded as GF-7** | `angreji` is in the LANGUAGES table but absent from SUBJECTS; `samajik vigyan` maps to Science because the token scan hits `vigyan`. Both are labelled to the **correct** answer so they surface as measured failures. Labelling them to current behaviour would have baked a gap into the baseline as though it were correct — which is how an eval stops being able to find anything |
+| 2026-07-29 | **Finding: the emergency short-circuit is ENGLISH-ONLY** (GF-5) | ⚠️ **Open — owner decision** | `EMERGENCY_SITUATION_PATTERNS` matches English only, so Hindi and Hinglish emergency descriptions do not trip stage 6 and the classifier does run on them. **All ten emergency cases still pass through** — nothing is routed into a worksheet form, and the hard gate passes — but the zero-latency guarantee holds only for the English seven. `inputGuard.js` is a protected area and this predates the router; recorded, not fixed |
+| 2026-07-29 | 🔴 **THE HEADLINE MODEL FINDING (GF-1): output degeneration blows the token budget.** The model gets intent and slots right, then repeats garbage into `topic` until it hits `maxOutputTokens`, truncating the JSON so it will not parse | ⚠️ **Open — M7b owns it** | 10/196 turns (5.1%). Every affected cassette shows `finishReason: MAX_TOKENS` and `candidatesTokenCount` 495-498 against a 512 cap. **This is the same defect M5 and M6 recorded as "topic garbling" — the corpus revealed the mechanism.** Not a pipeline defect: `classifier.js` handles unparseable output exactly as designed |
+| 2026-07-29 | 🔴 **`grade` slot accuracy is 23.9% (16/67) against a Definition-of-Done target of 85%** (GF-2) | ⚠️ **Open — M7b owns it** | The largest gap in the project. Attribution verified rather than assumed: `mapGrade` handles 79 tabulated phrases and every corpus label was checked against the real `paramSchema` before the run, so the deterministic half is not implicated. `subject` 18.2%, `difficulty` 16.7%, `questionCount` 11.1%, `questionType` 0% show the same shape |
+| 2026-07-29 | **Baseline recorded and promoted.** Precision **95.8%**, recall **85.8%**, **Hinglish precision 100.0%**, all five hard gates PASS | ✅ | Against `gemini-3.5-flash-lite`, corpus hash `6e1b2e5c8bf20f08`, 196 turns. **The architecture document's Phase 2 go/no-go — Hinglish precision below ~85% — is cleared at 100% (21/21)**, with the thin-denominator caveat recorded in `BASELINE.md` |
+| 2026-07-29 | 🔴 **TWO injected-defect proofs FAILED TO FAIL, and both forced real fixes** | ✅ **Fixed** | (1) Hardcoding the **language-trap hard gate** to `pass: true` broke nothing — `scoreOne`'s per-turn flag was tested but the aggregate that actually gates a release was not. Every other hard gate had that test; this one did not. (2) Widening the client gate's proximity window 6 → 30 passed the loose precision/recall floors, so the gate eval was replaced with a **pinned-count regression assertion** rather than a threshold. *A guard that cannot fail is not a guard* — the M5 G4 precedent, found the same way |
+| 2026-07-29 | **A third proof exposed a corpus COVERAGE gap** — deleting the gate's question-opener guard changed nothing, because every coaching case carried a `?` and the cheaper punctuation check masked it | ✅ **Fixed** | Two unpunctuated interrogative cases added (`coach.en.025`, `coach.hin.012`), recorded live, and the baseline re-promoted at 196 turns. Teachers frequently omit the mark, so this was a real gap and not a test artifact. Neither case moved a headline metric |
+| 2026-07-29 | **M7a verification complete.** Server **1005 tests / 38 files** (+62), 3 consecutive runs, no flakiness · client **317 tests** (+5) · both lints clean · client build ✅ · **bundle byte-identical to M6** (986,440 raw / 282,640 gzip) · `git diff --stat server/src/ client/src/pages/ client/src/App.tsx` **empty** · zero migrations · zero new dependencies | ✅ | See the M7a Milestone Completion Report |
+| 2026-07-29 | 📋 **`client/tsconfig.json` modified — a file §7.2 does not list** | ✅ **Recorded** | The gate eval reads the shared corpus with `node:fs`, which the browser tsconfig has no types for, so `tsc -b` failed. Fixed with a narrowly scoped `"exclude": ["src/**/*.eval.test.ts"]` rather than by adding `@types/node`, which would have made Node globals visible to all client source and could let a real `process.env` mistake in app code type-check cleanly. **Same class of finding as M3's `package.json` omission: the change was right, the table was incomplete** |
+| 2026-07-29 | **M7a complete — awaiting user review and approval. M7b not started; no prompt tuning performed** | ⏸️ | Per §21. Two owner decisions block M7b: freeze the thresholds, and resolve GF-6 |
+| 2026-07-29 | **M7a APPROVED. Baseline and thresholds FROZEN**; M7b authorized with seven decisions | ✅ **Binding** | D1 leave GF-6 untouched · D2 routing numbers are regression references, the five safety gates absolute · D3 schema `maxLength` allowed · **D4 `gemini.js` NOT approved — exhaust C1-C4 first** · D5 no descriptor changes yet · D6 vocabulary fixes deferred · D7 dev/holdout split approved |
+| 2026-07-29 | **The freeze is enforced in CODE, not by discipline** | ✅ | `saveCassettes` refuses to rewrite `classifier.json`; `--promote` refuses `baselines/baseline.json`; baselines are resolved **by hash** so the frozen reference and the active baseline can be different files. A single careless `--record` would otherwise have rewritten the reference silently — and a re-recorded cassette still replays fine, it just no longer describes the run the thresholds were measured on |
+| 2026-07-29 | **Dev/holdout split added** — deterministic, stratified, whole-sessions-only, computed at load time | ✅ | Iterating prompts against the same 196 turns then reporting on them makes the numbers optimistic by an unknown amount and no metric can detect it. The split does not fix that; it makes it **visible**. **The corpus files are untouched** (decision D7) |
+| 2026-07-29 | 🔴 **A protected-file collision was DISSOLVED rather than escalated** | ✅ | C4's first form bounded every slot and broke `proposalSchema.test.js`, an existing test — protected area #12. Rather than edit it, the bound was narrowed to **free-text slots only, derived from the registry's own `slot.type`**. That is both more principled (only `topic` ever degenerated) and touches no test: **287 assistant tests pass with zero test modifications** |
+| 2026-07-29 | **C4 ACCEPTED** — free-text slots declare `maxLength: 120` in the Gemini response schema | ✅ | Full corpus vs frozen: precision 95.8% → **96.9%**, recall 85.8% → **89.6%**, false negatives 15 → **11**, GF-1 errors 10 → **7**, hallucination still **0** on every slot, all five hard gates PASS. Flip table 13 FIXED / 9 BROKEN — and **7 of the 9 breaks are stochastic `classifier_error` or an upstream safety block**, leaving 2 real, both bare topic-less commands of the GF-6 family |
+| 2026-07-29 | **C3 REJECTED** (topic-brevity prompt rule) | ✅ **Recorded** | Improved topic cleanliness (dirty spans 16 → 10) but **failed its primary target**: GF-1 errors 4 → 6 and precision down. Worth revisiting if topic cleanliness ever becomes a goal in its own right — it is the only candidate that moved it |
+| 2026-07-29 | **C1 and C2 REJECTED** — two independent prompt mechanisms aimed at slot recall, both made it WORSE | ✅ **Recorded** | C1 (explicit recall instruction): grade 8/38 → 6/35, subject 3/9 → 2/9, recall 93.0% → 84.2%. C2 (few-shot worked example): grade 8/38 → 5/34. Both BLOCKED. The hypothesis was well-founded — hallucination measured **zero on every optional slot**, so there was budget to push recall — and it was simply wrong. **This is M7b's most useful result: the preamble is not the lever for slot extraction on this model**, which makes descriptor `examples` (D5) the evidence-backed next step rather than a guess |
+| 2026-07-29 | ⚠️ **GF-2 (grade extraction) NOT FIXED — the primary M7b target was not met** | ⚠️ **Open** | Grade accuracy is **unchanged at ~20%** (16/67 frozen → 13/70 after C4, a three-case difference inside the demonstrated noise floor). Reported as unchanged rather than as an improvement or a regression, because the variance band that would settle it could not be taken |
+| 2026-07-29 | 🔴 **A real harness bug found by a whole-run failure**: `createReplayer` still defaulted to the frozen `classifier.json` after `loadCassettes` was changed to glob the directory | ✅ **Fixed** | Every M7b key missed, and the error message pointed at the corpus rather than the lookup. Caught because the cassette-miss guard invalidates the run instead of scoring the misses as model failures — the M7a fix earning its keep |
+| 2026-07-29 | ⚠️ **The `--repeat 3` variance band could NOT be taken. Both attempts failed on upstream quota** | ⚠️ **Documented limitation** | Attempt 1 saturated the per-minute limit (202 calls in 502 s; passes 2 and 3 almost entirely `passthrough`). Attempt 2 exhausted the **500/day free-tier cap** (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`): 126/126 × HTTP 429. **Neither is reported as a measurement.** Every candidate run was then checked against its recorded `upstreamStatuses` and all were clean (C1 and C2: 101/101 × 200), so the rejections stand on their own evidence — the status tracking added at M7a is what made that checkable rather than assumable |
+| 2026-07-29 | **M7b verification complete.** Server **1005 tests / 38 files**, 3 consecutive runs · client **317 tests** · both lints clean · client build ✅ **bundle byte-identical** · `gemini.js`, the corpus, the frozen cassettes and the frozen baseline all **byte-identical** · zero migrations · zero new dependencies | ✅ | Only `proposalSchema.js` (+49/−0) changed in production code |
+| 2026-07-29 | **M7b complete — awaiting user review and approval** | ⏸️ | Per §21. Three decisions now carry evidence: D5 (descriptor examples), D4 (routing temperature), GF-6 |
 
 ---
 
@@ -1151,13 +1197,60 @@ corpus exists to find out, and it should be read as M7's first question rather t
 - [x] **§21 step 4 — the UI half of the regression checklist**, including Generate end to end from an
       AI-prefilled form
 
-### M7 — Eval harness + tuning (5.0 d)
-- [ ] ≥120 labelled utterances: 60 action / 40 coaching / 20 adversarial
-- [ ] Coverage: English, Hinglish, Hindi
-- [ ] Runner with per-intent precision/recall and per-slot accuracy
-- [ ] Recorded-fixture mode for CI (deterministic, free)
-- [ ] Baseline recorded; thresholds tuned from data
-- [ ] **Decision point:** if Hinglish intent precision < ~85%, reconsider whether Phase 2 proceeds
+### ✅ M7a — Eval corpus, harness, baseline (3.5 d) — COMPLETE 2026-07-29
+
+**Measurement only. No prompt, model or vocabulary was tuned.**
+
+- [x] **196 labelled turns** — 157 single-turn + 15 multi-turn sessions, against a ≥120 requirement.
+      Strata: 72 commands · 40 coaching · 13 ambiguous · 10 emergency · 20 adversarial · 15 memory sessions
+- [x] Coverage: English (122 turns), Hinglish (37), Devanagari Hindi (22)
+- [x] Runner with routing precision/recall, per-slot extraction/accuracy/**hallucination**,
+      clarification, memory correctness, and **mandatory failure attribution**
+- [x] Record/replay at `GeminiService`'s existing `fetchImpl` seam — **zero production files modified**,
+      `gemini.js` untouched, and `modelVersion` capturable because it is in the response body
+- [x] **Deterministic offline CI gate** (`test/evals/replay.test.js`) — always the complete corpus,
+      exact match against `baseline.json`, per-case verdicts so a net-neutral change still fails
+- [x] Baseline recorded and promoted, with **modelVersion + promptHash + descriptorHash + registryHash**
+- [x] `golden_failures.md` — 7 recurring failure classes with first-appearance dates
+- [x] Client gate eval over the **same corpus, no second implementation** — gate precision 96.1%, recall 92.5%
+- [x] 11 injected-defect proofs, **two of which failed to fail** and forced real fixes
+- [x] **Decision point ANSWERED: Hinglish intent precision is 100.0% (21/21)** against the ~85%
+      threshold the architecture document set for reconsidering Phase 2. Caveat recorded: 21 cases
+      is a thin denominator and no variance band was taken
+
+### ✅ M7b — Tuning + re-measure (1.5 d) — COMPLETE 2026-07-29
+
+**Prompt and schema only. `gemini.js`, the descriptors, the vocabulary, the frozen
+corpus, the frozen cassettes and the frozen baseline are all untouched.**
+
+- [x] Dev/holdout split — deterministic, stratified, corpus files unmodified (D7)
+- [x] The freeze enforced **in code**: frozen cassette unwritable, frozen baseline
+      un-promotable, baselines resolved by hash so reference and active can differ
+- [x] **C4 ACCEPTED** — free-text slots bounded in the response schema, derived from
+      the registry's `slot.type`. Precision 95.8% → **96.9%**, recall 85.8% →
+      **89.6%**, FN 15 → **11**, GF-1 10 → **7**, hallucination still 0, 5/5 gates PASS
+- [x] **C3 REJECTED** — topic-brevity rule. Improved topic cleanliness, failed GF-1
+- [x] **C1 REJECTED** — recall instruction. Made grade *and* subject *and* recall worse
+- [x] **C2 REJECTED** — few-shot example. Same target, same direction, also worse
+- [x] Every rejection recorded with its numbers in `evals/TUNING_LOG.md`
+- [x] Every one of the 9 broken cases attributed individually (7 noise/upstream, 2 real)
+- [x] `golden_failures.md` updated with per-entry M7b outcomes
+- [ ] ⚠️ **PRIMARY TARGET NOT MET** — grade extraction unchanged at ~20%
+- [ ] ⚠️ **Variance band NOT taken** — both `--repeat 3` attempts died on upstream
+      quota (500/day free tier). Neither reported as a measurement
+
+**Three decisions now carry evidence and want a ruling:**
+
+- [ ] 🔴 **D5 — descriptor `examples`.** The only untried lever for slot extraction.
+      Preamble tuning is now *measured* to fail, so this is evidence-backed rather
+      than a guess. Changing them changes the prompt and needs a re-baseline
+- [ ] 🔴 **D4 — routing temperature.** GF-1 survived a schema bound at 7/196. The
+      likely cause is `temperature: 0.7 / topK: 40` in `gemini.js`, shared with the
+      Coach, with only `maxOutputTokens` overridable per instance. **Protected file**
+- [ ] 🔴 **GF-6.** Both remaining real failures are bare topic-less commands
+      ("Ek quiz banao", "Make a quiz"). The `open_generator` /
+      `generate_assessment` boundary is genuinely undrawn in the descriptors — a
+      product decision, not a tuning problem
 
 ### M8 — Telemetry (2.0 d)
 - [ ] Structured stdout decision logs (CHANGE-6)
