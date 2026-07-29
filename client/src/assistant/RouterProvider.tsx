@@ -27,6 +27,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -42,6 +43,7 @@ import { createCircuitBreaker, type CircuitBreaker } from './circuitBreaker';
 import { isCommand, normalizeUtterance } from './intentGate';
 import { completeAsk, resolveAskReply, type PendingAskState } from './pendingAsk';
 import { clearCache, readCached, writeCached } from './repeatCache';
+import { flushOnHide } from './telemetryTransport';
 import { advanceTurn, clearMemory, mergeMemory, readMemory } from './sessionMemory';
 import type { PendingAsk, ResolvedAction } from './types';
 
@@ -143,8 +145,12 @@ export function RouterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const dispatch = useCallback(
-    (action: ResolvedAction, utterance: string): RoutingOutcome => {
-      const outcome = executeAction(action, { navigate, utterance, domainOf: domainForAction });
+    (action: ResolvedAction, utterance: string, requestId?: string): RoutingOutcome => {
+      // `requestId` is absent on a repeat-cache hit, and deliberately so: the
+      // cache replays a decision made for an earlier request, and reusing that
+      // id would attach two deliveries to one decision. An unjoinable delivery
+      // is honest; a wrongly-joined one corrupts the metric.
+      const outcome = executeAction(action, { navigate, utterance, requestId, domainOf: domainForAction });
       return outcome === 'navigated'
         ? { result: 'navigated', utterance }
         : { result: 'passthrough', utterance };
@@ -238,13 +244,13 @@ export function RouterProvider({ children }: { children: ReactNode }) {
           // No memory is written here, matching the server, which refuses to
           // emit memoryUpdates on an ask: a turn that ended in a question has
           // not settled anything worth remembering.
-          setPendingAsk({ action, utterance });
+          setPendingAsk({ action, utterance, requestId: response.requestId });
           return { result: 'asked', utterance };
         }
 
         mergeMemory(response.memoryUpdates);
         if (action) writeCached(key, response.catalogVersion, action);
-        return action ? dispatch(action, utterance) : passthrough;
+        return action ? dispatch(action, utterance, response.requestId) : passthrough;
       } finally {
         setRouting(false);
       }
@@ -265,7 +271,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
 
       if (value !== null) {
         // Identical to a chip: no network, no model call (CHANGE-3).
-        return dispatch(completeAsk(pending.action, value), pending.utterance);
+        return dispatch(completeAsk(pending.action, value), pending.utterance, pending.requestId);
       }
 
       // Not an answer to this question — the teacher has moved on. Classify it
@@ -286,7 +292,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       const pending = pendingAskRef.current;
       if (!pending) return { result: 'passthrough', utterance: '' };
       setPendingAsk(null);
-      return dispatch(completeAsk(pending.action, value), pending.utterance);
+      return dispatch(completeAsk(pending.action, value), pending.utterance, pending.requestId);
     },
     [dispatch, setPendingAsk]
   );
@@ -306,6 +312,39 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     // values (decision D12), so none of them can leak the previous conversation
     // into the next one.
   }, [setPendingAsk]);
+
+  /**
+   * Telemetry's only lifecycle hook (M8).
+   *
+   * The provider owns it because a module singleton cannot register and tear down
+   * a listener, and this is the one place whose lifetime matches the feature's.
+   * GeneratorPage still does NOT consume this provider (G14): the transport is a
+   * module singleton both reach independently, so the page keeps its single
+   * import line and the folder stays deletable.
+   *
+   * `visibilitychange` rather than `unload`: on the target platform (low-end
+   * mobile Chrome) `unload` frequently never fires, while backgrounding a tab
+   * reliably goes hidden. Still best-effort, which is exactly why abandonment is
+   * derived from a missing outcome rather than reported by a beacon.
+   *
+   * With the flag off this registers nothing — no listener, no timer, no
+   * background activity of any kind.
+   *
+   * Placed below `submit` deliberately: the flags-off source guard in
+   * RouterProvider.test.ts pins the FIRST `if (!ASSISTANT_ENABLED)` in this file
+   * to submit's short-circuit, which is the check that makes "flags off ⇒ zero
+   * assistant requests" provable. Declaring this effect above it would have
+   * shadowed that guard without weakening the actual control, and a guard that
+   * silently points at the wrong line is worse than no guard.
+   */
+  useEffect(() => {
+    if (!ASSISTANT_ENABLED) return;
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flushOnHide();
+    };
+    document.addEventListener('visibilitychange', onHide);
+    return () => document.removeEventListener('visibilitychange', onHide);
+  }, []);
 
   const value = useMemo<AssistantRoutingValue>(
     () => ({

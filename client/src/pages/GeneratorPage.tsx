@@ -16,7 +16,12 @@ import { formatResponse } from '../lib/format';
 import { stripAssessmentPreamble } from '../lib/assessment';
 import { buildInitialExamMeta } from '../lib/examMeta';
 import { generateAssessment, createResource, type GenerateAssessmentInput } from '../lib/resources';
-import { discardPrefill, loadPrefill, notePrefillEdit } from '../assistant/generatorPrefill';
+import {
+  discardPrefill,
+  loadPrefill,
+  notePrefillEdit,
+  notePrefillGeneration,
+} from '../assistant/generatorPrefill';
 import type { ProvenanceSource } from '../assistant/types';
 import {
   ASSESSMENT_FORMATS, DIFFICULTIES, QUESTION_TYPES, LANGUAGES, GRADES, SUBJECTS,
@@ -165,9 +170,41 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
     setAiUtterance(prefill.utterance);
     setBannerDismissed(false);
     setRoutedVisit(true);
+    // A new draft is a new session, so it gets its own outcome (M8). Without
+    // this, routing a second time in the same mounted page — the CHANGE-7
+    // sequence — would silently report nothing.
+    reportedGeneration.current = false;
     // No generation request fires here. The teacher reviews, then presses
     // Generate — that review step is what makes prefilling safe at all.
   }, [draftId]);
+
+  // Whether this visit's prefill has already been reported as generated. The
+  // latch lives here as well as in the transport because the cheapest place to
+  // not fire an event is before calling anything at all.
+  const reportedGeneration = useRef(false);
+
+  // The `generated` outcome (M8) — the half of the field-edit rate that says the
+  // routing actually worked.
+  //
+  // ─── WHY THIS IS AN OBSERVER AND NOT A LINE IN handleGenerate ────────────
+  // `handleGenerate` is a protected area (README §6 #1), and spec §6.7 is
+  // explicit: "Router concepts inside handleGenerate, handleSave or any request
+  // body mean the integration has overreached." So the fact is established from
+  // OUTSIDE instead. `content` becomes non-null only when a generation
+  // succeeded, and AI provenance being present means those fields came from a
+  // prefill. Together they are exactly the event, and the generation path gains
+  // zero lines and zero router imports.
+  //
+  // Latched per visit, so pressing Regenerate does not report a second outcome —
+  // which is also what keeps the two-rows-per-session ceiling true.
+  useEffect(() => {
+    if (reportedGeneration.current) return;
+    if (content === null) return;
+    if (Object.keys(provenance).length === 0) return;
+
+    reportedGeneration.current = true;
+    notePrefillGeneration();
+  }, [content, provenance]);
 
   // A field the router filled has been edited by hand. Its provenance becomes
   // 'user' (so undo leaves it alone — undo reverses the AI, not the teacher),

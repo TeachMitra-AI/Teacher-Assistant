@@ -129,6 +129,13 @@ describe('contract drift — pair A: server contracts vs client types', () => {
     ['ACTION_STATUSES', contracts.ACTION_STATUSES, 'ActionStatus'],
     ['SLOT_TYPES', contracts.SLOT_TYPES, 'SlotType'],
     ['VOCABULARIES', contracts.VOCABULARIES, 'VocabularyId'],
+    // M8. These two cross the wire in the OTHER direction — the client SENDS
+    // them to POST /api/assistant/events — which makes drift here a client that
+    // posts a value the server rejects, losing the whole batch silently. Exactly
+    // the class of failure this pair exists to catch, just travelling the other
+    // way.
+    ['ASSISTANT_EVENT_NAMES', contracts.ASSISTANT_EVENT_NAMES, 'AssistantEventName'],
+    ['PREFILL_OUTCOMES', contracts.PREFILL_OUTCOMES, 'PrefillOutcome'],
   ];
 
   test.each(PAIRS)('%s matches the client union exactly', (_name, serverValues, typeName) => {
@@ -151,7 +158,14 @@ describe('contract drift — pair A: server contracts vs client types', () => {
     // Guards against the quiet failure mode where a new vocabulary is added to
     // contracts.js and simply never gets a drift check.
     const covered = PAIRS.map(([name]) => name);
-    const serverSideOnly = ['PHASE1_DECISIONS', 'NON_ACTION_INTENTS'];
+    const serverSideOnly = [
+      'PHASE1_DECISIONS',
+      'NON_ACTION_INTENTS',
+      // M8. `Event.type` values. Storage-layer names that never appear on the
+      // wire — the client sends ASSISTANT_EVENT_NAMES and the server maps them
+      // to these, so there is no client union to drift from.
+      'ASSISTANT_EVENT_TYPES',
+    ];
     const allVocabularies = Object.entries(contracts)
       .filter(([, value]) => Array.isArray(value))
       .map(([name]) => name);

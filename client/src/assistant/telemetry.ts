@@ -42,7 +42,17 @@ export type AssistantTelemetryEventName =
   /** The teacher changed one AI-filled field. The numerator. */
   | 'field_corrected'
   /** The teacher cleared every AI field at once — a high-signal indicator that a routing was flatly wrong. */
-  | 'undo_all';
+  | 'undo_all'
+  /**
+   * The teacher pressed Generate with AI-filled fields present (M8).
+   *
+   * Recorded by an OBSERVER of the Generator's own state, never from inside
+   * `handleGenerate` — that function is a protected area, and the spec is
+   * explicit that router concepts appearing inside it mean the integration has
+   * overreached. Watching `content` become non-null while AI provenance is
+   * present establishes the same fact from outside.
+   */
+  | 'prefill_generated';
 
 export interface AssistantTelemetryEvent {
   name: AssistantTelemetryEventName;
@@ -97,6 +107,18 @@ export function recordFieldCorrection(actionId: string, field: string, from: Pro
 /** The teacher pressed "Clear AI fields". */
 export function recordUndoAll(actionId: string, fieldCount: number): void {
   emit({ name: 'undo_all', actionId, fieldCount, at: Date.now() });
+}
+
+/**
+ * The teacher generated with AI-filled fields present (M8) — the outcome that
+ * says the routing did its job.
+ *
+ * Carries no counts: the transport already holds the delivered field count for
+ * this session, and re-reporting it here would create a second number that can
+ * disagree with the first.
+ */
+export function recordGenerated(actionId: string): void {
+  emit({ name: 'prefill_generated', actionId, at: Date.now() });
 }
 
 /**

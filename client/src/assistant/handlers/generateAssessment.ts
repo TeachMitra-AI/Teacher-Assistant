@@ -39,6 +39,9 @@ export const generateAssessmentHandler: ActionHandler = (action, context) => {
     // Display-only, for the banner. encodeURIComponent below covers the handle,
     // never this — the utterance does not go near the URL.
     utterance: context.utterance,
+    // Opaque correlation id, carried so the Generator's telemetry can be joined
+    // to the decision that produced this draft (M8).
+    requestId: context.requestId,
   });
 
   if (!draftId) {

@@ -24,7 +24,28 @@ It depends on [`../actions/`](../actions/README.md). **`actions/` never depends 
 | `resolver.js` | Canonicalization, slot merge (`utterance > memory > profile > default`), provenance, memory TTL, contradiction detection, per-field param validation. No I/O, no AI, no clock | **M4** ✅ |
 | `policy.js` | The decision rules. Pure — signals in, decision out. Rule 0 (effect ceiling) then the Phase 1 clamp | **M4** ✅ |
 | `interpret.js` | Pipeline orchestration only. Thin, with no business rules of its own. Database-free via injected dependencies | **M5** ✅ |
-| `telemetry.js` | Low-volume `Event` rows for prefill-delivered + outcome. **Not created at M5** (decision D2) — the per-decision log is a structured stdout line emitted by the route, which costs no database write | M8 |
+| `telemetry.js` | **Both CHANGE-6 channels**: `logAssistantEvent` (the per-decision stdout line, moved here from the route at M8) and the low-volume `Event` writers for prefill-delivered + outcome. Never throws | **M8** ✅ |
+
+## The telemetry rules that are not obvious from the code
+
+**At most TWO `Event` rows per routed session.** `Event` is a rare-incident table on
+single-writer SQLite that also serves every authenticated request; one row per interpret call
+would turn it into a sustained write stream whose symptom arrives weeks later as generalized
+slowness nobody attributes to this feature (finding D → CHANGE-6). Corrections are therefore
+**counted into the outcome row**, never written individually — a teacher editing six fields
+produces six client-side events that the client collapses into one row before the network is
+touched.
+
+**`buildMetadata` constructs from an explicit key list, never by spreading the caller's object.**
+That is the structural half of G11: an event carrying an unexpected key cannot leak it, because
+nothing reads it. The "spread, then delete the dangerous keys" shape fails the moment somebody
+invents a new dangerous key.
+
+**A length bound is not a privacy control.** `actionId` was bounded at 60 characters and nothing
+else, and 60 characters is ample room for a topic — an integration test posted teacher text
+through it and watched it land in a stored row. Both `actionId` (registry membership) and
+`requestId` (UUID shape) are now constrained to values that cannot carry prose. If you add a
+string field here, assume it will be used to smuggle content until you have closed it the same way.
 
 ## Gate 2 is two checks, not one — read this before touching `proposalSchema.js`
 

@@ -24,6 +24,16 @@ export interface HandlerContext {
    * must never reach a URL, a log, or the server (G11, G12).
    */
   utterance: string;
+  /**
+   * The interpret response's correlation id (M8), stored with the draft so this
+   * prefill's telemetry can be joined to the decision that produced it.
+   *
+   * Opaque and server-minted. It is the exact opposite of `utterance` above:
+   * that one must never leave the tab, this one exists to go back — which is why
+   * they are documented together rather than in separate places where the
+   * distinction could be missed.
+   */
+  requestId?: string;
 }
 
 /**

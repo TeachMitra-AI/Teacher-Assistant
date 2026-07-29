@@ -23,7 +23,12 @@
 // which is the same outcome as any other failure and requires no new UI.
 
 import { api, ApiError } from '../api';
-import type { CatalogResponse, InterpretRequest, InterpretResponse } from './types';
+import type {
+  AssistantEventsRequest,
+  CatalogResponse,
+  InterpretRequest,
+  InterpretResponse,
+} from './types';
 
 /**
  * Six seconds. The server's own budget is five (§4.5: a 3.5 s per-call timeout
@@ -133,6 +138,35 @@ export async function postInterpret(body: InterpretRequest): Promise<InterpretOu
     return isInterpretResponse(raced) ? { status: 'ok', response: raced } : { status: 'rejected' };
   } catch (error) {
     return isTransportFailure(error) ? { status: 'unavailable' } : { status: 'rejected' };
+  }
+}
+
+/**
+ * Send a batch of telemetry events (M8).
+ *
+ * ─── THE ONLY WRITE THIS FEATURE PERFORMS ──────────────────────────────────
+ * And it writes only to the assistant's own `Event` rows — never to anything a
+ * teacher owns (G8). The payload is metadata by construction: no field in
+ * AssistantEvent can hold an utterance, a slot value or generated content.
+ *
+ * ─── NEVER THROWS, NEVER RETRIES ───────────────────────────────────────────
+ * The boolean is for tests and for the caller's own logging; the transport does
+ * not act on it. Telemetry sits on a teacher's edit path, so every failure mode
+ * — offline, 400, 429, expired session, server down — is the same outcome: the
+ * batch is dropped and the teacher notices nothing. Retrying would put a loop
+ * behind a form on a poor connection to recover a row that measures convenience.
+ *
+ * No deadline race here, unlike the two calls above: nothing is waiting on this
+ * response, so a slow request costs the teacher nothing and cancelling it would
+ * only lose data that was already in flight.
+ */
+export async function postAssistantEvents(body: AssistantEventsRequest): Promise<boolean> {
+  if (body.events.length === 0) return true;
+  try {
+    await api<unknown>('/assistant/events', { method: 'POST', body });
+    return true;
+  } catch {
+    return false;
   }
 }
 

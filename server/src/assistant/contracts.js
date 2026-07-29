@@ -132,6 +132,98 @@ const VOCABULARIES = Object.freeze(['GRADES', 'SUBJECTS', 'LANGUAGES']);
  */
 const NON_ACTION_INTENTS = Object.freeze(['unknown', 'coach_question']);
 
+// ---- Telemetry vocabularies (M8) --------------------------------------------
+// These are WIRE contracts, not internal labels: the client posts them to
+// POST /api/assistant/events and the server validates them as closed enums
+// before anything reaches the database. That closure is the privacy control —
+// see the note on ASSISTANT_EVENT_NAMES below.
+
+/**
+ * What the client may report about a prefill it delivered.
+ *
+ * A CLOSED set, and closed on purpose. The alternative — an open string
+ * describing what happened — is precisely how teacher-authored content
+ * eventually reaches a database: someone adds `detail` "just for debugging" and
+ * it carries a topic. There is nowhere here to put a value even by accident
+ * (G11), and the server rejects anything outside this list rather than storing
+ * it.
+ *
+ *   prefill_delivered — a draft was actually applied to the Generator's form.
+ *                       The DENOMINATOR of the field-edit rate. Note this is a
+ *                       different fact from the server deciding `prefill`: a
+ *                       decision that the teacher never saw (expired draft,
+ *                       storage disabled, navigated away) must not inflate the
+ *                       denominator, which is why only the client can report it.
+ *   prefill_outcome   — what the teacher then did with it. The NUMERATOR arrives
+ *                       here too, as a count of corrected fields, so a session
+ *                       costs at most two rows however many fields were edited.
+ */
+const ASSISTANT_EVENT_NAMES = Object.freeze(['prefill_delivered', 'prefill_outcome']);
+
+/**
+ * How a delivered prefill ended.
+ *
+ * `abandoned` is deliberately NOT in this list. It is derived at query time from
+ * a `prefill_delivered` row with no matching outcome, because the only way to
+ * emit it would be an unload beacon — and beacons are unreliable on exactly the
+ * low-end mobile browsers this product targets. An undercounted `abandoned`
+ * would read as good news, which is the worst direction for a metric to fail in.
+ *
+ *   generated — the teacher pressed Generate with AI-filled fields present. The
+ *               routing did its job.
+ *   undone    — the teacher pressed "Clear AI fields". The highest-signal
+ *               evidence that a routing was flatly wrong.
+ *   edited    — fields were corrected but no generation followed in this visit.
+ */
+const PREFILL_OUTCOMES = Object.freeze(['generated', 'undone', 'edited']);
+
+/**
+ * Largest batch POST /api/assistant/events accepts.
+ *
+ * A routed session produces at most two events, so this is roughly an order of
+ * magnitude of headroom for a teacher who routes repeatedly before the buffer
+ * flushes. It exists to bound the work a single request can ask the database to
+ * do, and it is enforced server-side rather than trusted from the client.
+ */
+const MAX_EVENT_BATCH = 20;
+
+/**
+ * Longest `Event.metadata` JSON string the writers will persist.
+ *
+ * A belt-and-braces bound, not the primary control: the schemas above already
+ * make oversized metadata impossible to construct. It exists so that a future
+ * field added carelessly cannot turn a rare-incident table into a blob store.
+ */
+const MAX_EVENT_METADATA_LENGTH = 2000;
+
+/**
+ * `Event.type` values this feature writes, and the ONLY types its prune script
+ * is permitted to delete.
+ *
+ * Prefixed `assistant_` so they are greppable, and so retention can be scoped
+ * with a prefix match that cannot reach `ai_safety_flag`, `user_approved` or the
+ * reliability rows — those are institutional records with entirely different
+ * retention needs, and a prune script that widens by accident would destroy them
+ * silently.
+ */
+const ASSISTANT_EVENT_TYPE_PREFIX = 'assistant_';
+const ASSISTANT_EVENT_TYPES = Object.freeze([
+  'assistant_prefill_delivered',
+  'assistant_prefill_outcome',
+]);
+
+/**
+ * How long assistant telemetry rows are kept.
+ *
+ * Ninety days is long enough to compare a rollout stage against the one before
+ * it and to see a week-over-week trend after a prompt change, and short enough
+ * that the table does not grow without bound on single-writer SQLite. Enforced
+ * by tools/pruneAssistantEvents.js, which is an operational step rather than a
+ * request-path cost — pruning inside the write path would put deletes on exactly
+ * the path CHANGE-6 exists to protect.
+ */
+const ASSISTANT_EVENT_RETENTION_DAYS = 90;
+
 // ---- Shapes -----------------------------------------------------------------
 // JSDoc typedefs rather than runtime validators: the runtime validation that
 // matters happens against zod schemas (proposalSchema.js in M5, and each
@@ -265,6 +357,29 @@ const NON_ACTION_INTENTS = Object.freeze(['unknown', 'coach_question']);
  * @property {string} requestId correlation id, also present in server logs
  */
 
+/**
+ * One telemetry event, as the CLIENT sends it (M8).
+ *
+ * Every field is metadata. There is deliberately no field capable of holding an
+ * utterance, a slot value, generated content, prompt text or model output — the
+ * privacy rule is enforced by the SHAPE, not by a reviewer remembering it.
+ *
+ * `requestId` is the opaque correlation id the interpret response already
+ * carried, echoed back so an Event row joins to its decision log line. It is the
+ * one identifier that crosses the two channels, and it is a UUID with no
+ * teacher-derived content.
+ *
+ * @typedef {object} AssistantTelemetryEvent
+ * @property {string} name an ASSISTANT_EVENT_NAMES value
+ * @property {string} actionId the action the prefill belonged to
+ * @property {string} [requestId] correlation id from the interpret response
+ * @property {number} [fieldCount] how many fields the prefill filled
+ * @property {number} [lowConfidenceCount] how many were marked uncertain
+ * @property {string} [outcome] a PREFILL_OUTCOMES value; prefill_outcome only
+ * @property {{field: string, from: string}[]} [corrections] field NAMES and their
+ *   previous PROVENANCE_SOURCES value. Never the values those fields held
+ */
+
 module.exports = {
   ASSISTANT_CONTRACT_VERSION,
   MAX_UTTERANCE_LENGTH,
@@ -279,4 +394,11 @@ module.exports = {
   SLOT_TYPES,
   VOCABULARIES,
   NON_ACTION_INTENTS,
+  ASSISTANT_EVENT_NAMES,
+  PREFILL_OUTCOMES,
+  MAX_EVENT_BATCH,
+  MAX_EVENT_METADATA_LENGTH,
+  ASSISTANT_EVENT_TYPE_PREFIX,
+  ASSISTANT_EVENT_TYPES,
+  ASSISTANT_EVENT_RETENTION_DAYS,
 };

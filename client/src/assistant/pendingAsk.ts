@@ -34,6 +34,15 @@ export interface PendingAskState {
   action: ResolvedAction;
   /** What the teacher originally typed — the coach's input if this is cancelled. */
   utterance: string;
+  /**
+   * The correlation id of the interpret call that asked the question (M8).
+   *
+   * Carried so that answering by chip — which is resolved entirely client-side
+   * with no second network call (CHANGE-3) — still produces telemetry that joins
+   * back to the decision. Without it the whole clarify path would be invisible
+   * in the metrics, which is exactly the path most worth measuring.
+   */
+  requestId?: string;
 }
 
 /**

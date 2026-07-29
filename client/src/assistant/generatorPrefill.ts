@@ -24,7 +24,12 @@ import {
   QUESTION_COUNT_MAX,
 } from '../config';
 import { markConsumed, readDraft } from './draftStore';
-import { recordFieldCorrection, recordPrefillApplied, recordUndoAll } from './telemetry';
+import { recordFieldCorrection, recordGenerated, recordPrefillApplied, recordUndoAll } from './telemetry';
+import {
+  notePrefillDelivered,
+  notePrefillGenerated,
+  notePrefillUndone,
+} from './telemetryTransport';
 import type { ProvenanceSource } from './types';
 
 /** The only action that prefills this page. A draft for anything else is ignored rather than guessed at. */
@@ -158,6 +163,17 @@ export function loadPrefill(draftId: string): GeneratorPrefill | null {
   const lowConfidenceFields = draft.lowConfidenceFields.filter((field) => applied.includes(field));
 
   recordPrefillApplied(ACTION_ID, applied.length, lowConfidenceFields.length);
+  // The field-edit rate's DENOMINATOR, reported from here rather than from the
+  // server's decision because only this point proves the prefill actually
+  // reached the teacher's form. Everything above this line is a way for a
+  // decided prefill to never be delivered.
+  notePrefillDelivered({
+    draftId,
+    actionId: ACTION_ID,
+    requestId: draft.requestId,
+    fieldCount: applied.length,
+    lowConfidenceCount: lowConfidenceFields.length,
+  });
 
   return { values, provenance, lowConfidenceFields, utterance: draft.utterance };
 }
@@ -179,4 +195,22 @@ export function notePrefillEdit(field: string, from: ProvenanceSource): void {
 export function discardPrefill(draftId: string, fieldCount: number): void {
   markConsumed(draftId);
   recordUndoAll(ACTION_ID, fieldCount);
+  notePrefillUndone();
+}
+
+/**
+ * The teacher generated with AI-filled fields still present (M8).
+ *
+ * Called by an OBSERVER of the Generator's own state, never from inside
+ * `handleGenerate`: that function is a protected area, and the spec is explicit
+ * that router concepts appearing inside it mean the integration has overreached.
+ * The page watches its `content` become non-null while AI provenance is present,
+ * which establishes the same fact from outside and adds zero lines to the
+ * generation path.
+ *
+ * Latched by the transport, so a regenerate cannot produce a second outcome.
+ */
+export function notePrefillGeneration(): void {
+  recordGenerated(ACTION_ID);
+  notePrefillGenerated();
 }

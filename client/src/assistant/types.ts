@@ -224,8 +224,66 @@ export interface PrefillDraft {
   lowConfidenceFields: string[];
   /** Kept only to render "Filled in from: …" — never sent back to the server. */
   utterance: string;
+  /**
+   * The interpret response's correlation id (M8). Opaque, server-minted, and the
+   * ONE field in this record that is sent back — it joins this prefill's
+   * telemetry to the decision that produced it. Empty for hand-written drafts
+   * and for records written before M8.
+   */
+  requestId: string;
   createdAt: number;
   expiresAt: number;
   /** Set by "clear AI fields", so a later refresh loads plain defaults instead of re-applying. */
   consumed: boolean;
+}
+
+// ---- Telemetry wire contracts (M8) ------------------------------------------
+// Mirrors ASSISTANT_EVENT_NAMES / PREFILL_OUTCOMES in the server's contracts.js,
+// and the drift guard pins the two together. These are the shapes POSTed to
+// /api/assistant/events, where the server re-validates every one of them as a
+// closed enum — this file is a compile-time convenience, never the control.
+
+/**
+ * What the client may report about a prefill it delivered.
+ *
+ * Only the CLIENT can report either of these. The server knows it DECIDED
+ * prefill; whether the draft reached the teacher's form (it may have expired, or
+ * storage may be disabled, or they may have navigated away) and what they then
+ * did with it are facts that exist only in the browser.
+ */
+export type AssistantEventName = 'prefill_delivered' | 'prefill_outcome';
+
+/**
+ * How a delivered prefill ended.
+ *
+ * 'abandoned' is deliberately absent: it is derived server-side from a delivered
+ * event with no matching outcome. Emitting it would need an unload beacon, and
+ * beacons are unreliable on exactly the low-end mobile browsers this product
+ * targets — an undercounted abandonment rate would read as good news.
+ */
+export type PrefillOutcome = 'generated' | 'undone' | 'edited';
+
+/**
+ * One event on the wire.
+ *
+ * EVERY FIELD IS METADATA, and that is the privacy control (G11) rather than a
+ * convention: there is no property here capable of holding an utterance, a slot
+ * value, generated content, prompt text or model output. `corrections` carries
+ * field NAMES and the provenance they previously had — never what those fields
+ * contained.
+ */
+export interface AssistantEvent {
+  name: AssistantEventName;
+  actionId: string;
+  /** Opaque server-minted correlation id; joins this event to its decision log line. */
+  requestId?: string;
+  fieldCount?: number;
+  lowConfidenceCount?: number;
+  outcome?: PrefillOutcome;
+  corrections?: { field: string; from: ProvenanceSource }[];
+}
+
+/** The batch envelope. Bounded server-side; see MAX_EVENT_BATCH in contracts.js. */
+export interface AssistantEventsRequest {
+  events: AssistantEvent[];
 }

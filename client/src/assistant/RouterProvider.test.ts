@@ -44,7 +44,12 @@ describe('CHANGE-9 — the stale-response guard', () => {
   it('applies the guard BEFORE anything that could move the teacher', () => {
     const guard = providerSource.indexOf('sequence !== sequenceRef.current');
     const ask = providerSource.indexOf('setPendingAsk({ action');
-    const navigate = providerSource.indexOf('return action ? dispatch(action, utterance)');
+    // Matches the call regardless of arity: M8 added a third argument (the
+    // telemetry correlation id). The ORDERING below is the assertion; the
+    // argument list was never meant to be part of it, and this file's own header
+    // says these guards are "presence and ordering only, no assertions about
+    // formatting, so an ordinary refactor does not break them".
+    const navigate = providerSource.indexOf('return action ? dispatch(action, utterance');
 
     expect(guard).toBeGreaterThan(-1);
     expect(ask).toBeGreaterThan(guard);

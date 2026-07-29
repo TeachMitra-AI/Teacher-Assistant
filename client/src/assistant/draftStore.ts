@@ -52,6 +52,16 @@ export interface CreateDraftInput {
   lowConfidenceFields?: string[];
   /** Rendered in the banner as "Filled in from: …". Never sent back to the server. */
   utterance?: string;
+  /**
+   * The interpret response's correlation id, carried so telemetry about this
+   * prefill can be joined to the decision that produced it (M8).
+   *
+   * An OPAQUE UUID minted by the server — the one identifier that crosses the
+   * two telemetry channels. It carries nothing teacher-derived, which is what
+   * makes it safe to send back; `utterance` above sits in the same record and
+   * must never follow it.
+   */
+  requestId?: string;
 }
 
 /**
@@ -112,6 +122,10 @@ function toDraft(value: unknown): PrefillDraft | null {
       ? raw.lowConfidenceFields.filter((f): f is string => typeof f === 'string')
       : [],
     utterance: typeof raw.utterance === 'string' ? raw.utterance : '',
+    // Absent on hand-written drafts and on records written before M8. Telemetry
+    // treats the empty string as "cannot be joined", which the metrics script
+    // excludes from the abandonment denominator rather than guessing about.
+    requestId: typeof raw.requestId === 'string' ? raw.requestId : '',
     createdAt: typeof raw.createdAt === 'number' && Number.isFinite(raw.createdAt) ? raw.createdAt : 0,
     expiresAt: raw.expiresAt,
     consumed: raw.consumed === true,
@@ -186,6 +200,7 @@ export function createDraft(input: CreateDraftInput): string | null {
     provenance: { ...input.provenance },
     lowConfidenceFields: [...(input.lowConfidenceFields ?? [])],
     utterance: input.utterance ?? '',
+    requestId: input.requestId ?? '',
     createdAt: now,
     expiresAt: now + TTL_MS,
     consumed: false,

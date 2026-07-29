@@ -50,6 +50,8 @@ losing document gets corrected rather than left knowably wrong.
 | **M6** | **§5.6** says session memory is "**rendered, not hidden** — `ContextBar` already displays this shape." Rendering it would require modifying `ContextBar.tsx`, which sits outside §2.5's permitted-file list (and under README §6 protected area #14's spirit). Memory is therefore **held and sent but not displayed** in Phase 1. The inspectability argument in the architecture document stands — it is simply not yet delivered, and it is the natural first item for Phase 2's catalog-driven UI. Approved as decision **D10** |
 | **M6** | **§2.5** budgets "~5 lines" of change to `client/src/config.ts` at M6. **The file is not modified at all.** M3 had already established (and the owner approved) that router constants stay module-private so the folder remains deletable without leaving dangling references in shared files; that reasoning applies unchanged to the gate, cache, memory and breaker constants. `ASSISTANT_ENABLED` was already added at M0 and is the only assistant value that genuinely belongs there. Approved as decision **D8** |
 | **M6** | **§2.4** lists the client module set. M6 adds **four files that list does not name**: `circuitBreaker.ts` and `pendingAsk.ts` (both extracted so the logic is reachable by the pure-logic-only test runner rather than buried in a React provider), and `handlers/routes.ts` + `handlers/types.ts` (leaf modules that break what would otherwise be an import cycle between the handler map, the handlers and the executor — the same reasoning that produced `lib/resourceFields.js` at M1). Approved as decisions **D7** and, for the handler leaves, recorded here on the same basis |
+| **M8** | **§4.1** stated "Exactly two" endpoints. **A third, `POST /api/assistant/events`, was approved and shipped at M8** — see the amended §4.1 for why the two-endpoint shape could not carry the field-edit rate without biasing it. Recorded here because a spec that quietly grows an endpoint is a spec nobody can check an implementation against |
+| **M8** | **§4.8** requires an `Event` retention policy "before enabling telemetry". Delivered at M8 as **90 days**, enforced by `server/tools/pruneAssistantEvents.js` (scoped to the two `assistant_*` types and structurally unable to reach safety-flag or user-approval rows) rather than by an in-process sweeper, which would have put deletes on the very request path CHANGE-6 exists to keep quiet |
 | **M7** | **§11 Definition of Done** requires an "eval baseline recorded (intent precision ≥90%, recall ≥75%, **grade-slot accuracy ≥85%**)". The first two are met and exceeded (95.8% / 85.8%, and 100% Hinglish against the architecture's ~85% Phase 2 gate). **Grade-slot accuracy is measured at ~20% and is NOT met.** It is not an oversight and not a measurement artifact: `mapGrade` handles 79 tabulated phrases correctly, so the deterministic half is not implicated, and M7b tried two independent prompt mechanisms to raise extraction — both measurably made it worse. Recorded as `golden_failures.md` GF-2 with the descriptor `examples` named as the untried lever. **M10 must check this criterion against the recorded measurement rather than assuming it was met**, which is precisely what this corrections table exists to prevent |
 
 ---
@@ -249,14 +251,26 @@ client/src/assistant/       ← Everything AI-routing. Self-contained and deleta
 
 ### 4.1 Endpoints
 
-Exactly two.
+**Three, as amended at M8.** This section read "exactly two" until M8; the third is
+approved and its reasoning is recorded below.
 
 | Method | Path | Auth | Rate limit | Purpose |
 |---|---|---|---|---|
 | `GET` | `/api/assistant/catalog` | `authRequired` | shared `limiter` | Role-filtered catalog + version |
 | `POST` | `/api/assistant/interpret` | `authRequired` | dedicated `assistantLimiter` | Utterance + context → decision |
+| `POST` | `/api/assistant/events` | `authRequired` | dedicated `assistantLimiter` | **M8.** Prefill delivered + outcome. Always 204 |
 
-Both are read-only. **Neither writes anything except telemetry.**
+The first two are read-only. **The third writes `Event` rows and nothing else** — never to
+anything a teacher owns (G8).
+
+> **Why a third endpoint was necessary (approved before M8 began).** Both halves of the
+> field-edit rate are **client-side facts**. The server knows it *decided* `prefill`; only the
+> client knows the draft actually reached the form (it may have expired, storage may be
+> disabled, the teacher may have navigated away) and which fields were then edited. The
+> alternative considered was folding these onto the next `/interpret` call, which was rejected
+> as **systematically biased**: a session that ends at the Generator — i.e. one where routing
+> *worked* — never returns to the composer, so successes would under-report and the metric
+> would be worse than none.
 
 ### 4.2 The interpret pipeline
 

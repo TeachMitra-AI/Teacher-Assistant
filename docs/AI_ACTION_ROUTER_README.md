@@ -20,14 +20,14 @@
 | **Current Branch** | `feature/ai-action-router` |
 | **Base Branch** | `main` |
 | **Current Phase** | Phase 1 — Generator only |
-| **Current Milestone** | **M7b — Prompt/schema tuning** ✅ **COMPLETE — awaiting review/approval** |
-| **Overall Progress** | **73%** (planning + M0 → M6 + M7a + M7b complete) |
-| **Current Status** | 🟡 Healthy, with the primary target unmet — **one of four candidates survived measurement**. C4 (a registry-derived response-schema bound) cut GF-1 degeneration 10 → 7 and lifted routing recall 85.8% → 89.6%; **three prompt candidates were measured and rejected**. **Grade extraction — M7b's primary target — is unchanged at ~20%**, and two independent prompt mechanisms aimed at it made it worse. All five safety gates PASS. The frozen M7a baseline, corpus and cassettes are byte-identical |
-| **Architecture Status** | ✅ **Approved** (reviewed 3×, 12 amendments applied — see §5.3) |
-| **Implementation Status** | ✅ **M0–M6 + M7a + M7b complete** — contracts frozen, registry live behind flags, catalog serving, the full 12-stage pipeline, the composer routing end to end, a frozen measured baseline, and **one evidence-backed tuning change accepted out of four tried**. Both flags default OFF |
+| **Current Milestone** | **M8 — Telemetry** ✅ **COMPLETE — awaiting review/approval** |
+| **Overall Progress** | **78%** (planning + M0 → M6 + M7a + M7b + M8 complete) |
+| **Current Status** | 🟢 Healthy. **The field-edit rate — decision D16's launch gate — is computable end to end for the first time**, demonstrated against a live server: 3 delivered prefills → 11.1%, with abandonment derived and the outcome mix broken down by provenance. Both CHANGE-6 channels are live, the ≤2-rows-per-session ceiling is proven by test at both layers, and a 90-day retention policy exists with an executable, correctly-scoped prune. **The integration suite found and closed a real privacy hole** (see §9). All flags still default OFF |
+| **Architecture Status** | ✅ **Approved** (reviewed 3×, 12 amendments applied — see §5.3). **Amended at M8: the assistant now exposes THREE endpoints**, not two — approved before implementation, reasoning in §5.1 D21 |
+| **Implementation Status** | ✅ **M0–M6 + M7a + M7b + M8 complete** — contracts frozen, registry live behind flags, catalog serving, the full 12-stage pipeline, the composer routing end to end, a frozen measured baseline, one evidence-backed tuning change, and **post-launch tuning now possible because the correction signal reaches a queryable store**. All flags default OFF |
 | **Last Updated** | 2026-07-29 |
 | **Governance** | 🔒 **Milestone Completion Protocol in force** — see [§21](#21-milestone-completion-protocol-mandatory). One milestone at a time; full verification gate before the next begins; explicit user approval required to proceed |
-| **Next Task** | ⏸️ **Awaiting user approval of M7b.** Three decisions now have evidence behind them: **D5 descriptor `examples`** (the only untried lever for slot extraction, now that preamble tuning is measured to fail), **D4 routing temperature** (GF-1 survives a schema bound; needs the protected `gemini.js`), and **GF-6** (every remaining non-noise failure is a bare topic-less command). Then **M8 — telemetry** |
+| **Next Task** | ⏸️ **Awaiting user approval of M8.** Then **M9 — hardening** (limiters, the per-user budget counter, CHANGE-8 breaker, security review, log audit, deletability test). Three M7 decisions remain open and are untouched by M8: **D5 descriptor `examples`**, **D4 routing temperature** (needs the protected `gemini.js`), and **GF-6** (the `open_generator` / `generate_assessment` boundary) |
 
 ### Progress basis (keep this calculation consistent)
 
@@ -45,8 +45,9 @@ Progress % is weighted by estimated effort-days, not by milestone count.
 | M6 — client wiring | 4.0 | ✅ Complete | 10.7% |
 | **M7a — eval corpus, harness, baseline** | **3.5** | ✅ **Complete** | **9.3%** |
 | **M7b — tuning + re-measure** | **1.5** | ✅ **Complete** | **4.0%** |
-| M8 → M10 implementation | 10.0 | ⬜ Not started | 0% |
-| **Total** | **37.5** | | **≈ 73.3%** → reported as **73%** |
+| **M8 — telemetry** | **2.0** | ✅ **Complete** | **5.3%** |
+| M9 → M10 implementation | 8.0 | ⬜ Not started | 0% |
+| **Total** | **37.5** | | **≈ 78.7%** → reported as **78%** |
 
 > **M7's 5.0 d is split into M7a (3.5 d, measurement) and M7b (1.5 d, tuning)** at the
 > project owner's instruction. The split is not cosmetic: spec §1.2's fourth ordering rule is
@@ -409,6 +410,10 @@ The safety spine of the whole design.
 | D18 | **The feature must remain deletable** | Verified as a merge checkpoint, not assumed |
 | D19 | **`actions: []` envelope from day one** | Costs one array literal now; avoids a breaking change when multi-step arrives |
 | D20 | **The router yields to the Coach under quota pressure** | The optional feature must never degrade the core one |
+| D21 | **A third endpoint, `POST /api/assistant/events`** (M8) | Both halves of the field-edit rate are client-side facts. The server knows it *decided* prefill; only the client knows the draft reached the form and which fields were edited. Folding them onto the next `/interpret` call would bias the metric — a session ending at the Generator (routing **worked**) never returns to the composer, so successes would under-report |
+| D22 | **The `generated` outcome is observed, never instrumented** (M8) | `handleGenerate` is protected area #1 and spec §6.7 forbids router concepts inside it. Watching `content` become non-null while AI provenance is present establishes the same fact from outside, adding **zero lines** to the generation path |
+| D23 | **`abandoned` is derived at query time, never emitted** (M8) | The only way to emit it is an unload beacon, and beacons are unreliable on exactly the low-end mobile browsers this product targets. An undercounted abandonment rate reads as *good news* — the worst direction for a metric to fail in |
+| D24 | **Retention is a scoped script, not an in-process sweeper** (M8) | Opportunistic pruning would put DELETEs on the very request path CHANGE-6 exists to keep quiet. The script is restricted to the two `assistant_*` types and structurally cannot reach safety-flag or user-approval rows |
 
 ### 5.2 Rejected alternatives (recorded so they are not re-litigated)
 
@@ -508,6 +513,9 @@ passthrough for one release after the client stops calling it.
 | `client/src/components/AiPrefillBanner.tsx` | Presentational only |
 | `client/src/components/AiClarifyPrompt.tsx` | Presentational only |
 | `client/vitest.config.ts` | Client test runner (M3). **Pure-logic modules only**, scoped to `src/assistant/**`. Sits at `client/` root, so it is not covered by the `client/src/assistant/` entry above. Loads none of the app's Vite plugins, and does not affect the production build |
+| `server/src/assistant/telemetry.js` | **M8.** Both CHANGE-6 channels in one file: the per-decision stdout line and the low-volume `Event` writers. Never throws. The `buildMetadata` explicit-key-list is the structural half of G11 |
+| `server/tools/` | **M8.** Operational scripts, not application code — `assistantMetrics.js` (read-only; computes the field-edit rate, the launch gate) and `pruneAssistantEvents.js` (retention; scoped to the two `assistant_*` types and structurally unable to reach safety-flag or approval rows). Covered by `npm run lint` |
+| `client/src/assistant/telemetryTransport.ts` | **M8.** The wire layer. Collapses a whole prefill session into **at most two** events, latched per draft, fire-and-forget with no retry. Separate from `telemetry.ts` (the local signal) so the collapse — the thing that keeps CHANGE-6's promise — lives at the only layer that can enforce it |
 
 ### 7.2 Modified files (the complete list — nothing else may change)
 
@@ -515,12 +523,17 @@ passthrough for one release after the client stops calling it.
 |---|---|---|
 | `server/src/index.js` | Mount assistant router; construct `geminiFast`; new env tunables; assistant limiter; **add a limiter to `/api/resources/generate`** | additive — **M2 +29 / −0, M5 +52 / −0** |
 | `server/src/routes/resources.js` | Replace the inline `generateSchema` definition with an import. **Nothing else** | ~15 lines relocated |
-| `server/src/routes/assistant.js` | `GET /catalog` (M2); `POST /interpret` + envelope schema (M5); rollout gate made to fail closed (M5) | additive — M5 +198 / −8, all 8 deletions being comment lines or the Prisma call re-indented into a try/catch |
+| `server/src/routes/assistant.js` | `GET /catalog` (M2); `POST /interpret` + envelope schema (M5); rollout gate made to fail closed (M5); **`POST /events` + its strict closed-enum envelope, and the decision-log helper moved out to `assistant/telemetry.js` (M8)** | additive — M5 +198 / −8; **M8 +129 / −17**, the deletions being the relocated log helper and its comment block |
+| `server/src/assistant/contracts.js` | **M8**: the telemetry wire vocabularies (`ASSISTANT_EVENT_NAMES`, `PREFILL_OUTCOMES`), the storage-layer `ASSISTANT_EVENT_TYPES`, batch/metadata bounds, and the 90-day retention constant. Additive — no existing vocabulary altered | additive — **+96 / −1** |
+| `server/package.json` | **M8**: `assistant:metrics` / `assistant:prune-events` scripts, and `lint` extended from `eslint src evals` to `eslint src evals tools`. An unlinted retention script is how a typo'd `where` clause deletes the wrong rows | +3 / −1 |
+| `client/src/assistant/telemetry.ts` | **M8**: the `prefill_generated` marker and its recorder. **Purely additive** — the eight M3 tests pass unmodified | +18 / −1 |
+| `client/src/assistant/draftStore.ts`, `types.ts`, `pendingAsk.ts`, `handlers/types.ts`, `handlers/generateAssessment.ts`, `RouterProvider.tsx` | **M8**: carry the opaque `requestId` from the interpret response into the draft, so an `Event` row joins to its decision log line (D21/A4). `RouterProvider` also owns the `visibilitychange` flush — the transport's only lifecycle hook | additive |
+| `client/src/assistant/generatorPrefill.ts` | **M8**: reports delivery and the three outcomes. The page's coupling stays **one import line** (G14) | additive |
 | `server/src/assistant/proposalSchema.js` | **M7b**: free-text slots declare `maxLength` in the Gemini response schema (candidate C4), derived from the registry's own `slot.type` rather than naming `topic`. The application's accept bound is unchanged, so it can neither admit nor reject anything it did not before | additive — **+49 / −0** |
 | `server/.env.example` | Document ~8 new variables | additive. **Amended at M5**: the routing model endpoint, because the M0-documented `gemini-2.5-flash-lite` was retired and returns 404 |
 | `client/src/App.tsx` | Wrap `AppRoutes` in `RouterProvider` | **actual at M6: +7 / −1** — insertion only, provider order untouched |
 | `client/src/pages/CoachPage.tsx` | Route submissions through the router pre-pass; render clarify chips | **actual at M6: +42 / −2** (est. ~40). One import line; the flag-off path stays synchronous |
-| `client/src/pages/GeneratorPage.tsx` | Draft read on mount + param change; banner; provenance markers; correction telemetry | **actual at M3: +220 / −27** (original estimate ~60 lines — see note below) |
+| `client/src/pages/GeneratorPage.tsx` | Draft read on mount + param change; banner; provenance markers; correction telemetry. **M8 adds the `generated`-outcome observer effect** | **actual at M3: +220 / −27**; **M8 +38 / −1**, with **zero changed lines inside `handleGenerate` or `handleSave`** — verified by diff |
 | `client/src/config.ts` | Flag constant + assistant constants | ~5 lines. **NOT modified at M6** (decision D8): router constants stay module-private so the folder is deletable without dangling references. `ASSISTANT_ENABLED` was added at M0 and is the only assistant value that belongs here |
 | `client/src/index.css` | Banner / chip / marker styles | additive — **M3 +~90, M6 +59 / −0** |
 | `client/.env.example` | `VITE_ASSISTANT_ENABLED` | 1 line |
@@ -596,7 +609,7 @@ schema extraction, which stands on its own merits.
 | **M6** | Client wiring | 4.0 d | ✅ **Completed** | 2026-07-29. Gate (CHANGE-2), repeat cache, session memory, breaker, catalog, provider, executor, handler map, CoachPage integration, CHANGE-3, CHANGE-9. **312 client tests (+242)**, 3× no flakiness; **server untouched — `git diff --stat server/` empty**; bundle +5.2 kB gzip; **12/12 injected-defect proofs detected**; **full 20-step manual script executed against live Gemini, zero defects**. CHANGE-7 proven with a no-remount sentinel; CHANGE-9 proven in both halves |
 | **M7a** | Eval corpus, harness, baseline (**measurement only**) | 3.5 d | ✅ **Completed** | 2026-07-29. **196 labelled turns** (157 single + 15 sessions) across 8 strata; record/replay harness at the `fetchImpl` seam; deterministic full-corpus CI gate; **62 new server tests + 5 client**; baseline recorded against `gemini-3.5-flash-lite` with **precision 95.8%, recall 85.8%, Hinglish precision 100%**, and **grade slot accuracy 23.9%** against a DoD target of 85%. All five hard gates pass. **Seven failure classes recorded in `golden_failures.md`; nothing tuned** |
 | **M7b** | Prompt/schema tuning + re-measure | 1.5 d | ✅ **Completed** | 2026-07-29. **4 candidates measured, 1 accepted.** C4 (free-text slots bounded in the response schema, registry-derived) cut GF-1 10 → 7 and lifted recall 85.8% → 89.6%; **C3, C1 and C2 were rejected on evidence and recorded in `TUNING_LOG.md`**. **Grade extraction unchanged at ~20% — the primary target was NOT met**, and two independent prompt mechanisms aimed at it measurably hurt it. Frozen baseline, corpus and cassettes untouched; `gemini.js` untouched |
-| **M8** | Telemetry | 2.0 d | ⬜ Pending | *Parallel with M7.* Split channels per CHANGE-6 |
+| **M8** | Telemetry | 2.0 d | ✅ **Completed** | 2026-07-29. Both CHANGE-6 channels live; `POST /api/assistant/events` (the approved third endpoint); `assistant/telemetry.js`; client transport with the **≤2-rows-per-session ceiling proven at both layers**; the `generated` outcome via an observer effect with **zero lines inside `handleGenerate`**; 90-day retention + prune script; metrics script. **1052 server tests (+46), 333 client (+16)**, 3× no flakiness; bundle **+0.08 kB gzip**; **4/4 injected-defect proofs detected**; **a real privacy hole found and closed by the new suite**. Field-edit rate demonstrated end to end against a live server |
 | **M9** | Hardening | 3.0 d | ⬜ Pending | Rate limits, budgets, CHANGE-8 breaker, security review, deletability test |
 | **M10** | Internal rollout | 5.0 d | ⬜ Pending | Dark → team → pilot school → all teachers |
 
@@ -816,6 +829,21 @@ schema extraction, which stands on its own merits.
 | 2026-07-29 | ⚠️ **The `--repeat 3` variance band could NOT be taken. Both attempts failed on upstream quota** | ⚠️ **Documented limitation** | Attempt 1 saturated the per-minute limit (202 calls in 502 s; passes 2 and 3 almost entirely `passthrough`). Attempt 2 exhausted the **500/day free-tier cap** (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`): 126/126 × HTTP 429. **Neither is reported as a measurement.** Every candidate run was then checked against its recorded `upstreamStatuses` and all were clean (C1 and C2: 101/101 × 200), so the rejections stand on their own evidence — the status tracking added at M7a is what made that checkable rather than assumable |
 | 2026-07-29 | **M7b verification complete.** Server **1005 tests / 38 files**, 3 consecutive runs · client **317 tests** · both lints clean · client build ✅ **bundle byte-identical** · `gemini.js`, the corpus, the frozen cassettes and the frozen baseline all **byte-identical** · zero migrations · zero new dependencies | ✅ | Only `proposalSchema.js` (+49/−0) changed in production code |
 | 2026-07-29 | **M7b complete — awaiting user review and approval** | ⏸️ | Per §21. Three decisions now carry evidence: D5 (descriptor examples), D4 (routing temperature), GF-6 |
+| 2026-07-29 | **M7b APPROVED by project owner. M8 authorized** | ✅ | Approval covers M7b only |
+| 2026-07-29 | **M8 plan produced and approved with eight explicit rulings (A1–A8)** before any code was written | ✅ | A1 third endpoint · A2 observer effect for `generated` · A3 `abandoned` derived · A4 `requestId` carried as an opaque join key · A5 90-day policy + prune script · A6 scripts under `server/tools/` · A7 additive drift-guard extension · A8 implement both policy and script. Recorded as decisions **D21–D24** in §5.1 |
+| 2026-07-29 | **M8 started.** Baselines captured first: server **1006 tests / 38 files**, client **317 tests / 14 files**, both lints clean, bundle `index-D2Z6BX82.js` **282.64 kB gzip** | ✅ | "Unchanged" has to be provable rather than asserted |
+| 2026-07-29 | **Design: `telemetry.ts` (local signal) and `telemetryTransport.ts` (wire layer) are separate modules** | ✅ | The local buffer records every individual thing that happened; the transport COLLAPSES a whole session into ≤2 events and sends them. Keeping them apart is what let `telemetry.ts` stay additive-only, so its 8 M3 tests still pass **unmodified** — and the transport attaches to `drainTelemetry()`, the seam M3 explicitly created for it |
+| 2026-07-29 | 🔴 **A REAL PRIVACY HOLE found by the new integration suite, not by review** | ✅ **Fixed in M8** | `actionId` and `requestId` were bounded strings (60 / 64 chars) and nothing else — and 60 characters is ample room for a topic. A test posting teacher text through them **watched it land in a stored `Event` row**. Closed structurally: `actionId` must now be a registry-declared action (unknown ⇒ event dropped, so a stale client does not cause a 400 storm) and `requestId` must match the UUID shape the interpret endpoint actually mints. **A length bound is not a privacy control**, and the lesson is recorded in `server/src/assistant/README.md` for the next person who adds a string field here |
+| 2026-07-29 | 🔴 **A real transport bug found by the ceiling tests**: events queued while a send was in flight were **stranded** | ✅ **Fixed in M8** | `flush` sent one batch and returned, so the commonest sequence in the whole feature — the delivery flush still open when the outcome is queued a moment later — left every outcome waiting for an unrelated later event to push it out. `flush` now drains until empty. Found by a test counting one event where two were expected, which is exactly why the ceiling is asserted over whole simulated sessions rather than per call |
+| 2026-07-29 | **Decision: corrections are counted INTO the outcome row, never written individually** | ✅ | A teacher editing six fields produces six client-side events that the client collapses into **one** row before the network is touched. Writing a row per correction is the single easiest way to reintroduce the sustained write stream CHANGE-6 exists to prevent (finding D). Asserted at both layers: the transport sends 2 events, the endpoint stores 2 rows |
+| 2026-07-29 | **`handleGenerate` and `handleSave` have ZERO changed lines**, verified by diff | ✅ | The `generated` outcome is established by an observer effect watching `content` become non-null while AI provenance is present (decision D22). `client/src/lib/resources.ts` diff empty; `git diff --stat client/src/pages/` lists exactly one file |
+| 2026-07-29 | **Existing test modified: `RouterProvider.test.ts`, one match string** — raised with the owner rather than decided unilaterally | ✅ **Approved by owner** | The M6 guard located the navigation dispatch by the literal `'return action ? dispatch(action, utterance)'`; A4's third argument broke the match while leaving the ORDERING assertion it exists for untouched. Trimmed to match the call regardless of arity. **No assertion weakened or removed** — and the file's own header says these guards are "presence and ordering only, no assertions about formatting, so an ordinary refactor does not break them" |
+| 2026-07-29 | **Drift guard extended additively** to `ASSISTANT_EVENT_NAMES` ↔ `AssistantEventName` and `PREFILL_OUTCOMES` ↔ `PrefillOutcome` (A7) | ✅ | These cross the wire in the OTHER direction — the client SENDS them — so drift here means a client posting a value the server rejects, losing the whole batch silently. **The guard's own completeness check caught the omission** before a human did: it failed with "ASSISTANT_EVENT_NAMES has no drift check", which is a control doing precisely its job |
+| 2026-07-29 | **4/4 injected-defect proofs detected**, each injected, observed failing, restored, re-verified green | ✅ | (1) actionId allow-list removed → privacy test fails. (2) prune scope widened to a bare date filter → **the safety-flag survival test fails, showing all 3 protected rows destroyed**. (3) outcome latch removed → ceiling tests fail (3 events, not 2). (4) flag gate removed → flags-off proof fails. *A guard that has only ever passed is not evidence of anything* |
+| 2026-07-29 | **Manual verification performed against a live server on a spare port**, flags passed as process env — never editing `.env` | ✅ | Three real sessions (generated / abandoned / undone) POSTed over HTTP; the stored rows inspected directly and scanned for teacher content (**zero hits** for six probe strings); `npm run assistant:metrics` → **field-edit rate 11.1%**, abandonment 1 of 3 derived, corrections broken down by provenance; prune dry-run then executed, deleting 5 assistant rows while **21 institutional rows survived untouched** |
+| 2026-07-29 | ⚠️ **A flags-off proof initially appeared to FAIL** — one row written with the assistant off | ✅ **Not a defect** | Investigated rather than reported: `pkill` had not killed the previous instance, so the flags-**ON** server still held port 3999 and answered the request; the flags-off server had died with `EADDRINUSE`. Killed by PID and re-run: **0 rows, catalog inert**. This is the M4 "port may be serving a stale instance" lesson recurring, and it is recorded because a false failure believed is as costly as a real one missed |
+| 2026-07-29 | **M8 verification complete.** Server **1052 tests / 41 files** (+46), client **333 tests / 16 files** (+16), **3 consecutive runs each, no flakiness** · both lints ✅ · client build ✅ · bundle **+0.08 kB gzip** (282.64 → 282.72), CSS hash unchanged · **zero migrations** · every protected file diff-empty | ✅ | See the M8 Milestone Completion Report |
+| 2026-07-29 | **M8 complete — awaiting user review and approval.** M9 not started | ⏸️ | Per §21 |
 
 ---
 
@@ -915,12 +943,31 @@ schema extraction, which stands on its own merits.
 
 ### 🟡 What is currently in progress
 
-**Nothing.** M6 is complete and **awaiting user review and approval**. Per §21, the next milestone
+**Nothing.** M8 is complete and **awaiting user review and approval**. Per §21, the next milestone
 does not begin automatically.
 
 ### ⬜ What is next
 
-**Milestone M7 — Eval harness + tuning** (5.0 days) — *blocked on M6 approval*
+**Milestone M9 — Hardening** (3.0 days) — *blocked on M8 approval*
+
+Assistant rate limiter, the per-user daily budget counter (M5 left it as an injectable seam that
+counts nothing — `assistant/telemetry.js` is now its natural home), a limiter on
+`/api/resources/generate`, the CHANGE-8 router-yields-to-coach breaker, the security review, the log
+audit, the **deletability test**, and a timed kill-switch rehearsal.
+
+Two things M8 hands it:
+
+1. **The log audit now has a second surface to cover.** `POST /api/assistant/events` is the only
+   place a client sends the server telemetry, and M8's own suite proved that a bounded string field
+   is not a privacy control. The audit should re-attack `actionId`, `requestId` and `field` rather
+   than reading them.
+2. **Retention is defined but nothing runs it.** `npm run assistant:prune-events` exists and works;
+   scheduling it is an M10 rollout step, and until then the table grows.
+
+<details>
+<summary>Superseded — the M7 "what is next" entry, kept for history</summary>
+
+**Milestone M7 — Eval harness + tuning** (5.0 days) — *was blocked on M6 approval*
 
 ≥120 labelled utterances (60 action / 40 coaching / 20 adversarial) across English, Hinglish and
 Hindi, a runner reporting per-intent precision/recall and per-slot accuracy, and a recorded-fixture
@@ -937,6 +984,8 @@ Two things M6 hands it, both recorded in §9 and neither patched over:
 ⚠️ The routing endpoint is a **floating alias** (`gemini-flash-lite-latest`), so the eval runner must
 record the resolved model version alongside its results or the baseline will not say which model
 produced it.
+
+</details>
 
 ### ✅ The M6 manual verification script (executed 2026-07-29 — all 20 steps passed)
 
@@ -1252,12 +1301,15 @@ corpus, the frozen cassettes and the frozen baseline are all untouched.**
       `generate_assessment` boundary is genuinely undrawn in the descriptors — a
       product decision, not a tuning problem
 
-### M8 — Telemetry (2.0 d)
-- [ ] Structured stdout decision logs (CHANGE-6)
-- [ ] `Event` rows for prefill-delivered + outcome only
-- [ ] Client correction events
-- [ ] Field-edit rate computable end to end
-- [ ] `Event` retention policy defined
+### ✅ M8 — Telemetry (2.0 d) — COMPLETE 2026-07-29
+- [x] Structured stdout decision logs (CHANGE-6) — consolidated into `assistant/telemetry.js`
+- [x] `Event` rows for prefill-delivered + outcome only — **≤2 per routed session, proven at both layers**
+- [x] Client correction events — transported, batched, fire-and-forget, flag-gated
+- [x] Field-edit rate computable end to end — **demonstrated live: 11.1% over 3 delivered prefills**
+- [x] `Event` retention policy defined — **90 days, plus an executable correctly-scoped prune script**
+- [x] `POST /api/assistant/events` (approved third endpoint, D21)
+- [x] `generated` outcome with **zero lines inside `handleGenerate`** (D22)
+- [x] 4/4 injected-defect proofs; a real privacy hole and a real transport bug found and fixed
 
 ### M9 — Hardening (3.0 d)
 - [ ] Assistant rate limiter
@@ -1301,6 +1353,7 @@ corpus, the frozen cassettes and the frozen baseline are all untouched.**
 | `GeneratorPage` consumes `RouterProvider` | It imports exactly one function; grep for `useRouter` in that file must return zero |
 | `/interpret` returns 5xx | Integration test per failure mode asserting 200; alert on any 5xx |
 | Utterance text logged "temporarily" for debugging | Log audit is an M9 checklist item |
+| **A bounded string field treated as a privacy control** | **Observed for real at M8**, not hypothesised: `actionId` was capped at 60 characters, teacher text fits in 60 characters, and a test watched it reach a stored row. Any new string on the telemetry wire must be constrained to a value that *cannot* carry prose (registry membership, a UUID shape, a closed enum) — never merely to a length |
 | Auto-generation added "because it's obvious" | `autoExecute: false` validated at startup; client rejects `decision: 'execute'` |
 | Test flakiness from the shared SQLite file | Follow existing fixture conventions; run the suite 3× before merging new test files |
 
@@ -1316,7 +1369,7 @@ corpus, the frozen cassettes and the frozen baseline are all untouched.**
 
 | Risk | Horizon | Note |
 |---|---|---|
-| `Event` write volume on single-writer SQLite | Phase 1 → 2 | CHANGE-6 defers it; does not remove it. Needs a retention policy |
+| `Event` write volume on single-writer SQLite | Phase 1 → 2 | **Addressed at M8**: ≤2 rows per routed session, proven by test at both the client (which collapses corrections) and the endpoint. **Retention policy now exists** — 90 days, `npm run assistant:prune-events`. ⚠️ Residual: nothing *schedules* the prune yet; that is an M10 rollout step, and until then the table grows |
 | Shared Gemini quota between Coach and Router | Phase 1 | CHANGE-8 breaker. Router must never starve coaching |
 | Classifier prompt grows with the catalog | Phase 3 | ~2–3k tokens at 20 actions. Cheap fix: cap examples per action in the prompt |
 | Role knowledge now in four places | Phase 2 | If a fifth appears, stop and consolidate |
@@ -1483,14 +1536,17 @@ generation cost is capped. Then flip `autoExecute: true` on the descriptor — *
 | `server/src/assistant/resolver.js` | Canonicalize → merge (`utterance > memory > profile > default`) → provenance → validate per field. Pure: no I/O, no AI, no clock | Backend | ✅ M4 |
 | `server/src/assistant/policy.js` | Rule 0 effect ceiling, then the Phase 1 clamp. Pure. **No input can emit `execute`** | Backend | ✅ M4 |
 | `server/test/actions/vocabDrift.test.js` | Drift guard for the third duplicated pair (vocab ↔ `config.ts`) | Backend | ✅ M4 |
-| `server/src/assistant/` | Intent Gateway — utterance → ResolvedAction | Backend | ✅ M0 + M4 + M5; only `telemetry.js` remains (M8) |
+| `server/src/assistant/` | Intent Gateway — utterance → ResolvedAction | Backend | ✅ **Complete: M0 + M4 + M5 + M8** |
+| `server/src/assistant/telemetry.js` | **Both CHANGE-6 channels.** Decision stdout line + the ≤2-per-session `Event` writers. `buildMetadata`'s explicit key list is the structural half of G11 | Backend | ✅ **M8** |
+| `server/tools/` | Operational scripts: `assistantMetrics.js` (the launch-gate number) and `pruneAssistantEvents.js` (90-day retention, scoped to `assistant_*` only) | Backend / Ops | ✅ **M8** |
+| `client/src/assistant/telemetryTransport.ts` | The wire layer that COLLAPSES a session into ≤2 events. Where the volume guarantee actually lives | Frontend | ✅ **M8** |
 | `server/src/assistant/proposalSchema.js` | The untrusted-model boundary. Registry-derived `responseSchema`, zod SHAPE validation, and **the single site where an action id is authorized** (G4) | Backend | ✅ M5 |
 | `server/src/assistant/classifier.js` | Registry-derived prompt, the `geminiFast` call, response parse. **The only file that talks to Gemini for routing** | Backend | ✅ M5 |
 | `server/src/assistant/interpret.js` | The 12-stage pipeline. Orchestration only; database-free via injected dependencies; total catch so no path can 5xx | Backend | ✅ M5 |
-| `server/src/routes/assistant.js` | HTTP shell. `GET /catalog` (M2) and `POST /interpret` (M5). The rollout gate **fails closed** | Backend | ✅ M5 |
+| `server/src/routes/assistant.js` | HTTP shell. `GET /catalog` (M2), `POST /interpret` (M5), `POST /events` (M8). The rollout gate **fails closed** and guards all three | Backend | ✅ M5 + M8 |
 | `server/src/lib/flags.js` | Feature flags, all defaulting OFF | Backend | ✅ M0 |
 | `server/src/lib/resourceFields.js` | Bounds shared by CRUD and generation (breaks a require cycle) | Backend | ✅ M1 |
-| `server/evals/` | Classification quality corpus (outside `test/`) | Backend + Product | ⬜ M7 |
+| `server/evals/` | Classification quality corpus (outside `test/`). **Frozen after M7b** | Backend + Product | ✅ M7a + M7b |
 | `client/src/assistant/` | All AI-routing client code — deletable unit | Frontend | ✅ M0 + M3 + **M6** (complete for Phase 1) |
 | `client/src/assistant/draftStore.ts` | sessionStorage drafts: TTL, eviction, **fail-soft** | Frontend | ✅ M3 |
 | `client/src/assistant/generatorPrefill.ts` | **The Generator's only seam into the router.** New router behaviour on that page belongs here, not in another page import | Frontend | ✅ M3 |
@@ -1577,8 +1633,22 @@ payloads still conform. A contract that is checked by CI is worth more than a do
 
 ### Where the project stands right now
 
-**Planning is complete and approved. M0–M4 are approved. M5 and M6 are complete and awaiting
-review.** M7 has not started and must not start without approval.
+**Planning is complete and approved. M0–M7b are approved. M8 is complete and awaiting review.**
+M9 has not started and must not start without approval.
+
+**What M8 changed, in one paragraph.** The correction signal that had buffered in memory since M3 —
+with `drainTelemetry()` having zero production callers — now reaches a queryable store, so the
+**field-edit rate (decision D16's launch gate) is computable end to end for the first time**. It cost
+a third endpoint (`POST /api/assistant/events`, approved as D21, because both halves of that metric
+are client-side facts the server cannot observe), a client transport that collapses a whole prefill
+session into **at most two `Event` rows**, an observer effect for the `generated` outcome that adds
+**zero lines to `handleGenerate`**, and a 90-day retention policy with a prune script scoped so it
+cannot reach safety-flag or user-approval records. Run `npm run assistant:metrics` to see the number.
+
+⚠️ **Two real defects were found by M8's own new tests, not by review** — a privacy hole where 60
+characters of teacher text fitted inside the `actionId` bound and reached a stored row, and a
+transport bug that stranded every outcome event behind an in-flight send. Both are fixed with
+regression guards. The lesson worth carrying: **a length bound is not a privacy control.**
 
 ⚠️ **M6 is the first milestone a teacher can see.** With `VITE_ASSISTANT_ENABLED=true` *and* the
 server's `ASSISTANT_ENABLED=true`, typing "Generate a Class 5 fractions worksheet" in the Coach
@@ -1645,12 +1715,11 @@ form state. Every failure falls back to a normal Coach answer.
 
 ### Milestones
 
-- ✅ **Completed:** P0 architecture · P1 specification · P2 guardrails/final review · P3 this
-  document · **M0** (approved) · **M1** (approved) · **M2** (approved) · **M3** (approved) ·
-  **M4** (approved) · **M5 classifier + `/interpret`, dark** (awaiting approval)
-- 🟡 **Code complete, gate incomplete:** **M6 — client wiring**
-- ⬜ **Pending:** M7 → M10 (see §8)
-- ➡️ **Next:** **run the M6 manual verification script in §10.** Not M7.
+- ✅ **Completed and approved:** P0 architecture · P1 specification · P2 guardrails/final review ·
+  P3 this document · **M0** · **M1** · **M2** · **M3** · **M4** · **M5** · **M6** · **M7a** · **M7b**
+- 🟡 **Complete, awaiting approval:** **M8 — telemetry**
+- ⬜ **Pending:** M9 → M10 (see §8)
+- ➡️ **Next:** **review and approve M8.** Then M9 — hardening. Not before.
 
 ### What M0 actually delivered (so you can trust the foundation)
 

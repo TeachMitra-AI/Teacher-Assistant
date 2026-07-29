@@ -1,7 +1,17 @@
 // AI Action Router — HTTP surface.
 //
-// Two endpoints: GET /catalog (M2) tells a caller what the application can do,
-// POST /interpret (M5) turns a message into a decision about it.
+// Three endpoints: GET /catalog (M2) tells a caller what the application can do,
+// POST /interpret (M5) turns a message into a decision about it, and
+// POST /events (M8) receives the outcome of a decision the client acted on.
+//
+// The third one is a deliberate amendment to the original "exactly two
+// endpoints" design, approved before M8 began. The reason it is necessary: BOTH
+// halves of the field-edit rate are client-side facts. The server knows it
+// DECIDED prefill; only the client knows the draft was actually applied to the
+// form and which fields the teacher then edited. Folding those onto the next
+// /interpret call instead would have biased the metric badly — a session that
+// ends at the Generator (i.e. one where routing WORKED) never returns to the
+// composer, so successes would systematically under-report.
 //
 // This file is a thin shell on purpose: authenticate, check the rollout gates,
 // validate the envelope, delegate, shape the response. No business rules live
@@ -22,27 +32,21 @@ const { asyncHandler } = require('../lib/asyncHandler');
 const { authRequired } = require('../middleware/auth');
 const { readAssistantFlags } = require('../lib/flags');
 const { buildCatalog, DISABLED_CATALOG } = require('../actions/registry');
-const { MAX_UTTERANCE_LENGTH } = require('../assistant/contracts');
+const {
+  MAX_UTTERANCE_LENGTH,
+  MAX_EVENT_BATCH,
+  ASSISTANT_EVENT_NAMES,
+  PREFILL_OUTCOMES,
+  PROVENANCE_SOURCES,
+} = require('../assistant/contracts');
 const { interpret } = require('../assistant/interpret');
+// M8: the decision log helper moved from here into assistant/telemetry.js, so
+// that both CHANGE-6 channels — the stdout line and the Event rows — sit in one
+// reviewable file with the G11 privacy rule stated once. No cycle: this route
+// already requires assistant/interpret.js, and telemetry.js is a leaf.
+const { logAssistantEvent, writeAssistantEvents } = require('../assistant/telemetry');
 
 const router = express.Router();
-
-/**
- * Metadata-only structured log, mirroring the `logAiEvent` helper in index.js.
- *
- * Deliberately a local copy of three lines rather than an import: index.js
- * requires this router, so importing back from it would create a cycle, and in
- * CommonJS a cycle yields a partially-initialised module (guardrail 12a). If a
- * third caller ever needs this, it moves to a leaf in lib/ that all three
- * import — it does not get exported from an entrypoint or a route.
- *
- * NEVER pass utterance text or resolved slot values through here (G11). The
- * decision log carries ids, counts, and enum values only.
- */
-function logAssistantEvent(level, event, meta = {}) {
-  const fn = level === 'warn' ? console.warn : level === 'error' ? console.error : console.log;
-  fn(`[assistant] ${event}`, meta);
-}
 
 /**
  * Is this caller inside the current rollout?
@@ -254,6 +258,130 @@ router.post(
     });
 
     return res.json(response);
+  })
+);
+
+// ---- POST /api/assistant/events (M8) ----------------------------------------
+
+/**
+ * One telemetry event, as the client sends it.
+ *
+ * EVERY FIELD IS METADATA, AND THAT IS THE PRIVACY CONTROL (G11). There is no
+ * free-text field in this schema — `name`, `outcome` and `from` are closed
+ * enums, `actionId` and `field` are bounded identifiers checked against the
+ * registry downstream, and everything else is an integer. A client cannot post
+ * an utterance, a slot value, generated content or model output through this
+ * endpoint because the shape has nowhere to put one. That is a stronger claim
+ * than "we remember not to send it", and it survives a compromised or simply
+ * buggy client.
+ *
+ * `.strict()` for the same reason interpretRequestSchema is strict: an unknown
+ * key means the client is speaking a contract version this server does not have,
+ * and — more to the point here — an unknown key is exactly the shape a leak
+ * would take. Rejecting is the safe direction when the payload is telemetry the
+ * teacher did not ask to send.
+ *
+ * The bounds on `fieldCount` / `corrections` are generous relative to the eight
+ * slots the Generator actually has. They exist to bound the work one request can
+ * ask of the database, not to mirror the form.
+ */
+const telemetryEventSchema = z
+  .object({
+    name: z.enum([...ASSISTANT_EVENT_NAMES]),
+    // Re-checked against the registry in telemetry.js, which DROPS an event
+    // naming an action this server does not have. A length bound alone is not a
+    // privacy control here: sixty characters is plenty of room for a topic, and
+    // this field was a smuggling channel until a test posted teacher text
+    // through it and watched it land in a row.
+    actionId: z.string().min(1).max(60),
+    // The join key between the Event row and its stdout decision line.
+    //
+    // CONSTRAINED TO THE UUID SHAPE the interpret endpoint actually mints, for
+    // the same reason as above — as a free string it was a second smuggling
+    // channel. The client either echoes a server-minted id or omits the field;
+    // it has no way to produce anything else, so strictness costs nothing real.
+    requestId: z
+      .string()
+      .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+      .optional(),
+    fieldCount: z.number().int().min(0).max(50).optional(),
+    lowConfidenceCount: z.number().int().min(0).max(50).optional(),
+    outcome: z.enum([...PREFILL_OUTCOMES]).optional(),
+    corrections: z
+      .array(
+        z
+          .object({
+            // A slot NAME. Re-checked against the registry in telemetry.js, so
+            // a name this server does not recognise is dropped rather than
+            // stored — the length bound alone would not stop a topic here.
+            field: z.string().min(1).max(60),
+            from: z.enum([...PROVENANCE_SOURCES]),
+          })
+          .strict()
+      )
+      .max(50)
+      .optional(),
+  })
+  .strict();
+
+const eventsRequestSchema = z
+  .object({ events: z.array(telemetryEventSchema).min(1).max(MAX_EVENT_BATCH) })
+  .strict();
+
+// POST /api/assistant/events — what the teacher did with a prefill.
+//
+// This is the ONLY write the assistant performs, and it writes to `Event` alone
+// (guardrail G8: no AI output may trigger a write to anything a teacher owns —
+// telemetry about the assistant's own behaviour is not that).
+//
+// It answers with 204 and nothing else. There is no body worth reading: the
+// client is fire-and-forget by design, must never retry, and must never surface
+// anything from here to the teacher. Applying /interpret's error contract (G22)
+// to this endpoint as well, a failed write is still a 204 — a telemetry failure
+// that produced a visible error would be strictly worse than the missing row.
+router.post(
+  '/events',
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const requestId = crypto.randomUUID();
+
+    // Same rollout predicate as the other two endpoints, so the three can never
+    // disagree about who is inside the rollout. With the flags at their defaults
+    // this endpoint writes nothing at all, which is what makes the flags-off
+    // proof ("zero rows") hold for telemetry as well as for routing.
+    const flags = readAssistantFlags(process.env);
+    if (!(await isWithinRollout(req.user, flags))) {
+      return res.status(204).end();
+    }
+
+    const parsed = eventsRequestSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      // The one non-2xx this endpoint produces beyond auth and rate limiting.
+      // A malformed batch is a client defect worth surfacing in development,
+      // and the client treats it as "drop the batch" rather than retrying.
+      return res.status(400).json({
+        error: parsed.error.issues[0]?.message || 'A non-empty "events" array is required.',
+        requestId,
+      });
+    }
+
+    const { written, failed } = await writeAssistantEvents(parsed.data.events, {
+      userId: req.user.id,
+      schoolId: req.user.schoolId,
+      requestId,
+    });
+
+    // Channel 1 records the volume of channel 2, which is how the two-rows-per-
+    // session guarantee stays observable in production rather than only in a
+    // test: a batch size that starts climbing is visible here first.
+    logAssistantEvent(failed > 0 ? 'warn' : 'info', 'telemetry_batch_received', {
+      requestId,
+      received: parsed.data.events.length,
+      written,
+      failed,
+    });
+
+    return res.status(204).end();
   })
 );
 

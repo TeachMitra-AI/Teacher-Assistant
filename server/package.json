@@ -14,12 +14,14 @@
     "migrate": "prisma migrate dev",
     "studio": "prisma studio",
     "generate": "prisma generate",
-    "lint": "eslint src evals",
+    "lint": "eslint src evals tools",
     "test": "vitest run",
     "test:watch": "vitest",
     "eval": "node evals/run.js --mode live",
     "eval:replay": "node evals/run.js --mode replay",
-    "eval:compare": "node evals/compare.js"
+    "eval:compare": "node evals/compare.js",
+    "assistant:metrics": "node tools/assistantMetrics.js",
+    "assistant:prune-events": "node tools/pruneAssistantEvents.js"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
