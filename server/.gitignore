@@ -6,6 +6,12 @@ npm-debug.log*
 # SQLite database files
 prisma/*.db
 prisma/*.db-journal
+# Copies and snapshots of a development database. A dev database carries user
+# rows, credential hashes and conversation content, so it must never be tracked
+# — `prisma/*.db` alone did not cover a file named `dev.db.backup`, and one had
+# been committed. Keep both patterns.
+prisma/*.db.backup
+prisma/*.backup
 
 # Throwaway test database (created/destroyed by the Vitest global setup)
 test/*.db
