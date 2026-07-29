@@ -282,7 +282,8 @@ anything a teacher owns (G8).
 | 4 | Envelope validation | `routes/assistant.js` | **Hard 400** |
 | 5 | Normalize (`normalizeQuery`) | existing `inputGuard` | Empty → `passthrough` |
 | 6 | **Emergency check (`detectEmergency`)** | existing `inputGuard` | **Match → immediate `passthrough`; classifier never runs** |
-| 7 | Per-user daily budget | `telemetry.js` | Exhausted → `passthrough` |
+| 7 | Per-user daily budget | `assistant/budget.js` (**M9**) | Exhausted → `passthrough`, **before any model call** |
+| 8b | **Router breaker (CHANGE-8)** | `assistant/breaker.js` (**M9**) | Open → `passthrough`, **before any model call** |
 | 8 | Build role-filtered catalog | `registry.js` | Empty → `passthrough` |
 | 9 | Classify | `classifier.js` | Timeout / 5xx / safety / unparseable → `passthrough` |
 | 10 | Validate proposal → canonicalize → merge → validate params | `proposalSchema` → `resolver` | Unknown ID → `passthrough`; invalid params → drop slots, downgrade |
@@ -344,6 +345,14 @@ with a 200.
 `[CHANGE-8]` **Global breaker:** if the classifier observes N upstream 429s within a window, router
 Gemini calls disable for M minutes while `/api/coach` continues unaffected. **When the upstream is
 constrained, coaching wins.**
+
+> ✅ **Delivered at M9** as `server/src/assistant/breaker.js` — a factory injected via `app.locals`,
+> never module state. Defaults: **5** rate-limited classifications within **60 s** open it for
+> **5 minutes** (`ASSISTANT_BREAKER_429_THRESHOLD` / `_WINDOW_MS` / `_COOLDOWN_MS`). It reads
+> `error.metrics.rateLimited`, which `gemini.js` already sets, so **neither `gemini.js` nor
+> `classifier.js` was modified**. While open it reports the existing `classifier_error` reason
+> (decision D27) with `breakerOpen: true` on the decision log. **Observed live: the Coach returned a
+> real 4,069-character answer while the router breaker was open.**
 
 ### 4.6 Registry location
 
@@ -866,6 +875,7 @@ documented duplication with a scheduled resolution is a tradeoff.
 | **M7** | Know how good it is | ≥120 labelled utterances; runner; recorded-fixture CI mode | It *is* the test | 5.0 d |
 | **M8** | Post-launch tuning possible | Split telemetry channels; metrics query | `Event` rows correct and clean | 2.0 d |
 | **M9** | Safe to expose | Limiters, budget, breaker, security review, log audit, deletability test | Limiter tests; deliberate attempt to reach a destructive action | 3.0 d |
+| | ✅ **Delivered 2026-07-29.** The named acceptance test — a deliberate attempt to reach a destructive action — lives in `server/test/assistant/security.test.js` and assumes a **fully compromised classifier**. Two real defects were found and fixed by the review (a request-body fragment in the log together with a 5xx from `/interpret`; an unbounded telemetry write path), and deletability was **performed**, reproducing the M0 bundle hash exactly. See [`ai-action-router-security-review.md`](./ai-action-router-security-review.md) | | | |
 | **M10** | Real teachers, small numbers | Staged rollout, monitoring | §11 Definition of Done | 5.0 d |
 
 > Every milestone additionally ends with the **Milestone Completion Protocol** (§21 of the living

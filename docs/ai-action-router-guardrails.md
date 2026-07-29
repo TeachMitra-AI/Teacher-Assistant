@@ -7,6 +7,7 @@
 > - [`ai-action-router-architecture.md`](./ai-action-router-architecture.md) — *why*
 > - [`ai-action-router-phase1-spec.md`](./ai-action-router-phase1-spec.md) — *what to build*
 > - [`AI_ACTION_ROUTER_README.md`](./AI_ACTION_ROUTER_README.md) — **living project state**
+> - [`ai-action-router-security-review.md`](./ai-action-router-security-review.md) — **the M9 review that executes Parts 3, 4 and 6 of this document as an attack**
 
 This document identifies everything developers must **not** break. Where it conflicts with the other
 two documents, **this one wins** — and the other document should be corrected.
@@ -154,7 +155,7 @@ Mandatory. Numbered for citation in review. A PR violating any of these does not
 | I5 | **Effect class is registry-declared** | Startup validation; policy tests at all confidences |
 | I6 | The Coach is the **universal fallback** | All passthrough reasons produce a Coach answer |
 | I7 | Existing API contracts are **backward compatible** | Existing suites unmodified and green |
-| I8 | The feature is **deletable** | Performed and verified at M9 |
+| I8 | The feature is **deletable** | ✅ **Performed at M9** (2026-07-29), in a throwaway worktree with nothing committed. The deleted build boots, both assistant endpoints 404, the server suite returns **18 files / 413 tests** and the client bundle returns **`index-B4SBMDAV.js` at 276.32 kB gzip** — the exact pre-feature test count and bundle *hash* recorded at M0. See [`ai-action-router-security-review.md`](./ai-action-router-security-review.md) §5 |
 | I9 | **Zero persistent state depends on the router** | Rollback creates no orphans |
 | I10 | **One definition per contract** | Grep audit at each merge checkpoint |
 | I11 | **Failure is invisible** | Failure matrix fully covered |

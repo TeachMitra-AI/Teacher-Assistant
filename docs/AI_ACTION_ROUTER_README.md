@@ -20,14 +20,14 @@
 | **Current Branch** | `feature/ai-action-router` |
 | **Base Branch** | `main` |
 | **Current Phase** | Phase 1 — Generator only |
-| **Current Milestone** | **M8 — Telemetry** ✅ **COMPLETE — awaiting review/approval** |
-| **Overall Progress** | **78%** (planning + M0 → M6 + M7a + M7b + M8 complete) |
-| **Current Status** | 🟢 Healthy. **The field-edit rate — decision D16's launch gate — is computable end to end for the first time**, demonstrated against a live server: 3 delivered prefills → 11.1%, with abandonment derived and the outcome mix broken down by provenance. Both CHANGE-6 channels are live, the ≤2-rows-per-session ceiling is proven by test at both layers, and a 90-day retention policy exists with an executable, correctly-scoped prune. **The integration suite found and closed a real privacy hole** (see §9). All flags still default OFF |
+| **Current Milestone** | **M9 — Hardening** ✅ **COMPLETE — awaiting review/approval** |
+| **Overall Progress** | **86%** (planning + M0 → M6 + M7a + M7b + M8 + M9 complete) |
+| **Current Status** | 🟢 Healthy. **Every cost and availability control the design specified is now live and exercised against a running server**: the per-user daily budget spends no model call when exhausted, the CHANGE-8 breaker opens on upstream 429s **while the Coach keeps answering**, and the generation endpoint finally has a limiter. **The security review found two real defects and fixed both** — a body fragment leaking into the log (and a 5xx from `/interpret`), and an unbounded telemetry write path. **Deletability is no longer a claim: the deleted build reproduces the M0 bundle hash and test count exactly.** Kill switch measured at **4 seconds**. All flags still default OFF |
 | **Architecture Status** | ✅ **Approved** (reviewed 3×, 12 amendments applied — see §5.3). **Amended at M8: the assistant now exposes THREE endpoints**, not two — approved before implementation, reasoning in §5.1 D21 |
-| **Implementation Status** | ✅ **M0–M6 + M7a + M7b + M8 complete** — contracts frozen, registry live behind flags, catalog serving, the full 12-stage pipeline, the composer routing end to end, a frozen measured baseline, one evidence-backed tuning change, and **post-launch tuning now possible because the correction signal reaches a queryable store**. All flags default OFF |
+| **Implementation Status** | ✅ **M0–M6 + M7a + M7b + M8 + M9 complete** — contracts frozen, registry live behind flags, catalog serving, the full 12-stage pipeline, the composer routing end to end, a frozen measured baseline, one evidence-backed tuning change, the correction signal reaching a queryable store, and **the feature now safe to expose**. All flags default OFF |
 | **Last Updated** | 2026-07-29 |
 | **Governance** | 🔒 **Milestone Completion Protocol in force** — see [§21](#21-milestone-completion-protocol-mandatory). One milestone at a time; full verification gate before the next begins; explicit user approval required to proceed |
-| **Next Task** | ⏸️ **Awaiting user approval of M8.** Then **M9 — hardening** (limiters, the per-user budget counter, CHANGE-8 breaker, security review, log audit, deletability test). Three M7 decisions remain open and are untouched by M8: **D5 descriptor `examples`**, **D4 routing temperature** (needs the protected `gemini.js`), and **GF-6** (the `open_generator` / `generate_assessment` boundary) |
+| **Next Task** | ⏸️ **Awaiting user approval of M9.** Then **M10 — internal rollout** (staged: dark → team → pilot school → all teachers), which is the last milestone. **One M9 finding needs an owner decision: F5**, the English-only emergency short-circuit (see the [Security Review](./ai-action-router-security-review.md) §2). Three M7 decisions also remain open and are untouched by M9: **D5 descriptor `examples`**, **D4 routing temperature** (needs the protected `gemini.js`), and **GF-6** (the `open_generator` / `generate_assessment` boundary) |
 
 ### Progress basis (keep this calculation consistent)
 
@@ -46,8 +46,9 @@ Progress % is weighted by estimated effort-days, not by milestone count.
 | **M7a — eval corpus, harness, baseline** | **3.5** | ✅ **Complete** | **9.3%** |
 | **M7b — tuning + re-measure** | **1.5** | ✅ **Complete** | **4.0%** |
 | **M8 — telemetry** | **2.0** | ✅ **Complete** | **5.3%** |
-| M9 → M10 implementation | 8.0 | ⬜ Not started | 0% |
-| **Total** | **37.5** | | **≈ 78.7%** → reported as **78%** |
+| **M9 — hardening** | **3.0** | ✅ **Complete** | **8.0%** |
+| M10 — internal rollout | 5.0 | ⬜ Not started | 0% |
+| **Total** | **37.5** | | **≈ 86.7%** → reported as **86%** |
 
 > **M7's 5.0 d is split into M7a (3.5 d, measurement) and M7b (1.5 d, tuning)** at the
 > project owner's instruction. The split is not cosmetic: spec §1.2's fourth ordering rule is
@@ -414,6 +415,9 @@ The safety spine of the whole design.
 | D22 | **The `generated` outcome is observed, never instrumented** (M8) | `handleGenerate` is protected area #1 and spec §6.7 forbids router concepts inside it. Watching `content` become non-null while AI provenance is present establishes the same fact from outside, adding **zero lines** to the generation path |
 | D23 | **`abandoned` is derived at query time, never emitted** (M8) | The only way to emit it is an unload beacon, and beacons are unreliable on exactly the low-end mobile browsers this product targets. An undercounted abandonment rate reads as *good news* — the worst direction for a metric to fail in |
 | D24 | **Retention is a scoped script, not an in-process sweeper** (M8) | Opportunistic pruning would put DELETEs on the very request path CHANGE-6 exists to keep quiet. The script is restricted to the two `assistant_*` types and structurally cannot reach safety-flag or user-approval rows |
+| D25 | **The daily budget lives in process memory, not in a table** (M9) | A durable counter needs a migration — the single thing that would turn this feature's rollback from a flag flip into a schema change. The accepted cost (resets on restart, per process) is *exactly* what `express-rate-limit`'s MemoryStore has cost `/api/coach` and `/api/auth` since before this project existed, so it adds no new class of weakness. **Revisit before the deployment becomes multi-instance, not after** |
+| D26 | **Check and consume are ONE operation** (M9) | Splitting them — check at stage 7, charge later once a model call really happened — is more accurate and introduces the one failure mode a budget must not have: a path that forgets to consume. The cost is that a turn ending before the classifier still spends a unit, and over-enforcement degrades to a coaching answer, which this architecture treats as always safe |
+| D27 | **The breaker reuses `classifier_error` rather than adding a tenth passthrough reason** (M9) | The reason vocabulary is frozen in `contracts.js`, mirrored in the client's `types.ts`, and drift-guarded, so a tenth value costs a coordinated two-sided change to describe something **the teacher can never tell apart** — all nine reasons produce one experience. `breakerOpen: true` on the decision log carries the distinction to the only audience that needs it. Verified live: the log line shows `breakerOpen: true` and no `calls` |
 
 ### 5.2 Rejected alternatives (recorded so they are not re-litigated)
 
@@ -515,20 +519,26 @@ passthrough for one release after the client stops calling it.
 | `client/vitest.config.ts` | Client test runner (M3). **Pure-logic modules only**, scoped to `src/assistant/**`. Sits at `client/` root, so it is not covered by the `client/src/assistant/` entry above. Loads none of the app's Vite plugins, and does not affect the production build |
 | `server/src/assistant/telemetry.js` | **M8.** Both CHANGE-6 channels in one file: the per-decision stdout line and the low-volume `Event` writers. Never throws. The `buildMetadata` explicit-key-list is the structural half of G11 |
 | `server/tools/` | **M8.** Operational scripts, not application code — `assistantMetrics.js` (read-only; computes the field-edit rate, the launch gate) and `pruneAssistantEvents.js` (retention; scoped to the two `assistant_*` types and structurally unable to reach safety-flag or approval rows). Covered by `npm run lint` |
+| `server/src/assistant/budget.js` | **M9.** The per-user daily counter M5 left as a seam. Factory + injectable clock, bounded map with least-recently-touched eviction. In-process by decision D25 |
+| `server/src/assistant/breaker.js` | **M9.** The CHANGE-8 router breaker. Reads `metrics.rateLimited` — a signal the protected `gemini.js` already produces — so neither it nor `classifier.js` is touched. Ships a `createDisabledBreaker()` used as the pipeline default and by the eval runner |
+| `server/src/lib/limiters.js` | **M9.** Factory for the `POST /api/resources/generate` limiter **only** (approval A9). Exists so the limiter test can mount the real thing on a throwaway app instead of exhausting the shared one |
+| `docs/ai-action-router-security-review.md` | **M9.** The security review, log audit, live verification log and deletability result. Nine findings, all dispositioned |
 | `client/src/assistant/telemetryTransport.ts` | **M8.** The wire layer. Collapses a whole prefill session into **at most two** events, latched per draft, fire-and-forget with no retry. Separate from `telemetry.ts` (the local signal) so the collapse — the thing that keeps CHANGE-6's promise — lives at the only layer that can enforce it |
 
 ### 7.2 Modified files (the complete list — nothing else may change)
 
 | Path | Change | Size |
 |---|---|---|
-| `server/src/index.js` | Mount assistant router; construct `geminiFast`; new env tunables; assistant limiter; **add a limiter to `/api/resources/generate`** | additive — **M2 +29 / −0, M5 +52 / −0** |
+| `server/src/index.js` | Mount assistant router; construct `geminiFast`; new env tunables; assistant limiter; **add a limiter to `/api/resources/generate`**. **M9**: construct the budget, the telemetry budget and the breaker onto `app.locals`; mount `generateLimiter` on the path ahead of the resources router; map a body-parser `SyntaxError` to 400 (finding F1) | additive — **M2 +29 / −0, M5 +52 / −0, M9 +100 / −0** |
 | `server/src/routes/resources.js` | Replace the inline `generateSchema` definition with an import. **Nothing else** | ~15 lines relocated |
-| `server/src/routes/assistant.js` | `GET /catalog` (M2); `POST /interpret` + envelope schema (M5); rollout gate made to fail closed (M5); **`POST /events` + its strict closed-enum envelope, and the decision-log helper moved out to `assistant/telemetry.js` (M8)** | additive — M5 +198 / −8; **M8 +129 / −17**, the deletions being the relocated log helper and its comment block |
+| `server/src/routes/assistant.js` | `GET /catalog` (M2); `POST /interpret` + envelope schema (M5); rollout gate made to fail closed (M5); **`POST /events` + its strict closed-enum envelope, and the decision-log helper moved out to `assistant/telemetry.js` (M8)**; **M9**: inject the budget and breaker into the pipeline, and bound telemetry writes per user (finding F2) | additive — M5 +198 / −8; **M8 +129 / −17**, the deletions being the relocated log helper and its comment block; **M9 +35 / −2**, the deletions being the widened `interpret(...)` call |
 | `server/src/assistant/contracts.js` | **M8**: the telemetry wire vocabularies (`ASSISTANT_EVENT_NAMES`, `PREFILL_OUTCOMES`), the storage-layer `ASSISTANT_EVENT_TYPES`, batch/metadata bounds, and the 90-day retention constant. Additive — no existing vocabulary altered | additive — **+96 / −1** |
 | `server/package.json` | **M8**: `assistant:metrics` / `assistant:prune-events` scripts, and `lint` extended from `eslint src evals` to `eslint src evals tools`. An unlinted retention script is how a typo'd `where` clause deletes the wrong rows | +3 / −1 |
 | `client/src/assistant/telemetry.ts` | **M8**: the `prefill_generated` marker and its recorder. **Purely additive** — the eight M3 tests pass unmodified | +18 / −1 |
 | `client/src/assistant/draftStore.ts`, `types.ts`, `pendingAsk.ts`, `handlers/types.ts`, `handlers/generateAssessment.ts`, `RouterProvider.tsx` | **M8**: carry the opaque `requestId` from the interpret response into the draft, so an `Event` row joins to its decision log line (D21/A4). `RouterProvider` also owns the `visibilitychange` flush — the transport's only lifecycle hook | additive |
 | `client/src/assistant/generatorPrefill.ts` | **M8**: reports delivery and the three outcomes. The page's coupling stays **one import line** (G14) | additive |
+| `server/src/assistant/interpret.js` | **M9**: stage 8b — the breaker guard above the classifier — and the `rateLimited` feedback below it. The M5 budget seam is filled by injection rather than by editing the stage | **M9 +47 / −15**, the deletions being the now-stale M5 seam comment |
+| `server/evals/lib/runCase.js` | **M9**: passes `createDisabledBreaker()` explicitly (approval A6), so a quota-pressured run measures routing quality rather than infrastructure state. **The corpus, cassettes and frozen baseline are untouched** | +10 / −0 |
 | `server/src/assistant/proposalSchema.js` | **M7b**: free-text slots declare `maxLength` in the Gemini response schema (candidate C4), derived from the registry's own `slot.type` rather than naming `topic`. The application's accept bound is unchanged, so it can neither admit nor reject anything it did not before | additive — **+49 / −0** |
 | `server/.env.example` | Document ~8 new variables | additive. **Amended at M5**: the routing model endpoint, because the M0-documented `gemini-2.5-flash-lite` was retired and returns 404 |
 | `client/src/App.tsx` | Wrap `AppRoutes` in `RouterProvider` | **actual at M6: +7 / −1** — insertion only, provider order untouched |
@@ -610,7 +620,7 @@ schema extraction, which stands on its own merits.
 | **M7a** | Eval corpus, harness, baseline (**measurement only**) | 3.5 d | ✅ **Completed** | 2026-07-29. **196 labelled turns** (157 single + 15 sessions) across 8 strata; record/replay harness at the `fetchImpl` seam; deterministic full-corpus CI gate; **62 new server tests + 5 client**; baseline recorded against `gemini-3.5-flash-lite` with **precision 95.8%, recall 85.8%, Hinglish precision 100%**, and **grade slot accuracy 23.9%** against a DoD target of 85%. All five hard gates pass. **Seven failure classes recorded in `golden_failures.md`; nothing tuned** |
 | **M7b** | Prompt/schema tuning + re-measure | 1.5 d | ✅ **Completed** | 2026-07-29. **4 candidates measured, 1 accepted.** C4 (free-text slots bounded in the response schema, registry-derived) cut GF-1 10 → 7 and lifted recall 85.8% → 89.6%; **C3, C1 and C2 were rejected on evidence and recorded in `TUNING_LOG.md`**. **Grade extraction unchanged at ~20% — the primary target was NOT met**, and two independent prompt mechanisms aimed at it measurably hurt it. Frozen baseline, corpus and cassettes untouched; `gemini.js` untouched |
 | **M8** | Telemetry | 2.0 d | ✅ **Completed** | 2026-07-29. Both CHANGE-6 channels live; `POST /api/assistant/events` (the approved third endpoint); `assistant/telemetry.js`; client transport with the **≤2-rows-per-session ceiling proven at both layers**; the `generated` outcome via an observer effect with **zero lines inside `handleGenerate`**; 90-day retention + prune script; metrics script. **1052 server tests (+46), 333 client (+16)**, 3× no flakiness; bundle **+0.08 kB gzip**; **4/4 injected-defect proofs detected**; **a real privacy hole found and closed by the new suite**. Field-edit rate demonstrated end to end against a live server |
-| **M9** | Hardening | 3.0 d | ⬜ Pending | Rate limits, budgets, CHANGE-8 breaker, security review, deletability test |
+| **M9** | Hardening | 3.0 d | ✅ **Completed** | 2026-07-29. Per-user daily budget (D25/D26), CHANGE-8 breaker (D27), limiter on `/api/resources/generate`, telemetry write bound. **1133 server tests (+81)**, 3 consecutive runs; **client untouched — `git diff --stat client/` empty, bundle byte-identical**; `index.js` **+100 / −0**; **8/8 injected-defect proofs detected**; **the security review found and fixed two real defects** (a body fragment in the log + a 5xx from `/interpret`; an unbounded telemetry write path). **Deletability PERFORMED: the deleted build reproduces the M0 bundle hash `index-B4SBMDAV.js` and its 413-test count exactly.** Kill switch timed at **4 s**. Every guard exercised against a live server, including the Coach answering while the breaker was open |
 | **M10** | Internal rollout | 5.0 d | ⬜ Pending | Dark → team → pilot school → all teachers |
 
 **Status legend:** ✅ Completed · 🟡 In Progress · ⬜ Pending · ❌ Blocked · ⏸️ Paused
@@ -844,6 +854,27 @@ schema extraction, which stands on its own merits.
 | 2026-07-29 | ⚠️ **A flags-off proof initially appeared to FAIL** — one row written with the assistant off | ✅ **Not a defect** | Investigated rather than reported: `pkill` had not killed the previous instance, so the flags-**ON** server still held port 3999 and answered the request; the flags-off server had died with `EADDRINUSE`. Killed by PID and re-run: **0 rows, catalog inert**. This is the M4 "port may be serving a stale instance" lesson recurring, and it is recorded because a false failure believed is as costly as a real one missed |
 | 2026-07-29 | **M8 verification complete.** Server **1052 tests / 41 files** (+46), client **333 tests / 16 files** (+16), **3 consecutive runs each, no flakiness** · both lints ✅ · client build ✅ · bundle **+0.08 kB gzip** (282.64 → 282.72), CSS hash unchanged · **zero migrations** · every protected file diff-empty | ✅ | See the M8 Milestone Completion Report |
 | 2026-07-29 | **M8 complete — awaiting user review and approval.** M9 not started | ⏸️ | Per §21 |
+| 2026-07-29 | **M8 APPROVED by project owner. M9 authorized** with nine explicit rulings (A1–A9) taken before any code was written | ✅ **Binding** | A1 in-process budget · A2 consume at stage 7 · A3 reuse `classifier_error` · A4 injected factories, no module state · A5 IP-keyed generate limiter · A6 eval runner injects a disabled breaker · A7 dedicated security-review document · A8 deletability in a throwaway worktree, nothing committed · A9 `lib/limiters.js` for the new limiter only. Recorded as decisions **D25–D27** in §5.1 |
+| 2026-07-29 | **M9 started.** Baselines captured first: server **1052 tests / 41 files**, client **333 tests / 16 files**, both lints clean, bundle `index-CdDgI2Zg.js` **986,850 raw / 282,720 gzip** | ✅ | Same discipline as every milestone since M0: "unchanged" has to be provable |
+| 2026-07-29 | 📋 **Roadmap correction found while reading the code: the "assistant rate limiter" checklist item was ALREADY BUILT** at M2/M5 (`index.js:257`, mounted at `:483`) | ✅ **Corrected** | What was missing was not the limiter but the evidence — `assistant.interpret.test.js:502` asserted only that the route sits inside the bucket, with the comment "Exhausting the bucket is an M9 concern". Reclassified from *build* to *prove*. A checklist that lists work already done is how a milestone quietly reports progress it did not make |
+| 2026-07-29 | **Design: the 429 signal is read from `error.metrics.rateLimited`**, which `gemini.js` already sets on its own tracker | ✅ | Meant **zero changes to the protected `gemini.js` (G21) and none to `classifier.js`** either — the file documented as talking to Gemini and making no decisions gains no decision. Proven rather than assumed by a contract test driving a REAL `GeminiService` through a stubbed 429 and asserting the flag reaches `classify`'s return: if that field ever stops being set the breaker would never open, and every breaker unit test would still pass |
+| 2026-07-29 | **Design: the generate limiter mounts in `index.js` on the path AHEAD of the resources router** | ✅ | `routes/resources.js` is protected area #1 and M1 already spent its one permitted edit. `app.use('/api/resources/generate', generateLimiter)` before `app.use('/api', resourcesRouter)` binds exactly the generate path and opens no protected file. Verified live: `GET /api/resources` returns 200 with **no** rate-limit headers |
+| 2026-07-29 | **The limiter's non-production default (600) is load-bearing, not a convenience** | ✅ | `resources.test.js` drives the generation endpoint many times and must pass **70/70 unmodified**. A production-shaped ceiling would fail it, and the tempting fixes — editing that test or the shared `testEnv.js` helper — are both forbidden by G26. Recorded as a rule in `lib/limiters.js`: *if a test ever needs an env change to pass, the DEFAULT is wrong, not the test* |
+| 2026-07-29 | 🔴 **A REAL BUG in the new budget counter, found by its own integration test**: a limit of 0 still granted the first call | ✅ **Fixed** | The new-user branch created the entry before consulting `limit`. Unreachable through configuration (`parseIntEnv` clamps at 1) and fixed anyway, because a control that is wrong at its own boundary teaches nobody to trust it elsewhere — and the next caller may not come through the env |
+| 2026-07-29 | 🔴 **THE SECURITY REVIEW'S HEADLINE FINDING (F1): malformed JSON leaked a fragment of the request body into the log, and returned a 500 from `/interpret`** | ✅ **Fixed in M9** | Node's JSON parser embeds a ~20-character window of the RAW BODY in its message (`Unexpected token 'Z', ..."terance": ZZPROBEBOD"...`), and the global error handler logged that message verbatim. On this endpoint the raw body is the teacher's utterance — **G11**. The 500 also broke **G22**, and the client treats any 5xx as an unhealthy endpoint, so one malformed request opened its breaker and disabled routing for a minute. The 500 was observed at M2 and correctly recorded as out of scope *before `/interpret` existed*; the leak had never been probed. Now a 400, logging method and path only, **on every endpoint — the leak was never assistant-specific** |
+| 2026-07-29 | ⚠️ **That leak was NEARLY MISSED because the probe was truncated** | ✅ **Method corrected** | The first search returned zero hits: the parser cut `ZZPROBEBODY` to `ZZPROBEBOD`, so an assertion on the full probe string passed while the leak was real. **A fragment is a leak**, so the regression test now asserts on the shortest distinctive marker. This is the M8 lesson recurring in a new costume — the instrument, not just the control, has to be attacked |
+| 2026-07-29 | 🔴 **Second review finding (F2): `POST /api/assistant/events` had no per-user bound at all** | ✅ **Fixed in M9** | Only the shared IP limiter stood in front of it, and a request may carry a batch of 20 — roughly **160 rows a minute** in production, which is exactly the sustained write stream on single-writer SQLite that CHANGE-6 exists to prevent (finding D). The ≤2-rows-per-session ceiling was a *client* promise with no server counterpart. Closed with a second counter whose limit is **derived** (`dailyBudgetPerUser × 2 + 20`) rather than a new flag, kept **separate** from the routing budget so telemetry can never eat a teacher's routing allowance. Over budget still answers 204 — telemetry is fire-and-forget, so the bound can lose a measurement and can never cost a teacher anything |
+| 2026-07-29 | **Finding F9 recorded as a STRENGTH, not a fix**: the proposal boundary is `.strict()` | ✅ | A model returning `effect: 'destructive'`, `autoExecute: true`, `decision: 'execute'` or `route: '/admin/users'` has the **whole proposal rejected**, not merely the extra fields ignored. Discovered while writing the attack suite, which had expected the weaker "ignored" behaviour. Recorded so nobody later relaxes it for convenience |
+| 2026-07-29 | **GF-5 re-confirmed with fresh evidence and DEFERRED** (finding F5) | ⚠️ **Open — owner decision** | Five inputs run through `detectEmergency`: both English phrasings match; the Hinglish and both Hindi phrasings do not. Safety still holds — nothing is routed into a worksheet form — but the **zero-latency guarantee holds only for English**. `inputGuard.js` is protected area #11 and this predates the router; widening the app's most safety-critical matcher deserves its own review and false-positive analysis, not a line inside a hardening milestone |
+| 2026-07-29 | **8/8 injected-defect proofs detected**, each injected, observed failing, restored, re-verified green | ✅ | (1) budget never consumes → 3 fail. (2) breaker guard bypassed → 4 fail. (3) limiter unmounted → 1 fails. (4) breaker extended to gate `/api/coach` → **the I12 test fails**. (5) `console.log(utterance)` added → 2 audit tests fail. (6) descriptor effect raised to `write` → **the server refuses to boot**, naming the action and the guardrail. (7) the F1 branch removed → 2 fail. (8) the telemetry bound bypassed → 1 fails |
+| 2026-07-29 | **Live verification against a running server on a spare port**, flags as process env, port ownership confirmed free before each boot | ✅ | Budget=2 → calls 3-4 `budget_exhausted` with **zero upstream calls**. Breaker → 2 rate-limited classifications open it, the next two make **zero upstream calls**, and the decision log carries `breakerOpen: true`. Generate limiter → 400, 400, **429** with a readable sentence. Guards at default → a real prefill from live Gemini. Flags off → catalog inert, interpret `disabled`, coach normal |
+| 2026-07-29 | ✅ **INVARIANT I12 OBSERVED, not merely asserted: the Coach answered a real 4,069-character Gemini response while the router breaker was open** | ✅ | Repeated at 5,683 characters. This is the whole point of CHANGE-8 and the first time it has been demonstrated rather than designed |
+| 2026-07-29 | ⚠️ **Two live readings looked wrong and were investigated rather than reported** | ✅ **Not a defect** | Upstream call counts moved twice when the breaker was expected open — both times the 20-second test cooldown had elapsed during a slow live Coach call. **The call counting is what revealed it**; the sequence was re-run with no gaps and behaved exactly as designed. Recorded because a false failure believed is as costly as a real one missed |
+| 2026-07-29 | ✅ **DELETABILITY (invariant I8) PERFORMED** — in a throwaway worktree, nothing committed, worktree and registration removed afterwards | ✅ | Deleted the assistant unit, reverted every modified file to **`main`** (not to the previous commit — the pre-feature baseline is the only correct reference), keeping the M1 schema extraction per §7.4. Result: zero residual references · server boots · both assistant endpoints **404** · **18 files / 413 tests — exactly the M0 pre-feature baseline** · client bundle **`index-B4SBMDAV.js` at 276.32 kB gzip — byte-for-byte the M0 pre-feature hash**. The feature is deletable, and that is now a *measurement* rather than a claim |
+| 2026-07-29 | 📋 **Deletability carry-forward (F6): a full rollback also removes the `/resources/generate` limiter** | 📋 **Recorded in §14** | Architecture §10.4 says that limiter should exist "regardless of this project", so a real rollback should keep it — like the two M5 carry-forwards already recorded. It is deliberately **not** flag-gated, so it stays active with the assistant switched off |
+| 2026-07-29 | **Kill switch rehearsed and TIMED: 4 seconds** from flip to inert, against a < 60 s target | ✅ | `catalogVersion` drops to 0, which is how a client holding a cached catalog learns its assumptions are void |
+| 2026-07-29 | **M9 verification complete.** Server **1133 tests / 46 files** (+81, +5 files), **3 consecutive runs, no flakiness** · client **333 tests**, unchanged · both lints ✅ · client build ✅ **bundle byte-identical** (`index-CdDgI2Zg.js`, 282.72 kB gzip) · `git diff --stat client/` **empty** · `index.js` **+100 / −0** · **zero migrations, zero new dependencies** · every protected file diff-empty · `server/test/` additions only | ✅ | See the M9 Milestone Completion Report |
+| 2026-07-29 | **M9 complete — awaiting user review and approval.** M10 not started | ⏸️ | Per §21. **One finding needs an owner decision: F5** (English-only emergency detection) |
 
 ---
 
@@ -924,6 +955,20 @@ schema extraction, which stands on its own merits.
 - `POST /api/assistant/interpret` — non-2xx for auth, malformed envelope and rate limiting only.
 - **159 new tests** (943 total). Both injected-defect proofs that mattered found real problems.
 
+**M9 — Hardening** ✅ (2026-07-29)
+- `server/src/assistant/budget.js` — the per-user daily counter M5 left as a seam. In process memory
+  by decision D25, bounded, with the two costs (restart reset, per process) stated in the module
+  header rather than discovered later.
+- `server/src/assistant/breaker.js` — CHANGE-8. Reads a signal the protected `gemini.js` already
+  produces, so **neither it nor `classifier.js` was touched**.
+- `server/src/lib/limiters.js` — the `/api/resources/generate` limiter, as a factory so the test can
+  mount the real one without poisoning the shared app's bucket.
+- **Two real defects found by the review and fixed**: a body fragment leaking into the log together
+  with a 5xx from `/interpret` (F1), and an unbounded telemetry write path (F2).
+- [`docs/ai-action-router-security-review.md`](./ai-action-router-security-review.md) — nine
+  findings, all dispositioned; the live verification log; the deletability result.
+- **81 new tests** (1133 total). **8/8 injected-defect proofs detected.** Client untouched.
+
 **M6 — Client wiring** 🟡 (2026-07-28, code complete)
 - `client/src/assistant/intentGate.ts` — precision-first command detection across English, Hinglish
   and Devanagari. Pure, ~0 ms, no network. **A 99-case precision table** is its acceptance evidence.
@@ -943,26 +988,46 @@ schema extraction, which stands on its own merits.
 
 ### 🟡 What is currently in progress
 
-**Nothing.** M8 is complete and **awaiting user review and approval**. Per §21, the next milestone
+**Nothing.** M9 is complete and **awaiting user review and approval**. Per §21, the next milestone
 does not begin automatically.
 
 ### ⬜ What is next
 
-**Milestone M9 — Hardening** (3.0 days) — *blocked on M8 approval*
+**Milestone M10 — Internal rollout** (5.0 days elapsed) — *blocked on M9 approval*. **The last
+milestone.**
 
-Assistant rate limiter, the per-user daily budget counter (M5 left it as an injectable seam that
-counts nothing — `assistant/telemetry.js` is now its natural home), a limiter on
-`/api/resources/generate`, the CHANGE-8 router-yields-to-coach breaker, the security review, the log
-audit, the **deletability test**, and a timed kill-switch rehearsal.
+Staged exposure with hold periods — dark → team → pilot school → all teachers — with the §21 gate
+run **per stage, not once**. The Definition of Done in the spec's §11 is checked here.
 
-Two things M8 hands it:
+Four things M9 hands it:
 
-1. **The log audit now has a second surface to cover.** `POST /api/assistant/events` is the only
-   place a client sends the server telemetry, and M8's own suite proved that a bounded string field
-   is not a privacy control. The audit should re-attack `actionId`, `requestId` and `field` rather
-   than reading them.
-2. **Retention is defined but nothing runs it.** `npm run assistant:prune-events` exists and works;
-   scheduling it is an M10 rollout step, and until then the table grows.
+1. **One finding needs an owner decision before exposure widens: F5**, the English-only emergency
+   short-circuit. Safety holds; the zero-latency guarantee does not, for Hindi and Hinglish. The
+   remedy touches protected area #11 and deserves its own review.
+2. **The retention prune still is not scheduled.** `npm run assistant:prune-events` exists and works;
+   scheduling it is an M10 step, and until then the table grows.
+3. **The breaker's thresholds are reasoned, not measured.** 5 rate-limited calls in 60 s, a 5-minute
+   cooldown. Stage 0 is the moment to watch them against real traffic.
+4. **The rollback procedure gained a carry-forward (F6):** keep the `/api/resources/generate`
+   limiter if the feature is ever rolled back — see §14.
+
+<details>
+<summary>Superseded — the M9 "what is next" entry, kept for history</summary>
+
+**Milestone M9 — Hardening** (3.0 days) — *was blocked on M8 approval*
+
+Assistant rate limiter, the per-user daily budget counter, a limiter on `/api/resources/generate`,
+the CHANGE-8 breaker, the security review, the log audit, the **deletability test**, and a timed
+kill-switch rehearsal.
+
+Two things M8 handed it, both of which paid off:
+
+1. **The log audit had a second surface to cover.** The audit re-attacked `actionId`, `requestId`
+   and `field` rather than reading them — and found a *third* surface nobody had listed: the global
+   error handler (finding F1).
+2. **Retention is defined but nothing runs it.** Still true; carried forward to M10.
+
+</details>
 
 <details>
 <summary>Superseded — the M7 "what is next" entry, kept for history</summary>
@@ -1311,15 +1376,17 @@ corpus, the frozen cassettes and the frozen baseline are all untouched.**
 - [x] `generated` outcome with **zero lines inside `handleGenerate`** (D22)
 - [x] 4/4 injected-defect proofs; a real privacy hole and a real transport bug found and fixed
 
-### M9 — Hardening (3.0 d)
-- [ ] Assistant rate limiter
-- [ ] Per-user daily budget
-- [ ] Limiter on `/api/resources/generate`
-- [ ] Router-yields-to-Coach breaker (CHANGE-8)
-- [ ] Security review against the threat model
-- [ ] Log audit — no utterance text or slot values anywhere
-- [ ] **Deletability test performed**
-- [ ] Kill switch rehearsed and timed in staging
+### ✅ M9 — Hardening (3.0 d) — COMPLETE 2026-07-29
+- [x] Assistant rate limiter — **already built at M2/M5**; M9 supplied the missing evidence (see §9)
+- [x] Per-user daily budget — live, spends **no model call** when exhausted (D25, D26)
+- [x] Limiter on `/api/resources/generate` — mounted in `index.js`, protected route not reopened
+- [x] Router-yields-to-Coach breaker (CHANGE-8) — **and the Coach observed answering while it was open**
+- [x] Security review against the threat model — **9 findings, all dispositioned; 2 real defects fixed**
+- [x] Log audit — executed as an **attack** on all three endpoints, with two positive controls
+- [x] **Deletability test performed** — reproduces the M0 bundle hash and test count exactly
+- [x] Kill switch rehearsed and timed — **4 seconds**
+- [x] Telemetry writes bounded per user — a review finding (F2), not in the original checklist
+- [x] 8/8 injected-defect proofs detected
 
 ### M10 — Internal rollout (5.0 d elapsed)
 - [ ] Stage 0 Dark (2 days hold)
@@ -1352,7 +1419,9 @@ corpus, the frozen cassettes and the frozen baseline are all untouched.**
 | Router metadata merged into `params` (`.strict()` → 400s) | Resolver test validates the exact params object and fails on any extra key |
 | `GeneratorPage` consumes `RouterProvider` | It imports exactly one function; grep for `useRouter` in that file must return zero |
 | `/interpret` returns 5xx | Integration test per failure mode asserting 200; alert on any 5xx |
-| Utterance text logged "temporarily" for debugging | Log audit is an M9 checklist item |
+| Utterance text logged "temporarily" for debugging | Log audit performed at M9 **as an attack**, on all three endpoints, with positive controls. It found a real leak nobody had put there deliberately (finding F1: Node's JSON parser embeds a body fragment in its message, and the global error handler logged it) |
+| **A privacy probe that passes because the leak was TRUNCATED** | **Observed for real at M9.** The probe `ZZPROBEBODY` reached the log as `ZZPROBEBOD`, so `not.toContain(probe)` passed while the leak was real. Assert on the shortest distinctive marker — a fragment is a leak |
+| **A finding filed "out of scope" staying filed after the system changes** | **Observed for real at M9.** The malformed-JSON 500 was correctly recorded as out of scope at M2 — *before `/interpret` existed*, which is what turned it into a G22 violation. Re-triage recorded findings when the surface around them changes |
 | **A bounded string field treated as a privacy control** | **Observed for real at M8**, not hypothesised: `actionId` was capped at 60 characters, teacher text fits in 60 characters, and a test watched it reach a stored row. Any new string on the telemetry wire must be constrained to a value that *cannot* carry prose (registry membership, a UUID shape, a closed enum) — never merely to a length |
 | Auto-generation added "because it's obvious" | `autoExecute: false` validated at startup; client rejects `decision: 'execute'` |
 | Test flakiness from the shared SQLite file | Follow existing fixture conventions; run the suite 3× before merging new test files |
@@ -1369,7 +1438,8 @@ corpus, the frozen cassettes and the frozen baseline are all untouched.**
 
 | Risk | Horizon | Note |
 |---|---|---|
-| `Event` write volume on single-writer SQLite | Phase 1 → 2 | **Addressed at M8**: ≤2 rows per routed session, proven by test at both the client (which collapses corrections) and the endpoint. **Retention policy now exists** — 90 days, `npm run assistant:prune-events`. ⚠️ Residual: nothing *schedules* the prune yet; that is an M10 rollout step, and until then the table grows |
+| `Event` write volume on single-writer SQLite | Phase 1 → 2 | **Addressed at M8**: ≤2 rows per routed session, proven by test at both the client (which collapses corrections) and the endpoint. **Retention policy now exists** — 90 days, `npm run assistant:prune-events`. **Closed properly at M9**: that ceiling was a *client* promise with no server counterpart, so a hostile or looping client could still sustain ~160 rows/minute. A per-user daily bound on `POST /events` now backs it server-side (finding F2). ⚠️ Residual: nothing *schedules* the prune yet; that is an M10 rollout step, and until then the table grows |
+| **Per-user budget accuracy across restarts / instances** | Phase 1 → 2 | Accepted at M9 (D25). Resets on restart, per process — identical to `express-rate-limit`'s MemoryStore, which has backed `/api/coach` since before this project. **Revisit before the deployment becomes multi-instance, not after** |
 | Shared Gemini quota between Coach and Router | Phase 1 | CHANGE-8 breaker. Router must never starve coaching |
 | Classifier prompt grows with the catalog | Phase 3 | ~2–3k tokens at 20 actions. Cheap fix: cap examples per action in the prompt |
 | Role knowledge now in four places | Phase 2 | If a fifth appears, stop and consolidate |
@@ -1469,6 +1539,17 @@ should be kept:
 Neither affects the deletability property: both live in files M2 already owned, and deleting
 `assistant/` + `actions/` + `routes/assistant.js` removes them along with everything else.
 
+### Rollback at M9 — a third thing that does NOT revert cleanly
+
+| What | Why it must not be reverted |
+|---|---|
+| **The limiter on `POST /api/resources/generate`** in `server/src/index.js` | Architecture §10.4 asks for it **"regardless of this project"** — the generation endpoint is the most expensive path in the product and had no limiter at all before M9. It is deliberately **not** flag-gated, so it stays active with the assistant switched off, and it is a standalone improvement in the same sense as the M1 schema extraction. A plain revert of the M9 commits removes it. **Keep it.** (Security review finding F6) |
+| **The malformed-JSON branch** in the global error handler | Also M9, also in `index.js`, and also unrelated to the assistant: it stops a fragment of any request body reaching the log, on **every** endpoint, and downgrades a 500 to the 400 body-parser already intended. Reverting re-opens a G11 leak that predates this project. (Finding F1) |
+
+**Verified at M9, not assumed:** the deletability exercise (§7.4) was executed in a throwaway
+worktree and the deleted build reproduced the M0 pre-feature bundle hash and its 413-test count
+*exactly*. The two carry-forwards above are the only things worth rescuing from the diff.
+
 ### Rollback at M4 (the cleanest point)
 
 After M4, nothing user-visible is enabled: no classifier, no `/interpret`, no client wiring, no
@@ -1545,6 +1626,10 @@ generation cost is capped. Then flip `autoExecute: true` on the descriptor — *
 | `server/src/assistant/interpret.js` | The 12-stage pipeline. Orchestration only; database-free via injected dependencies; total catch so no path can 5xx | Backend | ✅ M5 |
 | `server/src/routes/assistant.js` | HTTP shell. `GET /catalog` (M2), `POST /interpret` (M5), `POST /events` (M8). The rollout gate **fails closed** and guards all three | Backend | ✅ M5 + M8 |
 | `server/src/lib/flags.js` | Feature flags, all defaulting OFF | Backend | ✅ M0 |
+| `server/src/assistant/budget.js` | Per-user daily budget. Pure, factory, injectable clock. **In process memory (D25)** — resets on restart, per instance | Backend | ✅ **M9** |
+| `server/src/assistant/breaker.js` | CHANGE-8. Opens on upstream 429s so **coaching wins** under quota pressure. Never consulted by `/api/coach` | Backend | ✅ **M9** |
+| `server/src/lib/limiters.js` | The `/api/resources/generate` limiter, as a factory. The three existing limiters stay in `index.js` (A9) | Backend | ✅ **M9** |
+| `docs/ai-action-router-security-review.md` | The M9 security review: threat model, log audit, live verification, deletability | Backend / Product | ✅ **M9** |
 | `server/src/lib/resourceFields.js` | Bounds shared by CRUD and generation (breaks a require cycle) | Backend | ✅ M1 |
 | `server/evals/` | Classification quality corpus (outside `test/`). **Frozen after M7b** | Backend + Product | ✅ M7a + M7b |
 | `client/src/assistant/` | All AI-routing client code — deletable unit | Frontend | ✅ M0 + M3 + **M6** (complete for Phase 1) |
@@ -1580,6 +1665,7 @@ generation cost is capped. Then flip `autoExecute: true` on the descriptor — *
 | 2 | **Phase 1 Implementation Specification** — *what to build, in what order* | [`ai-action-router-phase1-spec.md`](./ai-action-router-phase1-spec.md) | ✅ **Persisted 2026-07-28** (amendments incorporated) |
 | 3 | **Implementation Guardrails & Impact Analysis** — *what must not break* | [`ai-action-router-guardrails.md`](./ai-action-router-guardrails.md) | ✅ **Persisted 2026-07-28** (amendments incorporated) |
 | 4 | **Living Project Document** | `docs/AI_ACTION_ROUTER_README.md` | ✅ **This file** |
+| 4a | **Security Review (M9)** — the threat model executed as an attack, the log audit, live verification, and the deletability result | [`ai-action-router-security-review.md`](./ai-action-router-security-review.md) | ✅ **M9** — nine findings, all dispositioned. **F5 is the one item awaiting an owner decision** |
 | 5 | Executable API contract | `server/src/assistant/contracts.js` · `client/src/assistant/types.ts` · `server/test/helpers/assistantFixtures.js` | ✅ **Frozen in M0** — supersedes the planned standalone API doc |
 | 5a | **Enforced** contract — the drift guard that makes the freeze real | `server/test/assistant/contractDrift.test.js` | ✅ **M2** — covers duplicated pairs A and B; proven to fail on injected drift |
 | 5d | **Enforced** vocabulary — the third duplicated pair (GRADES/SUBJECTS/LANGUAGES ↔ `config.ts`) | `server/test/actions/vocabDrift.test.js` | ✅ **M4** — proven to fail on injected drift. A separate file by decision, so the inherited M2 guard is not edited |
@@ -1633,8 +1719,31 @@ payloads still conform. A contract that is checked by CI is worth more than a do
 
 ### Where the project stands right now
 
-**Planning is complete and approved. M0–M7b are approved. M8 is complete and awaiting review.**
-M9 has not started and must not start without approval.
+**Planning is complete and approved. M0–M8 are approved. M9 is complete and awaiting review.**
+M10 has not started and must not start without approval.
+
+**What M9 changed, in one paragraph.** Every cost and availability control the design has specified
+since P0 is now live and has been exercised against a running server. The per-user daily budget
+(process-local by decision D25 — it resets on restart and is per instance, matching what
+`express-rate-limit` has always cost this app) refuses a call **before** spending a model call. The
+CHANGE-8 breaker opens on upstream 429s and — the thing the amendment exists for — **the Coach kept
+answering while it was open**, observed live at 4,069 characters. The generation endpoint finally has
+a limiter, mounted in `index.js` so the protected route was not reopened. And the security review
+paid for itself twice: it found a malformed JSON body putting a **fragment of the teacher's utterance
+into the server log** while returning a 5xx from `/interpret` (two guardrails at once), and it found
+`POST /api/assistant/events` with no per-user bound at all. Both are fixed.
+
+⚠️ **Two lessons worth carrying.** The log leak was *nearly missed* because the parser truncated the
+probe string, so an assertion on the full value passed while the leak was real — **a fragment is a
+leak; assert on the shortest distinctive marker**. And the 500 had been seen at M2 and correctly
+filed as out of scope *before `/interpret` existed to make it a G22 violation* — **a finding's
+disposition expires when the system around it changes.**
+
+✅ **Deletability (invariant I8) is no longer a claim.** Executed in a throwaway worktree: the deleted
+build boots, both assistant endpoints 404, the server suite returns **18 files / 413 tests** and the
+client bundle returns **`index-B4SBMDAV.js` at 276.32 kB gzip** — the *exact* pre-feature test count
+and bundle hash recorded at M0. Two things should be rescued from any real rollback, both recorded in
+§14: the `/resources/generate` limiter and the malformed-JSON fix.
 
 **What M8 changed, in one paragraph.** The correction signal that had buffered in memory since M3 —
 with `drainTelemetry()` having zero production callers — now reaches a queryable store, so the
@@ -1716,10 +1825,11 @@ form state. Every failure falls back to a normal Coach answer.
 ### Milestones
 
 - ✅ **Completed and approved:** P0 architecture · P1 specification · P2 guardrails/final review ·
-  P3 this document · **M0** · **M1** · **M2** · **M3** · **M4** · **M5** · **M6** · **M7a** · **M7b**
-- 🟡 **Complete, awaiting approval:** **M8 — telemetry**
-- ⬜ **Pending:** M9 → M10 (see §8)
-- ➡️ **Next:** **review and approve M8.** Then M9 — hardening. Not before.
+  P3 this document · **M0** · **M1** · **M2** · **M3** · **M4** · **M5** · **M6** · **M7a** ·
+  **M7b** · **M8**
+- 🟡 **Complete, awaiting approval:** **M9 — hardening**
+- ⬜ **Pending:** M10 — internal rollout (see §8). The last milestone.
+- ➡️ **Next:** **review and approve M9**, and decide on finding **F5**. Then M10 — rollout. Not before.
 
 ### What M0 actually delivered (so you can trust the foundation)
 
@@ -2133,7 +2243,7 @@ Established 2026-07-27 so that step 3 is never quietly skipped:
 | **M6** | Full end-to-end. Also verify: flags off ⇒ zero assistant requests in a network trace; stale-response guard (CHANGE-9); circuit breaker with the backend stopped |
 | **M7** | Evals are the verification. Record the baseline; this is the **go/no-go decision point for Phase 2** |
 | **M8** | Confirm `Event` rows contain no utterance text or slot values; confirm field-edit rate is computable |
-| **M9** | Time the kill switch in a live session; perform the deletability test; complete the log audit |
+| **M9** | Time the kill switch in a live session; perform the deletability test; complete the log audit. **Done 2026-07-29: 4 s, the M0 bundle hash reproduced exactly, and the audit run as an attack — see the [Security Review](./ai-action-router-security-review.md)** |
 | **M10** | Staged rollout with hold periods — the gate runs per stage, not once |
 
 ### Blocking prerequisite for the first gate

@@ -23,24 +23,19 @@ const { parseProposal } = require('./proposalSchema');
 const { resolveSlots } = require('./resolver');
 const { decide } = require('./policy');
 const { classify: defaultClassify } = require('./classifier');
+const { createDisabledBreaker } = require('./breaker');
 
 /**
  * The per-user daily budget gate (pipeline stage 7).
  *
- * A SEAM, not an implementation — approved as decision D1. It occupies the right
- * place in the pipeline, produces the right passthrough reason, and is covered
- * by a test, but it counts nothing and persists nothing: the counter belongs to
- * M9, alongside the rest of the hardening, and inventing per-user state at M5
- * would mean either a migration (forbidden in Phase 1) or a process-local cache
- * that quietly lies whenever the server restarts.
+ * The permissive DEFAULT, kept module-private. M5 shipped this as the whole
+ * implementation — a seam that counted nothing (decision D1) — and M9 filled it
+ * in without editing this file's logic: routes/assistant.js now injects a real
+ * counter (assistant/budget.js) as `checkBudget`, exactly as the seam was
+ * designed for. The default survives because every unit test that does not care
+ * about budgets should not have to construct one.
  *
- * Written as an injectable default rather than a TODO so that M9 replaces one
- * argument instead of editing this file, and so the `budget_exhausted` branch is
- * live code with a real test today rather than a comment promising one later.
- *
- * Module-private, like `noProfile` below: M9 will supply its own checker as an
- * argument, so nothing outside this file ever needs the permissive default. The
- * behaviour it produces is asserted through `interpret`.
+ * The behaviour it produces is asserted through `interpret`.
  */
 const allowWithinBudget = async () => true;
 
@@ -88,12 +83,20 @@ function passthrough(reason, requestId, telemetry = {}) {
  * @param {Record<string, string|undefined>} deps.env
  * @param {() => Promise<object>} [deps.readProfile] the teacher's saved preferences
  * @param {() => Promise<boolean>} [deps.checkBudget] stage 7
+ * @param {object} [deps.breaker] stage 8b — the CHANGE-8 router breaker
  * @param {Function} [deps.classify] injectable for tests
  * @returns {Promise<{response: object, telemetry: object}>}
  */
 async function interpret(
   { utterance, role, memory = {}, turn = 1, requestId },
-  { gemini, env, readProfile = noProfile, checkBudget = allowWithinBudget, classify = defaultClassify } = {}
+  {
+    gemini,
+    env,
+    readProfile = noProfile,
+    checkBudget = allowWithinBudget,
+    breaker = createDisabledBreaker(),
+    classify = defaultClassify,
+  } = {}
 ) {
   const startedAt = Date.now();
 
@@ -129,9 +132,38 @@ async function interpret(
       return passthrough('disabled', requestId);
     }
 
+    // --- Stage 8b. THE ROUTER YIELDS TO THE COACH (CHANGE-8) ----------------
+    // Open means the upstream is rate-limiting us, and the Coach and the router
+    // draw on one quota. Spending a call here to fail is a call the Coach could
+    // have used to answer a teacher's question, so the optional feature steps
+    // back and the core one keeps working (invariant I12).
+    //
+    // Reported as `classifier_error` (approval A3) because that frozen reason
+    // already means "upstream failure" and the teacher can never tell the nine
+    // reasons apart anyway; `breakerOpen` on the telemetry line is what makes it
+    // diagnosable. This is the only gate in the pipeline whose state is shared
+    // across users, which is why it is injected rather than global.
+    if (breaker.isOpen()) {
+      return passthrough('classifier_error', requestId, { breakerOpen: true });
+    }
+
     // --- Stage 9. Classify — the ONLY AI call in the pipeline ---------------
     const classified = await classify({ gemini, utterance: normalized, descriptors, requestId });
     const calls = (classified.metrics && classified.metrics.callsMade) || 0;
+
+    // Feed the outcome back. `rateLimited` is set by gemini.js on its own
+    // per-request tracker and travels out on the error's metrics, so this reads
+    // the shared service's signal without gemini.js being touched (G21) and
+    // without classifier.js gaining a decision. ONLY genuine upstream rate
+    // limiting counts: a timeout or a safety block is an ordinary routing
+    // failure the pipeline already degrades correctly, and treating those as
+    // quota pressure would open the breaker for unrelated reasons.
+    if (classified.metrics && classified.metrics.rateLimited) {
+      breaker.recordRateLimited();
+    } else if (classified.ok) {
+      breaker.recordSuccess();
+    }
+
     if (!classified.ok) {
       return passthrough(classified.reason, requestId, { calls });
     }

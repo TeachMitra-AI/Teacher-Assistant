@@ -241,10 +241,29 @@ router.post(
 
     const { utterance, memory, turn } = parsed.data;
 
+    // M9. Both are constructed once in index.js and injected here, never held as
+    // module state (approval A4) — the test suite shares one app per worker, and
+    // a counter or an open breaker leaking between test files would make
+    // failures depend on execution order.
+    //
+    // Absent locals mean an app assembled without them, which is a
+    // misconfiguration rather than a teacher-visible failure: the pipeline's own
+    // permissive defaults apply and routing simply runs unguarded, exactly as it
+    // did before M9. Failing the request instead would turn a wiring mistake
+    // into an outage.
+    const budget = req.app.locals.assistantBudget;
+    const breaker = req.app.locals.assistantBreaker;
+
     // Stages 5-12.
     const { response, telemetry } = await interpret(
       { utterance, role: req.user.role, memory, turn, requestId },
-      { gemini: geminiFast, env: process.env, readProfile: makeProfileReader(req.user.id) }
+      {
+        gemini: geminiFast,
+        env: process.env,
+        readProfile: makeProfileReader(req.user.id),
+        ...(budget ? { checkBudget: async () => budget.consume(req.user.id) } : {}),
+        ...(breaker ? { breaker } : {}),
+      }
     );
 
     // CHANGE-6: one structured stdout line per decision, zero database writes.
@@ -351,6 +370,22 @@ router.post(
     // proof ("zero rows") hold for telemetry as well as for routing.
     const flags = readAssistantFlags(process.env);
     if (!(await isWithinRollout(req.user, flags))) {
+      return res.status(204).end();
+    }
+
+    // M9, from the security review. Until now the only bound on this endpoint
+    // was the shared IP limiter, and a batch may carry many events — so one
+    // looping client could sustain writes against the single-writer table
+    // CHANGE-6 exists to keep quiet. Charged PER REQUEST rather than per event,
+    // because the request is what costs a round trip and the batch size is
+    // already bounded by MAX_EVENT_BATCH.
+    //
+    // Over budget drops the batch and answers 204, exactly as a failed write
+    // does: telemetry is fire-and-forget by contract, so this can lose a
+    // measurement and can never cost a teacher anything.
+    const eventBudget = req.app.locals.assistantEventBudget;
+    if (eventBudget && !eventBudget.consume(req.user.id)) {
+      logAssistantEvent('warn', 'telemetry_budget_exhausted', { requestId });
       return res.status(204).end();
     }
 

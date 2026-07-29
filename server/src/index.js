@@ -29,6 +29,10 @@ const resourcesRouter = require('./routes/resources');
 // at boot, so a malformed action descriptor stops the server here rather than
 // surfacing later as a strange routing failure.
 const assistantRouter = require('./routes/assistant');
+const { readAssistantFlags } = require('./lib/flags');
+const { createBudgetCounter } = require('./assistant/budget');
+const { createRouterBreaker } = require('./assistant/breaker');
+const { createGenerateLimiter } = require('./lib/limiters');
 
 // Logs only non-sensitive metadata about an AI request/response — never the
 // raw query text, response text, upstream error body, API keys, tokens, or
@@ -140,6 +144,54 @@ const ASSISTANT_LLM_MAX_OUTPUT_TOKENS = parseIntEnv(process.env.ASSISTANT_LLM_MA
   name: 'ASSISTANT_LLM_MAX_OUTPUT_TOKENS', defaultValue: 512, min: 128, max: 1024,
 });
 
+// ---- AI Action Router: the cost and availability guards (M9) ---------------
+//
+// Two stateful objects, both constructed HERE and injected via app.locals in
+// the same way geminiFast is, rather than held as module state inside the
+// assistant folder (approval A4). The server suite shares one required index.js
+// per worker, so a module-level counter — or a breaker one test left open —
+// would leak into unrelated test files and make failures order-dependent.
+//
+// Neither can make a request fail. An exhausted budget and an open breaker both
+// produce a passthrough, which is a normal coaching answer (G22).
+const ASSISTANT_BREAKER_429_THRESHOLD = parseIntEnv(process.env.ASSISTANT_BREAKER_429_THRESHOLD, {
+  name: 'ASSISTANT_BREAKER_429_THRESHOLD', defaultValue: 5, min: 1, max: 100,
+});
+const ASSISTANT_BREAKER_WINDOW_MS = parseIntEnv(process.env.ASSISTANT_BREAKER_WINDOW_MS, {
+  name: 'ASSISTANT_BREAKER_WINDOW_MS', defaultValue: 60000, min: 1000, max: 3600000,
+});
+const ASSISTANT_BREAKER_COOLDOWN_MS = parseIntEnv(process.env.ASSISTANT_BREAKER_COOLDOWN_MS, {
+  name: 'ASSISTANT_BREAKER_COOLDOWN_MS', defaultValue: 300000, min: 1000, max: 3600000,
+});
+
+const assistantFlags = readAssistantFlags(process.env);
+const assistantBudget = createBudgetCounter({ limit: assistantFlags.dailyBudgetPerUser });
+
+// A SECOND counter, for telemetry ROWS — added by the M9 security review, which
+// found that POST /api/assistant/events had no per-user bound at all. Only the
+// shared IP limiter stood in front of it, and each request may carry a batch, so
+// one hostile or simply looping client could sustain writes against exactly the
+// single-writer table CHANGE-6 exists to keep quiet (threat 4).
+//
+// The limit is DERIVED rather than a new env var, because it is not an
+// independent policy: the design ceiling is two rows per routed session, so
+// twice the interpret budget covers every legitimate session a teacher can
+// have, and the constant is headroom for a client that re-delivers a batch.
+// Separate from the routing counter on purpose — telemetry must never be able
+// to eat the budget a teacher needs for actual routing.
+//
+// Exceeding it drops the batch silently (204). Telemetry is fire-and-forget by
+// contract and already fails soft, so this can lose a measurement and can never
+// cost a teacher anything.
+const assistantEventBudget = createBudgetCounter({
+  limit: assistantFlags.dailyBudgetPerUser * 2 + 20,
+});
+const assistantBreaker = createRouterBreaker({
+  threshold: ASSISTANT_BREAKER_429_THRESHOLD,
+  windowMs: ASSISTANT_BREAKER_WINDOW_MS,
+  cooldownMs: ASSISTANT_BREAKER_COOLDOWN_MS,
+});
+
 const geminiFast = new GeminiService({
   apiKey: GEMINI_API_KEY,
   endpoint: ASSISTANT_GEMINI_ENDPOINT,
@@ -166,6 +218,11 @@ app.locals.gemini = gemini;
 // Kept a SEPARATE local rather than a field on `gemini` so that reaching for the
 // wrong one is a visibly wrong line of code rather than a subtle option.
 app.locals.geminiFast = geminiFast;
+// M9 guards, read by the assistant router. Same pattern and the same reason as
+// geminiFast: constructed once, reached explicitly, never a module singleton.
+app.locals.assistantBudget = assistantBudget;
+app.locals.assistantEventBudget = assistantEventBudget;
+app.locals.assistantBreaker = assistantBreaker;
 // Railway (like most PaaS) puts exactly one reverse-proxy hop in front of
 // this app. Trusting that one hop lets Express derive req.ip from the
 // X-Forwarded-For header Railway sets, which express-rate-limit needs to
@@ -260,6 +317,18 @@ const assistantLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many assistant requests. Please wait a few minutes and try again.' },
+});
+
+// M9. The generation endpoint is the most expensive path in the product — a
+// real Gemini call with an 8-call budget behind it — and until now it was
+// guarded by authRequired and nothing else. Architecture 10.4 calls this a
+// pre-existing gap to close "regardless of this project"; the router only makes
+// reaching it one utterance cheaper. Built by a factory so the limiter test can
+// mount the real thing on a throwaway app instead of exhausting this shared one.
+const generateLimiter = createGenerateLimiter({
+  env: process.env,
+  isProduction,
+  windowMinutes: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10),
 });
 
 // Stricter limiter for auth endpoints to slow down credential guessing.
@@ -472,6 +541,12 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
 // Teacher history + feedback, saved resources (My Library), and admin
 // analytics/management.
 app.use('/api', dataRouter);
+// M9. Mounted on the path AHEAD of the resources router rather than inside it,
+// so routes/resources.js — protected area 1, the generation contract — is not
+// opened a second time. Order matters: this must precede the router it guards.
+// Everything else on /api/resources is untouched; only the generate path is
+// matched here.
+app.use('/api/resources/generate', generateLimiter);
 app.use('/api', resourcesRouter);
 app.use('/api/admin', adminRouter);
 
@@ -491,6 +566,31 @@ app.use('/api/assistant', assistantLimiter, assistantRouter);
 // message/stack to the client — only status/path/method/error identity are
 // logged server-side.
 app.use((err, req, res, _next) => {
+  // A body that is not valid JSON is a CLIENT error, and body-parser already
+  // says so — it throws a SyntaxError carrying status 400, which this handler
+  // used to flatten into a 500. Two things were wrong with that, both found by
+  // the M9 security review rather than by a user report:
+  //
+  //   1. G22. POST /api/assistant/interpret may NEVER return a 5xx, and this
+  //      was the one path that could. The client treats any 5xx as "the
+  //      endpoint is unhealthy" and opens its circuit breaker, so a single
+  //      malformed request disabled routing for a minute.
+  //
+  //   2. G11. Node's JSON parser puts a ~20-character WINDOW OF THE RAW BODY
+  //      into its message ("Unexpected token 'Z', ...\"terance\": ZZPROBEBOD\"...
+  //      is not valid JSON"), and this handler logged that message verbatim.
+  //      On this endpoint the raw body is the teacher's utterance. A probe
+  //      string was watched into the log; it is not hypothetical.
+  //
+  // So the branch answers 400 and logs the SHAPE of the failure, never its
+  // content. Applies to every endpoint, which is the point: the leak was never
+  // specific to the assistant.
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.warn('Malformed JSON body:', { method: req.method, path: req.path });
+    if (res.headersSent) return;
+    return res.status(400).json({ error: 'The request body was not valid JSON.' });
+  }
+
   console.error('Unhandled request error:', {
     method: req.method,
     path: req.path,

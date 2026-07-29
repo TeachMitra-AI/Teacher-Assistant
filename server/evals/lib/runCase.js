@@ -22,6 +22,7 @@ const crypto = require('crypto');
 
 const { GeminiService } = require('../../src/gemini');
 const { interpret } = require('../../src/assistant/interpret');
+const { createDisabledBreaker } = require('../../src/assistant/breaker');
 const { listForRole, CATALOG_VERSION } = require('../../src/actions/registry');
 const { buildSystemInstruction, describeAction } = require('../../src/assistant/classifier');
 const { buildResponseSchema } = require('../../src/assistant/proposalSchema');
@@ -179,6 +180,15 @@ async function runTurn({ context, seam, caseId, turn, utterance, profile, memory
       gemini: context.gemini,
       env: context.env,
       readProfile: async () => profile || {},
+      // M9, approval A6. Stated EXPLICITLY rather than relying on interpret()'s
+      // default, because what this argument guarantees is the whole point: a run
+      // that hits the upstream per-minute cap must keep measuring ROUTING
+      // QUALITY, not infrastructure state. With a live breaker, one 429 storm
+      // would open it and the rest of the corpus would score as passthroughs —
+      // the M7a lesson (a rate limiter was once scored as model quality) in a
+      // new costume. Neither the budget counter nor the breaker belongs in a
+      // measurement harness.
+      breaker: createDisabledBreaker(),
     }
   );
 
