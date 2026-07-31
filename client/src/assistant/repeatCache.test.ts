@@ -5,9 +5,10 @@ import {
   CACHE_TTL_MS,
   clearCache,
   readCached,
+  readCachedMemoryUpdates,
   writeCached,
 } from './repeatCache';
-import type { ProvenanceSource, ResolvedAction } from './types';
+import type { ProvenanceSource, ResolvedAction, SessionMemory } from './types';
 
 // The cache REPLAYS a server decision; it never makes one. Two rules keep that
 // true and both have a test that fails if the rule is removed:
@@ -107,6 +108,64 @@ describe('expiry and eviction', () => {
     expect(stored).toHaveLength(CACHE_MAX_ENTRIES);
     expect(readCached('utterance 0', 1)).toBeNull();
     expect(readCached(`utterance ${CACHE_MAX_ENTRIES + 2}`, 1)).not.toBeNull();
+  });
+});
+
+describe('readCachedMemoryUpdates — replaying a cache hit\'s effect on memory', () => {
+  // Bug fixed here: a cache HIT used to skip `mergeMemory` entirely (it was
+  // only ever called on the Tier-3 network path), so a slot the teacher stated
+  // once was correctly filled on every repeat of that utterance but never
+  // actually remembered past the first time. These assert the cache carries
+  // what a caller needs to replay that side effect on a hit.
+
+  function memoryUpdate(): SessionMemory {
+    return { grade: { value: 'Class 3-5', source: 'utterance', turn: 1 } };
+  }
+
+  it('returns the memoryUpdates stored alongside a cached decision', () => {
+    writeCached('make a worksheet on fractions for class 5', 1, action(), memoryUpdate());
+    expect(readCachedMemoryUpdates('make a worksheet on fractions for class 5', 1)).toEqual(memoryUpdate());
+  });
+
+  it('returns undefined when the decision had nothing to remember', () => {
+    writeCached('make a worksheet', 1, action());
+    expect(readCachedMemoryUpdates('make a worksheet', 1)).toBeUndefined();
+  });
+
+  it('treats an empty memoryUpdates object the same as none', () => {
+    writeCached('make a worksheet', 1, action(), {});
+    expect(readCachedMemoryUpdates('make a worksheet', 1)).toBeUndefined();
+  });
+
+  it('returns undefined for a miss, exactly like readCached', () => {
+    expect(readCachedMemoryUpdates('never asked', 1)).toBeUndefined();
+  });
+
+  it('does not store memoryUpdates for a decision D12 already refuses to cache', () => {
+    const inherited = action({ topic: 'utterance', grade: 'memory' });
+    expect(writeCached('now make one on decimals', 1, inherited, memoryUpdate())).toBe(false);
+    expect(readCachedMemoryUpdates('now make one on decimals', 1)).toBeUndefined();
+  });
+
+  it('drops a malformed stored memoryUpdates without losing the cached action', () => {
+    const corrupt = {
+      key: 'make a worksheet',
+      catalogVersion: 1,
+      action: action(),
+      expiresAt: Date.now() + CACHE_TTL_MS,
+      memoryUpdates: ['not', 'an', 'object'],
+    };
+    window.sessionStorage.setItem(CACHE_STORAGE_KEY, JSON.stringify([corrupt]));
+
+    expect(readCached('make a worksheet', 1)).toEqual(action());
+    expect(readCachedMemoryUpdates('make a worksheet', 1)).toBeUndefined();
+  });
+
+  it('leaves the original round-trip of readCached untouched', () => {
+    // Existing contract: readCached still returns exactly the action, with no
+    // memoryUpdates leaking onto it.
+    writeCached('make a worksheet', 1, action(), memoryUpdate());
+    expect(readCached('make a worksheet', 1)).toEqual(action());
   });
 });
 

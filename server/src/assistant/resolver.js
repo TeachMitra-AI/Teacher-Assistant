@@ -198,6 +198,8 @@ function readDefault(slot, profile) {
  * @param {object} args
  * @param {object} args.descriptor the action descriptor (registry-owned, trusted)
  * @param {Record<string, string>} [args.slots] the model's RAW slot strings (untrusted)
+ * @param {Record<string, string>} [args.recovered] canonical values the deterministic
+ *   recovery stage read out of THIS turn's utterance (assistant/slotRecovery.js)
  * @param {Record<string, {value: unknown, source?: string, turn?: number}>} [args.memory] client session memory
  * @param {Record<string, unknown>} [args.profile] the teacher's saved preferences
  * @param {number} [args.turn] the current turn number, for memory expiry
@@ -211,7 +213,14 @@ function readDefault(slot, profile) {
  *   complete: boolean
  * }}
  */
-function resolveSlots({ descriptor, slots = {}, memory = {}, profile = {}, turn = 1 } = {}) {
+function resolveSlots({
+  descriptor,
+  slots = {},
+  recovered = {},
+  memory = {},
+  profile = {},
+  turn = 1,
+} = {}) {
   const params = {};
   const provenance = {};
   const missing = [];
@@ -220,6 +229,8 @@ function resolveSlots({ descriptor, slots = {}, memory = {}, profile = {}, turn 
   const memoryUpdates = {};
 
   const rawSlots = slots && typeof slots === 'object' && !Array.isArray(slots) ? slots : {};
+  const recoveredSlots =
+    recovered && typeof recovered === 'object' && !Array.isArray(recovered) ? recovered : {};
   const sessionMemory = memory && typeof memory === 'object' && !Array.isArray(memory) ? memory : {};
   const preferences = profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {};
   const memoryRestricted = MEMORY_RESTRICTED_EFFECTS.includes(descriptor.effect);
@@ -268,6 +279,32 @@ function resolveSlots({ descriptor, slots = {}, memory = {}, profile = {}, turn 
         lowConfidenceFields.push(slot.name);
         continue;
       }
+    }
+
+    // --- 1b. Deterministic recovery — a SECOND READER OF THE SAME SOURCE.
+    //
+    // The value was stated in this message; the model simply did not report it,
+    // and assistant/slotRecovery.js read it out of the utterance with the same
+    // vocabulary mappers used above. So it carries provenance 'utterance': that
+    // frozen value means "stated in this message — strongest", and recovery
+    // changes only WHO NOTICED, not where the value came from. Introducing a
+    // fourth provenance for it would change a wire contract the client mirrors,
+    // to describe an implementation detail the teacher cannot act on.
+    //
+    // BELOW the model and ABOVE memory, and both halves matter. Below, because
+    // when both fire the model saw the whole sentence and its syntax while the
+    // scanner saw a token window — the better-informed reader wins, and this is
+    // also what makes "never overwrite Gemini" structural rather than a rule
+    // someone has to remember. Above, because a value said NOW must beat one
+    // remembered from an earlier turn; ranking it under memory would reproduce
+    // exactly the stale-prefill bug the short `topic` TTL exists to prevent.
+    //
+    // Remembered like any other utterance value: a grade the teacher stated is
+    // worth carrying to the next turn whether the model or this pipeline read it.
+    const recoveredValue = recoveredSlots[slot.name];
+    if (recoveredValue !== undefined && accept(recoveredValue, 'utterance')) {
+      memoryUpdates[slot.name] = { value: recoveredValue, source: 'utterance', turn };
+      continue;
     }
 
     // --- 2. Session memory, if it is still fresh and permitted here.

@@ -100,6 +100,18 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
 
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
+  // Synchronous twin of `generating`, checked and set before anything else in
+  // handleGenerate. `generating` is React state: it is read from the closure
+  // captured when THIS render happened, and `setGenerating(true)` only takes
+  // effect once React commits the next render. A second rapid click on
+  // Generate can invoke handleGenerate again before that commit lands, so
+  // `if (generating) return;` alone reads a stale `false` and lets a second
+  // real generation request through — confirmed via a network trace showing
+  // two POST /api/resources/generate calls from one rapid-click burst. A ref
+  // has no such gap: it is written and read immediately, same tick, same
+  // guard the page already uses for `appliedDraftId` and `reportedGeneration`
+  // above for the identical class of race.
+  const generatingRef = useRef(false);
 
   // Result / preview state (present only after a successful generation).
   const [content, setContent] = useState<string | null>(null);
@@ -255,7 +267,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
 
   async function handleGenerate(e?: FormEvent) {
     e?.preventDefault();
-    if (generating) return;
+    if (generatingRef.current) return;
     if (!topic.trim()) {
       show('Please enter a topic', 'error');
       return;
@@ -265,6 +277,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
       if (!ok) return;
     }
 
+    generatingRef.current = true;
     setGenerating(true);
     setError('');
     const input: GenerateAssessmentInput = {
@@ -288,6 +301,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not generate. Please try again.');
     } finally {
+      generatingRef.current = false;
       setGenerating(false);
     }
   }

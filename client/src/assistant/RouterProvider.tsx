@@ -42,7 +42,7 @@ import { clearCatalog, domainForAction, ensureCatalog, readCachedCatalog } from 
 import { createCircuitBreaker, type CircuitBreaker } from './circuitBreaker';
 import { isCommand, normalizeUtterance } from './intentGate';
 import { completeAsk, resolveAskReply, type PendingAskState } from './pendingAsk';
-import { clearCache, readCached, writeCached } from './repeatCache';
+import { clearCache, readCached, readCachedMemoryUpdates, writeCached } from './repeatCache';
 import { flushOnHide } from './telemetryTransport';
 import { advanceTurn, clearMemory, mergeMemory, readMemory } from './sessionMemory';
 import type { PendingAsk, ResolvedAction } from './types';
@@ -192,8 +192,18 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       // Tier 2. Skipped while answering a question: the cached decision was made
       // for a different, complete message.
       if (!pendingAskPayload) {
-        const cached = readCached(key, currentCatalogVersion());
-        if (cached) return dispatch(cached, utterance);
+        const catalogVersion = currentCatalogVersion();
+        const cached = readCached(key, catalogVersion);
+        if (cached) {
+          // A cache hit replays a past decision without a network call, and
+          // must replay its effect on session memory too — otherwise a value
+          // the teacher stated once is correctly filled on every repeat but
+          // never actually remembered past the first time, because the ONLY
+          // other place memory is written is a few lines below, on the
+          // network path this hit just skipped entirely.
+          mergeMemory(readCachedMemoryUpdates(key, catalogVersion));
+          return dispatch(cached, utterance);
+        }
       }
 
       // Tier 3. The only network call on this path.
@@ -249,7 +259,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
         }
 
         mergeMemory(response.memoryUpdates);
-        if (action) writeCached(key, response.catalogVersion, action);
+        if (action) writeCached(key, response.catalogVersion, action, response.memoryUpdates);
         return action ? dispatch(action, utterance, response.requestId) : passthrough;
       } finally {
         setRouting(false);

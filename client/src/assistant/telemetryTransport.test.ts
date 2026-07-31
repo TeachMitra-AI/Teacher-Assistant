@@ -26,6 +26,7 @@ const {
   notePrefillUndone,
   flushOnHide,
   resetTelemetryTransport,
+  simulateReload,
   peekQueue,
 } = await import('./telemetryTransport');
 const { recordFieldCorrection } = await import('./telemetry');
@@ -112,6 +113,36 @@ describe('the two-rows-per-session ceiling', () => {
     await settle();
 
     expect(sentEvents().filter((e) => e.name === 'prefill_delivered')).toHaveLength(1);
+  });
+
+  it('does not re-count a delivery for the same draft across a hard refresh (bug fix)', async () => {
+    // Bug: the delivery latch (`session`) was an in-memory-only module
+    // variable. A hard refresh restarts the JS runtime — resetting it to null
+    // — while the SAME `?ai=` draft is still live in the (persisted) draft
+    // store, so `loadPrefill` ran again and `notePrefillDelivered` no longer
+    // recognised the draft as already-counted. Confirmed live against the real
+    // dev database: two distinct requestIds each had two `prefill_delivered`
+    // rows. `simulateReload` reproduces exactly the state a real refresh
+    // leaves behind: in-memory latch gone, sessionStorage intact.
+    notePrefillDelivered(DELIVERY);
+    await settle();
+    simulateReload();
+    notePrefillDelivered(DELIVERY);
+    await settle();
+
+    expect(sentEvents().filter((e) => e.name === 'prefill_delivered')).toHaveLength(1);
+  });
+
+  it('still counts a delivery for a genuinely DIFFERENT draft after a refresh', async () => {
+    // The fix must not overcorrect into refusing every delivery post-refresh —
+    // only the same draft id already recorded.
+    notePrefillDelivered(DELIVERY);
+    await settle();
+    simulateReload();
+    notePrefillDelivered({ ...DELIVERY, draftId: 'draft-2' });
+    await settle();
+
+    expect(sentEvents().filter((e) => e.name === 'prefill_delivered')).toHaveLength(2);
   });
 });
 

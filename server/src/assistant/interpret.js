@@ -20,6 +20,7 @@
 const { detectEmergency, normalizeQuery } = require('../safety/inputGuard');
 const { CATALOG_VERSION, listForRole } = require('../actions/registry');
 const { parseProposal } = require('./proposalSchema');
+const { recoverSlots } = require('./slotRecovery');
 const { resolveSlots } = require('./resolver');
 const { decide } = require('./policy');
 const { classify: defaultClassify } = require('./classifier');
@@ -63,6 +64,24 @@ function passthrough(reason, requestId, telemetry = {}) {
     },
     telemetry: { decision: 'passthrough', reason, ...telemetry },
   };
+}
+
+/**
+ * Project the recovery stage's outcome onto the decision log.
+ *
+ * Only non-empty lists appear, so a turn where nothing was recoverable adds
+ * nothing to the line. Names only — see the call site for why.
+ *
+ * @param {{recovered: object, skipped: string[], rejected: string[], ambiguous: string[]}} recovery
+ */
+function recoveryTelemetry(recovery) {
+  const fields = {};
+  const recoveredNames = Object.keys(recovery.recovered);
+  if (recoveredNames.length > 0) fields.recoveredSlots = recoveredNames;
+  if (recovery.skipped.length > 0) fields.recoverySkipped = [...recovery.skipped];
+  if (recovery.rejected.length > 0) fields.recoveryRejected = [...recovery.rejected];
+  if (recovery.ambiguous.length > 0) fields.recoveryAmbiguous = [...recovery.ambiguous];
+  return fields;
 }
 
 /**
@@ -190,11 +209,38 @@ async function interpret(
       return passthrough(nonAction.reason, requestId, { calls, confidence });
     }
 
+    // --- Stage 10a′. Deterministic vocabulary recovery ----------------------
+    // Reads `grade` and `subject` out of the utterance when the model did not
+    // report them. Pure, deterministic, and incapable of reaching the model —
+    // no prompt, no schema, no parameter — so the routing decision above is
+    // untouched by anything this returns.
+    //
+    // Placed HERE and not one stage earlier: it needs the AUTHORIZED descriptor
+    // (G4), and folding it into sanitizeSlots would put our own parser's output
+    // inside the untrusted-model boundary, where `dropped` would then describe
+    // this pipeline as though the model had produced it.
+    //
+    // `normalized` rather than the raw utterance, so the scanner reads exactly
+    // the text the classifier was given. `slots` keys are what the model
+    // reported, which is how "never overwrite Gemini" is enforced structurally.
+    const recovery = recoverSlots({
+      descriptor,
+      utterance: normalized,
+      alreadyFilled: Object.keys(slots),
+    });
+
     // --- Stage 10b. Canonicalize, merge, provenance, per-field validation ----
     // Everything below this line is deterministic M4 code. The model's influence
     // ends at the raw strings in `slots`.
     const profile = await readProfile();
-    const resolved = resolveSlots({ descriptor, slots, memory, profile, turn });
+    const resolved = resolveSlots({
+      descriptor,
+      slots,
+      recovered: recovery.recovered,
+      memory,
+      profile,
+      turn,
+    });
 
     // --- Stage 11. Decide ---------------------------------------------------
     // Rule 0 (the registry-declared effect caps the decision at any confidence)
@@ -260,6 +306,15 @@ async function interpret(
         lowConfidenceCount: resolved.lowConfidenceFields.length,
         contradictionCount: resolved.contradictions.length,
         droppedSlots: dropped,
+        // Recovery attribution. SLOT NAMES ONLY, never the recovered values
+        // (G11) — the names are what makes a field-edit-rate movement
+        // diagnosable, and the values are the teacher's own words.
+        //
+        // Emitted only when non-empty so the ordinary line does not grow four
+        // empty arrays. `recoveryRejected` is the one to watch: it is the only
+        // visible evidence of the false-positive gate doing its job, and a
+        // sudden fall in it means the gate has been loosened.
+        ...recoveryTelemetry(recovery),
         latencyMs: Date.now() - startedAt,
       },
     };

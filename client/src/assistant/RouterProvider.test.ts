@@ -101,3 +101,25 @@ describe('memory is written only on a settled turn', () => {
     expect(merge).toBeGreaterThan(askReturn);
   });
 });
+
+describe('a repeat-cache hit replays its memory effect too (bug fix)', () => {
+  // Regression guard: a cache hit used to `return dispatch(cached, utterance)`
+  // straight away, which skipped memory entirely for any utterance the router
+  // had already decided once — including one this very turn recovered a slot
+  // from. See repeatCache.test.ts for the behavioural coverage of the storage
+  // side; this only guards that the provider still calls it, and before
+  // dispatch, since dispatch may navigate away.
+  it('reads the cached memoryUpdates before dispatching the cached decision', () => {
+    const hit = providerSource.indexOf('const cached = readCached(key, catalogVersion)');
+    const merge = providerSource.indexOf('mergeMemory(readCachedMemoryUpdates(key, catalogVersion))');
+    const dispatch = providerSource.indexOf('return dispatch(cached, utterance)');
+
+    expect(hit).toBeGreaterThan(-1);
+    expect(merge).toBeGreaterThan(hit);
+    expect(dispatch).toBeGreaterThan(merge);
+  });
+
+  it('also carries memoryUpdates into the cache on write, for later hits to replay', () => {
+    expect(providerSource).toContain('writeCached(key, response.catalogVersion, action, response.memoryUpdates)');
+  });
+});

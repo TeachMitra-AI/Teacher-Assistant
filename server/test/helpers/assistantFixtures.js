@@ -153,6 +153,23 @@ const interpretPrefillResponse = {
  * Answering by chip is resolved entirely on the client: it already holds these
  * params and only needs to fill `format`. No second network call, no second LLM
  * call. Only a free-text answer comes back to the server with `pendingAsk` set.
+ *
+ * ─── ONE PROVENANCE DIFFERS FROM THE SPEC AS WRITTEN (Alternative A) ────────
+ * `grade` is 'utterance' here; spec §7.2 shows 'memory'. The VALUE is unchanged
+ * (Class 3-5) and so is every other field — only the attribution moved, and it
+ * moved to the truthful one.
+ *
+ * The spec example's utterance is "a fractions worksheet FOR CLASS 5". The
+ * teacher stated the grade in this very message; it read as 'memory' only
+ * because the classifier failed to extract it, which is the extraction gap
+ * deterministic recovery exists to close (M7a measured grade at 23.9%). The
+ * example was therefore encoding a SYMPTOM as though it were a rule.
+ *
+ * Kept as the same input rather than being rewritten to a grade-free utterance,
+ * so the diff against the approved document stays one line and reviewable. The
+ * spec's memory-inheritance demonstration survives intact in
+ * `interpretPrefillResponse` above, where `subject` genuinely is not stated in
+ * the turn and still resolves from memory.
  */
 const interpretAskResponse = {
   catalogVersion: 1,
@@ -174,7 +191,10 @@ const interpretAskResponse = {
       },
       provenance: {
         topic: 'utterance',
-        grade: 'memory',
+        // Recovered from "…for class 5" in this turn's utterance. See the note
+        // above: the spec shows 'memory', the value is identical, and this is
+        // the one line where the two differ.
+        grade: 'utterance',
         difficulty: 'default',
         questionType: 'default',
         questionCount: 'default',

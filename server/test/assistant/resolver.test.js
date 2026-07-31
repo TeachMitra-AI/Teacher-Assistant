@@ -114,6 +114,140 @@ describe('resolveSlots — precedence', () => {
   });
 });
 
+describe('resolveSlots — tier 1b, deterministic recovery', () => {
+  // Recovery is a SECOND READER OF THE UTTERANCE, not a fifth source. It sits
+  // below the model (which saw the whole sentence) and above memory (which is a
+  // different, older turn), and it carries provenance 'utterance' because that
+  // is where the value actually came from.
+
+  test('a recovered value fills a slot the model left empty', () => {
+    const result = resolveSlots({
+      descriptor: generateAssessment,
+      slots: { topic: 'Fractions' },
+      recovered: { grade: 'Class 3-5' },
+      turn: 1,
+    });
+
+    expect(result.params.grade).toBe('Class 3-5');
+    expect(result.provenance.grade).toBe('utterance');
+  });
+
+  test('the MODEL wins when both have a value', () => {
+    // Structural, not a rule someone has to remember: the recoverer is never
+    // even offered a slot the model filled, and tier 1b is unreachable once
+    // tier 1 has accepted.
+    const result = resolveSlots({
+      descriptor: generateAssessment,
+      slots: { grade: 'class 9' },
+      recovered: { grade: 'Class 3-5' },
+      turn: 1,
+    });
+
+    expect(result.params.grade).toBe('Class 9-10');
+    expect(result.provenance.grade).toBe('utterance');
+  });
+
+  test('RECOVERY BEATS MEMORY — a value said now outranks one remembered', () => {
+    // The precedence half that matters most. Ranking recovery under memory
+    // would reproduce the stale-prefill bug: the teacher says "class 5" and the
+    // form opens on last turn's class, badged "Remembered".
+    const result = resolveSlots({
+      descriptor: generateAssessment,
+      recovered: { grade: 'Class 3-5' },
+      memory: { grade: remember('Class 9-10', 1) },
+      profile: { defaultGrade: 'Class 6-8' },
+      turn: 2,
+    });
+
+    expect(result.params.grade).toBe('Class 3-5');
+    expect(result.provenance.grade).toBe('utterance');
+  });
+
+  test('memory still wins when nothing was recovered', () => {
+    // The control for the test above: without tier 1b these are the same call.
+    const result = resolveSlots({
+      descriptor: generateAssessment,
+      memory: { grade: remember('Class 9-10', 1) },
+      turn: 2,
+    });
+
+    expect(result.params.grade).toBe('Class 9-10');
+    expect(result.provenance.grade).toBe('memory');
+  });
+
+  test('recovery beats the profile default', () => {
+    const result = resolveSlots({
+      descriptor: generateAssessment,
+      recovered: { subject: 'Science' },
+      profile: { defaultSubject: 'Mathematics' },
+      turn: 1,
+    });
+
+    expect(result.params.subject).toBe('Science');
+    expect(result.provenance.subject).toBe('utterance');
+  });
+
+  test('a recovered value is remembered, like any other utterance value', () => {
+    // A grade the teacher stated is worth carrying to the next turn whether the
+    // model or the recovery stage was the one that read it.
+    const result = resolveSlots({
+      descriptor: generateAssessment,
+      recovered: { grade: 'Class 3-5' },
+      turn: 3,
+    });
+
+    expect(result.memoryUpdates.grade).toEqual({
+      value: 'Class 3-5',
+      source: 'utterance',
+      turn: 3,
+    });
+  });
+
+  test('a recovered value the schema rejects is dropped, not forced in', () => {
+    // Same drop-don't-guess discipline as every other tier. Nothing upstream
+    // should be able to put an unacceptable value into params by routing it
+    // through recovery.
+    const result = resolveSlots({
+      descriptor: generateAssessment,
+      recovered: { grade: 12345 },
+      memory: { grade: remember('Class 9-10', 1) },
+      turn: 2,
+    });
+
+    expect(result.params.grade).toBe('Class 9-10');
+    expect(result.provenance.grade).toBe('memory');
+  });
+
+  test('an absent or malformed recovered map changes nothing (back-compatible)', () => {
+    for (const recovered of [undefined, null, 'grade', 42, ['grade']]) {
+      const result = resolveSlots({
+        descriptor: generateAssessment,
+        memory: { grade: remember('Class 9-10', 1) },
+        recovered,
+        turn: 2,
+      });
+      expect(result.params.grade).toBe('Class 9-10');
+      expect(result.provenance.grade).toBe('memory');
+    }
+  });
+
+  test('recovery introduces NO new provenance value', () => {
+    // The public-contract guard. A recovered field must be indistinguishable
+    // from a model-extracted one on the wire, because the client mirrors this
+    // vocabulary and a stale PWA must not meet a value it has no branch for.
+    const result = resolveSlots({
+      descriptor: generateAssessment,
+      slots: { topic: 'Fractions' },
+      recovered: { grade: 'Class 3-5', subject: 'Science' },
+      turn: 1,
+    });
+
+    for (const source of Object.values(result.provenance)) {
+      expect(['utterance', 'memory', 'profile', 'default']).toContain(source);
+    }
+  });
+});
+
 describe('resolveSlots — memory expiry', () => {
   test('a topic goes stale after two turns', () => {
     // The shortest TTL in the table, and the one that matters most: a stale
@@ -398,9 +532,18 @@ describe('resolveSlots — conformance with the approved specification', () => {
   });
 
   test('reproduces the documented ask payload', () => {
+    // `recovered` is what assistant/slotRecovery.js reads out of the spec
+    // example's own utterance, "a fractions worksheet FOR CLASS 5". The resolver
+    // is a pure merge and has no utterance to scan, so the stage above it is
+    // represented by its output — exactly as interpret.js supplies it.
+    //
+    // The memory entry is deliberately LEFT IN PLACE with the same value. It is
+    // no longer what fills the slot, and that is the assertion: recovery
+    // outranks memory, which is why the documented provenance is 'utterance'.
     const result = resolveSlots({
       descriptor: generateAssessment,
       slots: { topic: 'Fractions' },
+      recovered: { grade: 'Class 3-5' },
       memory: { grade: { value: 'Class 3-5', source: 'utterance', turn: 2 } },
       profile: { defaultLanguage: 'en' },
       turn: 3,

@@ -61,7 +61,15 @@ const NUMBER_TO_BAND = Object.freeze({
   12: 'Class 11-12',
 });
 
-/** Words that mark the phrase as being about a class, in English and Hinglish. */
+/**
+ * Words that mark the phrase as being about a class, in English and Hinglish.
+ *
+ * Exported (behaviour here is unchanged) because assistant/slotRecovery.js gates
+ * on exactly this set when deciding whether a number in a whole sentence is a
+ * class at all. Restating the list there would be a second copy that drifts:
+ * adding "section" here to widen the mapper would silently widen the recovery
+ * gate too, which is the correct coupling and must stay visible as one.
+ */
 const CLASS_KEYWORDS = new Set([
   'class',
   'classes',
@@ -323,5 +331,6 @@ function mapGrade(raw) {
 module.exports = {
   GRADES,
   VOCAB_STATUS,
+  CLASS_KEYWORDS,
   mapGrade,
 };

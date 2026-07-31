@@ -45,6 +45,22 @@ import type { AssistantEvent, PrefillOutcome, ProvenanceSource } from './types';
  */
 const MAX_QUEUED = 20;
 
+/**
+ * sessionStorage key for drafts a `prefill_delivered` has already been sent for.
+ *
+ * Bug fix: `session` below is the fast, same-life-of-the-tab latch, but it is a
+ * plain module variable, so a hard refresh (the JS runtime restarting with the
+ * SAME `?ai=` draft still live in the draft store) reset it to null and let
+ * `notePrefillDelivered` fire a second time for a draft already delivered in an
+ * earlier life of this tab. This is the part of the latch that survives that —
+ * sessionStorage, exactly like every other tab-scoped store in this feature, so
+ * it still dies with the tab and never outlives it.
+ */
+const DELIVERED_STORAGE_KEY = 'ta.assistant.delivered.v1';
+
+/** Bounded like every other store here; a session realistically delivers a handful of drafts. */
+const MAX_DELIVERED = 20;
+
 interface PrefillSession {
   draftId: string;
   actionId: string;
@@ -56,6 +72,38 @@ interface PrefillSession {
 let session: PrefillSession | null = null;
 let queue: AssistantEvent[] = [];
 let inFlight = false;
+
+/** Reads without ever throwing — same posture as every other store in this feature. */
+function readDeliveredIds(): string[] {
+  try {
+    const raw = window.sessionStorage.getItem(DELIVERED_STORAGE_KEY);
+    if (raw === null) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Has this draft id already had a `prefill_delivered` sent, in this tab-lifetime, refresh or not? */
+function wasDelivered(draftId: string): boolean {
+  return readDeliveredIds().includes(draftId);
+}
+
+/**
+ * Records that this draft id has now been delivered. Never throws: a failed
+ * write here costs, at worst, a duplicate row after a refresh — the exact
+ * pre-fix behaviour — never a broken composer.
+ */
+function markDelivered(draftId: string): void {
+  try {
+    const ids = readDeliveredIds().filter((id) => id !== draftId);
+    ids.push(draftId);
+    window.sessionStorage.setItem(DELIVERED_STORAGE_KEY, JSON.stringify(ids.slice(-MAX_DELIVERED)));
+  } catch {
+    // Quota exceeded or storage disabled. Nothing to do; see the comment above.
+  }
+}
 
 /** Queue an event, dropping the oldest if the cap is reached. Never throws. */
 function enqueue(event: AssistantEvent): void {
@@ -97,7 +145,8 @@ export function notePrefillDelivered(input: {
   lowConfidenceCount: number;
 }): void {
   if (!ASSISTANT_ENABLED) return;
-  if (session && session.draftId === input.draftId) return; // already counted
+  if (session && session.draftId === input.draftId) return; // already counted, this life of the tab
+  if (wasDelivered(input.draftId)) return; // already counted before a refresh reset the line above
 
   closeOpenSession();
 
@@ -113,6 +162,7 @@ export function notePrefillDelivered(input: {
   // been reported (or discarded with it). Starting clean keeps a previous
   // session's edits from being attributed to this one.
   drainTelemetry();
+  markDelivered(input.draftId);
 
   enqueue({
     name: 'prefill_delivered',
@@ -227,12 +277,36 @@ export function flushOnHide(): void {
   void flush();
 }
 
-/** Test seam. Resets every latch and buffer so cases cannot leak into each other. */
+/**
+ * Test seam. Resets every latch and buffer, INCLUDING the persisted delivered
+ * set, so cases cannot leak into each other. This is a fresh tab, not a
+ * refresh of the current one — for the latter, see `simulateReload`.
+ */
 export function resetTelemetryTransport(): void {
   session = null;
   queue = [];
   inFlight = false;
   drainTelemetry();
+  try {
+    window.sessionStorage.removeItem(DELIVERED_STORAGE_KEY);
+  } catch {
+    // Already unreachable; nothing to clear.
+  }
+}
+
+/**
+ * Test seam. Mimics a hard refresh of the SAME tab: the in-memory latch and
+ * queue are gone, exactly as they are after a real reload, but sessionStorage
+ * — including the persisted delivered-draft record `notePrefillDelivered` now
+ * checks — survives, exactly as it does after a real reload. Exists to prove
+ * the fix for the bug this file's header used to be wrong about: the ceiling
+ * comment said "for the lifetime of the tab", but only `session` was ever
+ * scoped to that; a refresh is still the same tab and used to reset it anyway.
+ */
+export function simulateReload(): void {
+  session = null;
+  queue = [];
+  inFlight = false;
 }
 
 /** Test seam: the queued events, without sending them. */

@@ -95,6 +95,73 @@ describe('the happy path reproduces the specification’s published payload', ()
     expect({ ...response, requestId: interpretAskResponse.requestId })
       .toEqual(interpretAskResponse);
   });
+
+  test('memory still supplies a grade the turn does NOT state', async () => {
+    // The control for the fixture above, which now reads `grade: 'utterance'`
+    // because its utterance says "for class 5". Drop those words and nothing
+    // else changes: memory supplies the same value and is labelled as memory.
+    // Without this, a bug that made recovery fabricate grades would look like a
+    // passing suite.
+    const { response } = await run(
+      {
+        utterance: 'a fractions worksheet',
+        memory: { grade: { value: 'Class 3-5', source: 'utterance', turn: 2 } },
+        turn: interpretRequest.turn,
+      },
+      {
+        classify: classifierReturning({
+          intent: 'generate_assessment',
+          confidence: 'high',
+          slots: { topic: 'Fractions' },
+        }),
+        readProfile: async () => ({ defaultLanguage: 'en' }),
+      }
+    );
+
+    expect(response.actions[0].params.grade).toBe('Class 3-5');
+    expect(response.actions[0].provenance.grade).toBe('memory');
+  });
+
+  test('recovery fills a grade the model missed, and reports it in telemetry', async () => {
+    const { response, telemetry } = await run(
+      {
+        utterance: 'make a worksheet on fractions for class 5',
+        turn: interpretRequest.turn,
+      },
+      {
+        classify: classifierReturning({
+          intent: 'generate_assessment',
+          confidence: 'high',
+          slots: { format: 'worksheet', topic: 'Fractions' },
+        }),
+        readProfile: async () => ({}),
+      }
+    );
+
+    expect(response.actions[0].params.grade).toBe('Class 3-5');
+    expect(response.actions[0].provenance.grade).toBe('utterance');
+    // Names only — never the recovered value (G11).
+    expect(telemetry.recoveredSlots).toEqual(['grade']);
+    expect(JSON.stringify(telemetry)).not.toContain('Class 3-5');
+  });
+
+  test('a turn with nothing recoverable adds no recovery fields to the log', async () => {
+    const { telemetry } = await run(
+      { utterance: 'make a worksheet on fractions', turn: interpretRequest.turn },
+      {
+        classify: classifierReturning({
+          intent: 'generate_assessment',
+          confidence: 'high',
+          slots: { format: 'worksheet', topic: 'Fractions' },
+        }),
+        readProfile: async () => ({}),
+      }
+    );
+
+    expect(telemetry.recoveredSlots).toBeUndefined();
+    expect(telemetry.recoveryRejected).toBeUndefined();
+    expect(telemetry.recoverySkipped).toEqual(['grade', 'subject']);
+  });
 });
 
 describe('all nine passthrough reasons', () => {
