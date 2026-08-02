@@ -14,9 +14,14 @@
     "migrate": "prisma migrate dev",
     "studio": "prisma studio",
     "generate": "prisma generate",
-    "lint": "eslint src",
+    "lint": "eslint src evals tools",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "eval": "node evals/run.js --mode live",
+    "eval:replay": "node evals/run.js --mode replay",
+    "eval:compare": "node evals/compare.js",
+    "assistant:metrics": "node tools/assistantMetrics.js",
+    "assistant:prune-events": "node tools/pruneAssistantEvents.js"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -28,6 +33,7 @@
     "google-auth-library": "^10.9.1",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.3",
+    "katex": "^0.16.47",
     "zod": "^4.4.3"
   },
   "devDependencies": {

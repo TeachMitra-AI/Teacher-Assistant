@@ -12,6 +12,23 @@ const { prisma } = require('../lib/db');
 const { authRequired } = require('../middleware/auth');
 const { languageDirective, LANGUAGE_NAMES } = require('../prompts');
 const { assessmentDocumentSchema, checkAgainstRequest, normalizeAssessmentMath, OPTION_LETTERS } = require('../lib/assessmentSchema');
+// Second, independent normalization pass run AFTER normalizeAssessmentMath —
+// see lib/latexGuard.js for why: normalizeAssessmentMath only ever repairs
+// LaTeX INSIDE an existing $...$/$$...$$ pair (by design, pinned by its own
+// tests), so it never catches Gemini dropping the delimiters entirely (e.g.
+// an MCQ option coming back as "0.25\text{ mol}" with no $ at all). This
+// module detects that, repairs the mechanically-safe case, and verifies
+// every math segment actually renders in KaTeX before the document is
+// trusted — treating Gemini's JSON as untrusted input end to end.
+const { sanitizeAssessmentDocument } = require('../lib/latexGuard');
+const { MAX_META, MAX_LANGUAGE } = require('../lib/resourceFields');
+// The generation request schema is defined once, in the actions/ layer, and
+// imported by both this route and (from M2) the `generate_assessment` capability
+// descriptor — so the router can never validate against a drifted copy of the
+// contract this endpoint actually enforces.
+// MAX_QUESTIONS comes along because the `more_questions` AI-assist action below
+// enforces the same ceiling the original generation request was held to.
+const { generateAssessmentSchema, MAX_QUESTIONS } = require('../actions/schemas/generateAssessment');
 
 const router = express.Router();
 
@@ -25,9 +42,13 @@ const RESOURCE_TYPES = ['lesson_plan', 'classroom_activity', 'assessment', 'expl
 const MAX_TITLE = 200;
 const MAX_CONTENT = 50000;
 const MAX_STRUCTURED = 50000;
-const MAX_META = 80; // grade / subject
-const MAX_LANGUAGE = 20;
 const MAX_SOURCE_ID = 60;
+
+// MAX_META (grade / subject) and MAX_LANGUAGE are NOT declared here: the
+// generation schema in src/actions/schemas/generateAssessment.js needs the same
+// bounds, so they live in a leaf module both files import (see
+// lib/resourceFields.js for why that beats either file importing the other).
+// The bounds above stay local because only the CRUD schemas below use them.
 
 // Create payload. Note there is deliberately NO userId/ownerId/schoolId field:
 // ownership is taken from the token, so a client-supplied id cannot be honored.
@@ -157,27 +178,11 @@ The current resource content is provided next, delimited by triple backticks (\`
 // the model's raw text. This is what makes the printed page's structure
 // independent of whether Gemini "feels like" following Markdown formatting
 // instructions on any given call.
-const FORMATS = ['quiz', 'worksheet'];
-const DIFFICULTIES = ['easy', 'medium', 'hard'];
-const QUESTION_TYPES = ['mcq', 'true_false', 'short_answer', 'mixed'];
-const MIN_QUESTIONS = 3;
-const MAX_QUESTIONS = 30;
-const MAX_TOPIC = 200;
-const MAX_INSTRUCTIONS = 1000;
-
-const generateSchema = z
-  .object({
-    format: z.enum(FORMATS),
-    grade: z.string().trim().max(MAX_META).optional(),
-    subject: z.string().trim().max(MAX_META).optional(),
-    topic: z.string().trim().min(1).max(MAX_TOPIC),
-    difficulty: z.enum(DIFFICULTIES),
-    questionType: z.enum(QUESTION_TYPES),
-    questionCount: z.number().int().min(MIN_QUESTIONS).max(MAX_QUESTIONS),
-    language: z.string().trim().max(MAX_LANGUAGE).optional(),
-    instructions: z.string().trim().max(MAX_INSTRUCTIONS).optional(),
-  })
-  .strict();
+// The request schema and its option vocabularies (formats, difficulties,
+// question types, count bounds) now live in
+// src/actions/schemas/generateAssessment.js — imported at the top of this file.
+// They moved so the capability registry and this endpoint share ONE definition
+// instead of drifting copies; nothing about what is accepted changed.
 
 const QUESTION_TYPE_CONTENT_RULES = {
   mcq: 'Every question is multiple-choice with exactly four plausible options; exactly one is correct.',
@@ -260,7 +265,7 @@ The topic and any extra instructions are provided next as delimited user content
  * formatting choices, and the answer-key heading is now GUARANTEED present
  * and exact (unlike the previous Markdown-generation approach, where it
  * depended on the model reproducing the heading text verbatim).
- * @param {object} config the validated generateSchema request
+ * @param {object} config the validated generateAssessmentSchema request
  * @param {{instructions: string, questions: object[]}} doc the validated assessmentDocumentSchema response
  */
 function renderAssessmentMarkdown(config, doc) {
@@ -350,6 +355,16 @@ function renderAssessmentBody(doc, answerKeyHeading) {
 // teacher configured can never be overwritten by an AI action.
 const ASSESSMENT_ACTIONS = ['make_easier', 'make_harder', 'more_questions', 'simplify_wording'];
 const MORE_QUESTIONS_COUNT = 5;
+
+// Extra attempts to re-ask Gemini for a fresh response when
+// sanitizeAssessmentDocument (lib/latexGuard.js) finds LaTeX it can't safely
+// repair — e.g. a bare "\text{...}" with unbalanced braces. Only THIS
+// failure mode retries; invalid JSON / schema mismatch / wrong question
+// count still fail immediately exactly as before. Bounded small: each
+// attempt is a full Gemini call (with its own internal retry/continuation
+// budget in gemini.js), so this caps worst-case latency/cost at 3x a single
+// generation rather than letting it grow unbounded.
+const MAX_LATEX_REGEN_ATTEMPTS = 2;
 
 // Mirrors client/src/lib/assessment.ts's ANSWER_KEY_HEADING — kept as a
 // separate small copy rather than a cross-package import (CJS server vs ESM
@@ -709,7 +724,30 @@ async function handleAssessmentAction(gemini, resource, action, requestId) {
   // repair existed may still carry JSON-mangled math, and the action contract
   // (e.g. simplify_wording's byte-identical answers) compares the model's
   // (normalized) response against these — both sides must be in repaired form.
-  const doc = normalizeAssessmentMath(parsedBody.doc);
+  const normalizedDoc = normalizeAssessmentMath(parsedBody.doc);
+
+  // The EXISTING saved doc is spliced straight into the outgoing suggestion
+  // below (more_questions keeps its old questions; every action keeps the
+  // preamble) without another Gemini call in between — so it needs the same
+  // LaTeX safety check a fresh generation gets. A resource saved before this
+  // guard existed could still carry unrepairable bare LaTeX; there's no
+  // "regenerate" to fall back on for already-saved content, so this fails
+  // the same way genuinely unparseable content already does.
+  const docSanitized = sanitizeAssessmentDocument(normalizedDoc);
+  if (!docSanitized.ok) {
+    console.warn('[resources.ai-action] saved resource contains unrepairable LaTeX', {
+      requestId, action, errors: docSanitized.errors,
+    });
+    return {
+      status: 422,
+      body: {
+        error: "This document has been edited in a way AI Assist can no longer safely apply changes to. Try editing it directly, or use Generate to create a fresh one.",
+        code: 'UNPARSEABLE_CONTENT',
+        requestId,
+      },
+    };
+  }
+  const doc = docSanitized.doc;
 
   if (action === 'more_questions' && doc.questions.length + MORE_QUESTIONS_COUNT > MAX_QUESTIONS) {
     return {
@@ -723,32 +761,48 @@ async function handleAssessmentAction(gemini, resource, action, requestId) {
 
   const { systemInstruction, userText, responseSchema } = buildAssessmentActionPrompt(action, resource, doc);
 
-  let result;
-  try {
-    result = await gemini.generateContent(
-      { systemInstruction, userText, language: resource.language || 'en', responseSchema },
-      { correlationId: requestId }
-    );
-  } catch (error) {
-    return { error };
-  }
+  let responseParsed;
+  for (let attempt = 1; ; attempt += 1) {
+    let result;
+    try {
+      result = await gemini.generateContent(
+        { systemInstruction, userText, language: resource.language || 'en', responseSchema },
+        { correlationId: requestId }
+      );
+    } catch (error) {
+      return { error };
+    }
 
-  let raw;
-  try {
-    raw = JSON.parse(result.text);
-  } catch {
-    console.warn('[resources.ai-action] AI response was not valid JSON', { requestId, action });
-    return { status: 502, body: { error: 'The suggested revision was malformed. Please try again.', code: 'INVALID_AI_RESPONSE', requestId } };
-  }
+    let raw;
+    try {
+      raw = JSON.parse(result.text);
+    } catch {
+      console.warn('[resources.ai-action] AI response was not valid JSON', { requestId, action });
+      return { status: 502, body: { error: 'The suggested revision was malformed. Please try again.', code: 'INVALID_AI_RESPONSE', requestId } };
+    }
 
-  const responseParsed = assessmentDocumentSchema.safeParse(normalizeAssessmentMath(raw));
-  if (!responseParsed.success) {
-    console.warn('[resources.ai-action] AI response failed schema validation', {
-      requestId,
-      action,
-      issues: responseParsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
-    });
-    return { status: 502, body: { error: 'The suggested revision did not match the expected structure. Please try again.', code: 'INVALID_AI_RESPONSE', requestId } };
+    // sanitizeAssessmentDocument runs AFTER normalizeAssessmentMath, same
+    // order as generation — see lib/latexGuard.js. Only THIS check retries;
+    // every other failure below still fails immediately, unchanged.
+    const responseSanitized = sanitizeAssessmentDocument(normalizeAssessmentMath(raw));
+    if (!responseSanitized.ok) {
+      console.warn('[resources.ai-action] AI response contained unrepairable LaTeX', {
+        requestId, action, attempt, errors: responseSanitized.errors,
+      });
+      if (attempt <= MAX_LATEX_REGEN_ATTEMPTS) continue;
+      return { status: 502, body: { error: 'The suggested revision contained formatting that could not be safely rendered. Please try again.', code: 'INVALID_AI_RESPONSE', requestId } };
+    }
+
+    responseParsed = assessmentDocumentSchema.safeParse(responseSanitized.doc);
+    if (!responseParsed.success) {
+      console.warn('[resources.ai-action] AI response failed schema validation', {
+        requestId,
+        action,
+        issues: responseParsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+      });
+      return { status: 502, body: { error: 'The suggested revision did not match the expected structure. Please try again.', code: 'INVALID_AI_RESPONSE', requestId } };
+    }
+    break;
   }
 
   const structureError = checkAssessmentActionResult(action, doc.questions, responseParsed.data.questions);
@@ -830,7 +884,7 @@ router.post('/resources/generate', authRequired, async (req, res) => {
     return res.status(503).json({ error: 'AI features are unavailable right now.', requestId });
   }
 
-  const parsed = generateSchema.safeParse(req.body || {});
+  const parsed = generateAssessmentSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid generation request.', requestId });
   }
@@ -839,39 +893,63 @@ router.post('/resources/generate', authRequired, async (req, res) => {
   const { systemInstruction, userText, responseSchema } = buildGeneratorPrompt(config);
   const language = config.language && LANGUAGE_NAMES[config.language] ? config.language : 'en';
 
-  let result;
-  try {
-    result = await gemini.generateContent(
-      { systemInstruction, userText, language, responseSchema },
-      { correlationId: requestId }
-    );
-  } catch (error) {
-    return sendAiError(res, error, requestId);
-  }
+  let docParsed;
+  for (let attempt = 1; ; attempt += 1) {
+    let result;
+    try {
+      result = await gemini.generateContent(
+        { systemInstruction, userText, language, responseSchema },
+        { correlationId: requestId }
+      );
+    } catch (error) {
+      return sendAiError(res, error, requestId);
+    }
 
-  let raw;
-  try {
-    raw = JSON.parse(result.text);
-  } catch {
-    console.warn('[resources.generate] AI response was not valid JSON', { requestId });
-    return res.status(502).json({
-      error: 'The generated content was malformed. Please try again.',
-      code: 'INVALID_AI_RESPONSE',
-      requestId,
-    });
-  }
+    let raw;
+    try {
+      raw = JSON.parse(result.text);
+    } catch {
+      console.warn('[resources.generate] AI response was not valid JSON', { requestId });
+      return res.status(502).json({
+        error: 'The generated content was malformed. Please try again.',
+        code: 'INVALID_AI_RESPONSE',
+        requestId,
+      });
+    }
 
-  const docParsed = assessmentDocumentSchema.safeParse(normalizeAssessmentMath(raw));
-  if (!docParsed.success) {
-    console.warn('[resources.generate] AI response failed schema validation', {
-      requestId,
-      issues: docParsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
-    });
-    return res.status(502).json({
-      error: 'The generated content did not match the expected structure. Please try again.',
-      code: 'INVALID_AI_RESPONSE',
-      requestId,
-    });
+    // sanitizeAssessmentDocument (lib/latexGuard.js) runs AFTER
+    // normalizeAssessmentMath: it detects LaTeX Gemini left outside any
+    // $...$/$$...$$ pair (normalizeAssessmentMath never looks there by
+    // design), mechanically repairs the safe case, and verifies every math
+    // segment actually renders in KaTeX. Only THIS check retries the whole
+    // generation — invalid JSON / schema mismatch / wrong question count
+    // below still fail immediately, unchanged.
+    const sanitized = sanitizeAssessmentDocument(normalizeAssessmentMath(raw));
+    if (!sanitized.ok) {
+      console.warn('[resources.generate] AI response contained unrepairable LaTeX', {
+        requestId, attempt, errors: sanitized.errors,
+      });
+      if (attempt <= MAX_LATEX_REGEN_ATTEMPTS) continue;
+      return res.status(502).json({
+        error: 'The generated content contained formatting that could not be safely rendered. Please try again.',
+        code: 'INVALID_AI_RESPONSE',
+        requestId,
+      });
+    }
+
+    docParsed = assessmentDocumentSchema.safeParse(sanitized.doc);
+    if (!docParsed.success) {
+      console.warn('[resources.generate] AI response failed schema validation', {
+        requestId,
+        issues: docParsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+      });
+      return res.status(502).json({
+        error: 'The generated content did not match the expected structure. Please try again.',
+        code: 'INVALID_AI_RESPONSE',
+        requestId,
+      });
+    }
+    break;
   }
 
   const contractError = checkAgainstRequest(docParsed.data, config);

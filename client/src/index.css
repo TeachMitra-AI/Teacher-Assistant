@@ -2337,3 +2337,157 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   .generator-form, .generator-preview { padding: 1.1rem; }
   .generator-title { font-size: 1.25rem; }
 }
+
+/* ---- AI prefill banner + provenance markers (AI Action Router, M3) -------- */
+/* Shown when the router has pre-filled the Generator. Sits in normal flow above
+   the form — never an overlay — for the same reason the onboarding tip does: it
+   must not cover the form it is describing, and it has to scroll away on a
+   phone. It replaces the generator-intro tip for that visit (CHANGE-10) rather
+   than stacking with it, which on a small screen would push the form below the
+   fold. Theme-aware through the shared variables. */
+.ai-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  background: var(--orange-soft);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--orange);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.8rem;
+  margin-bottom: 1rem;
+  animation: ai-banner-in 0.18s ease;
+}
+.ai-banner-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--orange);
+}
+.ai-banner-body { flex: 1; min-width: 0; }
+.ai-banner-title { margin: 0; font-size: 0.85rem; font-weight: 600; line-height: 1.4; color: var(--text); }
+.ai-banner-uncertain { font-weight: 500; color: var(--text-muted); }
+.ai-banner-source { margin: 0.15rem 0 0; font-size: 0.79rem; color: var(--text-muted); line-height: 1.45; }
+.ai-banner-utterance { font-style: italic; overflow-wrap: anywhere; }
+.ai-banner-hint { margin: 0.2rem 0 0; font-size: 0.76rem; color: var(--text-muted); line-height: 1.45; }
+.ai-banner-actions { display: flex; align-items: center; gap: 0.3rem; flex-shrink: 0; }
+.ai-banner-undo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+.ai-banner-undo:hover { border-color: var(--orange); color: var(--orange); }
+.ai-banner-undo:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.ai-banner-close { width: 26px; height: 26px; }
+.ai-banner-close:hover { background: var(--surface); }
+@keyframes ai-banner-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Per-field provenance markers. NEVER colour-only (CHANGE-12): each carries
+   visible text, and the uncertain variant is additionally announced to screen
+   readers, because a teacher who cannot see the styling still needs to know
+   which value was a guess. */
+.ai-field-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  vertical-align: middle;
+}
+.ai-field-note.uncertain {
+  background: var(--orange-soft);
+  color: var(--orange-dark);
+  border-color: var(--orange);
+}
+[data-theme='dark'] .ai-field-note.uncertain { color: var(--orange); }
+
+@media (max-width: 640px) {
+  /* The actions drop below the text rather than squeezing the message into a
+     narrow column on a phone. */
+  .ai-banner { flex-wrap: wrap; }
+  .ai-banner-body { flex-basis: 100%; order: 2; }
+  .ai-banner-actions { order: 3; margin-left: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-banner { animation: none; }
+}
+
+/* ---- AI clarifying question (AI Action Router, M6) ----------------------- */
+/* Sits inside the composer dock, directly above the context bar, because the
+   answer is given either by tapping a chip here or by typing in the composer
+   immediately below — keeping the question and both of its answer surfaces in
+   one visual group. In normal flow, never an overlay: on a phone it must push
+   the conversation up rather than cover it. Deliberately reuses the banner's
+   visual language (soft orange, left rule) so the router looks like one feature
+   rather than two. */
+.ai-clarify {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  background: var(--orange-soft);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--orange);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.7rem;
+  margin-bottom: 0.5rem;
+  animation: ai-banner-in 0.18s ease;
+}
+.ai-clarify-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--orange);
+}
+.ai-clarify-body { flex: 1; min-width: 0; }
+.ai-clarify-question { margin: 0; font-size: 0.85rem; font-weight: 600; line-height: 1.4; color: var(--text); }
+.ai-clarify-hint { margin: 0.2rem 0 0; font-size: 0.76rem; color: var(--text-muted); line-height: 1.45; }
+.ai-clarify-options {
+  display: flex;
+  /* Chips wrap rather than scroll: a horizontal scroller hides options, and a
+     teacher must be able to see every answer at once to pick one. */
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+.ai-clarify-chip {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.79rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.ai-clarify-chip:hover { border-color: var(--orange); color: var(--orange); }
+.ai-clarify-chip:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.ai-clarify-close { width: 26px; height: 26px; flex-shrink: 0; }
+.ai-clarify-close:hover { background: var(--surface); }
+@media (prefers-reduced-motion: reduce) {
+  .ai-clarify { animation: none; }
+}

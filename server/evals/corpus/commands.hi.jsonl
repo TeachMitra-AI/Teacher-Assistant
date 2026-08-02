@@ -1,0 +1,31 @@
+// Devanagari Hindi commands (12 cases).
+//
+// This stratum exists for two things English cannot exercise:
+//
+// 1. SCRIPT HANDLING. Devanagari writes its vowels and virama as COMBINING
+//    MARKS, which is what made the client gate's original tokenizer silently
+//    erase every Hindi phrase (found and fixed at M6). NFKC also decomposes
+//    nukta letters. Any regression in that handling shows up here first.
+//
+// 2. THE LANGUAGE TRAP. `language` is set ONLY from an explicit request and is
+//    never inferred from the script the teacher typed in — a Hinglish or Hindi
+//    request very often wants an English-medium printed paper. Every case below
+//    that does not name a language carries `language` in `notStated`, and any
+//    violation is a HARD GATE failure, not a percentage point.
+//
+// cmd.hi.008 is the sharpest form of the trap: the word "हिंदी" appears as the
+// SUBJECT. Setting `language: hi` from it is exactly the mistake the structural
+// design at M4 exists to prevent.
+
+{"id":"cmd.hi.001","stratum":"commands","language":"hi","utterance":"कक्षा 5 के लिए भिन्न पर वर्कशीट बनाओ","notes":"Devanagari, no language named. M5 verified live that this produces no `language` param at all.","expected":{"decision":"prefill","actionId":"generate_assessment","slots":{"stated":{"format":"worksheet","topic":"भिन्न","grade":"Class 3-5"},"notStated":["subject","difficulty","questionType","questionCount","language"]}}}
+{"id":"cmd.hi.002","stratum":"commands","language":"hi","utterance":"कक्षा 6 के विज्ञान के लिए क्विज़ बनाओ","expected":{"decision":"ask","actionId":"generate_assessment","askSlot":"topic","slots":{"stated":{"format":"quiz","grade":"Class 6-8","subject":"Science"},"notStated":["difficulty","questionType","questionCount","language"]}}}
+{"id":"cmd.hi.003","stratum":"commands","language":"hi","utterance":"छठी कक्षा के लिए जल चक्र पर वर्कशीट बनाइए","expected":{"decision":"prefill","actionId":"generate_assessment","slots":{"stated":{"format":"worksheet","topic":"जल चक्र","grade":"Class 6-8"},"notStated":["subject","difficulty","questionType","questionCount","language"]}}}
+{"id":"cmd.hi.004","stratum":"commands","language":"hi","utterance":"कक्षा 8 के लिए गणित का क्विज़ बनाओ बीजगणित पर","expected":{"decision":"prefill","actionId":"generate_assessment","slots":{"stated":{"format":"quiz","topic":"बीजगणित","subject":"Mathematics","grade":"Class 6-8"},"notStated":["difficulty","questionType","questionCount","language"]}}}
+{"id":"cmd.hi.005","stratum":"commands","language":"hi","utterance":"प्रकाश पर एक वर्कशीट बनाओ कक्षा 7 के लिए","expected":{"decision":"prefill","actionId":"generate_assessment","slots":{"stated":{"format":"worksheet","topic":"प्रकाश","grade":"Class 6-8"},"notStated":["subject","difficulty","questionType","questionCount","language"]}}}
+{"id":"cmd.hi.006","stratum":"commands","language":"hi","utterance":"कक्षा 4 के लिए गुणा पर वर्कशीट बनाओ","expected":{"decision":"prefill","actionId":"generate_assessment","slots":{"stated":{"format":"worksheet","topic":"गुणा","grade":"Class 3-5"},"notStated":["subject","difficulty","questionType","questionCount","language"]}}}
+{"id":"cmd.hi.007","stratum":"commands","language":"hi","utterance":"कक्षा 9 के लिए प्रश्नपत्र बनाओ","notes":"\"प्रश्नपत्र\" (question paper) is not a FORMATS value, and no topic is given — two required slots missing -> prefill, not ask.","expected":{"decision":"prefill","actionId":"generate_assessment","slots":{"stated":{"grade":"Class 9-10"},"notStated":["format","topic","subject","difficulty","questionType","questionCount","language"]}}}
+{"id":"cmd.hi.008","stratum":"commands","language":"hi","utterance":"पाँचवीं कक्षा के लिए हिंदी व्याकरण पर क्विज़ बनाओ","notes":"THE SHARPEST LANGUAGE-TRAP CASE. \"हिंदी\" here is the SUBJECT, not an output-language request. Setting `language` from it is a hard-gate failure.","expected":{"decision":"prefill","actionId":"generate_assessment","slots":{"stated":{"format":"quiz","topic":"व्याकरण","subject":"Hindi","grade":"Class 3-5"},"notStated":["difficulty","questionType","questionCount","language"]}}}
+{"id":"cmd.hi.009","stratum":"commands","language":"hi","utterance":"कक्षा 10 के लिए 12 प्रश्नों का क्विज़ बनाओ प्रकाश के परावर्तन पर","expected":{"decision":"prefill","actionId":"generate_assessment","slots":{"stated":{"format":"quiz","topic":"प्रकाश के परावर्तन","questionCount":12,"grade":"Class 9-10"},"notStated":["subject","difficulty","questionType","language"]}}}
+{"id":"cmd.hi.010","stratum":"commands","language":"hi","utterance":"कक्षा 3 के लिए वर्कशीट बनाओ और हिंदी में लिखो","notes":"An EXPLICIT language request in Devanagari — here `language` MUST be set. The trap is about inference, not about refusing a stated request.","expected":{"decision":"ask","actionId":"generate_assessment","askSlot":"topic","slots":{"stated":{"format":"worksheet","grade":"Class 3-5","language":"hi"},"notStated":["subject","difficulty","questionType","questionCount"]}}}
+{"id":"cmd.hi.011","stratum":"commands","language":"hi","utterance":"कक्षा 12 के लिए भारतीय संविधान पर क्विज़ बनाओ","expected":{"decision":"prefill","actionId":"generate_assessment","slots":{"stated":{"format":"quiz","topic":"भारतीय संविधान","grade":"Class 11-12"},"notStated":["subject","difficulty","questionType","questionCount","language"]}}}
+{"id":"cmd.hi.012","stratum":"commands","language":"hi","utterance":"कक्षा 2 के लिए आकृतियों पर आसान वर्कशीट बनाइए","notes":"The one case testing a Devanagari ENUM word: \"आसान\" means easy. The enum canonicalizer matches the English values case-insensitively only, so this passes only if the model itself returns \"easy\". Labelled to the teacher's meaning; a failure here is a finding about where enum translation should live, not a scoring accident.","expected":{"decision":"prefill","actionId":"generate_assessment","slots":{"stated":{"format":"worksheet","topic":"आकृतियों","difficulty":"easy","grade":"Class 1-2"},"notStated":["subject","questionType","questionCount","language"]}}}

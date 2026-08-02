@@ -25,6 +25,14 @@ const authRouter = require('./routes/auth');
 const dataRouter = require('./routes/queries');
 const adminRouter = require('./routes/admin');
 const resourcesRouter = require('./routes/resources');
+// AI Action Router (Phase 1). Requiring this validates the capability registry
+// at boot, so a malformed action descriptor stops the server here rather than
+// surfacing later as a strange routing failure.
+const assistantRouter = require('./routes/assistant');
+const { readAssistantFlags } = require('./lib/flags');
+const { createBudgetCounter } = require('./assistant/budget');
+const { createRouterBreaker } = require('./assistant/breaker');
+const { createGenerateLimiter } = require('./lib/limiters');
 
 // Logs only non-sensitive metadata about an AI request/response — never the
 // raw query text, response text, upstream error body, API keys, tokens, or
@@ -102,6 +110,102 @@ const gemini = new GeminiService({
   maxOutputTokens: LLM_MAX_OUTPUT_TOKENS,
 });
 
+// ---- AI Action Router: the routing model (M5) ------------------------------
+//
+// A SECOND GeminiService instance, not a modified one. gemini.js already
+// accepts every tunable per instance, so routing needs no change to a service
+// that Coach, AI Assist and the Generator all share (guardrail G21) — editing
+// it to serve routing would put three working features at risk for one new one.
+//
+// The budgets below are the whole reason this instance exists. Coaching gets 30s
+// per call and 60s overall, which is right for writing a lesson plan and
+// catastrophic for a routing decision sitting in front of a text box: the
+// teacher is waiting to send a message, not to receive an essay. Routing gets
+// ~3.5s per call and a 5s overall deadline, and EXCEEDING THAT DEADLINE IS A
+// DECISION, NOT AN ERROR — the pipeline returns passthrough and the teacher
+// gets their coaching answer (guardrail G20).
+const ASSISTANT_GEMINI_ENDPOINT =
+  process.env.ASSISTANT_GEMINI_ENDPOINT ||
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent';
+
+const ASSISTANT_LLM_TIMEOUT_MS = parseIntEnv(process.env.ASSISTANT_LLM_TIMEOUT_MS, {
+  name: 'ASSISTANT_LLM_TIMEOUT_MS', defaultValue: 3500, min: 1000, max: 10000,
+});
+const ASSISTANT_LLM_TOTAL_TIMEOUT_MS = parseIntEnv(process.env.ASSISTANT_LLM_TOTAL_TIMEOUT_MS, {
+  name: 'ASSISTANT_LLM_TOTAL_TIMEOUT_MS', defaultValue: 5000, min: 2000, max: 15000,
+});
+const ASSISTANT_LLM_MAX_RETRIES = parseIntEnv(process.env.ASSISTANT_LLM_MAX_RETRIES, {
+  name: 'ASSISTANT_LLM_MAX_RETRIES', defaultValue: 1, min: 0, max: 2,
+});
+const ASSISTANT_LLM_MAX_CALLS = parseIntEnv(process.env.ASSISTANT_LLM_MAX_CALLS, {
+  name: 'ASSISTANT_LLM_MAX_CALLS', defaultValue: 2, min: 1, max: 3,
+});
+const ASSISTANT_LLM_MAX_OUTPUT_TOKENS = parseIntEnv(process.env.ASSISTANT_LLM_MAX_OUTPUT_TOKENS, {
+  name: 'ASSISTANT_LLM_MAX_OUTPUT_TOKENS', defaultValue: 512, min: 128, max: 1024,
+});
+
+// ---- AI Action Router: the cost and availability guards (M9) ---------------
+//
+// Two stateful objects, both constructed HERE and injected via app.locals in
+// the same way geminiFast is, rather than held as module state inside the
+// assistant folder (approval A4). The server suite shares one required index.js
+// per worker, so a module-level counter — or a breaker one test left open —
+// would leak into unrelated test files and make failures order-dependent.
+//
+// Neither can make a request fail. An exhausted budget and an open breaker both
+// produce a passthrough, which is a normal coaching answer (G22).
+const ASSISTANT_BREAKER_429_THRESHOLD = parseIntEnv(process.env.ASSISTANT_BREAKER_429_THRESHOLD, {
+  name: 'ASSISTANT_BREAKER_429_THRESHOLD', defaultValue: 5, min: 1, max: 100,
+});
+const ASSISTANT_BREAKER_WINDOW_MS = parseIntEnv(process.env.ASSISTANT_BREAKER_WINDOW_MS, {
+  name: 'ASSISTANT_BREAKER_WINDOW_MS', defaultValue: 60000, min: 1000, max: 3600000,
+});
+const ASSISTANT_BREAKER_COOLDOWN_MS = parseIntEnv(process.env.ASSISTANT_BREAKER_COOLDOWN_MS, {
+  name: 'ASSISTANT_BREAKER_COOLDOWN_MS', defaultValue: 300000, min: 1000, max: 3600000,
+});
+
+const assistantFlags = readAssistantFlags(process.env);
+const assistantBudget = createBudgetCounter({ limit: assistantFlags.dailyBudgetPerUser });
+
+// A SECOND counter, for telemetry ROWS — added by the M9 security review, which
+// found that POST /api/assistant/events had no per-user bound at all. Only the
+// shared IP limiter stood in front of it, and each request may carry a batch, so
+// one hostile or simply looping client could sustain writes against exactly the
+// single-writer table CHANGE-6 exists to keep quiet (threat 4).
+//
+// The limit is DERIVED rather than a new env var, because it is not an
+// independent policy: the design ceiling is two rows per routed session, so
+// twice the interpret budget covers every legitimate session a teacher can
+// have, and the constant is headroom for a client that re-delivers a batch.
+// Separate from the routing counter on purpose — telemetry must never be able
+// to eat the budget a teacher needs for actual routing.
+//
+// Exceeding it drops the batch silently (204). Telemetry is fire-and-forget by
+// contract and already fails soft, so this can lose a measurement and can never
+// cost a teacher anything.
+const assistantEventBudget = createBudgetCounter({
+  limit: assistantFlags.dailyBudgetPerUser * 2 + 20,
+});
+const assistantBreaker = createRouterBreaker({
+  threshold: ASSISTANT_BREAKER_429_THRESHOLD,
+  windowMs: ASSISTANT_BREAKER_WINDOW_MS,
+  cooldownMs: ASSISTANT_BREAKER_COOLDOWN_MS,
+});
+
+const geminiFast = new GeminiService({
+  apiKey: GEMINI_API_KEY,
+  endpoint: ASSISTANT_GEMINI_ENDPOINT,
+  timeoutMs: ASSISTANT_LLM_TIMEOUT_MS,
+  totalTimeoutMs: ASSISTANT_LLM_TOTAL_TIMEOUT_MS,
+  maxRetries: ASSISTANT_LLM_MAX_RETRIES,
+  maxCallsPerRequest: ASSISTANT_LLM_MAX_CALLS,
+  // Zero continuations: a classification result is a small JSON object, and
+  // gemini.js already skips the continuation loop for structured responses.
+  // Stating it here means the intent survives if that ever changes.
+  maxContinuations: 0,
+  maxOutputTokens: ASSISTANT_LLM_MAX_OUTPUT_TOKENS,
+});
+
 // ---- App setup -------------------------------------------------------------
 
 const app = express();
@@ -110,6 +214,15 @@ app.disable('x-powered-by');
 // router's Lesson Plan Workspace AI actions) without re-constructing it or
 // leaking the API key. Read via req.app.locals.gemini.
 app.locals.gemini = gemini;
+// The routing instance, read by the assistant router as req.app.locals.geminiFast.
+// Kept a SEPARATE local rather than a field on `gemini` so that reaching for the
+// wrong one is a visibly wrong line of code rather than a subtle option.
+app.locals.geminiFast = geminiFast;
+// M9 guards, read by the assistant router. Same pattern and the same reason as
+// geminiFast: constructed once, reached explicitly, never a module singleton.
+app.locals.assistantBudget = assistantBudget;
+app.locals.assistantEventBudget = assistantEventBudget;
+app.locals.assistantBreaker = assistantBreaker;
 // Railway (like most PaaS) puts exactly one reverse-proxy hop in front of
 // this app. Trusting that one hop lets Express derive req.ip from the
 // X-Forwarded-For header Railway sets, which express-rate-limit needs to
@@ -186,6 +299,36 @@ const limiter = rateLimit({
   // that one means "the AI provider itself is rate-limiting us right now",
   // which more patience on the client side alone doesn't fix.
   message: { error: 'You have made too many requests. Please wait a few minutes and try again.' },
+});
+
+// Separate bucket for the assistant, deliberately NOT the /coach limiter above.
+// Sharing one would let catalog fetches and routing decisions eat the budget a
+// teacher needs for actual coaching answers — the optional feature must never
+// degrade the core one. Higher ceiling than /coach because these calls are
+// small and frequent (a catalog fetch per session, a routing decision per
+// message) rather than large and occasional.
+const ASSISTANT_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.ASSISTANT_RATE_LIMIT_MAX_REQUESTS, {
+  name: 'ASSISTANT_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 120 : 600, min: 1, max: 100000,
+});
+
+const assistantLimiter = rateLimit({
+  windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
+  max: ASSISTANT_RATE_LIMIT_MAX_REQUESTS,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many assistant requests. Please wait a few minutes and try again.' },
+});
+
+// M9. The generation endpoint is the most expensive path in the product — a
+// real Gemini call with an 8-call budget behind it — and until now it was
+// guarded by authRequired and nothing else. Architecture 10.4 calls this a
+// pre-existing gap to close "regardless of this project"; the router only makes
+// reaching it one utterance cheaper. Built by a factory so the limiter test can
+// mount the real thing on a throwaway app instead of exhausting this shared one.
+const generateLimiter = createGenerateLimiter({
+  env: process.env,
+  isProduction,
+  windowMinutes: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10),
 });
 
 // Stricter limiter for auth endpoints to slow down credential guessing.
@@ -398,8 +541,21 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
 // Teacher history + feedback, saved resources (My Library), and admin
 // analytics/management.
 app.use('/api', dataRouter);
+// M9. Mounted on the path AHEAD of the resources router rather than inside it,
+// so routes/resources.js — protected area 1, the generation contract — is not
+// opened a second time. Order matters: this must precede the router it guards.
+// Everything else on /api/resources is untouched; only the generate path is
+// matched here.
+app.use('/api/resources/generate', generateLimiter);
 app.use('/api', resourcesRouter);
 app.use('/api/admin', adminRouter);
+
+// AI Action Router. Mounted alongside the existing routers — after them, before
+// the global error handler — so no existing route's middleware chain changes.
+// Its own paths are new, so nothing here can shadow an established endpoint.
+// With ASSISTANT_ENABLED unset (the default) every response is an inert empty
+// catalog, and the application behaves exactly as it did before this line.
+app.use('/api/assistant', assistantLimiter, assistantRouter);
 
 // Global error handler — last line of defense. Routes wrapped in
 // asyncHandler (see lib/asyncHandler.js) forward a rejected promise here via
@@ -410,6 +566,31 @@ app.use('/api/admin', adminRouter);
 // message/stack to the client — only status/path/method/error identity are
 // logged server-side.
 app.use((err, req, res, _next) => {
+  // A body that is not valid JSON is a CLIENT error, and body-parser already
+  // says so — it throws a SyntaxError carrying status 400, which this handler
+  // used to flatten into a 500. Two things were wrong with that, both found by
+  // the M9 security review rather than by a user report:
+  //
+  //   1. G22. POST /api/assistant/interpret may NEVER return a 5xx, and this
+  //      was the one path that could. The client treats any 5xx as "the
+  //      endpoint is unhealthy" and opens its circuit breaker, so a single
+  //      malformed request disabled routing for a minute.
+  //
+  //   2. G11. Node's JSON parser puts a ~20-character WINDOW OF THE RAW BODY
+  //      into its message ("Unexpected token 'Z', ...\"terance\": ZZPROBEBOD\"...
+  //      is not valid JSON"), and this handler logged that message verbatim.
+  //      On this endpoint the raw body is the teacher's utterance. A probe
+  //      string was watched into the log; it is not hypothetical.
+  //
+  // So the branch answers 400 and logs the SHAPE of the failure, never its
+  // content. Applies to every endpoint, which is the point: the leak was never
+  // specific to the assistant.
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.warn('Malformed JSON body:', { method: req.method, path: req.path });
+    if (res.headersSent) return;
+    return res.status(400).json({ error: 'The request body was not valid JSON.' });
+  }
+
   console.error('Unhandled request error:', {
     method: req.method,
     path: req.path,

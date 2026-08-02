@@ -1,0 +1,28 @@
+// Genuinely ambiguous utterances (13 cases). QUARANTINED FROM THE HEADLINE.
+//
+// Every case here carries an `acceptable` set: outcomes two competent people
+// would disagree about. They are scored into their own bucket and are EXCLUDED
+// from routing precision, routing recall and the false-positive/negative counts.
+//
+// The reason is anti-gaming, and it is worth stating plainly: if ambiguous cases
+// counted toward the headline, the cheapest way to raise precision would be to
+// relabel the awkward ones. Quarantining them means a threshold can only be met
+// by changing behaviour. Their agreement rate is still reported — a collapse
+// here is a real signal — it just cannot move the number that gates Phase 2.
+//
+// Moving a case INTO this file after seeing a score is forbidden. The corpus
+// review in the manual procedure happens before any run for exactly that reason.
+
+{"id":"amb.001","stratum":"ambiguous","language":"en","utterance":"I need something on photosynthesis","notes":"M5 recorded the model inferring `format: worksheet` here with provenance `utterance`. \"Something\" is not a format. Preferred: ask for the format.","expected":{"decision":"ask","acceptable":["ask","passthrough"],"actionId":"generate_assessment","askSlot":"format","slots":{"stated":{"topic":"photosynthesis"},"notStated":["format","grade","subject","difficulty","questionType","questionCount","language"]}}}
+{"id":"amb.002","stratum":"ambiguous","language":"en","utterance":"Fractions for class 5","notes":"No verb at all — a fragment. Could be a request or the start of a coaching thought.","expected":{"decision":"passthrough","acceptable":["passthrough","ask","prefill"],"actionId":null,"slots":{}}}
+{"id":"amb.003","stratum":"ambiguous","language":"en","utterance":"Help me with a fractions lesson","expected":{"decision":"passthrough","acceptable":["passthrough","ask"],"actionId":null,"slots":{}}}
+{"id":"amb.004","stratum":"ambiguous","language":"en","utterance":"Class 6 science revision","expected":{"decision":"passthrough","acceptable":["passthrough","ask","prefill"],"actionId":null,"slots":{}}}
+{"id":"amb.005","stratum":"ambiguous","language":"en","utterance":"I need an easy English worksheet for class 2","notes":"\"English\" is most naturally the SUBJECT here, but it can be read as an output-language request. Deliberately quarantined rather than forced into commands.en, where it would have added noise to the language-hallucination metric.","expected":{"decision":"ask","acceptable":["ask","prefill"],"actionId":"generate_assessment","askSlot":"topic","slots":{"stated":{"format":"worksheet","difficulty":"easy","subject":"English","grade":"Class 1-2"},"notStated":["questionType","questionCount"]}}}
+{"id":"amb.006","stratum":"ambiguous","language":"en","utterance":"Something for tomorrow's class on gravity","expected":{"decision":"passthrough","acceptable":["passthrough","ask"],"actionId":null,"slots":{}}}
+{"id":"amb.007","stratum":"ambiguous","language":"en","utterance":"Worksheet","notes":"A single word. Arguably a command with everything missing, arguably not a message at all.","expected":{"decision":"ask","acceptable":["ask","passthrough"],"actionId":"generate_assessment","askSlot":"topic","slots":{"stated":{"format":"worksheet"},"notStated":["grade","subject","difficulty","questionType","questionCount","language"]}}}
+{"id":"amb.008","stratum":"ambiguous","language":"en","utterance":"Can you make a quiz on the solar system?","notes":"A polite command. The gate declines it twice over (leading \"can\", plus a question mark), so this measures a real recall cost of politeness that CHANGE-2 accepted knowingly.","expected":{"decision":"prefill","acceptable":["prefill","passthrough"],"actionId":"generate_assessment","slots":{"stated":{"format":"quiz","topic":"solar system"},"notStated":["grade","subject","difficulty","questionType","questionCount","language"]}}}
+{"id":"amb.009","stratum":"ambiguous","language":"hinglish","utterance":"Kuch chahiye class 7 ke liye science par","expected":{"decision":"passthrough","acceptable":["passthrough","prefill","ask"],"actionId":null,"slots":{}}}
+{"id":"amb.010","stratum":"ambiguous","language":"hinglish","utterance":"Test banana hai class 8 ke liye","notes":"\"test\" is not a FORMATS value and no topic is given, so a routed reading lands on prefill with two required slots missing.","expected":{"decision":"prefill","acceptable":["prefill","ask","passthrough"],"actionId":"generate_assessment","slots":{"stated":{"grade":"Class 6-8"},"notStated":["format","topic","subject","difficulty","questionType","questionCount","language"]}}}
+{"id":"amb.011","stratum":"ambiguous","language":"hi","utterance":"कक्षा 5 के लिए कुछ चाहिए","expected":{"decision":"passthrough","acceptable":["passthrough","prefill","ask"],"actionId":null,"slots":{}}}
+{"id":"amb.012","stratum":"ambiguous","language":"en","utterance":"Prepare something for the class 9 exam","expected":{"decision":"prefill","acceptable":["prefill","ask","passthrough"],"actionId":"generate_assessment","slots":{"stated":{"grade":"Class 9-10"},"notStated":["format","topic","subject","difficulty","questionType","questionCount","language"]}}}
+{"id":"amb.013","stratum":"ambiguous","language":"en","utterance":"Delete the old worksheets and make a new one","notes":"A compound request whose first half has no action in the catalog. Phase 1 has no multi-step executor, and nothing above `draft` exists, so the delete has nowhere to land whatever the model returns. Quarantined because \"route the half we can do\" and \"decline the whole thing\" are both defensible.","expected":{"decision":"passthrough","acceptable":["passthrough","ask","prefill"],"actionId":null,"slots":{}}}

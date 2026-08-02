@@ -21,4 +21,13 @@ regexes = [
 ]
 paths = [
   '''\.env\.example$''',
+  # Eval-cassette lookup keys (server/evals/README.md): a deterministic
+  # per-case cache key the harness generates from caseId/turn, always
+  # exactly 32 lowercase hex characters in a field literally named "key".
+  # Trips the default generic-api-key rule on shape alone. Not a
+  # credential — the harness never records Authorization/API-key headers
+  # into cassettes (verified: no such header has ever appeared in any
+  # cassette file), so scoping the exemption to this path doesn't weaken
+  # scanning of anything that could actually leak a real secret.
+  '''^server/evals/cassettes/.*\.json$''',
 ]

@@ -7,6 +7,15 @@ import {
 import type { Role, ResponseStyle, ResourceType } from './types';
 
 // Languages supported for AI responses (UI itself stays in English).
+//
+// SERVER COUNTERPART: server/src/actions/vocab/languages.js (LANGUAGE_CODES)
+// holds the same `value` codes, where the AI Action Router canonicalizes an
+// explicit request ("in Hindi", "हिंदी में") into one of them. Deliberate,
+// documented duplication (CHANGE-11 — CommonJS server vs ESM client), pinned by
+// server/test/actions/vocabDrift.test.js. CHANGE BOTH IN THE SAME COMMIT: a code
+// here with no counterpart there is a language the router can never select, and
+// one there with no counterpart here would be prefilled into a <select> that
+// cannot show it.
 export const LANGUAGES: { value: string; label: string }[] = [
   { value: 'en', label: 'English' },
   { value: 'hi', label: 'हिंदी' },
@@ -34,6 +43,15 @@ export const SPEECH_LOCALE: Record<string, string> = {
   hinglish: 'hi-IN',
 };
 
+// SERVER COUNTERPART: server/src/actions/vocab/grades.js (GRADES) and
+// server/src/actions/vocab/subjects.js (SUBJECTS) hold these same canonical
+// lists, where the AI Action Router maps what a teacher typed ("class 5",
+// "पाँचवीं", "maths") onto them. Deliberate, documented duplication (CHANGE-11 —
+// CommonJS server vs ESM client), pinned by server/test/actions/vocabDrift.test.js.
+//
+// CHANGE BOTH IN THE SAME COMMIT, and note that this pair drifts SILENTLY: the
+// router would prefill a band this datalist does not offer, which looks like a
+// typo the teacher made rather than an error. Nothing would fail.
 export const GRADES = ['Pre-Primary', 'Class 1-2', 'Class 3-5', 'Class 6-8', 'Class 9-10', 'Class 11-12'];
 export const SUBJECTS = ['Mathematics', 'Science', 'English', 'Hindi', 'Social Studies', 'Languages', 'General'];
 export const CLASSROOM_TYPES = ['Single Grade', 'Multi-Grade', 'Mixed Ability', 'Large Class (40+)', 'Small Class (<20)'];
@@ -137,8 +155,20 @@ export const RESOURCE_TYPES: ResourceType[] = [
   'general',
 ];
 
-// --- Quiz / Worksheet Generator options (mirror server enums in
-// server/src/routes/resources.js). ---
+// --- Quiz / Worksheet Generator options ---
+//
+// These are the PICKER option lists (value + display label/hint). The values
+// must stay in step with the server's closed vocabularies in
+// server/src/actions/schemas/generateAssessment.js (FORMATS, DIFFICULTIES,
+// QUESTION_TYPES, MIN_QUESTIONS/MAX_QUESTIONS), which is the single runtime
+// authority: it validates every POST /api/resources/generate and, from
+// milestone M2, is the same object the AI Action Router's capability descriptor
+// references. Nothing here validates anything — offering an option the server
+// rejects would surface as a 400 the teacher cannot act on.
+//
+// CHANGE THESE AND THE SERVER MODULE IN THE SAME COMMIT. A drift guard covering
+// this pair is a mandatory acceptance criterion of M2 (see
+// docs/AI_ACTION_ROUTER_README.md §11).
 export const ASSESSMENT_FORMATS: { value: 'quiz' | 'worksheet'; label: string; hint: string }[] = [
   { value: 'quiz', label: 'Quiz', hint: 'Questions with a separate answer key' },
   { value: 'worksheet', label: 'Worksheet', hint: 'Printable sheet with name/date and teacher answer key' },
@@ -190,3 +220,17 @@ export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000/
 // against. Left unset, the Google buttons are simply not rendered and email +
 // password sign-in carries on untouched.
 export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+
+// AI Action Router — client-side gate. When false (the default, and the value
+// until the feature is deliberately switched on) the client never calls an
+// assistant endpoint, and the composer and Generator behave exactly as they did
+// before the feature existed.
+//
+// Deliberately opt-IN: any value other than an explicit "true" leaves it off, so
+// a mistyped or missing env var can only under-enable the feature.
+//
+// This is NOT the kill switch. The app is a PWA with service-worker caching, so
+// a change here reaches users on a later page load rather than immediately —
+// the server's ASSISTANT_ENABLED is the control that takes effect in under a
+// minute and covers already-loaded clients. See docs/ai-action-router-guardrails.md (G28).
+export const ASSISTANT_ENABLED = import.meta.env.VITE_ASSISTANT_ENABLED === 'true';

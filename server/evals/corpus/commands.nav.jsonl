@@ -1,0 +1,18 @@
+// `open_generator` — bare navigation, no slots (6 cases).
+//
+// A separate file because these measure something the other command files
+// cannot: DISCRIMINATION BETWEEN THE TWO ACTIONS. With only two capabilities in
+// the catalog, an aggregate precision number can look healthy while the model
+// systematically resolves every navigation request into a half-filled
+// generate_assessment. Per-action precision is reported for exactly this reason,
+// and these are its denominator.
+//
+// `effect: read` rather than `draft`, so these also exercise the other branch of
+// the policy's effect ceiling.
+
+{"id":"cmd.nav.001","stratum":"commands","language":"en","utterance":"Open the generator","expected":{"decision":"prefill","actionId":"open_generator","slots":{}}}
+{"id":"cmd.nav.002","stratum":"commands","language":"en","utterance":"Show me the quiz generator","expected":{"decision":"prefill","actionId":"open_generator","slots":{}}}
+{"id":"cmd.nav.003","stratum":"commands","language":"en","utterance":"I want to make a worksheet","notes":"A descriptor example for open_generator. Genuinely close to generate_assessment with format=worksheet and no topic; the descriptor's own example list is what settles it.","expected":{"decision":"prefill","actionId":"open_generator","slots":{}}}
+{"id":"cmd.nav.004","stratum":"commands","language":"hinglish","utterance":"Generator kholo","expected":{"decision":"prefill","actionId":"open_generator","slots":{}}}
+{"id":"cmd.nav.005","stratum":"commands","language":"hi","utterance":"जनरेटर खोलो","expected":{"decision":"prefill","actionId":"open_generator","slots":{}}}
+{"id":"cmd.nav.006","stratum":"commands","language":"en","utterance":"Take me to the generator","notes":"\"take\" is deliberately NOT a gate command verb (it appears constantly in coaching prose: \"my students take a test tomorrow\"). Kept as a measured recall cost of that decision.","expected":{"decision":"prefill","actionId":"open_generator","slots":{}}}

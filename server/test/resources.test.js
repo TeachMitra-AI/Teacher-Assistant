@@ -900,5 +900,63 @@ describe('My Library — /api/resources', () => {
         expect(res.body.code).toBe('INVALID_AI_RESPONSE');
       });
     });
+
+    // --- LaTeX safety guard (lib/latexGuard.js) -----------------------------
+    // Root cause: normalizeAssessmentMath only ever repairs LaTeX INSIDE an
+    // existing $...$/$$...$$ pair — by design (see assessmentSchema.test.js's
+    // "does not touch \text{...} outside math delimiters"). Gemini sometimes
+    // drops the $ delimiters entirely around a unit-bearing quantity, most
+    // often in MCQ "options" — a real Chemistry MCQ response captured live
+    // during the investigation came back as
+    // options: ["0.25 \\text{ mol}", ...] with NO delimiters at all. This
+    // guard is a second pass, run after normalizeAssessmentMath, that
+    // auto-repairs that mechanical case and rejects+regenerates anything it
+    // can't safely repair — so raw LaTeX can never reach the client
+    // regardless of what the model does, without relying on prompt wording.
+    describe('LaTeX safety guard (post-generation, treats Gemini output as untrusted)', () => {
+      test('auto-repairs bare LaTeX (missing $ delimiters) before rendering, without regenerating', async () => {
+        const doc = mockAssessmentDoc({ count: 3, type: 'mcq' });
+        // Verbatim shape of the real captured regression: unit-bearing MCQ
+        // options with \text{} but no surrounding $...$ at all.
+        doc.questions[0].options = ['0.25 \\text{ mol}', '0.5 \\text{ mol}', '1.0 \\text{ mol}', '2.0 \\text{ mol}'];
+        const { mock } = mockGeminiFetch([geminiSuccess(JSON.stringify(doc))]);
+        const res = await generate(teacherAToken, { ...validConfig, questionCount: 3 });
+        expect(res.status).toBe(200);
+        expect(res.body.content).toContain('A. $0.25 \\text{ mol}$');
+        // No \text{ survives OUTSIDE a $...$ pair anywhere in the document.
+        const outsideMath = res.body.content.replace(/\$\$[\s\S]+?\$\$|\$[^$\n]+\$/g, '');
+        expect(outsideMath).not.toMatch(/\\text\{/);
+        expect(mock).toHaveBeenCalledTimes(1); // repaired in place, no regeneration needed
+      });
+
+      test('rejects unrepairable bare LaTeX and regenerates, succeeding on a later attempt', async () => {
+        const badDoc = mockAssessmentDoc({ count: 3, type: 'mcq' });
+        // Unbalanced brace — the guard deliberately does not guess at this;
+        // it must come back as a failed attempt, not a silently-broken wrap.
+        badDoc.questions[0].options = ['30\\text{ km/h', 'Option B', 'Option C', 'Option D'];
+        const goodDoc = mockAssessmentDoc({ count: 3, type: 'mcq' });
+
+        const { mock } = mockGeminiFetch([geminiSuccess(JSON.stringify(badDoc)), geminiSuccess(JSON.stringify(goodDoc))]);
+        const res = await generate(teacherAToken, { ...validConfig, questionCount: 3 });
+        expect(res.status).toBe(200);
+        expect(res.body.content).toContain('Question 1?'); // the good doc's content
+        expect(mock).toHaveBeenCalledTimes(2); // first attempt rejected, second accepted
+      });
+
+      test('gives up and returns 502 INVALID_AI_RESPONSE after exhausting regeneration attempts', async () => {
+        const badDoc = mockAssessmentDoc({ count: 3, type: 'mcq' });
+        badDoc.questions[0].options = ['30\\text{ km/h', 'Option B', 'Option C', 'Option D'];
+        // mockGeminiFetch repeats the last queued entry for every further
+        // call, so every attempt gets the same unrepairable response.
+        const { mock } = mockGeminiFetch([geminiSuccess(JSON.stringify(badDoc))]);
+        const res = await generate(teacherAToken, { ...validConfig, questionCount: 3 });
+        expect(res.status).toBe(502);
+        expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+        // 1 initial attempt + MAX_LATEX_REGEN_ATTEMPTS (2) retries = 3 total
+        // calls — never fewer (teacher must never see unsafe content) and
+        // never more (bounded cost/latency).
+        expect(mock).toHaveBeenCalledTimes(3);
+      });
+    });
   });
 });

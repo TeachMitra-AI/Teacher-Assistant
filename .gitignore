@@ -14,3 +14,8 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 .vscode/
+
+# AI Action Router eval harness: working run output.
+# The corpus, cassettes and promoted baseline under server/evals/ ARE tracked;
+# only the per-run artifacts are not (see server/evals/README.md).
+server/evals/runs/
