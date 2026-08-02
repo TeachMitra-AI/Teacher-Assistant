@@ -42,6 +42,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   const prefs = user?.preferences ?? {};
   const displayName = user?.displayName || user?.name || '';
   const isAdmin = user ? ADMIN_ROLES.includes(user.role) : false;
+  const isSuperAdmin = user?.role === 'super_admin';
   // First-run onboarding intro: shown once, only in the empty welcome state,
   // until the teacher dismisses it. The shown-once flag lives on the account
   // (preferences.onboarding) so it follows them across devices — see Phase 0.
@@ -138,7 +139,8 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
       loadHistory();
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to get a response. Please try again.';
-      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message } : t)));
+      const errorIsNetwork = err instanceof ApiError && err.status === 0;
+      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message, errorIsNetwork } : t)));
     } finally {
       scrollToBottom();
     }
@@ -187,7 +189,8 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
       setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'done', response: res, rating: null } : t)));
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to get a response. Please try again.';
-      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message } : t)));
+      const errorIsNetwork = err instanceof ApiError && err.status === 0;
+      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message, errorIsNetwork } : t)));
     } finally {
       scrollToBottom();
     }
@@ -407,6 +410,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                 <WelcomeScreen
                   name={displayName}
                   isAdmin={isAdmin}
+                  isSuperAdmin={isSuperAdmin}
                   showIntro={showIntro}
                   onDismissIntro={handleDismissIntro}
                   onPickAction={pickPrompt}

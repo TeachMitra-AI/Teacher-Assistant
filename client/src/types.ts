@@ -169,6 +169,10 @@ export interface Turn {
   response?: CoachResponse;
   rating: 'helpful' | 'not_helpful' | null;
   error?: string;
+  // Set when `error` came from a network failure (ApiError status 0) rather
+  // than a server response — the one error category Phase 1 of Help &
+  // Support offers a "Report" action on (see MessageBubble.tsx).
+  errorIsNetwork?: boolean;
   // Set only when this turn was submitted with attachments — routes it to
   // POST /api/coach/attachment instead of /api/coach (see
   // CoachPage.runTurnWithAttachments). All attachments on a turn were sent
@@ -229,6 +233,59 @@ export type ResourceType =
   | 'assessment'
   | 'explanation'
   | 'general';
+
+// Admin Support Inbox (Phase 2) — mirrors the server DTOs in
+// routes/adminSupport.js. `context` is parsed server-side before it reaches
+// here (it's a JSON string only at rest, in SupportTicket.context).
+export type SupportTicketType = 'bug' | 'feedback';
+export type SupportTicketStatus = 'open' | 'triaged' | 'resolved' | 'wont_fix';
+
+export interface SupportTicketUser {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+}
+
+export interface SupportTicketSchool {
+  id: string;
+  name: string;
+  code: string;
+}
+
+// The list-row shape — GET /api/admin/support/tickets.
+export interface SupportTicketSummary {
+  id: string;
+  type: SupportTicketType;
+  category: string | null;
+  description: string;
+  status: SupportTicketStatus;
+  createdAt: string;
+  updatedAt: string;
+  user: SupportTicketUser | null;
+  school: SupportTicketSchool | null;
+}
+
+export interface SupportNote {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: { id: string; name: string; email: string };
+}
+
+// The detail shape — GET /api/admin/support/tickets/:id. Adds the parsed
+// auto-captured context and the notes thread on top of the summary shape.
+export interface SupportTicketDetail extends SupportTicketSummary {
+  context: Record<string, string> | null;
+  notes: SupportNote[];
+}
+
+export interface SupportTicketStats {
+  open: number;
+  today: number;
+  bugs: number;
+  feedback: number;
+}
 
 // A saved item in the teacher's personal library. Mirrors the server DTO
 // (see server/src/routes/resources.js) — no ownership/internal fields.

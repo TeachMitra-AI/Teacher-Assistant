@@ -21,10 +21,11 @@ model School {
   state     String?
   createdAt DateTime @default(now())
 
-  users     User[]
-  queries   Query[]
-  events    Event[]
-  resources Resource[]
+  users          User[]
+  queries        Query[]
+  events         Event[]
+  resources      Resource[]
+  supportTickets SupportTicket[]
 }
 
 // Roles: teacher | school_admin | resource_person | super_admin
@@ -67,6 +68,8 @@ model User {
   sessions            Session[]
   resources           Resource[]
   passwordResetTokens PasswordResetToken[]
+  supportTickets      SupportTicket[]
+  supportNotes        SupportNote[]
 
   // A teacher's email is unique within a school. The same email may hold
   // accounts at more than one school, which is why sign-in looks up by email
@@ -190,4 +193,63 @@ model Resource {
   @@index([userId])
   @@index([userId, type])
   @@index([createdAt])
+}
+
+// Help & Support: bug reports and lightweight feedback, both filed through the
+// same "Need Help?" entry point (see docs/help-support-architecture.md). One
+// model with a `type` discriminator (bug | feedback) rather than a model per
+// flow — mirrors how Resource holds several kinds under one table above,
+// since bug reports and feedback share every column and differ only in which
+// ones are required. Contact Support creates no row at all in Phase 1 (a
+// WhatsApp deep link built client-side); a future in-app fallback would reuse
+// this same table.
+//
+// `context` is a JSON string, same convention as User.preferences and
+// Query.context — auto-captured, non-sensitive diagnostic fields (route,
+// build id, browser, requestId, …). Deliberately loose-typed so a future field
+// (e.g. a diagnostics export) never needs a migration. It never carries the
+// AI prompt/answer or a screenshot; those are opt-in additions planned for
+// Phase 2, as their own explicit fields once they exist.
+model SupportTicket {
+  id          String   @id @default(cuid())
+  type        String // bug | feedback
+  category    String? // closed vocabulary, different per type — see routes/support.js
+  description String   @default("") // required for bug, optional for feedback (enforced in routes/support.js)
+  status      String   @default("open") // open | triaged | resolved | wont_fix
+  user        User?    @relation(fields: [userId], references: [id])
+  userId      String?
+  school      School?  @relation(fields: [schoolId], references: [id])
+  schoolId    String?
+  context     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  notes SupportNote[]
+
+  @@index([status])
+  @@index([type])
+  @@index([schoolId])
+  @@index([createdAt])
+  // Both added in Phase 2 (the admin inbox) — Phase 1 never filtered or
+  // searched on either, so neither needed an index until now.
+  @@index([category])
+  @@index([userId])
+}
+
+// An admin's internal note on a SupportTicket (Phase 2: the admin inbox).
+// Never exposed to the ticket's submitter — there is no teacher-facing
+// endpoint that returns these rows, by omission rather than a per-field
+// permission check. Append-only from the UI's perspective (no edit/delete
+// exposed yet); a note can be candid ("teacher error, not a bug") without
+// that risking exposure to the person who filed the ticket.
+model SupportNote {
+  id        String   @id @default(cuid())
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id])
+  ticketId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
 }

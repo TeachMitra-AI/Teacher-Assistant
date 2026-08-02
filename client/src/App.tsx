@@ -3,6 +3,8 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider, useAuth } from './auth';
 import { OnboardingProvider } from './onboarding';
 import { ToastProvider } from './components/Toast';
+import { HelpSupportProvider } from './components/HelpSupport';
+import { ErrorBoundary } from './components/ErrorBoundary';
 // The AI Action Router's provider, not react-router's. Mounted innermost, so
 // the existing AuthProvider → ToastProvider → OnboardingProvider order — which
 // is load-bearing — is untouched, and deleting this feature removes one wrapper.
@@ -15,6 +17,8 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import CoachPage from './pages/CoachPage';
 import AdminPage from './pages/AdminPage';
 import ManagePage from './pages/ManagePage';
+import AdminSupportPage from './pages/AdminSupportPage';
+import AdminSupportTicketPage from './pages/AdminSupportTicketPage';
 import SettingsPage from './pages/SettingsPage';
 import LibraryPage from './pages/LibraryPage';
 import ResourceView from './pages/ResourceView';
@@ -49,6 +53,10 @@ function AppRoutes() {
   }
 
   const isAdmin = ADMIN_ROLES.includes(user.role);
+  // Support Inbox is super_admin only — a stricter gate than isAdmin above,
+  // matching AdminTabs.tsx's own reasoning (a ticket is product feedback,
+  // not a school's own data).
+  const isSuperAdmin = user.role === 'super_admin';
 
   return (
     <>
@@ -67,6 +75,14 @@ function AppRoutes() {
         path="/admin/manage"
         element={isAdmin ? <ManagePage preferences={preferences} /> : <Navigate to="/" replace />}
       />
+      <Route
+        path="/admin/support"
+        element={isSuperAdmin ? <AdminSupportPage preferences={preferences} /> : <Navigate to="/" replace />}
+      />
+      <Route
+        path="/admin/support/:id"
+        element={isSuperAdmin ? <AdminSupportTicketPage preferences={preferences} /> : <Navigate to="/" replace />}
+      />
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <BottomNav />
@@ -82,15 +98,27 @@ export default function App() {
   // last instance live. Rendered here it initializes exactly once.
   // Without a client ID we skip the provider entirely; LoginPage already hides
   // the Google buttons in that case.
+  //
+  // HelpSupportProvider sits inside Auth+Toast (its panel needs both) and
+  // outside ErrorBoundary — so if anything below the boundary crashes, the
+  // "Report this" button in the resulting fallback screen still has a live
+  // provider to open. The existing AuthProvider → ToastProvider →
+  // OnboardingProvider → RouterProvider relative order is otherwise untouched;
+  // these two are spliced in between Toast and Onboarding, not reordered
+  // around them.
   const tree = (
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
-          <OnboardingProvider>
-            <RouterProvider>
-              <AppRoutes />
-            </RouterProvider>
-          </OnboardingProvider>
+          <HelpSupportProvider>
+            <ErrorBoundary>
+              <OnboardingProvider>
+                <RouterProvider>
+                  <AppRoutes />
+                </RouterProvider>
+              </OnboardingProvider>
+            </ErrorBoundary>
+          </HelpSupportProvider>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

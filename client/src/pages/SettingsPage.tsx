@@ -2,17 +2,20 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import TopBar from '../components/TopBar';
 import { useToast } from '../components/Toast';
+import { useHelpSupport } from '../components/HelpSupport';
 import { useAuth } from '../auth';
 import { api, ApiError } from '../api';
 import { usePreferences } from '../hooks/usePreferences';
 import {
   LANGUAGES, GRADES, SUBJECTS, CLASSROOM_TYPES, RESPONSE_STYLES, AVATAR_PRESETS, ROLE_LABELS,
+  HELP_SUPPORT_ENABLED,
 } from '../config';
 import type { ResponseStyle, TeacherPreferences, User } from '../types';
 
 export default function SettingsPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
   const { user, updateUser } = useAuth();
   const { show } = useToast();
+  const { openMenu: openHelp } = useHelpSupport();
   const navigate = useNavigate();
   const { theme, toggleTheme, fontScale, changeFont, canIncrease, canDecrease } = preferences;
 
@@ -327,6 +330,15 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
             </span>
           </div>
         </section>
+
+        {/* Help & Support */}
+        {HELP_SUPPORT_ENABLED && (
+          <section className="settings-card">
+            <h2>Help &amp; Support</h2>
+            <p className="settings-hint">Report a bug, reach us directly, or share feedback.</p>
+            <button className="btn-primary" type="button" onClick={openHelp}>Need Help?</button>
+          </section>
+        )}
       </main>
     </div>
   );
