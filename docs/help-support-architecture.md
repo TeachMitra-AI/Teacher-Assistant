@@ -1,7 +1,7 @@
 # Help & Support — Architecture
 
-**Status:** Phase 1 implemented (bug reports + feedback, no attachment upload) · **Owner:** Teacher
-Assistant engineering
+**Status:** Phase 1 (bug reports + feedback) and Phase 2 (the admin Support Inbox) implemented · no
+attachment upload yet · **Owner:** Teacher Assistant engineering
 
 ## 1. What this is
 
@@ -142,3 +142,34 @@ action — never folded into the auto-captured object above, even once they exis
 - **FAQ/Knowledge Base, ticket tracking, diagnostics export, status page** — Phase 3, additive to the
   schema in §2 without a redesign (a `SupportMessage` child table for threads, the existing `status`
   field surfaced to the teacher, the existing `context` blob extended for diagnostics).
+
+## 8. Phase 2: the admin Support Inbox
+
+Where a `super_admin` reads and works every ticket Phase 1 collects. Full design in the Phase 2 review
+doc; this section records what actually shipped.
+
+**Data model.** One addition: `SupportNote` (an admin's internal note on a ticket — author, body,
+timestamp). Never exposed to the ticket's submitter, enforced by omission (no teacher-facing route
+returns these rows) rather than a per-field permission check. Two new indexes on the existing
+`SupportTicket` (`category`, `userId`) — Phase 1 never filtered or searched on either; the admin inbox
+does both.
+
+**Routes** (`server/src/routes/adminSupport.js`, all `requireRole('super_admin')`):
+`GET /api/admin/support/tickets` (filter by status/type/category/school/date range, search by
+description text, reporter name/email, or the short reference a teacher was shown), `GET .../stats`
+(the inbox's KPI numbers), `GET .../:id` (full detail incl. notes), `PATCH .../:id/status`,
+`POST .../:id/notes`. Kept in a file separate from `routes/admin.js` on purpose — every route here is
+`super_admin`-only, full stop, unlike the rest of that file's three-way `school_admin`/
+`resource_person`/`super_admin` scoping.
+
+**Client** (`client/src/pages/AdminSupportPage.tsx` list, `AdminSupportTicketPage.tsx` detail):
+list → detail, the same two-tier shape as Library → Resource View, not a modal. Built entirely from
+existing pieces — `usePagedList`, `TablePager`, `.data-table`, `AdminTabs` (+ a `super_admin`-only
+"Support" tab), the welcome screen's admin shortcuts (+ a `super_admin`-only "Support Inbox" card) —
+no new list/pagination/table infrastructure. Status is changed via one-tap buttons (only the *other*
+three statuses are shown as buttons; the current one is the pill), matching the Approve/Reject button
+convention `ManagePage.tsx` already uses rather than a dropdown.
+
+**Still not built** (unchanged from §7): attachment/screenshot display, the AI-conversation opt-in,
+ticket assignment, bulk actions, SLA timers, CSV export. Every one of these is additive to what Phase 2
+shipped — see the Phase 2 design doc's "Future scalability" section for exactly where each seam sits.
