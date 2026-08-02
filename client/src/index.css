@@ -1852,6 +1852,81 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .ticket-row { cursor: pointer; }
 .ticket-row:hover { background: var(--surface-2); }
 
+/* ---- Ticket detail page (Admin Support Inbox, Phase 2.3) ------------------ */
+.ticket-detail-main { max-width: 980px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
+.ticket-back { display: inline-flex; align-items: center; gap: 0.4rem; margin-bottom: 1rem; }
+
+.ticket-detail-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  margin-bottom: 1.3rem;
+}
+.ticket-detail-title { font-size: 1.3rem; margin: 0; }
+.ticket-status-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-left: auto; }
+.ticket-status-btn {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.7rem;
+  font-size: 0.82rem;
+}
+.ticket-status-btn:hover:not(:disabled) { border-color: var(--orange); color: var(--orange); }
+
+.ticket-detail-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 1.2rem; align-items: start; }
+.ticket-detail-main-col, .ticket-detail-side-col { min-width: 0; }
+.ticket-description { white-space: pre-wrap; word-break: break-word; }
+
+.ticket-kv { display: grid; gap: 0.4rem; margin: 0; }
+.ticket-kv-row { display: grid; grid-template-columns: 110px 1fr; gap: 0.5rem; font-size: 0.88rem; }
+.ticket-kv-row dt { color: var(--text-muted); }
+.ticket-kv-row dd { margin: 0; font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; word-break: break-word; }
+
+.ticket-raw-toggle { padding: 0.3rem 0; font-size: 0.82rem; }
+.ticket-raw-context {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.8rem;
+  font-size: 0.8rem;
+  overflow-x: auto;
+  margin: 0.4rem 0 0;
+}
+
+.ticket-notes { display: flex; flex-direction: column; gap: 0.7rem; margin: 0.6rem 0 1rem; }
+.ticket-note { display: flex; gap: 0.6rem; }
+.ticket-note-avatar {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--orange-soft);
+  color: var(--orange);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.ticket-note-body p { margin: 0 0 0.2rem; font-size: 0.9rem; white-space: pre-wrap; word-break: break-word; }
+.ticket-note-meta { font-size: 0.76rem; color: var(--text-muted); }
+.ticket-note-form { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.ticket-placeholder {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.7rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0 0 0.6rem;
+}
+
+@media (max-width: 720px) {
+  .ticket-detail-grid { grid-template-columns: 1fr; }
+  .ticket-status-actions { margin-left: 0; width: 100%; }
+}
+
 @media (max-width: 640px) {
   .table-controls { flex-direction: column; align-items: stretch; }
   /* The row-direction `flex: 1 1 240px` above must be reset here. Once the

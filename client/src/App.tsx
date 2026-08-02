@@ -18,6 +18,7 @@ import CoachPage from './pages/CoachPage';
 import AdminPage from './pages/AdminPage';
 import ManagePage from './pages/ManagePage';
 import AdminSupportPage from './pages/AdminSupportPage';
+import AdminSupportTicketPage from './pages/AdminSupportTicketPage';
 import SettingsPage from './pages/SettingsPage';
 import LibraryPage from './pages/LibraryPage';
 import ResourceView from './pages/ResourceView';
@@ -77,6 +78,10 @@ function AppRoutes() {
       <Route
         path="/admin/support"
         element={isSuperAdmin ? <AdminSupportPage preferences={preferences} /> : <Navigate to="/" replace />}
+      />
+      <Route
+        path="/admin/support/:id"
+        element={isSuperAdmin ? <AdminSupportTicketPage preferences={preferences} /> : <Navigate to="/" replace />}
       />
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
