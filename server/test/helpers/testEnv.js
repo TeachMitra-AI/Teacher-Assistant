@@ -36,6 +36,11 @@ const TEST_ENV = {
   GOOGLE_CLIENT_ID: 'test-dummy-google-client-id.apps.googleusercontent.com',
   RATE_LIMIT_WINDOW_MINUTES: '15',
   RATE_LIMIT_MAX_REQUESTS: '1000', // generous — rate limiting itself isn't under test here
+  // Same reasoning: the shared test app's rate-limiter state persists across
+  // every test in a file (one in-memory store, keyed by IP), so a file with
+  // enough generate() calls can otherwise exhaust .env's production-sized
+  // default (30) well before the file finishes.
+  RESOURCE_GENERATE_RATE_LIMIT_MAX: '1000',
   // Kept small so route-level retry tests stay fast. Only affects the shared
   // GeminiService instance index.js constructs from env — gemini.contract.js
   // and gemini.reliability.js build their own GeminiService with explicit

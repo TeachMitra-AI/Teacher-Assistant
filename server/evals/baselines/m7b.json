@@ -1,12 +1,12 @@
 {
-  "recordedAt": "2026-07-29T08:41:41.812Z",
+  "recordedAt": "2026-08-01T08:39:31.230Z",
   "mode": "replay",
   "modelVersion": "gemini-3.5-flash-lite",
   "promptHash": "6fbcd46dd0cede51",
   "descriptorHash": "ef2c4fa35e4e8332",
   "registryHash": "d30e5c38f928d4fe",
   "corpusHash": "6e1b2e5c8bf20f08",
-  "gitSha": "b867209",
+  "gitSha": "a249083",
   "counts": {
     "turns": 196,
     "routed": 98,
@@ -18,7 +18,7 @@
     "falseNegatives": 11,
     "ambiguousAgreement": 12,
     "topicExact": 41,
-    "memoryInheritanceCorrect": 2,
+    "memoryInheritanceCorrect": 12,
     "memoryStale": 0
   },
   "hardGates": {
