@@ -17,6 +17,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import CoachPage from './pages/CoachPage';
 import AdminPage from './pages/AdminPage';
 import ManagePage from './pages/ManagePage';
+import AdminSupportPage from './pages/AdminSupportPage';
 import SettingsPage from './pages/SettingsPage';
 import LibraryPage from './pages/LibraryPage';
 import ResourceView from './pages/ResourceView';
@@ -51,6 +52,10 @@ function AppRoutes() {
   }
 
   const isAdmin = ADMIN_ROLES.includes(user.role);
+  // Support Inbox is super_admin only — a stricter gate than isAdmin above,
+  // matching AdminTabs.tsx's own reasoning (a ticket is product feedback,
+  // not a school's own data).
+  const isSuperAdmin = user.role === 'super_admin';
 
   return (
     <>
@@ -68,6 +73,10 @@ function AppRoutes() {
       <Route
         path="/admin/manage"
         element={isAdmin ? <ManagePage preferences={preferences} /> : <Navigate to="/" replace />}
+      />
+      <Route
+        path="/admin/support"
+        element={isSuperAdmin ? <AdminSupportPage preferences={preferences} /> : <Navigate to="/" replace />}
       />
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

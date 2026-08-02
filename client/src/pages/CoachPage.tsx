@@ -42,6 +42,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   const prefs = user?.preferences ?? {};
   const displayName = user?.displayName || user?.name || '';
   const isAdmin = user ? ADMIN_ROLES.includes(user.role) : false;
+  const isSuperAdmin = user?.role === 'super_admin';
   // First-run onboarding intro: shown once, only in the empty welcome state,
   // until the teacher dismisses it. The shown-once flag lives on the account
   // (preferences.onboarding) so it follows them across devices — see Phase 0.
@@ -409,6 +410,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                 <WelcomeScreen
                   name={displayName}
                   isAdmin={isAdmin}
+                  isSuperAdmin={isSuperAdmin}
                   showIntro={showIntro}
                   onDismissIntro={handleDismissIntro}
                   onPickAction={pickPrompt}

@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   NotebookPen, Target, Lightbulb, ClipboardCheck, Users,
-  LayoutDashboard, ShieldCheck, FileText,
+  LayoutDashboard, ShieldCheck, FileText, LifeBuoy,
   MessageCircle, Library, PencilRuler, Sparkles,
 } from 'lucide-react';
 import type { Role, ResponseStyle, ResourceType } from './types';
@@ -116,6 +116,15 @@ export const ADMIN_SHORTCUTS: AdminShortcut[] = [
   { icon: LayoutDashboard, label: 'Dashboard', description: 'Usage analytics and teaching insights', to: '/admin' },
   { icon: ShieldCheck, label: 'Manage', description: 'Schools, users, and roles', to: '/admin/manage' },
 ];
+
+// A separate shortcut, not folded into ADMIN_SHORTCUTS above — that array is
+// shown to every admin role, and Support is super_admin only (see
+// AdminTabs.tsx). Kept as its own constant so WelcomeScreen can include it
+// conditionally without widening the AdminShortcut list every other admin
+// role already sees.
+export const SUPER_ADMIN_SHORTCUT: AdminShortcut = {
+  icon: LifeBuoy, label: 'Support Inbox', description: 'Bug reports and feedback from teachers', to: '/admin/support',
+};
 
 // Contextual follow-up chips shown under an AI response. Each one resubmits
 // a *new*, self-contained turn — either the original short question with a

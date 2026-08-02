@@ -1824,6 +1824,34 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 [data-theme='dark'] .status-pill.status-pending { color: #fcd34d; border-color: #78350f; background: rgba(120, 53, 15, 0.35); }
 [data-theme='dark'] .status-pill.status-rejected { color: #fca5a5; border-color: #7f1d1d; background: rgba(127, 29, 29, 0.35); }
 
+/* Support ticket status/type — Admin Support Inbox (Phase 2). Reuses the
+   same .status-pill base as the user-status pills above; these are simply
+   a different set of values on the same component. */
+.status-pill.status-open { color: #b91c1c; border-color: #fca5a5; background: #fef2f2; }
+.status-pill.status-triaged { color: #b45309; border-color: #fcd34d; background: #fffbeb; }
+.status-pill.status-resolved { color: #15803d; border-color: #86efac; background: #f0fdf4; }
+.status-pill.status-wont_fix { color: var(--text-muted); border-color: var(--border); background: var(--surface-2); }
+
+[data-theme='dark'] .status-pill.status-open { color: #fca5a5; border-color: #7f1d1d; background: rgba(127, 29, 29, 0.35); }
+[data-theme='dark'] .status-pill.status-triaged { color: #fcd34d; border-color: #78350f; background: rgba(120, 53, 15, 0.35); }
+[data-theme='dark'] .status-pill.status-resolved { color: #6ee7a8; border-color: #14532d; background: rgba(20, 83, 45, 0.35); }
+
+.type-tag {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 5px;
+}
+.type-tag.type-bug { color: #b91c1c; background: #fef2f2; }
+.type-tag.type-feedback { color: var(--orange); background: var(--orange-soft); }
+[data-theme='dark'] .type-tag.type-bug { color: #fca5a5; background: rgba(127, 29, 29, 0.35); }
+
+.ticket-summary-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ticket-ref { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; color: var(--text-muted); font-size: 0.82rem; }
+.ticket-row { cursor: pointer; }
+.ticket-row:hover { background: var(--surface-2); }
+
 @media (max-width: 640px) {
   .table-controls { flex-direction: column; align-items: stretch; }
   /* The row-direction `flex: 1 1 240px` above must be reset here. Once the

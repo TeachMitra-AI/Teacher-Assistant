@@ -1,10 +1,14 @@
 import { ChevronRight } from 'lucide-react';
 import OnboardingIntro from './OnboardingIntro';
-import { QUICK_ACTIONS, ADMIN_SHORTCUTS } from '../config';
+import { QUICK_ACTIONS, ADMIN_SHORTCUTS, SUPER_ADMIN_SHORTCUT } from '../config';
 
 interface WelcomeScreenProps {
   name: string;
   isAdmin: boolean;
+  // Separate from `isAdmin` — the Support Inbox shortcut is super_admin
+  // only, unlike Dashboard/Manage which every admin role sees (see
+  // AdminTabs.tsx for the same access-control reasoning).
+  isSuperAdmin: boolean;
   // First-run onboarding intro: shown once above the greeting until the teacher
   // dismisses it (the parent persists that via preferences.onboarding).
   showIntro: boolean;
@@ -13,7 +17,8 @@ interface WelcomeScreenProps {
   onNavigate: (to: string) => void;
 }
 
-export default function WelcomeScreen({ name, isAdmin, showIntro, onDismissIntro, onPickAction, onNavigate }: WelcomeScreenProps) {
+export default function WelcomeScreen({ name, isAdmin, isSuperAdmin, showIntro, onDismissIntro, onPickAction, onNavigate }: WelcomeScreenProps) {
+  const shortcuts = isSuperAdmin ? [...ADMIN_SHORTCUTS, SUPER_ADMIN_SHORTCUT] : ADMIN_SHORTCUTS;
   return (
     <div className="welcome-screen">
       <div className="welcome-hero">
@@ -50,7 +55,7 @@ export default function WelcomeScreen({ name, isAdmin, showIntro, onDismissIntro
         <div className="admin-shortcuts">
           <span className="admin-shortcuts-label">Admin</span>
           <div className="admin-shortcut-grid">
-            {ADMIN_SHORTCUTS.map((shortcut) => {
+            {shortcuts.map((shortcut) => {
               const Icon = shortcut.icon;
               return (
                 <button

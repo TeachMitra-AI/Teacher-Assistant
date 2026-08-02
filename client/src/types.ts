@@ -234,6 +234,59 @@ export type ResourceType =
   | 'explanation'
   | 'general';
 
+// Admin Support Inbox (Phase 2) — mirrors the server DTOs in
+// routes/adminSupport.js. `context` is parsed server-side before it reaches
+// here (it's a JSON string only at rest, in SupportTicket.context).
+export type SupportTicketType = 'bug' | 'feedback';
+export type SupportTicketStatus = 'open' | 'triaged' | 'resolved' | 'wont_fix';
+
+export interface SupportTicketUser {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+}
+
+export interface SupportTicketSchool {
+  id: string;
+  name: string;
+  code: string;
+}
+
+// The list-row shape — GET /api/admin/support/tickets.
+export interface SupportTicketSummary {
+  id: string;
+  type: SupportTicketType;
+  category: string | null;
+  description: string;
+  status: SupportTicketStatus;
+  createdAt: string;
+  updatedAt: string;
+  user: SupportTicketUser | null;
+  school: SupportTicketSchool | null;
+}
+
+export interface SupportNote {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: { id: string; name: string; email: string };
+}
+
+// The detail shape — GET /api/admin/support/tickets/:id. Adds the parsed
+// auto-captured context and the notes thread on top of the summary shape.
+export interface SupportTicketDetail extends SupportTicketSummary {
+  context: Record<string, string> | null;
+  notes: SupportNote[];
+}
+
+export interface SupportTicketStats {
+  open: number;
+  today: number;
+  bugs: number;
+  feedback: number;
+}
+
 // A saved item in the teacher's personal library. Mirrors the server DTO
 // (see server/src/routes/resources.js) — no ownership/internal fields.
 export interface LibraryResource {
