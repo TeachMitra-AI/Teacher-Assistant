@@ -277,3 +277,50 @@ export const ASSISTANT_ENABLED = import.meta.env.VITE_ASSISTANT_ENABLED === 'tru
 // regardless of this flag) — this one only controls whether the PWA's
 // currently-cached client offers the button in the first place.
 export const ATTACHMENTS_ENABLED = import.meta.env.VITE_ATTACHMENTS_ENABLED === 'true';
+
+// ---- Help & Support (bug reports + feedback) -------------------------------
+//
+// Client-side gate, same shape and same "not the real kill switch" caveat as
+// ATTACHMENTS_ENABLED above. When false (the default), the "Need Help?" entry
+// point is never rendered — the server's HELP_SUPPORT_ENABLED is the
+// immediately-effective kill switch (POST /api/support/tickets returns 503
+// regardless of this flag).
+export const HELP_SUPPORT_ENABLED = import.meta.env.VITE_HELP_SUPPORT_ENABLED === 'true';
+
+// WhatsApp number for "Contact Support" (international format, digits only —
+// see .env.example). Empty hides the WhatsApp option; the in-app form still
+// works either way.
+export const SUPPORT_WHATSAPP_NUMBER = import.meta.env.VITE_SUPPORT_WHATSAPP_NUMBER || '';
+
+// Short build identifier auto-attached to bug reports so a report can be
+// matched to the deploy it came from (see docs/help-support-architecture.md).
+// Not sensitive — the equivalent of a version number.
+export const BUILD_ID = import.meta.env.VITE_BUILD_ID || 'dev';
+
+export const MAX_SUPPORT_DESCRIPTION_LENGTH = 1000;
+
+// Closed vocabularies for the Report Bug / Send Feedback category pickers.
+//
+// SERVER COUNTERPART: server/src/routes/support.js's BUG_CATEGORIES /
+// FEEDBACK_CATEGORIES hold the same `value`s (its authoritative validation).
+// Same deliberate-duplication convention as LANGUAGES/GRADES/SUBJECTS above —
+// CHANGE BOTH IN THE SAME COMMIT, since a value offered here that the server
+// doesn't recognize would surface as a 400 the teacher can't act on.
+export interface HelpCategoryOption { value: string; label: string }
+
+export const BUG_CATEGORIES: HelpCategoryOption[] = [
+  { value: 'crash', label: 'App crashed' },
+  { value: 'connection_issue', label: 'Connection / network issue' },
+  { value: 'slow_timeout', label: 'Slow / timed out' },
+  { value: 'wrong_answer', label: 'AI gave a wrong or unhelpful answer' },
+  { value: 'upload_failed', label: 'Upload / attachment failed' },
+  { value: 'account', label: 'Sign-in / account' },
+  { value: 'other', label: 'Something else' },
+];
+
+export const FEEDBACK_CATEGORIES: HelpCategoryOption[] = [
+  { value: 'feature_request', label: 'Feature request' },
+  { value: 'suggestion', label: 'Suggestion' },
+  { value: 'praise', label: 'General feedback' },
+  { value: 'other', label: 'Something else' },
+];

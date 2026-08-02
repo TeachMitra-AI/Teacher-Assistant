@@ -34,6 +34,10 @@ const assistantRouter = require('./routes/assistant');
 // for why. Requiring it here is the same "fail at boot, not at request time"
 // reasoning as assistantRouter above.
 const attachmentsRouter = require('./routes/attachments');
+// Help & Support (Phase 1: bug reports + feedback, no attachment upload yet).
+// A sibling feature, same "fail at boot on a malformed module" reasoning as
+// assistantRouter/attachmentsRouter above.
+const supportRouter = require('./routes/support');
 const { readAssistantFlags, readAttachmentFlags } = require('./lib/flags');
 const { createBudgetCounter } = require('./assistant/budget');
 const { createRouterBreaker } = require('./assistant/breaker');
@@ -393,6 +397,23 @@ const attachmentLimiter = rateLimit({
   message: { error: 'Too many attachment requests. Please wait a few minutes and try again.' },
 });
 
+// Separate bucket for POST /api/support/tickets — deliberately its own,
+// tighter limiter rather than reusing the general /coach `limiter`: this
+// endpoint has no per-user daily budget (see lib/flags.js's Help & Support
+// section), so the rate limiter is the only thing bounding a teacher who
+// mashes "Report a Bug" repeatedly.
+const SUPPORT_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.SUPPORT_RATE_LIMIT_MAX_REQUESTS, {
+  name: 'SUPPORT_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 20 : 300, min: 1, max: 100000,
+});
+
+const supportLimiter = rateLimit({
+  windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
+  max: SUPPORT_RATE_LIMIT_MAX_REQUESTS,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please wait a few minutes and try again.' },
+});
+
 // M9. The generation endpoint is the most expensive path in the product — a
 // real Gemini call with an 8-call budget behind it — and until now it was
 // guarded by authRequired and nothing else. Architecture 10.4 calls this a
@@ -637,6 +658,14 @@ app.use('/api/assistant', assistantLimiter, assistantRouter);
 // is affected, and no existing router's mount changes.
 app.use('/api/coach/attachment', attachmentLimiter);
 app.use('/api', attachmentsRouter);
+
+// Help & Support. Same mounting shape as the attachment limiter above: bound
+// to the exact path ahead of the router that serves it, so nothing else on
+// /api is affected. With HELP_SUPPORT_ENABLED unset (the default) the route
+// returns 503 and the application otherwise behaves exactly as it did before
+// this line.
+app.use('/api/support/tickets', supportLimiter);
+app.use('/api', supportRouter);
 
 // Global error handler — last line of defense. Routes wrapped in
 // asyncHandler (see lib/asyncHandler.js) forward a rejected promise here via

@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { PanelLeft, Sun, Moon, Compass, Settings, LogOut } from 'lucide-react';
+import { PanelLeft, Sun, Moon, Compass, Settings, LifeBuoy, LogOut } from 'lucide-react';
 import { useAuth } from '../auth';
 import { useOnboarding } from '../onboarding';
 import { usePreferences } from '../hooks/usePreferences';
 import { useDismissable } from '../hooks/useDismissable';
-import { ADMIN_ROLES, ROLE_LABELS } from '../config';
+import { useHelpSupport } from './HelpSupport';
+import { ADMIN_ROLES, HELP_SUPPORT_ENABLED, ROLE_LABELS } from '../config';
 
 interface TopBarProps {
   preferences: ReturnType<typeof usePreferences>;
@@ -23,6 +24,7 @@ function initialsOf(name: string): string {
 export default function TopBar({ preferences, onSidebarToggle, sidebarOpen }: TopBarProps) {
   const { user, logout } = useAuth();
   const { reopenIntro } = useOnboarding();
+  const { openMenu: openHelp } = useHelpSupport();
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = preferences;
@@ -139,6 +141,16 @@ export default function TopBar({ preferences, onSidebarToggle, sidebarOpen }: To
                   >
                     <Settings size={15} aria-hidden="true" /> Settings
                   </button>
+                  {HELP_SUPPORT_ENABLED && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="profile-dropdown-item"
+                      onClick={() => { setMenuOpen(false); openHelp(); }}
+                    >
+                      <LifeBuoy size={15} aria-hidden="true" /> Need Help?
+                    </button>
+                  )}
                   <button
                     type="button"
                     role="menuitem"

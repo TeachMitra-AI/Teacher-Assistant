@@ -138,7 +138,8 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
       loadHistory();
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to get a response. Please try again.';
-      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message } : t)));
+      const errorIsNetwork = err instanceof ApiError && err.status === 0;
+      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message, errorIsNetwork } : t)));
     } finally {
       scrollToBottom();
     }
@@ -187,7 +188,8 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
       setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'done', response: res, rating: null } : t)));
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to get a response. Please try again.';
-      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message } : t)));
+      const errorIsNetwork = err instanceof ApiError && err.status === 0;
+      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message, errorIsNetwork } : t)));
     } finally {
       scrollToBottom();
     }

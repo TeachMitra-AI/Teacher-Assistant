@@ -3,6 +3,8 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider, useAuth } from './auth';
 import { OnboardingProvider } from './onboarding';
 import { ToastProvider } from './components/Toast';
+import { HelpSupportProvider } from './components/HelpSupport';
+import { ErrorBoundary } from './components/ErrorBoundary';
 // The AI Action Router's provider, not react-router's. Mounted innermost, so
 // the existing AuthProvider → ToastProvider → OnboardingProvider order — which
 // is load-bearing — is untouched, and deleting this feature removes one wrapper.
@@ -82,15 +84,27 @@ export default function App() {
   // last instance live. Rendered here it initializes exactly once.
   // Without a client ID we skip the provider entirely; LoginPage already hides
   // the Google buttons in that case.
+  //
+  // HelpSupportProvider sits inside Auth+Toast (its panel needs both) and
+  // outside ErrorBoundary — so if anything below the boundary crashes, the
+  // "Report this" button in the resulting fallback screen still has a live
+  // provider to open. The existing AuthProvider → ToastProvider →
+  // OnboardingProvider → RouterProvider relative order is otherwise untouched;
+  // these two are spliced in between Toast and Onboarding, not reordered
+  // around them.
   const tree = (
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
-          <OnboardingProvider>
-            <RouterProvider>
-              <AppRoutes />
-            </RouterProvider>
-          </OnboardingProvider>
+          <HelpSupportProvider>
+            <ErrorBoundary>
+              <OnboardingProvider>
+                <RouterProvider>
+                  <AppRoutes />
+                </RouterProvider>
+              </OnboardingProvider>
+            </ErrorBoundary>
+          </HelpSupportProvider>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

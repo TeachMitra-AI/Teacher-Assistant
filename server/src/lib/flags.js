@@ -252,6 +252,42 @@ function readAttachmentFlags(env, { warn = console.warn } = {}) {
   };
 }
 
+// ---- Help & Support (bug reports + feedback) -------------------------------
+//
+// Same shape and same "default OFF" reasoning as the flags above — a
+// deployment that sets nothing ships zero new UI or endpoints. Unlike the
+// assistant/attachment flags, this feature makes no LLM call, so there is no
+// daily-budget-per-user tunable here: the shared per-IP rate limiter mounted
+// in index.js is what bounds abuse, the same way routes/queries.js's
+// /feedback endpoint has no budget of its own either.
+
+const HELP_SUPPORT_FLAG_DEFAULTS = Object.freeze({
+  enabled: false,
+  // Tenant rollout by school code, same "empty means all schools" contract as
+  // ATTACHMENT_FLAG_DEFAULTS.allowedSchoolCodes above — a filter, not a gate.
+  allowedSchoolCodes: Object.freeze([]),
+});
+
+/**
+ * Read the Help & Support feature's global flags from an environment object.
+ * @param {Record<string, string|undefined>} env
+ * @param {{warn?: (msg: string) => void}} [opts]
+ * @returns {{enabled: boolean, allowedSchoolCodes: string[]}}
+ */
+function readHelpSupportFlags(env, { warn = console.warn } = {}) {
+  return {
+    enabled: parseBoolEnv(env.HELP_SUPPORT_ENABLED, {
+      name: 'HELP_SUPPORT_ENABLED',
+      defaultValue: HELP_SUPPORT_FLAG_DEFAULTS.enabled,
+      warn,
+    }),
+    allowedSchoolCodes: parseListEnv(env.HELP_SUPPORT_ALLOWED_SCHOOL_CODES, {
+      name: 'HELP_SUPPORT_ALLOWED_SCHOOL_CODES',
+      defaultValue: HELP_SUPPORT_FLAG_DEFAULTS.allowedSchoolCodes,
+    }),
+  };
+}
+
 module.exports = {
   parseBoolEnv,
   parseListEnv,
@@ -260,4 +296,6 @@ module.exports = {
   ASSISTANT_FLAG_DEFAULTS,
   readAttachmentFlags,
   ATTACHMENT_FLAG_DEFAULTS,
+  readHelpSupportFlags,
+  HELP_SUPPORT_FLAG_DEFAULTS,
 };

@@ -1,7 +1,8 @@
 import ResponseCard from './ResponseCard';
 import FollowUpChips from './FollowUpChips';
 import AttachmentTray from './AttachmentTray';
-import type { FollowUpAction } from '../config';
+import { useHelpSupport } from './HelpSupport';
+import { HELP_SUPPORT_ENABLED, type FollowUpAction } from '../config';
 import type { Turn } from '../types';
 
 interface MessageBubbleProps {
@@ -13,6 +14,7 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({ turn, onFeedback, onFollowUp, onRetry }: MessageBubbleProps) {
   const hasAttachments = !!turn.attachments && turn.attachments.length > 0;
+  const { openBugReport } = useHelpSupport();
 
   return (
     <div className="message-group">
@@ -45,6 +47,18 @@ export default function MessageBubble({ turn, onFeedback, onFollowUp, onRetry }:
           <div className="message-bubble assistant-error" role="alert">
             <span aria-hidden="true">⚠️</span> {turn.error}
             <button type="button" className="btn-text retry-btn" onClick={() => onRetry(turn)}>Try again</button>
+            {/* Only offered for a network failure — not for a validation/upstream
+                error a teacher can already act on themselves (see the design
+                doc's error-integration table). */}
+            {turn.errorIsNetwork && HELP_SUPPORT_ENABLED && (
+              <button
+                type="button"
+                className="btn-text retry-btn"
+                onClick={() => openBugReport({ category: 'connection_issue' })}
+              >
+                Report
+              </button>
+            )}
           </div>
         )}
 

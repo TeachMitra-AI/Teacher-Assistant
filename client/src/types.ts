@@ -169,6 +169,10 @@ export interface Turn {
   response?: CoachResponse;
   rating: 'helpful' | 'not_helpful' | null;
   error?: string;
+  // Set when `error` came from a network failure (ApiError status 0) rather
+  // than a server response — the one error category Phase 1 of Help &
+  // Support offers a "Report" action on (see MessageBubble.tsx).
+  errorIsNetwork?: boolean;
   // Set only when this turn was submitted with attachments — routes it to
   // POST /api/coach/attachment instead of /api/coach (see
   // CoachPage.runTurnWithAttachments). All attachments on a turn were sent
