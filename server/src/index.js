@@ -38,6 +38,10 @@ const attachmentsRouter = require('./routes/attachments');
 // A sibling feature, same "fail at boot on a malformed module" reasoning as
 // assistantRouter/attachmentsRouter above.
 const supportRouter = require('./routes/support');
+// Admin Support Inbox (Phase 2) — super_admin-only ticket management. A
+// sibling of adminRouter, not an extension of it (see routes/adminSupport.js
+// for why access is modeled differently here).
+const adminSupportRouter = require('./routes/adminSupport');
 const { readAssistantFlags, readAttachmentFlags } = require('./lib/flags');
 const { createBudgetCounter } = require('./assistant/budget');
 const { createRouterBreaker } = require('./assistant/breaker');
@@ -644,6 +648,11 @@ app.use('/api', dataRouter);
 app.use('/api/resources/generate', generateLimiter);
 app.use('/api', resourcesRouter);
 app.use('/api/admin', adminRouter);
+// Admin Support Inbox (Phase 2). No dedicated rate limiter, matching every
+// other /api/admin/* route — this isn't a public-facing endpoint the way
+// /api/coach is, and authRequired + requireRole('super_admin') already gate
+// every route in this router.
+app.use('/api/admin/support', adminSupportRouter);
 
 // AI Action Router. Mounted alongside the existing routers — after them, before
 // the global error handler — so no existing route's middleware chain changes.

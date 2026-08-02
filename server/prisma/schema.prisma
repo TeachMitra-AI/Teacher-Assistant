@@ -69,6 +69,7 @@ model User {
   resources           Resource[]
   passwordResetTokens PasswordResetToken[]
   supportTickets      SupportTicket[]
+  supportNotes        SupportNote[]
 
   // A teacher's email is unique within a school. The same email may hold
   // accounts at more than one school, which is why sign-in looks up by email
@@ -223,8 +224,32 @@ model SupportTicket {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  notes SupportNote[]
+
   @@index([status])
   @@index([type])
   @@index([schoolId])
   @@index([createdAt])
+  // Both added in Phase 2 (the admin inbox) — Phase 1 never filtered or
+  // searched on either, so neither needed an index until now.
+  @@index([category])
+  @@index([userId])
+}
+
+// An admin's internal note on a SupportTicket (Phase 2: the admin inbox).
+// Never exposed to the ticket's submitter — there is no teacher-facing
+// endpoint that returns these rows, by omission rather than a per-field
+// permission check. Append-only from the UI's perspective (no edit/delete
+// exposed yet); a note can be candid ("teacher error, not a bug") without
+// that risking exposure to the person who filed the ticket.
+model SupportNote {
+  id        String   @id @default(cuid())
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id])
+  ticketId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
 }
