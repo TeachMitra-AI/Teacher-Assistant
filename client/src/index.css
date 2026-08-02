@@ -1649,6 +1649,100 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 }
 .table-empty { color: var(--text-muted); text-align: center; padding: 1.5rem; }
 
+/* Search + filter row above a paginated admin table. Reuses .library-search
+   for the input itself so the two search boxes in the app look identical. */
+.table-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.7rem 1rem;
+  margin-bottom: 1rem;
+}
+.table-controls .library-search { flex: 1 1 240px; max-width: 340px; }
+
+.table-filters { display: flex; flex-wrap: wrap; gap: 0.7rem; }
+.table-filter { display: flex; flex-direction: column; gap: 0.25rem; }
+.table-filter > span {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+.table-filter select {
+  font-family: inherit;
+  font-size: 0.88rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.55rem;
+}
+.table-filter select:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+
+/* Pager footer: count on the left, Prev/Next on the right; stacks on narrow
+   screens so neither can push the table into a horizontal scroll. */
+.table-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
+  margin-top: 0.9rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+.table-pager-count { margin: 0; font-size: 0.85rem; color: var(--text-muted); }
+.table-pager-count strong { color: var(--text); font-weight: 600; }
+.table-pager-nav { display: flex; align-items: center; gap: 0.35rem; }
+.table-pager-nav .btn-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.86rem;
+  padding: 0.35rem 0.6rem;
+}
+.table-pager-nav .btn-text:disabled { opacity: 0.45; cursor: not-allowed; }
+.table-pager-page {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  padding: 0 0.35rem;
+  white-space: nowrap;
+}
+
+/* Account status, shown in the Users table now that it can be filtered on. */
+.status-pill {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: var(--surface-2);
+  white-space: nowrap;
+}
+.status-pill.status-active { color: #15803d; border-color: #86efac; background: #f0fdf4; }
+.status-pill.status-pending { color: #b45309; border-color: #fcd34d; background: #fffbeb; }
+.status-pill.status-rejected { color: #b91c1c; border-color: #fca5a5; background: #fef2f2; }
+
+/* Dark mode: the light tinted backgrounds above would glow, so keep the hue
+   in the text and border and let the surface stay dark. */
+[data-theme='dark'] .status-pill.status-active { color: #6ee7a8; border-color: #14532d; background: rgba(20, 83, 45, 0.35); }
+[data-theme='dark'] .status-pill.status-pending { color: #fcd34d; border-color: #78350f; background: rgba(120, 53, 15, 0.35); }
+[data-theme='dark'] .status-pill.status-rejected { color: #fca5a5; border-color: #7f1d1d; background: rgba(127, 29, 29, 0.35); }
+
+@media (max-width: 640px) {
+  .table-controls { flex-direction: column; align-items: stretch; }
+  /* The row-direction `flex: 1 1 240px` above must be reset here. Once the
+     container is a column, flex-grow applies to the VERTICAL axis, which
+     stretched the search box into a tall empty panel. */
+  .table-controls .library-search { flex: 0 0 auto; max-width: none; }
+  .table-filters { display: grid; grid-template-columns: 1fr 1fr; }
+  .table-pager { flex-direction: column; align-items: stretch; }
+  .table-pager-nav { justify-content: space-between; }
+}
+
 /* ---- Settings ------------------------------------------------------------- */
 .settings-main { max-width: 760px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
 .settings-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.2rem; gap: 1rem; }

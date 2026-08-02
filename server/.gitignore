@@ -3,15 +3,16 @@ node_modules/
 *.log
 npm-debug.log*
 
-# SQLite database files
+# SQLite database files. The `.backup*` patterns matter as much as `*.db`:
+# a copy of dev.db holds real user rows (emails, bcrypt hashes, googleSub
+# values), and `prisma/*.db` alone does not match a name like
+# `dev.db.backup-20260726`.
 prisma/*.db
 prisma/*.db-journal
-# Copies and snapshots of a development database. A dev database carries user
-# rows, credential hashes and conversation content, so it must never be tracked
-# — `prisma/*.db` alone did not cover a file named `dev.db.backup`, and one had
-# been committed. Keep both patterns.
-prisma/*.db.backup
+prisma/*.db.backup*
 prisma/*.backup
+prisma/*.sqlite
+prisma/*.sqlite3
 
 # Throwaway test database (created/destroyed by the Vitest global setup)
 test/*.db

@@ -195,7 +195,6 @@ export interface AdminSchool {
   district?: string | null;
   state?: string | null;
   users: number;
-  queries: number;
 }
 
 export interface AdminUser {
