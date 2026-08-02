@@ -42,8 +42,14 @@ async function rawRequest(
   token: string | null
 ): Promise<{ res: Response; data: unknown }> {
   const { method = 'GET', body } = options;
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
   const headers: Record<string, string> = {};
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  // A FormData body sets its own multipart Content-Type (with the boundary
+  // the browser generates) — setting it here would strip that boundary and
+  // break parsing server-side. Every existing JSON caller is unaffected: this
+  // branch only changes behavior for a body that is already a FormData
+  // instance, which no caller passed before the attachments feature.
+  if (body !== undefined && !isFormData) headers['Content-Type'] = 'application/json';
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   let res: Response;
@@ -51,7 +57,7 @@ async function rawRequest(
     res = await fetch(`${API_BASE}${path}`, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : isFormData ? (body as FormData) : JSON.stringify(body),
     });
   } catch {
     throw new ApiError('Network error. Please check your connection.', 0);

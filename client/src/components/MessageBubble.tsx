@@ -1,5 +1,6 @@
 import ResponseCard from './ResponseCard';
 import FollowUpChips from './FollowUpChips';
+import AttachmentTray from './AttachmentTray';
 import type { FollowUpAction } from '../config';
 import type { Turn } from '../types';
 
@@ -11,10 +12,25 @@ interface MessageBubbleProps {
 }
 
 export default function MessageBubble({ turn, onFeedback, onFollowUp, onRetry }: MessageBubbleProps) {
+  const hasAttachments = !!turn.attachments && turn.attachments.length > 0;
+
   return (
     <div className="message-group">
       <div className="message message-user">
-        <div className="message-bubble user-bubble">{turn.query}</div>
+        <div className="message-bubble user-bubble">
+          {hasAttachments && (
+            <div className="user-bubble-attachments">
+              {/* Read-only: no onRemove/onClearAll, so the tray reused from
+                  Composer renders plain display chips here — see
+                  AttachmentTray's own doc comment for why one component
+                  covers both the editable and read-only cases. */}
+              <AttachmentTray
+                attachments={turn.attachments!.map((a, i) => ({ id: `${turn.id}-${i}`, name: a.name, kind: a.kind }))}
+              />
+            </div>
+          )}
+          {turn.query}
+        </div>
       </div>
 
       <div className="message message-assistant">
@@ -43,7 +59,14 @@ export default function MessageBubble({ turn, onFeedback, onFollowUp, onRetry }:
               rating={turn.rating}
               onFeedback={(rating) => onFeedback(turn.id, rating)}
             />
-            <FollowUpChips language={turn.response.language} onAction={(action) => onFollowUp(turn, action)} />
+            {/* Suppressed for attachment turns: every follow-up resubmits the
+                (suffixed/translated) question through plain-text /coach —
+                without the original file(s), which Phase 1 never re-sends.
+                See docs/multimodal-attachments-architecture.md's "single-turn
+                only" limitation. */}
+            {!hasAttachments && (
+              <FollowUpChips language={turn.response.language} onAction={(action) => onFollowUp(turn, action)} />
+            )}
           </>
         )}
       </div>

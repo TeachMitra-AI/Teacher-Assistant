@@ -18,10 +18,15 @@ export default defineConfig({
   test: {
     // sessionStorage, window.crypto and JSON are all the modules under test need.
     environment: 'jsdom',
-    // Scoped to the assistant folder on purpose: it keeps the runner's remit
-    // explicit, so "add a test" stays a deliberate act rather than a wildcard
-    // that quietly starts picking up files elsewhere in the app.
-    include: ['src/assistant/**/*.test.ts'],
+    // Scoped to the assistant folder — plus, as of the multimodal-attachments
+    // feature, src/lib — on purpose: it keeps the runner's remit explicit, so
+    // "add a test" stays a deliberate act rather than a wildcard that quietly
+    // starts picking up files elsewhere in the app. src/lib is added for
+    // exactly the same reason src/assistant was: PURE-LOGIC modules with real
+    // edge cases (attachmentValidation.ts's size/type checks) that are cheap
+    // to test in isolation. This does NOT reopen the "no component rendering"
+    // decision above — no React Testing Library, no .tsx under test here.
+    include: ['src/assistant/**/*.test.ts', 'src/lib/**/*.test.ts'],
     restoreMocks: true,
   },
 });

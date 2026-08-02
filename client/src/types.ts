@@ -148,6 +148,15 @@ export interface CoachResponse {
   queryId: string | null;
 }
 
+// Display-only metadata about a file attached to a turn (Coach: image/PDF
+// upload). Purely presentational — the actual bytes are never held on the
+// Turn once the request completes; see useAttachments for the upload-time
+// objects.
+export interface AttachmentMeta {
+  name: string;
+  kind: 'image' | 'pdf';
+}
+
 // One exchange in the session-local chat thread on the Coach page. Each turn
 // still calls /coach independently and statelessly — see the redesign plan
 // for why (backend has no multi-turn concept).
@@ -160,6 +169,11 @@ export interface Turn {
   response?: CoachResponse;
   rating: 'helpful' | 'not_helpful' | null;
   error?: string;
+  // Set only when this turn was submitted with attachments — routes it to
+  // POST /api/coach/attachment instead of /api/coach (see
+  // CoachPage.runTurnWithAttachments). All attachments on a turn were sent
+  // together in ONE request, not one request per file.
+  attachments?: AttachmentMeta[];
 }
 
 export interface HistoryItem {

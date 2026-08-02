@@ -137,6 +137,38 @@ export const FOLLOW_UP_ACTIONS: FollowUpAction[] = [
 
 export const MAX_QUERY_LENGTH = 500;
 
+// Attachments (Coach: image/PDF upload). Client-side checks only — a fast,
+// friendly rejection before anything leaves the browser. The server
+// re-validates independently by sniffing the file's actual bytes
+// (server/src/lib/fileValidation.js) and never trusts these values, since a
+// client-side check is a courtesy, not a security boundary.
+//
+// SERVER COUNTERPART: server/src/lib/fileValidation.js's ALLOWED_MIME_TYPES
+// and ATTACHMENT_MAX_FILE_SIZE_MB hold the authoritative versions of these
+// same two bounds. Keep them in step so a file the client accepts is not
+// silently rejected by the server (or vice versa) — there is no drift guard
+// for this pair (unlike LANGUAGES/GRADES/SUBJECTS above) because the server
+// bound is an env-configurable default, not a fixed vocabulary; treat this
+// value as "the common default," not a hard contract.
+export const MAX_ATTACHMENT_SIZE_MB = 8;
+export const ALLOWED_ATTACHMENT_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+// Batch bounds — mirrors server/src/lib/flags.js's ATTACHMENT_MAX_FILES /
+// ATTACHMENT_MAX_TOTAL_SIZE_MB defaults. A single message may attach several
+// files, all sent to Gemini together in one request (see
+// docs/multimodal-attachments-architecture.md) — these two constants exist
+// so the client can reject an over-large selection immediately rather than
+// letting the teacher wait for a 400 after uploading everything.
+export const MAX_ATTACHMENTS_COUNT = 5;
+export const MAX_ATTACHMENTS_TOTAL_SIZE_MB = 15;
+// How many attachment chips the tray shows before collapsing the rest behind
+// "+N more" (see components/AttachmentTray.tsx). A UI constant, not a
+// server-mirrored limit — purely about keeping the tray visually compact.
+export const ATTACHMENT_TRAY_VISIBLE_COUNT = 3;
+// The `accept` attribute on the file input — a UX hint for the OS file
+// picker, not a validation mechanism (a picker can be overridden by the
+// user, which is exactly why server-side sniffing is the real gate).
+export const ATTACHMENT_ACCEPT = '.jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf';
+
 // Saved-resource types shown across the library and the Save action. Order is
 // the display order in filters and the type picker.
 export const RESOURCE_TYPE_META: Record<ResourceType, { label: string; icon: LucideIcon }> = {
@@ -234,3 +266,14 @@ export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 // the server's ASSISTANT_ENABLED is the control that takes effect in under a
 // minute and covers already-loaded clients. See docs/ai-action-router-guardrails.md (G28).
 export const ASSISTANT_ENABLED = import.meta.env.VITE_ASSISTANT_ENABLED === 'true';
+
+// Multimodal attachments (Coach: image/PDF upload) — client-side gate, same
+// deliberately-opt-in shape and same "not the real kill switch" caveat as
+// ASSISTANT_ENABLED above. When false (the default), the Composer never
+// renders the attach button at all — the safest possible default, since it
+// means a deployment that sets nothing shows zero new UI, not a button that
+// errors when pressed. The real, immediately-effective kill switch is still
+// the server's ATTACHMENTS_ENABLED (POST /api/coach/attachment returns 503
+// regardless of this flag) — this one only controls whether the PWA's
+// currently-cached client offers the button in the first place.
+export const ATTACHMENTS_ENABLED = import.meta.env.VITE_ATTACHMENTS_ENABLED === 'true';

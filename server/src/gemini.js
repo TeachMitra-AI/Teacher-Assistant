@@ -105,22 +105,34 @@ class GeminiService {
   }
 
   /**
-   * @param {{ systemInstruction: string, userText: string, responseSchema?: object }} params
+   * @param {{ systemInstruction: string, userText: string, responseSchema?: object, attachments?: Array<{mimeType: string, data: string}> }} params
    *   `responseSchema` (optional): an OpenAPI-subset schema object. When
    *   present, Gemini is asked to return `application/json` conforming to
    *   it, instead of free-form text — used for structured generation (see
    *   generateStructuredContent) so formatting never depends on the model
    *   choosing to follow Markdown instructions correctly.
+   *   `attachments` (optional): zero or more inline files — base64 `data`
+   *   plus `mimeType` each — added as additional `parts` entries alongside
+   *   `userText`, ALL IN THE SAME `contents` BLOCK, so Gemini reasons over
+   *   every attachment and the question together in one pass rather than one
+   *   file at a time. Every part sits in the same untrusted user-turn
+   *   `contents` block as plain text does; nothing about the
+   *   systemInstruction/contents boundary changes when a part happens to be
+   *   an image or PDF instead of text, no matter how many there are.
    */
-  buildRequestBody({ systemInstruction, userText, responseSchema }) {
+  buildRequestBody({ systemInstruction, userText, responseSchema, attachments }) {
     const generationConfig = { ...GENERATION_CONFIG, maxOutputTokens: this.maxOutputTokens };
     if (responseSchema) {
       generationConfig.responseMimeType = 'application/json';
       generationConfig.responseSchema = responseSchema;
     }
+    const parts = [{ text: userText }];
+    for (const attachment of attachments || []) {
+      parts.push({ inlineData: { mimeType: attachment.mimeType, data: attachment.data } });
+    }
     return {
       systemInstruction: { parts: [{ text: systemInstruction }] },
-      contents: [{ role: 'user', parts: [{ text: userText }] }],
+      contents: [{ role: 'user', parts }],
       generationConfig,
       safetySettings: SAFETY_SETTINGS,
     };
@@ -337,7 +349,7 @@ You are continuing a response that was cut off mid-way. The text already written
    * retry, continuation, and output-sanitization machinery so cost and latency
    * are bounded identically. Returns only { text, metrics } — no coaching
    * fields — and never persists anything itself.
-   * @param {{systemInstruction: string, userText: string, language?: string, responseSchema?: object}} params
+   * @param {{systemInstruction: string, userText: string, language?: string, responseSchema?: object, attachments?: Array<{mimeType: string, data: string}>}} params
    *   `responseSchema` (optional): requests structured JSON output (see
    *   buildRequestBody). When present, the MAX_TOKENS continuation loop
    *   below is skipped — continuation works by asking the model to resume
@@ -345,15 +357,22 @@ You are continuing a response that was cut off mid-way. The text already written
    *   produce invalid JSON for a structured response; a truncated JSON
    *   response is left for the caller's schema validation to reject
    *   cleanly instead.
+   *   `attachments` (optional): zero or more inline image/PDF parts, ALL in
+   *   the SAME request (see buildRequestBody) — a batch of files is one
+   *   logical call, not one call per file, so Gemini reasons over all of them
+   *   together. Sent only on the INITIAL call — a continuation asks the model
+   *   to keep writing its own prior text (fetchContinuation), which needs no
+   *   re-attached files, so continuations stay text-only exactly as they
+   *   already are for every other caller of this method.
    * @param {{correlationId?: string}} [options]
    */
-  async generateContent({ systemInstruction, userText, language = 'en', responseSchema }, options = {}) {
+  async generateContent({ systemInstruction, userText, language = 'en', responseSchema, attachments }, options = {}) {
     const startTime = this.now();
     const tracker = this.createTracker();
 
     try {
       const first = this.extractCandidate(
-        await this.makeRequest(this.buildRequestBody({ systemInstruction, userText, responseSchema }), tracker)
+        await this.makeRequest(this.buildRequestBody({ systemInstruction, userText, responseSchema, attachments }), tracker)
       );
       let text = first.text;
       let finishReason = first.finishReason;
