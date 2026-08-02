@@ -9,6 +9,7 @@ import Composer from '../components/Composer';
 import AiClarifyPrompt from '../components/AiClarifyPrompt';
 import { useToast } from '../components/Toast';
 import { useVoiceInput } from '../hooks/useVoiceInput';
+import { useAttachments, type SelectedAttachment } from '../hooks/useAttachments';
 import { usePreferences } from '../hooks/usePreferences';
 import { useAuth } from '../auth';
 import { useOnboarding } from '../onboarding';
@@ -20,7 +21,7 @@ import { useAssistantRouting, type RoutingOutcome } from '../assistant/RouterPro
 import { buildSuffixedQuery } from '../lib/followUp';
 import { persistOnboarding } from '../lib/onboarding';
 import { ADMIN_ROLES, SPEECH_LOCALE, type FollowUpAction } from '../config';
-import type { CoachResponse, HistoryItem, QueryContext, Turn } from '../types';
+import type { AttachmentMeta, CoachResponse, HistoryItem, QueryContext, Turn } from '../types';
 
 const EMPTY_CONTEXT: QueryContext = { grade: '', subject: '', classroomType: '', issueType: '' };
 
@@ -70,6 +71,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   const voice = useVoiceInput(SPEECH_LOCALE[language] || 'en-US', (text) => {
     setQuery((q) => (q ? `${q} ${text}` : text));
   });
+  const attachments = useAttachments();
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -162,6 +164,56 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     await runTurn(id, queryText, lang, ctx);
   }
 
+  // The multimodal-attachment sibling of runTurn/submitTurn — a SEPARATE path
+  // (POST /api/coach/attachment, multipart) rather than a branch inside the
+  // two functions above, so the existing text/voice turn flow above is never
+  // touched by this feature (approved design: see
+  // docs/multimodal-attachments-architecture.md). Deliberately bypasses the
+  // AI Action Router entirely — an attachment-bearing message is Coach-shaped
+  // Q&A, not a navigation/prefill action, so there is nothing for the router
+  // to resolve; see the architecture doc's "AI routing changes" section for
+  // the full reasoning.
+  //
+  // ALL files go in ONE request (repeated 'files' form entries), matching the
+  // approved multi-attachment design: the backend sends everything to Gemini
+  // together so it reasons over the complete set, not one call per file.
+  async function runTurnWithAttachments(id: string, queryText: string, lang: string, files: File[]) {
+    try {
+      const formData = new FormData();
+      formData.append('query', queryText);
+      formData.append('language', lang);
+      for (const file of files) formData.append('files', file);
+      const res = await api<CoachResponse>('/coach/attachment', { method: 'POST', body: formData });
+      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'done', response: res, rating: null } : t)));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to get a response. Please try again.';
+      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message } : t)));
+    } finally {
+      scrollToBottom();
+    }
+  }
+
+  async function submitTurnWithAttachments(queryText: string, lang: string, selected: SelectedAttachment[]) {
+    closeIntro();
+    markIntroSeen();
+    const id = newTurnId();
+    const meta: AttachmentMeta[] = selected.map((a) => ({ name: a.file.name, kind: a.kind }));
+    // No `context` is sent — the attachment endpoint has no grade/subject
+    // fields (unlike /coach); EMPTY_CONTEXT here is only to satisfy Turn's
+    // type, never sent over the wire.
+    setTurns((ts) => [
+      ...ts,
+      { id, query: queryText, language: lang, context: EMPTY_CONTEXT, status: 'pending', rating: null, attachments: meta },
+    ]);
+    scrollToBottom();
+    await runTurnWithAttachments(
+      id,
+      queryText,
+      lang,
+      selected.map((a) => a.file)
+    );
+  }
+
   // Every router outcome ends in one of two places: the teacher has been taken
   // somewhere, or their message goes to the coach exactly as it always has.
   // 'asked' is the third state and needs nothing here — the question is on
@@ -180,8 +232,17 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
       show('Please enter a question', 'error');
       return;
     }
+    const pendingAttachments = attachments.attachments;
     setQuery('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
+
+    // An attachment-bearing message skips the AI Action Router entirely and
+    // goes straight to Coach — see runTurnWithAttachments's comment for why.
+    if (pendingAttachments.length > 0) {
+      attachments.clear();
+      submitTurnWithAttachments(trimmed, language, pendingAttachments);
+      return;
+    }
 
     // The AI Action Router's pre-pass (milestone M6). With the client flag off
     // this is one boolean check and the original synchronous call below — no
@@ -198,6 +259,14 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   }
 
   async function handleRetry(turn: Turn) {
+    // The files themselves are never kept once a turn is submitted (see
+    // useAttachments/runTurnWithAttachments) — only their display metadata
+    // is, so a blind retry would silently ask Coach about "these files" with
+    // nothing attached. Ask the teacher to re-attach instead of guessing wrong.
+    if (turn.attachments && turn.attachments.length > 0) {
+      show('To retry, please re-attach the file(s) and ask again.', 'error');
+      return;
+    }
     setTurns((ts) => ts.map((t) => (t.id === turn.id ? { ...t, status: 'pending', error: undefined } : t)));
     await runTurn(turn.id, turn.query, turn.language, turn.context);
   }
@@ -230,6 +299,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     setTurns([]);
     setQuery('');
     setContext(EMPTY_CONTEXT);
+    attachments.clear();
     // A new conversation must not inherit the previous one's remembered grade,
     // subject or topic — a stale slot produces a confident, wrong worksheet.
     router.resetSession();
@@ -371,6 +441,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                 onSubmit={handleSubmit}
                 loading={isSubmitting || router.routing}
                 voice={voice}
+                attachments={attachments}
                 textareaRef={textareaRef}
               />
             </div>

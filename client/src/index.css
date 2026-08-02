@@ -1233,6 +1233,84 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .composer-send:hover:not(:disabled) { transform: translateY(-1px); }
 .composer-send:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* ---- Attachment tray (compact, sits directly above the Composer input) --- */
+.attachment-tray {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 0.35rem 0.4rem;
+  margin-bottom: 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-width: 100%;
+}
+.attachment-tray-chips {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  /* Bounded so an expanded "+N more" tray never grows unboundedly tall —
+     roughly 3 chip-rows, then it scrolls internally. */
+  max-height: 100px;
+  overflow-y: auto;
+}
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.35rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  max-width: 160px;
+  line-height: 1;
+}
+.attachment-chip-thumb { width: 18px; height: 18px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+.attachment-chip-icon { flex-shrink: 0; color: var(--text-muted); }
+.attachment-chip-name {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: var(--text-muted);
+}
+.attachment-chip-remove:hover:not(:disabled) { background: var(--border); color: var(--text); }
+.attachment-tray-more {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--orange);
+  background: var(--orange-soft);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.attachment-tray-more:hover { background: var(--orange); color: #fff; }
+.attachment-tray-clear { width: 26px; height: 26px; flex-shrink: 0; }
+.attachment-error { font-size: 0.8rem; color: var(--orange); margin-bottom: 0.4rem; }
+
+/* Read-only tray inside a sent message bubble (MessageBubble) — same chips,
+   slightly tighter so it doesn't compete with the question text below it. */
+.user-bubble-attachments { margin-bottom: 0.4rem; }
+.user-bubble-attachments .attachment-tray { background: transparent; border: none; padding: 0; margin-bottom: 0; }
+
+@media (max-width: 480px) {
+  .attachment-chip { max-width: 120px; }
+}
+
 /* ---- Auth ----------------------------------------------------------------- */
 .auth-screen {
   min-height: 100vh;

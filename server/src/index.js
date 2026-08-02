@@ -29,7 +29,12 @@ const resourcesRouter = require('./routes/resources');
 // at boot, so a malformed action descriptor stops the server here rather than
 // surfacing later as a strange routing failure.
 const assistantRouter = require('./routes/assistant');
-const { readAssistantFlags } = require('./lib/flags');
+// Multimodal attachments (Coach: image/PDF upload). A sibling feature to the
+// Action Router, not part of it — see docs/multimodal-attachments-architecture.md
+// for why. Requiring it here is the same "fail at boot, not at request time"
+// reasoning as assistantRouter above.
+const attachmentsRouter = require('./routes/attachments');
+const { readAssistantFlags, readAttachmentFlags } = require('./lib/flags');
 const { createBudgetCounter } = require('./assistant/budget');
 const { createRouterBreaker } = require('./assistant/breaker');
 const { createGenerateLimiter } = require('./lib/limiters');
@@ -206,6 +211,51 @@ const geminiFast = new GeminiService({
   maxOutputTokens: ASSISTANT_LLM_MAX_OUTPUT_TOKENS,
 });
 
+// ---- Multimodal attachments: a THIRD GeminiService instance ---------------
+//
+// Same reasoning as geminiFast above: a multimodal call (image/PDF tokens)
+// is slower and more expensive than a text-only coaching call, and it is not
+// a classification decision that should ever silently degrade to
+// passthrough — so it gets its OWN tunables rather than sharing either of
+// the other two instances' budgets.
+const ATTACHMENT_GEMINI_ENDPOINT =
+  process.env.ATTACHMENT_GEMINI_ENDPOINT || GEMINI_ENDPOINT;
+
+const ATTACHMENT_LLM_TIMEOUT_MS = parseIntEnv(process.env.ATTACHMENT_LLM_TIMEOUT_MS, {
+  name: 'ATTACHMENT_LLM_TIMEOUT_MS', defaultValue: 30000, min: 1000, max: 120000,
+});
+const ATTACHMENT_LLM_TOTAL_TIMEOUT_MS = parseIntEnv(process.env.ATTACHMENT_LLM_TOTAL_TIMEOUT_MS, {
+  name: 'ATTACHMENT_LLM_TOTAL_TIMEOUT_MS', defaultValue: 60000, min: 5000, max: 180000,
+});
+const ATTACHMENT_LLM_MAX_RETRIES = parseIntEnv(process.env.ATTACHMENT_LLM_MAX_RETRIES, {
+  name: 'ATTACHMENT_LLM_MAX_RETRIES', defaultValue: 2, min: 0, max: 5,
+});
+const ATTACHMENT_LLM_MAX_CALLS_PER_REQUEST = parseIntEnv(process.env.ATTACHMENT_LLM_MAX_CALLS_PER_REQUEST, {
+  name: 'ATTACHMENT_LLM_MAX_CALLS_PER_REQUEST', defaultValue: 8, min: 1, max: 20,
+});
+const ATTACHMENT_LLM_MAX_OUTPUT_TOKENS = parseIntEnv(process.env.ATTACHMENT_LLM_MAX_OUTPUT_TOKENS, {
+  name: 'ATTACHMENT_LLM_MAX_OUTPUT_TOKENS', defaultValue: 4096, min: 256, max: 8192,
+});
+
+const attachmentGemini = new GeminiService({
+  apiKey: GEMINI_API_KEY,
+  endpoint: ATTACHMENT_GEMINI_ENDPOINT,
+  timeoutMs: ATTACHMENT_LLM_TIMEOUT_MS,
+  totalTimeoutMs: ATTACHMENT_LLM_TOTAL_TIMEOUT_MS,
+  maxRetries: ATTACHMENT_LLM_MAX_RETRIES,
+  maxCallsPerRequest: ATTACHMENT_LLM_MAX_CALLS_PER_REQUEST,
+  maxContinuations: LLM_MAX_CONTINUATIONS,
+  maxOutputTokens: ATTACHMENT_LLM_MAX_OUTPUT_TOKENS,
+});
+
+// Per-user daily budget, reusing the router's already-generic counter
+// (assistant/budget.js has no actual dependency on the router — see its own
+// module doc). Same in-memory, per-process, resets-on-restart tradeoffs,
+// accepted for the same reason: it matches express-rate-limit's existing
+// MemoryStore behavior rather than introducing a new class of weakness.
+const attachmentFlagsAtBoot = readAttachmentFlags(process.env);
+const attachmentBudget = createBudgetCounter({ limit: attachmentFlagsAtBoot.dailyBudgetPerUser });
+
 // ---- App setup -------------------------------------------------------------
 
 const app = express();
@@ -223,6 +273,12 @@ app.locals.geminiFast = geminiFast;
 app.locals.assistantBudget = assistantBudget;
 app.locals.assistantEventBudget = assistantEventBudget;
 app.locals.assistantBreaker = assistantBreaker;
+// Multimodal attachments, read by routes/attachments.js as
+// req.app.locals.attachmentGemini / .attachmentBudget. Same pattern as
+// geminiFast/assistantBudget above: constructed once, injected explicitly,
+// never a module singleton (so the test suite can build its own app).
+app.locals.attachmentGemini = attachmentGemini;
+app.locals.attachmentBudget = attachmentBudget;
 // Railway (like most PaaS) puts exactly one reverse-proxy hop in front of
 // this app. Trusting that one hop lets Express derive req.ip from the
 // X-Forwarded-For header Railway sets, which express-rate-limit needs to
@@ -317,6 +373,24 @@ const assistantLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many assistant requests. Please wait a few minutes and try again.' },
+});
+
+// Separate bucket for POST /api/coach/attachment, deliberately NOT shared
+// with the /coach limiter above — attachment requests carry a file and cost
+// far more per call, so they must not be able to eat the budget a teacher
+// needs for ordinary text/voice questions. Lower ceiling than /coach's for
+// the same reason /resources/generate got its own (tighter) limiter: this is
+// the most expensive request shape in the product.
+const ATTACHMENT_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.ATTACHMENT_RATE_LIMIT_MAX_REQUESTS, {
+  name: 'ATTACHMENT_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 20 : 300, min: 1, max: 100000,
+});
+
+const attachmentLimiter = rateLimit({
+  windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
+  max: ATTACHMENT_RATE_LIMIT_MAX_REQUESTS,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attachment requests. Please wait a few minutes and try again.' },
 });
 
 // M9. The generation endpoint is the most expensive path in the product — a
@@ -556,6 +630,13 @@ app.use('/api/admin', adminRouter);
 // With ASSISTANT_ENABLED unset (the default) every response is an inert empty
 // catalog, and the application behaves exactly as it did before this line.
 app.use('/api/assistant', assistantLimiter, assistantRouter);
+
+// Multimodal attachments. Mounted the same way M9 scoped generateLimiter:
+// the limiter binds to the exact path ahead of the router that serves it, so
+// nothing else under attachmentsRouter (there is only the one route today)
+// is affected, and no existing router's mount changes.
+app.use('/api/coach/attachment', attachmentLimiter);
+app.use('/api', attachmentsRouter);
 
 // Global error handler — last line of defense. Routes wrapped in
 // asyncHandler (see lib/asyncHandler.js) forward a rejected promise here via

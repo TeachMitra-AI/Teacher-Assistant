@@ -154,10 +154,110 @@ function readAssistantFlags(env, { warn = console.warn } = {}) {
   };
 }
 
+// ---- Multimodal attachments (Coach: image/PDF upload) ----------------------
+//
+// Mirrors the assistant flags above exactly: every gate defaults OFF/closed,
+// ATTACHMENTS_ENABLED is the one reliable kill switch (same PWA-caching
+// reasoning as ASSISTANT_ENABLED — G28 applies here too), and the school
+// allow-list is a filter, not a gate.
+
+const ATTACHMENT_FLAG_DEFAULTS = Object.freeze({
+  enabled: false,
+  allowedSchoolCodes: Object.freeze([]),
+  // Attachment requests are the most expensive call in the product (image/PDF
+  // tokens), so the default daily ceiling is deliberately lower than the
+  // router's own text-only classification budget.
+  dailyBudgetPerUser: 20,
+  maxFileSizeMb: 8,
+  maxPdfPages: 30,
+  // Multi-attachment batch limits (a single message may attach several
+  // files, sent to Gemini together — see attachments/describeAttachment.js).
+  // maxFiles keeps the per-request Gemini call bounded in count; maxTotalSizeMb
+  // is a SEPARATE guard from maxFileSizeMb x maxFiles (see the reasoning in
+  // lib/fileValidation.js's validateAttachmentBatch): five files each just
+  // under the per-file cap could still add up to a request too large or too
+  // slow for Gemini's inline-data path. 15MB raw is comfortably under
+  // Gemini's ~20MB inline-request ceiling once base64's ~33% overhead is
+  // added.
+  maxFiles: 5,
+  maxTotalSizeMb: 15,
+});
+
+const ATTACHMENT_BUDGET_BOUNDS = Object.freeze({ min: 1, max: 100000 });
+const ATTACHMENT_FILE_SIZE_BOUNDS = Object.freeze({ min: 1, max: 20 });
+const ATTACHMENT_PDF_PAGES_BOUNDS = Object.freeze({ min: 1, max: 500 });
+const ATTACHMENT_MAX_FILES_BOUNDS = Object.freeze({ min: 1, max: 10 });
+const ATTACHMENT_TOTAL_SIZE_BOUNDS = Object.freeze({ min: 1, max: 40 });
+
+/**
+ * Read the attachment feature's global flags from an environment object.
+ * @param {Record<string, string|undefined>} env
+ * @param {{warn?: (msg: string) => void}} [opts]
+ * @returns {{
+ *   enabled: boolean,
+ *   allowedSchoolCodes: string[],
+ *   dailyBudgetPerUser: number,
+ *   maxFileSizeMb: number,
+ *   maxPdfPages: number,
+ *   maxFiles: number,
+ *   maxTotalSizeMb: number,
+ * }}
+ */
+function readAttachmentFlags(env, { warn = console.warn } = {}) {
+  return {
+    enabled: parseBoolEnv(env.ATTACHMENTS_ENABLED, {
+      name: 'ATTACHMENTS_ENABLED',
+      defaultValue: ATTACHMENT_FLAG_DEFAULTS.enabled,
+      warn,
+    }),
+    allowedSchoolCodes: parseListEnv(env.ATTACHMENT_ALLOWED_SCHOOL_CODES, {
+      name: 'ATTACHMENT_ALLOWED_SCHOOL_CODES',
+      defaultValue: ATTACHMENT_FLAG_DEFAULTS.allowedSchoolCodes,
+    }),
+    dailyBudgetPerUser: parseIntEnv(env.ATTACHMENT_DAILY_BUDGET_PER_USER, {
+      name: 'ATTACHMENT_DAILY_BUDGET_PER_USER',
+      defaultValue: ATTACHMENT_FLAG_DEFAULTS.dailyBudgetPerUser,
+      min: ATTACHMENT_BUDGET_BOUNDS.min,
+      max: ATTACHMENT_BUDGET_BOUNDS.max,
+      warn,
+    }),
+    maxFileSizeMb: parseIntEnv(env.ATTACHMENT_MAX_FILE_SIZE_MB, {
+      name: 'ATTACHMENT_MAX_FILE_SIZE_MB',
+      defaultValue: ATTACHMENT_FLAG_DEFAULTS.maxFileSizeMb,
+      min: ATTACHMENT_FILE_SIZE_BOUNDS.min,
+      max: ATTACHMENT_FILE_SIZE_BOUNDS.max,
+      warn,
+    }),
+    maxPdfPages: parseIntEnv(env.ATTACHMENT_MAX_PDF_PAGES, {
+      name: 'ATTACHMENT_MAX_PDF_PAGES',
+      defaultValue: ATTACHMENT_FLAG_DEFAULTS.maxPdfPages,
+      min: ATTACHMENT_PDF_PAGES_BOUNDS.min,
+      max: ATTACHMENT_PDF_PAGES_BOUNDS.max,
+      warn,
+    }),
+    maxFiles: parseIntEnv(env.ATTACHMENT_MAX_FILES, {
+      name: 'ATTACHMENT_MAX_FILES',
+      defaultValue: ATTACHMENT_FLAG_DEFAULTS.maxFiles,
+      min: ATTACHMENT_MAX_FILES_BOUNDS.min,
+      max: ATTACHMENT_MAX_FILES_BOUNDS.max,
+      warn,
+    }),
+    maxTotalSizeMb: parseIntEnv(env.ATTACHMENT_MAX_TOTAL_SIZE_MB, {
+      name: 'ATTACHMENT_MAX_TOTAL_SIZE_MB',
+      defaultValue: ATTACHMENT_FLAG_DEFAULTS.maxTotalSizeMb,
+      min: ATTACHMENT_TOTAL_SIZE_BOUNDS.min,
+      max: ATTACHMENT_TOTAL_SIZE_BOUNDS.max,
+      warn,
+    }),
+  };
+}
+
 module.exports = {
   parseBoolEnv,
   parseListEnv,
   isFlagEnabled,
   readAssistantFlags,
   ASSISTANT_FLAG_DEFAULTS,
+  readAttachmentFlags,
+  ATTACHMENT_FLAG_DEFAULTS,
 };
