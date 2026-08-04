@@ -19,6 +19,14 @@
 // own header documents this project's preference for a small documented
 // duplication over cross-feature coupling when the two are not the same
 // system (see its note on the client/server type duplication).
+//
+// Every intent's examples include at least one Hinglish or Hindi phrasing,
+// deliberately, matching src/actions/descriptors/generateAssessment.js
+// ("Hinglish is represented deliberately — it is how a large share of the
+// target teachers actually type"). Gemini classifies code-mixed input
+// correctly without special handling, but the EXAMPLES are what teach it
+// what each intent looks like — an English-only example set would silently
+// under-represent how this taxonomy needs to perform for its real users.
 
 const EDUCATIONAL_INTENTS = Object.freeze([
   Object.freeze({
@@ -27,7 +35,8 @@ const EDUCATIONAL_INTENTS = Object.freeze([
     examples: [
       'Explain the TCP handshake.',
       'How does digestion work?',
-      'Explain photosynthesis.',
+      'Photosynthesis kaise hota hai, samjhao.',
+      'Paani ka cycle explain karo.',
     ],
   }),
   Object.freeze({
@@ -36,7 +45,8 @@ const EDUCATIONAL_INTENTS = Object.freeze([
     examples: [
       'Compare mitosis and meiosis.',
       'Capitalism vs. socialism.',
-      'What is the difference between a compound and a mixture?',
+      'Mitosis aur meiosis mein kya fark hai?',
+      'Compound aur mixture ka difference batao.',
     ],
   }),
   Object.freeze({
@@ -45,7 +55,8 @@ const EDUCATIONAL_INTENTS = Object.freeze([
     examples: [
       'Timeline of the Mughal Empire.',
       'Key events of World War II.',
-      'When did the major events of the French Revolution happen?',
+      'Mughal Empire ka timeline batao.',
+      'Bharat ki azaadi ki important tareekhein kya thi?',
     ],
   }),
   Object.freeze({
@@ -54,7 +65,8 @@ const EDUCATIONAL_INTENTS = Object.freeze([
     examples: [
       'Classify the animal kingdom.',
       'What is the org structure of a Roman legion?',
-      'Show me the branches of the Indian government.',
+      'Animal kingdom ko classify karke dikhao.',
+      'Bharat sarkar ke teen ang (branches) kya hain?',
     ],
   }),
   Object.freeze({
@@ -64,7 +76,8 @@ const EDUCATIONAL_INTENTS = Object.freeze([
     examples: [
       'Label the human heart.',
       'Parts of a plant cell.',
-      'How does a car engine work?',
+      'Dil (heart) ke parts label karke batao.',
+      'Plant cell ke parts kya-kya hote hain?',
     ],
   }),
   Object.freeze({
@@ -73,7 +86,8 @@ const EDUCATIONAL_INTENTS = Object.freeze([
     examples: [
       "Show India's population growth over the last 50 years.",
       'Graph y = x squared.',
-      "What's the trend in global average temperature over the last century?",
+      'Pichle 50 saal mein India ki population kaise badhi, dikhao.',
+      'y = x square ka graph banao.',
     ],
   }),
   Object.freeze({
@@ -83,7 +97,8 @@ const EDUCATIONAL_INTENTS = Object.freeze([
     examples: [
       'What year was Mahatma Gandhi born?',
       'Is this a good essay topic for Class 8?',
-      'Define photosynthesis in one line.',
+      'Mahatma Gandhi kis saal paida hue the?',
+      'Class 8 ke liye yeh essay topic accha hai kya?',
     ],
   }),
 ]);
