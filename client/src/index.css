@@ -1106,6 +1106,58 @@ button { font-family: inherit; cursor: pointer; }
 }
 .follow-up-chip:hover { border-color: var(--orange); color: var(--orange); }
 
+/* AI Learning Representation System (ADR Phase D) — the "smaller first
+   slice" generic display: plain lists/tables via CSS variables so light and
+   dark theme are both covered for free, matching every other component on
+   this page rather than introducing a new visual language. */
+.lr-panel { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid var(--border); }
+.lr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.lr-chip:hover:not(:disabled) { border-color: var(--orange); color: var(--orange); }
+.lr-chip-loading { cursor: default; }
+.lr-note { font-size: 0.83rem; color: var(--text-muted); margin: 0; }
+.lr-error { display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; color: var(--text-muted); }
+
+.lr-panel-shown { background: var(--surface-2); border-radius: 0.75rem; padding: 0.9rem 1rem; margin-top: 0.9rem; }
+
+.lr-steps, .lr-parts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.lr-steps li, .lr-parts li { display: flex; flex-direction: column; gap: 0.15rem; }
+.lr-steps li strong, .lr-parts li strong { color: var(--text); }
+.lr-steps li span, .lr-parts li span { font-size: 0.85rem; color: var(--text-muted); }
+.lr-steps { counter-reset: lr-step; }
+.lr-steps li { counter-increment: lr-step; }
+.lr-steps li strong::before { content: counter(lr-step) '. '; color: var(--orange); }
+
+.lr-timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; border-left: 2px solid var(--border); }
+.lr-timeline li { display: flex; flex-direction: column; gap: 0.1rem; padding-left: 0.8rem; }
+.lr-timeline-when { font-size: 0.75rem; font-weight: 700; color: var(--orange); text-transform: uppercase; letter-spacing: 0.02em; }
+.lr-timeline li strong { color: var(--text); }
+.lr-timeline li span:not(.lr-timeline-when) { font-size: 0.85rem; color: var(--text-muted); }
+
+.lr-hierarchy, .lr-hierarchy ul { list-style: disc; margin: 0; padding-left: 1.1rem; }
+.lr-hierarchy { padding-left: 0; list-style: none; }
+.lr-hierarchy > li { list-style: none; font-weight: 600; color: var(--text); }
+.lr-hierarchy li { margin-top: 0.35rem; }
+.lr-hierarchy ul li { font-weight: 400; color: var(--text-muted); font-size: 0.9rem; }
+
+.lr-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+.lr-table th, .lr-table td { border: 1px solid var(--border); padding: 0.4rem 0.6rem; text-align: left; }
+.lr-table th { color: var(--text); font-weight: 600; background: var(--surface); }
+.lr-table td { color: var(--text-muted); }
+.lr-table caption { text-align: left; font-weight: 600; color: var(--text); padding-bottom: 0.4rem; }
+.lr-chart { display: flex; flex-direction: column; gap: 1rem; overflow-x: auto; }
+
 .spinner {
   width: 34px;
   height: 34px;

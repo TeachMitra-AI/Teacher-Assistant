@@ -42,7 +42,14 @@ const supportRouter = require('./routes/support');
 // sibling of adminRouter, not an extension of it (see routes/adminSupport.js
 // for why access is modeled differently here).
 const adminSupportRouter = require('./routes/adminSupport');
-const { readAssistantFlags, readAttachmentFlags } = require('./lib/flags');
+// AI Learning Representation System (ADR Phase D). A sibling feature, same
+// "fail at boot on a malformed module" reasoning as assistantRouter/
+// attachmentsRouter/supportRouter above. Requiring it here also validates
+// mapping.js's completeness guard and schemas.js's registry-consistency
+// guard at boot (both throw on load if their data is out of sync) rather
+// than surfacing as a strange failure on the first real request.
+const learningRepresentationRouter = require('./routes/learningRepresentation');
+const { readAssistantFlags, readAttachmentFlags, readLearningRepresentationFlags } = require('./lib/flags');
 const { createBudgetCounter } = require('./assistant/budget');
 const { createRouterBreaker } = require('./assistant/breaker');
 const { createGenerateLimiter } = require('./lib/limiters');
@@ -264,6 +271,15 @@ const attachmentGemini = new GeminiService({
 const attachmentFlagsAtBoot = readAttachmentFlags(process.env);
 const attachmentBudget = createBudgetCounter({ limit: attachmentFlagsAtBoot.dailyBudgetPerUser });
 
+// AI Learning Representation System (ADR Phase D). Same generic counter,
+// same per-process/in-memory tradeoffs already accepted for
+// assistantBudget/attachmentBudget above — see assistant/budget.js's own
+// header for the reasoning, which is not repeated per call site.
+const learningRepresentationFlagsAtBoot = readLearningRepresentationFlags(process.env);
+const learningRepresentationBudget = createBudgetCounter({
+  limit: learningRepresentationFlagsAtBoot.dailyBudgetPerUser,
+});
+
 // ---- App setup -------------------------------------------------------------
 
 const app = express();
@@ -287,6 +303,11 @@ app.locals.assistantBreaker = assistantBreaker;
 // never a module singleton (so the test suite can build its own app).
 app.locals.attachmentGemini = attachmentGemini;
 app.locals.attachmentBudget = attachmentBudget;
+// AI Learning Representation System, read by routes/learningRepresentation.js
+// as req.app.locals.learningRepresentationBudget. Uses the EXISTING gemini /
+// geminiFast locals above directly (no third instance) — see the route's
+// own comment for why each is the right fit for its call.
+app.locals.learningRepresentationBudget = learningRepresentationBudget;
 // Railway (like most PaaS) puts exactly one reverse-proxy hop in front of
 // this app. Trusting that one hop lets Express derive req.ip from the
 // X-Forwarded-For header Railway sets, which express-rate-limit needs to
@@ -413,6 +434,25 @@ const SUPPORT_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.SUPPORT_RATE_LIM
 const supportLimiter = rateLimit({
   windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
   max: SUPPORT_RATE_LIMIT_MAX_REQUESTS,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please wait a few minutes and try again.' },
+});
+
+// Separate bucket for POST /api/coach/learning-representation — deliberately
+// NOT the /coach limiter above, same reasoning as assistantLimiter: an
+// optional, explicitly-triggered feature must never eat the budget a
+// teacher needs for ordinary questions. Costs up to two Gemini calls per
+// request (classify + render), so the ceiling sits between assistantLimiter
+// (cheap, one call) and attachmentLimiter (most expensive call shape).
+const LEARNING_REPRESENTATION_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(
+  process.env.LEARNING_REPRESENTATION_RATE_LIMIT_MAX_REQUESTS,
+  { name: 'LEARNING_REPRESENTATION_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 60 : 600, min: 1, max: 100000 }
+);
+
+const learningRepresentationLimiter = rateLimit({
+  windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
+  max: LEARNING_REPRESENTATION_RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Please wait a few minutes and try again.' },
@@ -675,6 +715,15 @@ app.use('/api', attachmentsRouter);
 // this line.
 app.use('/api/support/tickets', supportLimiter);
 app.use('/api', supportRouter);
+
+// AI Learning Representation System (ADR Phase D). Same mounting shape as
+// the attachment/generate limiters above: bound to the exact path ahead of
+// the router that serves it, so nothing else on /api is affected. With
+// LEARNING_REPRESENTATION_ENABLED unset (the default) the route returns its
+// inert `{representation: 'verbal_explanation', data: null}` response and
+// the application otherwise behaves exactly as it did before this line.
+app.use('/api/coach/learning-representation', learningRepresentationLimiter);
+app.use('/api', learningRepresentationRouter);
 
 // Global error handler — last line of defense. Routes wrapped in
 // asyncHandler (see lib/asyncHandler.js) forward a rejected promise here via

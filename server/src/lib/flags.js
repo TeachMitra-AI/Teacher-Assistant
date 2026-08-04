@@ -288,6 +288,54 @@ function readHelpSupportFlags(env, { warn = console.warn } = {}) {
   };
 }
 
+// ---- AI Learning Representation System (ADR Phase D) -----------------------
+//
+// Same shape and same "default OFF" reasoning as the flags above. Unlike
+// the assistant/attachment flags, this feature makes at most TWO Gemini
+// calls per request (classify, then render — see
+// routes/learningRepresentation.js) rather than one, so the default daily
+// ceiling sits between the assistant's (100, one call each) and the
+// attachment feature's (20, the most expensive call shape in the product).
+// No `allowedRoles`: any authenticated teacher who can reach Coach can use
+// this, matching /api/coach itself and the attachment endpoint, neither of
+// which restricts by role.
+
+const LEARNING_REPRESENTATION_FLAG_DEFAULTS = Object.freeze({
+  enabled: false,
+  allowedSchoolCodes: Object.freeze([]),
+  dailyBudgetPerUser: 50,
+});
+
+const LEARNING_REPRESENTATION_BUDGET_BOUNDS = Object.freeze({ min: 1, max: 100000 });
+
+/**
+ * Read the AI Learning Representation feature's global flags from an
+ * environment object.
+ * @param {Record<string, string|undefined>} env
+ * @param {{warn?: (msg: string) => void}} [opts]
+ * @returns {{enabled: boolean, allowedSchoolCodes: string[], dailyBudgetPerUser: number}}
+ */
+function readLearningRepresentationFlags(env, { warn = console.warn } = {}) {
+  return {
+    enabled: parseBoolEnv(env.LEARNING_REPRESENTATION_ENABLED, {
+      name: 'LEARNING_REPRESENTATION_ENABLED',
+      defaultValue: LEARNING_REPRESENTATION_FLAG_DEFAULTS.enabled,
+      warn,
+    }),
+    allowedSchoolCodes: parseListEnv(env.LEARNING_REPRESENTATION_ALLOWED_SCHOOL_CODES, {
+      name: 'LEARNING_REPRESENTATION_ALLOWED_SCHOOL_CODES',
+      defaultValue: LEARNING_REPRESENTATION_FLAG_DEFAULTS.allowedSchoolCodes,
+    }),
+    dailyBudgetPerUser: parseIntEnv(env.LEARNING_REPRESENTATION_DAILY_BUDGET_PER_USER, {
+      name: 'LEARNING_REPRESENTATION_DAILY_BUDGET_PER_USER',
+      defaultValue: LEARNING_REPRESENTATION_FLAG_DEFAULTS.dailyBudgetPerUser,
+      min: LEARNING_REPRESENTATION_BUDGET_BOUNDS.min,
+      max: LEARNING_REPRESENTATION_BUDGET_BOUNDS.max,
+      warn,
+    }),
+  };
+}
+
 module.exports = {
   parseBoolEnv,
   parseListEnv,
@@ -298,4 +346,6 @@ module.exports = {
   ATTACHMENT_FLAG_DEFAULTS,
   readHelpSupportFlags,
   HELP_SUPPORT_FLAG_DEFAULTS,
+  readLearningRepresentationFlags,
+  LEARNING_REPRESENTATION_FLAG_DEFAULTS,
 };
