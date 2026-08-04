@@ -82,6 +82,13 @@ afterAll(() => {
 beforeEach(() => {
   clearEnv();
   vi.unstubAllGlobals();
+  // Phase E: the render cache is a singleton on the shared app instance
+  // (constructed once in index.js), so without a reset a successful render
+  // in one test would silently short-circuit a later test's mocked Gemini
+  // call via a cache hit — several tests below deliberately reuse
+  // VALID_BODY + the same intent to test different render OUTCOMES for
+  // what would otherwise be an identical cache key.
+  app.locals.learningRepresentationRenderCache?.clear();
 });
 
 describe('authentication', () => {
@@ -187,6 +194,81 @@ describe('the happy path — two calls, in order: classify then render', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ representation: 'verbal_explanation', data: null });
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe('Phase E — request-level cache, exercised through the real shared app', () => {
+  test('an identical repeat request is a cache hit: classify runs again, render does not', async () => {
+    enableFeature();
+
+    // First request: full miss, two calls (classify + render).
+    const first = mockGeminiFetch([
+      geminiSuccess(JSON.stringify(HIGH_CONFIDENCE_PROCESS)),
+      geminiSuccess(JSON.stringify(PROCESS_DATA)),
+    ]);
+    const res1 = await post(VALID_BODY);
+    expect(res1.status).toBe(200);
+    expect(res1.body).toMatchObject({ representation: 'process_diagram', data: PROCESS_DATA });
+    expect(first.calls).toHaveLength(2);
+
+    // Second, IDENTICAL request. Only one response queued (for classify) —
+    // if render() were called again, gemini.js would run out of queued
+    // responses and the last one (classify's) would repeat, producing a
+    // classification result where a render result was expected, which
+    // would fail response validation. A genuine cache hit never gets that
+    // far: render() is skipped entirely.
+    const second = mockGeminiFetch([geminiSuccess(JSON.stringify(HIGH_CONFIDENCE_PROCESS))]);
+    const res2 = await post(VALID_BODY);
+
+    expect(res2.status).toBe(200);
+    // Same representation and data — requestId is a fresh UUID per request
+    // by design, so it's excluded from the comparison rather than expected
+    // to match.
+    expect(res2.body.representation).toBe(res1.body.representation);
+    expect(res2.body.data).toEqual(res1.body.data);
+    // Exactly one call — classify still runs (caching wraps render() only,
+    // per the frozen Phase E architecture); render() itself was skipped.
+    expect(second.calls).toHaveLength(1);
+  });
+
+  test('a different answer on retry is a genuine miss, not a false hit', async () => {
+    enableFeature();
+    mockGeminiFetch([geminiSuccess(JSON.stringify(HIGH_CONFIDENCE_PROCESS)), geminiSuccess(JSON.stringify(PROCESS_DATA))]);
+    await post(VALID_BODY);
+
+    const { calls } = mockGeminiFetch([
+      geminiSuccess(JSON.stringify(HIGH_CONFIDENCE_PROCESS)),
+      geminiSuccess(JSON.stringify(PROCESS_DATA)),
+    ]);
+    const res = await post({ ...VALID_BODY, answer: 'A different answer to the same question.' });
+
+    expect(res.status).toBe(200);
+    // Both calls made again — grounding in the specific answer means a
+    // changed answer can never be served from a stale cache entry.
+    expect(calls).toHaveLength(2);
+  });
+
+  test('a cache hit still consumes the per-user daily budget', async () => {
+    // The budget LIMIT is read once at app boot (index.js), not per
+    // request, so it cannot be reconfigured via env mid-test the way the
+    // enabled/allow-list gates can — inspect the counter directly instead,
+    // the same way budget.test.js asserts on its own module via peek().
+    enableFeature();
+    const budget = app.locals.learningRepresentationBudget;
+    const before = budget.peek(fixtures.teacherA.id);
+
+    mockGeminiFetch([geminiSuccess(JSON.stringify(HIGH_CONFIDENCE_PROCESS)), geminiSuccess(JSON.stringify(PROCESS_DATA))]);
+    await post(VALID_BODY); // miss
+    expect(budget.peek(fixtures.teacherA.id)).toBe(before + 1);
+
+    mockGeminiFetch([geminiSuccess(JSON.stringify(HIGH_CONFIDENCE_PROCESS))]);
+    const res2 = await post(VALID_BODY); // the cache hit
+    expect(res2.body.representation).toBe('process_diagram');
+
+    // Charged per request, not per actual Gemini call — the hit (one
+    // Gemini call, not two) still spent a full unit, matching the
+    // documented design in routes/learningRepresentation.js.
+    expect(budget.peek(fixtures.teacherA.id)).toBe(before + 2);
   });
 });
 

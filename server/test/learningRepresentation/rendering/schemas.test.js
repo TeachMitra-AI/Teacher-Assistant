@@ -1,7 +1,12 @@
 // Structured render specs — AI Learning Representation System, Phase C.
 
 const { LEARNING_REPRESENTATION_IDS, VERBAL_EXPLANATION } = require('../../../src/learningRepresentation/representations');
-const { RENDER_SPECS, RENDERABLE_REPRESENTATION_IDS, hasRenderer } = require('../../../src/learningRepresentation/rendering/schemas');
+const {
+  RENDER_SPECS,
+  RENDERABLE_REPRESENTATION_IDS,
+  hasRenderer,
+  getRenderVersion,
+} = require('../../../src/learningRepresentation/rendering/schemas');
 
 const VALID_EXAMPLES = {
   process_diagram: {
@@ -81,7 +86,19 @@ describe('every spec has the shape renderer.js depends on', () => {
       expect(typeof spec.responseSchema).toBe('object');
       expect(typeof spec.resultSchema.safeParse).toBe('function');
     });
+
+    test(`${id}: has a valid positive-integer version (ADR Phase E)`, () => {
+      const spec = RENDER_SPECS[id];
+      expect(Number.isInteger(spec.version)).toBe(true);
+      expect(spec.version).toBeGreaterThanOrEqual(1);
+    });
   }
+});
+
+describe('getRenderVersion', () => {
+  test.each(RENDERABLE_REPRESENTATION_IDS)('%s returns the same version as RENDER_SPECS', (id) => {
+    expect(getRenderVersion(id)).toBe(RENDER_SPECS[id].version);
+  });
 });
 
 describe('resultSchema accepts a realistic valid example, per representation', () => {

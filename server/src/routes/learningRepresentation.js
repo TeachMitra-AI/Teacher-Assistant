@@ -3,9 +3,10 @@
 // One endpoint: POST /api/coach/learning-representation. Given a teacher's
 // question and the answer already produced for it (by the existing
 // /api/coach flow — this endpoint is stateless and does not look it up),
-// runs the full pipeline built in Phases A-C: classify -> resolve a
+// runs the full pipeline built in Phases A-E: classify -> resolve a
 // representation (confidence gate + renderer-availability gate) -> render
-// structured content if one applies.
+// structured content if one applies, checking the Phase E request-level
+// cache first.
 //
 // THE ERROR CONTRACT IS DELIBERATELY THE SAME SHAPE AS
 // /api/assistant/interpret (routes/assistant.js), not the same shape as
@@ -38,7 +39,7 @@ const { authRequired } = require('../middleware/auth');
 const { readLearningRepresentationFlags } = require('../lib/flags');
 const { classify } = require('../learningRepresentation/classifier');
 const { resolveRenderableRepresentation } = require('../learningRepresentation/rendering/resolve');
-const { render } = require('../learningRepresentation/rendering/renderer');
+const { renderWithCache } = require('../learningRepresentation/rendering/cache');
 const { VERBAL_EXPLANATION } = require('../learningRepresentation/representations');
 const { logLearningRepresentationEvent, levelForReason } = require('../learningRepresentation/telemetry');
 
@@ -138,6 +139,15 @@ router.post(
       return abstain('misconfigured');
     }
 
+    // Charged once per REQUEST, before it's known whether render() will hit
+    // the cache — deliberately not recalculated per actual Gemini call.
+    // Matches this codebase's existing convention exactly: assistant/
+    // budget.js's own header notes a turn that ends before the classifier
+    // "still spends a unit... over-enforcement degrades to a coaching
+    // answer, which this architecture treats as always safe." A cache hit
+    // is the same shape of over-enforcement (a unit spent for less actual
+    // Gemini usage than the budget assumes), accepted for the same reason:
+    // simple and predictable beats precisely metered.
     const budget = req.app.locals.learningRepresentationBudget;
     if (budget && !budget.consume(req.user.id)) {
       return abstain('budget_exhausted');
@@ -154,7 +164,18 @@ router.post(
       return abstain(resolved.reason || 'no_visualization');
     }
 
-    const rendered = await render({ gemini, representation: resolved.representation, prompt, answer, requestId });
+    // Phase E: cache-aside around render() (rendering/cache.js). A missing
+    // cache local (app assembled without one) degrades to "always miss",
+    // never to an error — same posture as the budget/breaker locals above.
+    const renderCache = req.app.locals.learningRepresentationRenderCache;
+    const rendered = await renderWithCache({
+      gemini,
+      representation: resolved.representation,
+      prompt,
+      answer,
+      requestId,
+      cache: renderCache,
+    });
     if (!rendered.ok) {
       return abstain(rendered.reason);
     }
@@ -164,6 +185,9 @@ router.post(
       representation: rendered.representation,
       intent: classified.ok ? classified.intent : null,
       confidence: classified.ok ? classified.confidence : null,
+      // Lets Phase F compute real hit rate from logs — see cache.js's own
+      // note on reading this alongside deploy frequency, not in isolation.
+      cached: rendered.cached,
     });
     return res.json({ requestId, representation: rendered.representation, data: rendered.data });
   })

@@ -51,6 +51,7 @@ const adminSupportRouter = require('./routes/adminSupport');
 const learningRepresentationRouter = require('./routes/learningRepresentation');
 const { readAssistantFlags, readAttachmentFlags, readLearningRepresentationFlags } = require('./lib/flags');
 const { createBudgetCounter } = require('./assistant/budget');
+const { createRenderCache } = require('./learningRepresentation/rendering/cache');
 const { createRouterBreaker } = require('./assistant/breaker');
 const { createGenerateLimiter } = require('./lib/limiters');
 
@@ -280,6 +281,14 @@ const learningRepresentationBudget = createBudgetCounter({
   limit: learningRepresentationFlagsAtBoot.dailyBudgetPerUser,
 });
 
+// Phase E — request-level render cache. In-memory, per-process, resets on
+// restart; the full reasoning (why that trade-off is accepted, and why a
+// persistent cache was rejected for V1) lives in
+// learningRepresentation/rendering/cache.js's own header rather than being
+// repeated here — the same "documented once, at the source" discipline
+// already applied to assistantBudget/attachmentBudget above.
+const learningRepresentationRenderCache = createRenderCache();
+
 // ---- App setup -------------------------------------------------------------
 
 const app = express();
@@ -308,6 +317,9 @@ app.locals.attachmentBudget = attachmentBudget;
 // geminiFast locals above directly (no third instance) — see the route's
 // own comment for why each is the right fit for its call.
 app.locals.learningRepresentationBudget = learningRepresentationBudget;
+// Phase E, read by rendering/cache.js's caller as
+// req.app.locals.learningRepresentationRenderCache.
+app.locals.learningRepresentationRenderCache = learningRepresentationRenderCache;
 // Railway (like most PaaS) puts exactly one reverse-proxy hop in front of
 // this app. Trusting that one hop lets Express derive req.ip from the
 // X-Forwarded-For header Railway sets, which express-rate-limit needs to
