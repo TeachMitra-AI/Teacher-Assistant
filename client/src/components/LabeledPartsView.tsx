@@ -15,17 +15,21 @@
 import type { LabeledDiagramData } from '../types';
 
 export default function LabeledPartsView({ data }: { data: LabeledDiagramData }) {
+  // A real list (<ul>/<li>), not <div>s — every other list-shaped view in
+  // this feature uses one, and this was a plain inconsistency rather than a
+  // deliberate choice: <div>s give a screen reader no "N items" grouping at
+  // all. Surfaced during Phase D2 review.
   return (
-    <div className="lr-parts-grid">
+    <ul className="lr-parts-grid">
       {data.parts.map((part, i) => (
-        <div className="lr-part-card" key={i}>
+        <li className="lr-part-card" key={i}>
           <span className="lr-part-index" aria-hidden="true">
             {i + 1}
           </span>
           <strong>{part.label}</strong>
           <span>{part.description}</span>
-        </div>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }

@@ -1195,7 +1195,7 @@ button { font-family: inherit; cursor: pointer; }
 /* labeled_diagram — a grid of labeled part cards. Deliberately not a
    labeled illustration with a real picture; see LabeledPartsView.tsx's own
    comment for why. */
-.lr-parts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.6rem; }
+.lr-parts-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.6rem; }
 .lr-part-card {
   position: relative; display: flex; flex-direction: column; gap: 0.2rem;
   background: var(--surface); border: 1px solid var(--border); border-radius: 0.6rem;

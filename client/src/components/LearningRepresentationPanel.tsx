@@ -49,8 +49,14 @@ export default function LearningRepresentationPanel({ query, answer }: LearningR
   }
 
   if (state.status === 'shown') {
+    // aria-live="polite", matching the convention AiPrefillBanner.tsx already
+    // documents for this codebase (CHANGE-12): this announces something that
+    // appeared WITHOUT the teacher navigating anywhere — a click revealed new
+    // content in place, not a page change. "polite" waits for a pause rather
+    // than interrupting whatever the screen reader is already reading.
+    // Surfaced during Phase D2 review.
     return (
-      <div className="lr-panel lr-panel-shown">
+      <div className="lr-panel lr-panel-shown" role="status" aria-live="polite">
         <LearningRepresentationDisplay representation={state.representation} data={state.data} />
       </div>
     );
