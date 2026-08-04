@@ -24,6 +24,13 @@ export default function LearningRepresentationPanel({ query, answer }: LearningR
   const [state, setState] = useState<PanelState>({ status: 'idle' });
 
   async function handleClick() {
+    // Belt-and-braces guard against a fast double-click firing two concurrent
+    // requests for the same message: conditional rendering already removes
+    // the clickable button once `status` becomes 'loading', but that relies
+    // on React having repainted, which is asynchronous. Checking state
+    // directly here closes the (narrow, low-consequence) race completely —
+    // surfaced during Phase D1 review.
+    if (state.status === 'loading') return;
     setState({ status: 'loading' });
     try {
       const res = await fetchLearningRepresentation(query, answer);
