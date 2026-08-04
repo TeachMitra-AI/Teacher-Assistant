@@ -145,6 +145,49 @@ describe('request validation', () => {
     const res = await post({ ...VALID_BODY, prompt: 'x'.repeat(501) });
     expect(res.status).toBe(400);
   });
+
+  // Regression coverage for a bug found during Phase E manual QA: a real,
+  // unremarkable Coach answer (~6.5k characters, nothing unusual) exceeded
+  // the original 6000-character bound and surfaced zod's raw validation
+  // text directly to the teacher.
+  describe('the answer length bound and its error message (found via manual QA)', () => {
+    test('a real-world-length answer (~7000 chars) is accepted, not rejected', async () => {
+      enableFeature();
+      const longButRealistic = 'A'.repeat(7000);
+      mockGeminiFetch([geminiSuccess(JSON.stringify({ intent: 'no_visualization', confidence: 'high' }))]);
+      const res = await post({ ...VALID_BODY, answer: longButRealistic });
+      expect(res.status).toBe(200);
+    });
+
+    test('an answer over the (raised) bound gets a friendly message, never the raw zod text', async () => {
+      enableFeature();
+      const res = await post({ ...VALID_BODY, answer: 'A'.repeat(12001) });
+      expect(res.status).toBe(400);
+      expect(res.body.error).not.toMatch(/zod|<=|expected string/i);
+      expect(res.body.error).toMatch(/too long/i);
+    });
+
+    test('a missing prompt gets a friendly, field-specific message', async () => {
+      enableFeature();
+      const res = await post({ answer: 'x' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('A question is required.');
+    });
+
+    test('a fully empty body reports the missing prompt first (zod validates it first)', async () => {
+      enableFeature();
+      const res = await post({});
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('A question is required.');
+    });
+
+    test('a .strict() violation (no specific field) gets the generic fallback message', async () => {
+      enableFeature();
+      const res = await post({ ...VALID_BODY, extra: 'nope' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('A non-empty "prompt" and "answer" are required.');
+    });
+  });
 });
 
 describe('the happy path — two calls, in order: classify then render', () => {

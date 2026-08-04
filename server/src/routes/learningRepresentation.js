@@ -48,14 +48,22 @@ const router = express.Router();
 /** Mirrors MAX_QUERY_LENGTH in index.js — this IS the same question /api/coach already accepted. */
 const MAX_PROMPT_LENGTH = 500;
 /**
- * Generous ceiling for the answer text the client sends back. Comfortably
- * covers any real /api/coach response; the global 16kb JSON body limit
- * (index.js) is already a tighter practical ceiling than this once the rest
- * of the envelope and JSON escaping overhead are counted — this exists as
- * the application-level bound, not the primary control, matching how
- * MAX_EVENT_METADATA_LENGTH is described in assistant/contracts.js.
+ * Ceiling for the answer text the client sends back.
+ *
+ * REVISED DURING PHASE E MANUAL QA — the original value here (6000) was an
+ * estimate ("comfortably covers any real /api/coach response") that turned
+ * out to be wrong: a genuine, unremarkable Coach answer (a multi-strategy
+ * teaching response, nothing unusual) measured over 6000 characters and was
+ * rejected with a 400 the first time this was exercised end to end in a
+ * browser rather than against short, hand-written test fixtures. Raised
+ * with real headroom over the observed case rather than guessed again. The
+ * global 16kb JSON body limit (index.js) remains a tighter practical
+ * ceiling than this once the rest of the envelope and JSON escaping
+ * overhead are counted — this exists as the application-level bound, not
+ * the primary control, matching how MAX_EVENT_METADATA_LENGTH is described
+ * in assistant/contracts.js.
  */
-const MAX_ANSWER_LENGTH = 6000;
+const MAX_ANSWER_LENGTH = 12000;
 
 const requestSchema = z
   .object({
@@ -63,6 +71,28 @@ const requestSchema = z
     answer: z.string().trim().min(1).max(MAX_ANSWER_LENGTH),
   })
   .strict();
+
+/**
+ * A human-authored 400 message, never the raw zod issue text — matching
+ * this codebase's existing convention (every other route in this app
+ * returns curated, teacher-facing error strings, not validator output).
+ * Also found during Phase E manual QA: the original handler surfaced
+ * zod's raw "Too big: expected string to have <=6000 characters" directly
+ * to the teacher, which is both unfriendly and an implementation leak.
+ *
+ * @param {import('zod').SafeParseReturnType<unknown, unknown>} parsed a failed safeParse result
+ * @returns {string}
+ */
+function friendlyValidationMessage(parsed) {
+  const field = parsed.error.issues[0]?.path?.[0];
+  if (field === 'answer') {
+    return 'This answer is too long to generate a visual for right now. Try asking a shorter or more specific question.';
+  }
+  if (field === 'prompt') {
+    return 'A question is required.';
+  }
+  return 'A non-empty "prompt" and "answer" are required.';
+}
 
 /**
  * Is this caller inside the current rollout? Mirrors routes/assistant.js's
@@ -112,10 +142,7 @@ router.post(
     // The only 400 this endpoint produces.
     const parsed = requestSchema.safeParse(req.body || {});
     if (!parsed.success) {
-      return res.status(400).json({
-        error: parsed.error.issues[0]?.message || 'A non-empty "prompt" and "answer" are required.',
-        requestId,
-      });
+      return res.status(400).json({ error: friendlyValidationMessage(parsed), requestId });
     }
     const { prompt, answer } = parsed.data;
 
