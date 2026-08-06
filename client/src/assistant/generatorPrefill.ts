@@ -31,13 +31,20 @@ import {
   notePrefillUndone,
 } from './telemetryTransport';
 import type { ProvenanceSource } from './types';
+import type { AssessmentFormat } from '../lib/resources';
 
 /** The only action that prefills this page. A draft for anything else is ignored rather than guessed at. */
 const ACTION_ID = 'generate_assessment';
 
 /** Mirrors the Generator's own field types. Every key is optional: a draft may fill any subset. */
 export interface PrefillValues {
-  format?: 'quiz' | 'worksheet';
+  // AssessmentFormat, not a hand-written union: `coercePrefillValues` validates
+  // against ASSESSMENT_FORMATS (the client picker), so this type must be
+  // whatever that picker offers or the two disagree the moment a format is
+  // added. The ROUTER only ever proposes quiz|worksheet today (ROUTABLE_FORMATS
+  // on the server), so a wider type here costs nothing and simply does not
+  // fight the next format.
+  format?: AssessmentFormat;
   grade?: string;
   subject?: string;
   topic?: string;

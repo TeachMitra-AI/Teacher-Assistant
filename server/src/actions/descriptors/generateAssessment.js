@@ -10,7 +10,7 @@
 
 const {
   generateAssessmentSchema,
-  FORMATS,
+  ROUTABLE_FORMATS,
   DIFFICULTIES,
   QUESTION_TYPES,
   MIN_QUESTIONS,
@@ -69,11 +69,14 @@ const generateAssessment = {
     {
       name: 'format',
       type: 'enum',
-      values: FORMATS,
+      values: ROUTABLE_FORMATS,
       required: true,
-      // No default: quiz and worksheet are genuinely different artefacts and
-      // guessing produces a plausible-looking wrong document. Worth one tap.
+      // No default: these are genuinely different artefacts and guessing
+      // produces a plausible-looking wrong document. Worth one tap.
       defaultFrom: null,
+      // ROUTABLE_FORMATS, not FORMATS — the router advertises a deliberate
+      // subset (see the schema module for why). registry.js checks at boot
+      // that askOptions covers every advertised value.
       ask: 'Quiz or worksheet?',
       askOptions: ['Quiz', 'Worksheet'],
     },

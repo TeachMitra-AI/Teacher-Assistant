@@ -1,4 +1,6 @@
+import { GraduationCap } from 'lucide-react';
 import ResponseCard from './ResponseCard';
+import ClassroomSet from './ClassroomSet';
 import FollowUpChips from './FollowUpChips';
 import AttachmentTray from './AttachmentTray';
 import LearningRepresentationPanel from './LearningRepresentationPanel';
@@ -79,6 +81,22 @@ export default function MessageBubble({ turn, onFeedback, onFollowUp, onRetry }:
                 without the original file(s), which Phase 1 never re-sends.
                 See docs/multimodal-attachments-architecture.md's "single-turn
                 only" limitation. */}
+            {/* Classroom Mode ran for this turn but found nothing to make.
+                Told, not hidden: the teacher deliberately switched a mode on
+                and is entitled to know it looked. Rendered only when the mode
+                actually ran — `classroomMode` without `classroom` — so a
+                normal chat stays completely silent (see CoachResponse in
+                types.ts for why both fields exist). */}
+            {turn.response.classroomMode && !turn.response.classroom && (
+              <p className="classroom-empty-note">
+                <GraduationCap size={14} aria-hidden="true" />
+                No classroom materials for this one. Ask about a topic and I&rsquo;ll create them.
+              </p>
+            )}
+            {/* The whole of P3's footprint on the chat path: one conditional
+                line. Everything about generating, queuing, previewing and
+                saving lives inside ClassroomSet. */}
+            {turn.response.classroom && <ClassroomSet plan={turn.response.classroom} />}
             {!hasAttachments && (
               <FollowUpChips language={turn.response.language} onAction={(action) => onFollowUp(turn, action)} />
             )}

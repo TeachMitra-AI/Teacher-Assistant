@@ -29,6 +29,10 @@ const { MAX_META, MAX_LANGUAGE } = require('../lib/resourceFields');
 // MAX_QUESTIONS comes along because the `more_questions` AI-assist action below
 // enforces the same ceiling the original generation request was held to.
 const { generateAssessmentSchema, MAX_QUESTIONS } = require('../actions/schemas/generateAssessment');
+// Per-format wording, headings and purpose. Its own module so the "every format
+// has metadata" assertion runs at boot (see lib/assessmentFormats.js) rather
+// than a missing entry silently rendering a new format as a quiz.
+const { formatMeta } = require('../lib/assessmentFormats');
 
 const router = express.Router();
 
@@ -223,8 +227,12 @@ function buildGeneratorPrompt(config) {
   const lang = language && LANGUAGE_NAMES[language] ? language : 'en';
   const directive = languageDirective(lang);
   const languageLine = directive ? `- ${directive}\n` : '';
+  const meta = formatMeta(format);
 
-  const systemInstruction = `You are an expert Indian government school teacher writing exactly ${questionCount} ${format === 'worksheet' ? 'worksheet' : 'quiz'} questions.
+  const systemInstruction = `You are an expert Indian government school teacher writing exactly ${questionCount} ${meta.noun} questions.
+
+WHAT THIS DOCUMENT IS FOR:
+${meta.purpose}
 
 SPECIFICATION (follow exactly):
 - Grade: ${grade || 'Not specified'}
@@ -270,8 +278,9 @@ The topic and any extra instructions are provided next as delimited user content
  */
 function renderAssessmentMarkdown(config, doc) {
   const { format, grade, subject, topic, difficulty } = config;
-  const title = `${subject ? `${subject} ` : ''}${format === 'worksheet' ? 'Worksheet' : 'Quiz'}: ${topic}`;
-  const answerKeyHeading = format === 'worksheet' ? '## Teacher Answer Key' : '## Answer Key';
+  const meta = formatMeta(format);
+  const title = `${subject ? `${subject} ` : ''}${meta.title}: ${topic}`;
+  const answerKeyHeading = meta.answerKeyHeading;
 
   // Student Name / Roll No. / Date / school letterhead are NOT rendered into
   // this Markdown (a worksheet used to get hardcoded "Student Name: ____" /

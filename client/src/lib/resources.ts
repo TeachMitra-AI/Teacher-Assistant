@@ -94,7 +94,10 @@ export async function deleteResource(id: string): Promise<void> {
 }
 
 // --- Quiz / Worksheet Generator ---
-export type AssessmentFormat = 'quiz' | 'worksheet';
+// Must match FORMATS in server/src/actions/schemas/generateAssessment.js — the
+// runtime authority. Pinned by the pair-B drift test in
+// server/test/assistant/contractDrift.test.js via ASSESSMENT_FORMATS.
+export type AssessmentFormat = 'quiz' | 'worksheet' | 'exit_ticket';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type QuestionType = 'mcq' | 'true_false' | 'short_answer' | 'mixed';
 

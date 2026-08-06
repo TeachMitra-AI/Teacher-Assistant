@@ -105,7 +105,17 @@ describe('contract drift — the extractors themselves work', () => {
   });
 
   test('a known option list is parsed correctly out of config.ts', () => {
-    expect(extractOptionValues(config, 'ASSESSMENT_FORMATS')).toEqual(['quiz', 'worksheet']);
+    const parsed = extractOptionValues(config, 'ASSESSMENT_FORMATS');
+    // Deliberately NOT pinned to the full list. This test's job is to prove the
+    // extractor really reads values (rather than silently returning [] and
+    // making every comparison below vacuously pass) — pinning the vocabulary
+    // here as well just meant it broke, with a confusing message, every time a
+    // format was legitimately added. Pair B below is the actual drift check
+    // against the server's FORMATS, and it is the one that should fail when
+    // client and server disagree.
+    expect(parsed.length).toBeGreaterThan(0);
+    expect(parsed).toContain('quiz');
+    expect(parsed).toContain('worksheet');
   });
 
   test('a missing symbol raises rather than silently returning nothing', () => {

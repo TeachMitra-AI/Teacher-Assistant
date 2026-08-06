@@ -6,6 +6,7 @@ import WelcomeScreen from '../components/WelcomeScreen';
 import MessageList from '../components/MessageList';
 import ContextBar from '../components/ContextBar';
 import Composer from '../components/Composer';
+import ClassroomModePill from '../components/ClassroomModePill';
 import AiClarifyPrompt from '../components/AiClarifyPrompt';
 import { useToast } from '../components/Toast';
 import { useVoiceInput } from '../hooks/useVoiceInput';
@@ -20,7 +21,7 @@ import { api, ApiError } from '../api';
 import { useAssistantRouting, type RoutingOutcome } from '../assistant/RouterProvider';
 import { buildSuffixedQuery } from '../lib/followUp';
 import { persistOnboarding } from '../lib/onboarding';
-import { ADMIN_ROLES, SPEECH_LOCALE, type FollowUpAction } from '../config';
+import { ADMIN_ROLES, CLASSROOM_MODE_ENABLED, SPEECH_LOCALE, type FollowUpAction } from '../config';
 import type { AttachmentMeta, CoachResponse, HistoryItem, QueryContext, Turn } from '../types';
 
 const EMPTY_CONTEXT: QueryContext = { grade: '', subject: '', classroomType: '', issueType: '' };
@@ -58,6 +59,21 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     classroomType: prefs.defaultClassroomType ?? '',
     issueType: '',
   });
+
+  // ---- Classroom Mode (docs/classroom-mode.md) -----------------------------
+  //
+  // Plain component state, deliberately NOT persisted to user.preferences (D16).
+  // It survives navigation within the session and resets to OFF on a reload.
+  // The risk being managed is not annoyance but silent spend: this is the one
+  // mode where every question costs several model calls instead of one, and a
+  // mode remembered across sessions is one a teacher stops noticing. Two taps
+  // tomorrow is the cheaper mistake.
+  const [classroomMode, setClassroomMode] = useState(false);
+
+  function setClassroomModeOn(on: boolean) {
+    setClassroomMode(on);
+    show(on ? 'Classroom Mode on' : 'Classroom Mode off', 'success');
+  }
 
   const [turns, setTurns] = useState<Turn[]>([]);
   const isSubmitting = turns.some((t) => t.status === 'pending');
@@ -129,11 +145,14 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }));
   }
 
-  async function runTurn(id: string, queryText: string, lang: string, ctx: QueryContext) {
+  async function runTurn(id: string, queryText: string, lang: string, ctx: QueryContext, classroom: boolean) {
     try {
       const res = await api<CoachResponse>('/coach', {
         method: 'POST',
-        body: { query: queryText, language: lang, context: ctx },
+        // `classroomMode` is sent only when it is actually on, so a teacher who
+        // never touches the feature produces a request body identical to the
+        // one this page has always sent.
+        body: { query: queryText, language: lang, context: ctx, ...(classroom ? { classroomMode: true } : {}) },
       });
       setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'done', response: res, rating: null } : t)));
       loadHistory();
@@ -161,9 +180,16 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     closeIntro();
     markIntroSeen();
     const id = newTurnId();
-    setTurns((ts) => [...ts, { id, query: queryText, language: lang, context: ctx, status: 'pending', rating: null }]);
+    // Snapshotted onto the turn at submit time, exactly as `language` and
+    // `context` are — see the field's comment in types.ts for why a retry must
+    // not read it live.
+    const classroom = CLASSROOM_MODE_ENABLED && classroomMode;
+    setTurns((ts) => [
+      ...ts,
+      { id, query: queryText, language: lang, context: ctx, status: 'pending', rating: null, classroomMode: classroom },
+    ]);
     scrollToBottom();
-    await runTurn(id, queryText, lang, ctx);
+    await runTurn(id, queryText, lang, ctx, classroom);
   }
 
   // The multimodal-attachment sibling of runTurn/submitTurn — a SEPARATE path
@@ -271,7 +297,10 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
       return;
     }
     setTurns((ts) => ts.map((t) => (t.id === turn.id ? { ...t, status: 'pending', error: undefined } : t)));
-    await runTurn(turn.id, turn.query, turn.language, turn.context);
+    // `turn.classroomMode ?? false` — the mode as it was when this turn was
+    // first submitted, not as it is now. Turns created before this field
+    // existed simply retry without it.
+    await runTurn(turn.id, turn.query, turn.language, turn.context, turn.classroomMode ?? false);
   }
 
   function handleFollowUp(turn: Turn, action: FollowUpAction) {
@@ -438,6 +467,12 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                   onCancel={() => settleRouting(router.cancelAsk())}
                 />
               )}
+              {/* Above the Composer, below the Context Bar: the mode is a
+                  property of the conversation, so it sits with the other
+                  conversation-level controls rather than inside the text box. */}
+              {CLASSROOM_MODE_ENABLED && classroomMode && (
+                <ClassroomModePill onDismiss={() => setClassroomModeOn(false)} />
+              )}
               <ContextBar language={language} onLanguageChange={setLanguage} context={context} onContextChange={setCtx} />
               <Composer
                 value={query}
@@ -447,6 +482,8 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                 voice={voice}
                 attachments={attachments}
                 textareaRef={textareaRef}
+                classroomMode={classroomMode}
+                onClassroomModeChange={setClassroomModeOn}
               />
             </div>
           </div>

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  FileQuestion, ClipboardList, Sparkles, Loader2, Pencil, Eye, Save, ArrowRight,
+  FileQuestion, ClipboardList, Sparkles, Loader2, Pencil, Eye, Save, ArrowRight, Ticket,
+  type LucideIcon,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import ExamHeader from '../components/ExamHeader';
@@ -31,9 +32,25 @@ import { ApiError } from '../api';
 import type { AssessmentFormat, Difficulty, QuestionType } from '../lib/resources';
 import type { ExamPaperMeta } from '../types';
 
+// Display label per format. A map rather than a ternary: with three formats a
+// `format === 'worksheet' ? … : …` silently titles an exit ticket "Quiz", and
+// the compiler cannot warn about it. Adding a format to ASSESSMENT_FORMATS now
+// makes this a type error until it is labelled.
+const FORMAT_LABELS: Record<AssessmentFormat, string> = {
+  quiz: 'Quiz',
+  worksheet: 'Worksheet',
+  exit_ticket: 'Exit Ticket',
+};
+
+const FORMAT_ICONS: Record<AssessmentFormat, LucideIcon> = {
+  quiz: FileQuestion,
+  worksheet: ClipboardList,
+  exit_ticket: Ticket,
+};
+
 // Sensible default title for a generated assessment (editable before saving).
 function defaultTitle(format: AssessmentFormat, topic: string, grade: string): string {
-  const kind = format === 'worksheet' ? 'Worksheet' : 'Quiz';
+  const kind = FORMAT_LABELS[format];
   const t = topic.trim() || 'Untitled';
   const g = grade.trim() ? ` (${grade.trim()})` : '';
   return `${kind}: ${t}${g}`.slice(0, 200);
@@ -334,7 +351,9 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
     }
   }
 
-  const FormatIcon = format === 'worksheet' ? ClipboardList : FileQuestion;
+  // Same reasoning as FORMAT_LABELS: a Record makes a new format a compile
+  // error here rather than silently inheriting the quiz icon.
+  const FormatIcon = FORMAT_ICONS[format];
 
   return (
     <div className="page">
@@ -389,7 +408,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
                   onClick={() => { setFormat(f.value); noteEdit('format'); }}
                 >
                   <span className="generator-format-label">
-                    {f.value === 'worksheet' ? <ClipboardList size={16} aria-hidden="true" /> : <FileQuestion size={16} aria-hidden="true" />}
+                    {(() => { const Icon = FORMAT_ICONS[f.value]; return <Icon size={16} aria-hidden="true" />; })()}
                     {f.label}
                   </span>
                   <span className="generator-format-hint">{f.hint}</span>
