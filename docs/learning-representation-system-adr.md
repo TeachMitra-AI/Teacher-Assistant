@@ -1,12 +1,13 @@
 # AI Learning Representation System — Architecture Decision Record
 
-**Status:** Frozen for review · not yet implemented · **Owner:** Teacher Assistant engineering
+**Status:** Implemented (V1, Phases A–E complete) · **Owner:** Teacher Assistant engineering
 
-> This document is the source of truth for this system. It is implementation-independent by design —
-> it explains WHY this architecture exists, not HOW it will be coded. Any future contributor should be
-> able to read this before touching the implementation and understand the shape of the system and the
-> reasoning behind it. Companion reading once implementation begins: existing architecture docs in this
-> folder (e.g. `multimodal-attachments-architecture.md`) for how this project documents shipped systems.
+> This document is the source of truth for the *reasoning* behind this system. It is
+> implementation-independent by design — it explains WHY this architecture exists, not HOW it was
+> coded. Any future contributor should be able to read this before touching the implementation and
+> understand the shape of the system and the reasoning behind it. For the operational "how do I turn
+> it on" side, see §14. For QA evidence that the shipped system matches this design, see
+> [`learning-representation-manual-qa.md`](./learning-representation-manual-qa.md).
 
 ---
 
@@ -369,3 +370,43 @@ Architectural phases only — no implementation detail, no code shape decisions.
 Each phase is independently valuable and independently stoppable — the system is useful (as a
 diagnostic/logging tool) after Phase A alone, and each subsequent phase adds a layer without requiring
 the previous ones to be redone.
+
+---
+
+## 14. Feature Flags (V1 Rollout)
+
+Same shape and same default-OFF discipline as every other feature in this codebase (the assistant,
+attachments, Help & Support) — see `server/src/lib/flags.js`'s `readLearningRepresentationFlags` and
+`client/src/config.ts`'s `LEARNING_REPRESENTATION_ENABLED`. A deployment that sets none of these env
+vars ships the feature completely inert: `POST /api/coach/learning-representation` returns its inert
+`{ requestId, representation: 'verbal_explanation', data: null }` response for every request, and the
+client never renders the "View as visual" chip at all.
+
+**Server** (`server/.env` — see `server/.env.example` for the authoritative, fully-commented copy):
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `LEARNING_REPRESENTATION_ENABLED` | `false` | **Master kill switch.** `false` → every request gets the inert response, regardless of the client flag. This is the ONLY reliable incident control — the client is a PWA with service-worker caching, so a client-side flag change reaches users on some later page load rather than immediately. Flipping this and restarting the server takes effect immediately. |
+| `LEARNING_REPRESENTATION_ALLOWED_SCHOOL_CODES` | empty (= all schools) | Staged tenant rollout filter, **not a gate** — `LEARNING_REPRESENTATION_ENABLED` is the gate. Empty means no restriction. |
+| `LEARNING_REPRESENTATION_DAILY_BUDGET_PER_USER` | 50 | Learning-representation requests one user may make per day (in-process counter, resets on restart — same convention as `ASSISTANT_DAILY_BUDGET_PER_USER`). Exhausting it degrades to the same inert response, never an error. |
+| `LEARNING_REPRESENTATION_RATE_LIMIT_MAX_REQUESTS` | 60 | Per-IP request cap for the endpoint, over the shared `RATE_LIMIT_WINDOW_MINUTES` window. |
+
+**Client** (`client/.env` — see `client/.env.example`):
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `VITE_LEARNING_REPRESENTATION_ENABLED` | `false` | Hides the "View as visual" chip entirely when `false` — the safest default (zero new UI, not a button that silently does nothing). **Not an incident control**: this is baked in at build time, and because the app is a PWA with service-worker caching (`registerType: 'autoUpdate'`), a change here reaches an already-loaded user on some later page load, not immediately. Use the server flag above to kill the feature quickly. |
+
+**Restart requirement.** Both `.env` files are read once at process start
+(`process.env` in Node, Vite's `import.meta.env` at build/dev-server start) — neither hot-reloads on
+a file edit. **Always restart the server (and the Vite dev server, for the client flag) after
+changing either flag** before trusting the observed behavior; see
+[`learning-representation-manual-qa.md`](./learning-representation-manual-qa.md) §5 for a QA session
+this actually tripped up.
+
+**Independence of the two gates.** The server and client flags are fully independent — enabling only
+one has no effect on the other. Server-off + client-on degrades gracefully (chip shown, click
+produces "No additional visual for this answer.," indistinguishable from a genuine no-visualization
+answer). Server-on + client-off hides the chip everywhere even though the backend would happily serve
+a real representation if called directly. Both combinations are covered in the QA report linked
+above.
