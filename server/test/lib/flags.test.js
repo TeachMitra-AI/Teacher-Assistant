@@ -17,6 +17,8 @@ const {
   ASSISTANT_FLAG_DEFAULTS,
   readHelpSupportFlags,
   HELP_SUPPORT_FLAG_DEFAULTS,
+  readLearningRepresentationFlags,
+  LEARNING_REPRESENTATION_FLAG_DEFAULTS,
 } = require('../../src/lib/flags');
 
 function withWarn() {
@@ -237,5 +239,75 @@ describe('flags.readHelpSupportFlags', () => {
     flags.allowedSchoolCodes.push('KV002');
     expect(HELP_SUPPORT_FLAG_DEFAULTS.allowedSchoolCodes).toEqual([]);
     expect(Object.isFrozen(HELP_SUPPORT_FLAG_DEFAULTS)).toBe(true);
+  });
+});
+
+describe('flags.readLearningRepresentationFlags', () => {
+  test('an empty environment produces a completely inert feature', () => {
+    const { warn, warnings } = withWarn();
+    const flags = readLearningRepresentationFlags({}, { warn });
+
+    expect(flags.enabled).toBe(false);
+    expect(flags.allowedSchoolCodes).toEqual([]);
+    expect(flags.dailyBudgetPerUser).toBe(50);
+    expect(warnings).toHaveLength(0);
+  });
+
+  test('the documented defaults match what is actually returned', () => {
+    const flags = readLearningRepresentationFlags({});
+    expect(flags.enabled).toBe(LEARNING_REPRESENTATION_FLAG_DEFAULTS.enabled);
+    expect(flags.allowedSchoolCodes).toEqual([...LEARNING_REPRESENTATION_FLAG_DEFAULTS.allowedSchoolCodes]);
+    expect(flags.dailyBudgetPerUser).toBe(LEARNING_REPRESENTATION_FLAG_DEFAULTS.dailyBudgetPerUser);
+  });
+
+  test('an explicitly configured environment is read through', () => {
+    const { warn, warnings } = withWarn();
+    const flags = readLearningRepresentationFlags(
+      {
+        LEARNING_REPRESENTATION_ENABLED: 'true',
+        LEARNING_REPRESENTATION_ALLOWED_SCHOOL_CODES: 'DPS001, KV002',
+        LEARNING_REPRESENTATION_DAILY_BUDGET_PER_USER: '75',
+      },
+      { warn }
+    );
+
+    expect(flags.enabled).toBe(true);
+    expect(flags.allowedSchoolCodes).toEqual(['DPS001', 'KV002']);
+    expect(flags.dailyBudgetPerUser).toBe(75);
+    expect(warnings).toHaveLength(0);
+  });
+
+  test('an empty school allow-list means "all schools", not "no schools"', () => {
+    expect(readLearningRepresentationFlags({}).allowedSchoolCodes).toEqual([]);
+    expect(
+      readLearningRepresentationFlags({ LEARNING_REPRESENTATION_ALLOWED_SCHOOL_CODES: '' }).allowedSchoolCodes
+    ).toEqual([]);
+  });
+
+  test('a nonsense enable value leaves the feature OFF and warns', () => {
+    const { warn, warnings } = withWarn();
+    const flags = readLearningRepresentationFlags({ LEARNING_REPRESENTATION_ENABLED: 'probably' }, { warn });
+    expect(flags.enabled).toBe(false);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/LEARNING_REPRESENTATION_ENABLED/);
+  });
+
+  test('an out-of-range budget clamps rather than crashing', () => {
+    const { warn, warnings } = withWarn();
+    expect(
+      readLearningRepresentationFlags({ LEARNING_REPRESENTATION_DAILY_BUDGET_PER_USER: '0' }, { warn }).dailyBudgetPerUser
+    ).toBe(1);
+    expect(
+      readLearningRepresentationFlags({ LEARNING_REPRESENTATION_DAILY_BUDGET_PER_USER: '999999999' }, { warn })
+        .dailyBudgetPerUser
+    ).toBe(100000);
+    expect(warnings).toHaveLength(2);
+  });
+
+  test('reading flags never mutates the frozen defaults', () => {
+    const flags = readLearningRepresentationFlags({ LEARNING_REPRESENTATION_ALLOWED_SCHOOL_CODES: 'DPS001' });
+    flags.allowedSchoolCodes.push('KV002');
+    expect(LEARNING_REPRESENTATION_FLAG_DEFAULTS.allowedSchoolCodes).toEqual([]);
+    expect(Object.isFrozen(LEARNING_REPRESENTATION_FLAG_DEFAULTS)).toBe(true);
   });
 });

@@ -296,6 +296,16 @@ export const ATTACHMENTS_ENABLED = import.meta.env.VITE_ATTACHMENTS_ENABLED === 
 // regardless of this flag).
 export const HELP_SUPPORT_ENABLED = import.meta.env.VITE_HELP_SUPPORT_ENABLED === 'true';
 
+// ---- AI Learning Representation System (ADR Phase D) -----------------------
+//
+// Client-side gate, same shape and same "not the real kill switch" caveat as
+// ATTACHMENTS_ENABLED/HELP_SUPPORT_ENABLED above. When false (the default),
+// the "View as visual" chip is never rendered under an AI response — the
+// server's LEARNING_REPRESENTATION_ENABLED is the immediately-effective kill
+// switch (POST /api/coach/learning-representation returns its inert
+// {representation: 'verbal_explanation'} response regardless of this flag).
+export const LEARNING_REPRESENTATION_ENABLED = import.meta.env.VITE_LEARNING_REPRESENTATION_ENABLED === 'true';
+
 // WhatsApp number for "Contact Support" (international format, digits only —
 // see .env.example). Empty hides the WhatsApp option; the in-app form still
 // works either way.

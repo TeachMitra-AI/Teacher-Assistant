@@ -148,6 +148,61 @@ export interface CoachResponse {
   queryId: string | null;
 }
 
+// AI Learning Representation System (ADR Phase D). Mirrors the server's
+// seven-item taxonomy (docs/learning-representation-system-adr.md, §4)
+// exactly — 'verbal_explanation' is the "nothing extra to show" outcome, a
+// first-class value here too, never a special-cased absence.
+export type LearningRepresentationType =
+  | 'verbal_explanation'
+  | 'process_diagram'
+  | 'comparison_table'
+  | 'timeline'
+  | 'hierarchy_diagram'
+  | 'labeled_diagram'
+  | 'graph_chart';
+
+// The structured shapes rendering/schemas.js validates server-side (one per
+// non-verbal representation). Kept loose (fields optional-ish via the union)
+// rather than mirrored field-for-field with zod-level strictness — this is
+// display data the panel reads defensively, not a contract this file
+// enforces; the server already validated it before it was ever sent.
+export interface ProcessDiagramData {
+  steps: { label: string; description: string }[];
+}
+export interface ComparisonTableData {
+  items: string[];
+  rows: { dimension: string; values: string[] }[];
+}
+export interface TimelineData {
+  events: { when: string; label: string; description: string }[];
+}
+export interface HierarchyDiagramData {
+  nodes: { id: string; label: string; parentId: string | null }[];
+}
+export interface LabeledDiagramData {
+  parts: { label: string; description: string }[];
+}
+export interface GraphChartData {
+  chartType: 'line' | 'bar';
+  xLabel: string;
+  yLabel: string;
+  series: { name: string; points: { x: string; y: number }[] }[];
+}
+
+export type LearningRepresentationData =
+  | ProcessDiagramData
+  | ComparisonTableData
+  | TimelineData
+  | HierarchyDiagramData
+  | LabeledDiagramData
+  | GraphChartData;
+
+export interface LearningRepresentationResponse {
+  requestId: string;
+  representation: LearningRepresentationType;
+  data: LearningRepresentationData | null;
+}
+
 // Display-only metadata about a file attached to a turn (Coach: image/PDF
 // upload). Purely presentational — the actual bytes are never held on the
 // Turn once the request completes; see useAttachments for the upload-time

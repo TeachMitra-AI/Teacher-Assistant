@@ -1,8 +1,9 @@
 import ResponseCard from './ResponseCard';
 import FollowUpChips from './FollowUpChips';
 import AttachmentTray from './AttachmentTray';
+import LearningRepresentationPanel from './LearningRepresentationPanel';
 import { useHelpSupport } from './HelpSupport';
-import { HELP_SUPPORT_ENABLED, type FollowUpAction } from '../config';
+import { HELP_SUPPORT_ENABLED, LEARNING_REPRESENTATION_ENABLED, type FollowUpAction } from '../config';
 import type { Turn } from '../types';
 
 interface MessageBubbleProps {
@@ -80,6 +81,9 @@ export default function MessageBubble({ turn, onFeedback, onFollowUp, onRetry }:
                 only" limitation. */}
             {!hasAttachments && (
               <FollowUpChips language={turn.response.language} onAction={(action) => onFollowUp(turn, action)} />
+            )}
+            {LEARNING_REPRESENTATION_ENABLED && (
+              <LearningRepresentationPanel query={turn.query} answer={turn.response.text} />
             )}
           </>
         )}

@@ -1106,6 +1106,120 @@ button { font-family: inherit; cursor: pointer; }
 }
 .follow-up-chip:hover { border-color: var(--orange); color: var(--orange); }
 
+/* AI Learning Representation System (ADR Phase D) — the "smaller first
+   slice" generic display: plain lists/tables via CSS variables so light and
+   dark theme are both covered for free, matching every other component on
+   this page rather than introducing a new visual language. */
+.lr-panel { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid var(--border); }
+.lr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.lr-chip:hover:not(:disabled) { border-color: var(--orange); color: var(--orange); }
+.lr-chip-loading { cursor: default; }
+.lr-note { font-size: 0.83rem; color: var(--text-muted); margin: 0; }
+.lr-error { display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; color: var(--text-muted); }
+
+.lr-panel-shown { background: var(--surface-2); border-radius: 0.75rem; padding: 0.9rem 1rem; margin-top: 0.9rem; overflow-x: auto; }
+
+/* process_diagram — a connected vertical flow. One continuous line (::before
+   on the shared container) runs behind numbered circular nodes, so it stays
+   correct regardless of how tall any one step's text is. */
+.lr-flow { list-style: none; margin: 0; padding: 0; position: relative; display: flex; flex-direction: column; gap: 1.1rem; }
+.lr-flow::before { content: ''; position: absolute; left: 14px; top: 14px; bottom: 14px; width: 2px; background: var(--border); }
+.lr-flow-step { display: flex; gap: 0.75rem; position: relative; }
+.lr-flow-node {
+  flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--orange); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.78rem; font-weight: 700; position: relative; z-index: 1;
+}
+.lr-flow-body { display: flex; flex-direction: column; gap: 0.15rem; padding-top: 0.25rem; }
+.lr-flow-body strong { color: var(--text); }
+.lr-flow-body span { font-size: 0.85rem; color: var(--text-muted); }
+
+/* timeline — same connected-line technique as .lr-flow, a dot marker
+   instead of a numbered node and a "when" pill so it reads as chronology,
+   not a sequence of actions. */
+.lr-timeline { list-style: none; margin: 0; padding: 0; position: relative; display: flex; flex-direction: column; gap: 1.1rem; }
+.lr-timeline::before { content: ''; position: absolute; left: 5px; top: 5px; bottom: 5px; width: 2px; background: var(--border); }
+.lr-timeline-event { display: flex; gap: 0.75rem; position: relative; }
+.lr-timeline-dot { flex-shrink: 0; width: 12px; height: 12px; margin-top: 4px; border-radius: 50%; background: var(--orange); position: relative; z-index: 1; }
+.lr-timeline-body { display: flex; flex-direction: column; gap: 0.15rem; }
+.lr-timeline-when {
+  align-self: flex-start;
+  font-size: 0.72rem; font-weight: 700; color: var(--orange);
+  text-transform: uppercase; letter-spacing: 0.02em;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+.lr-timeline-body strong { color: var(--text); }
+.lr-timeline-body span:not(.lr-timeline-when) { font-size: 0.85rem; color: var(--text-muted); }
+
+/* hierarchy_diagram — a pure-CSS org-chart tree. Float-based (not flex):
+   each <li> draws its own connector half via ::before/::after, which is
+   what lets sibling connector lines line up correctly for an arbitrary,
+   data-driven tree without any JS measurement. Wrapped in a horizontally
+   scrolling container since a wide tree (many siblings) can exceed the
+   panel's width. */
+.lr-tree-scroll { overflow-x: auto; padding: 0.4rem 0; }
+.lr-tree, .lr-tree ul { display: flex; list-style: none; margin: 0; padding: 0; }
+.lr-tree ul { padding-top: 1.2rem; position: relative; }
+.lr-tree::after, .lr-tree ul::after { content: ''; display: table; clear: both; }
+.lr-tree li { float: left; text-align: center; list-style: none; position: relative; padding: 1.2rem 0.5rem 0; }
+.lr-tree > li { padding-top: 0; }
+.lr-tree li::before, .lr-tree li::after {
+  content: ''; position: absolute; top: 0; right: 50%;
+  width: 50%; height: 1.2rem; border-top: 1px solid var(--border);
+}
+.lr-tree li::after { right: auto; left: 50%; border-left: 1px solid var(--border); }
+.lr-tree > li::before, .lr-tree > li::after { display: none; }
+.lr-tree li:only-child::before, .lr-tree li:only-child::after { display: none; }
+.lr-tree li:only-child { padding-top: 0; }
+.lr-tree li:first-child::before, .lr-tree li:last-child::after { border: none; }
+.lr-tree-node {
+  display: inline-block;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 0.5rem;
+  padding: 0.5rem 0.85rem; font-size: 0.85rem; font-weight: 600; color: var(--text); white-space: nowrap;
+}
+
+/* labeled_diagram — a grid of labeled part cards. Deliberately not a
+   labeled illustration with a real picture; see LabeledPartsView.tsx's own
+   comment for why. */
+.lr-parts-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.6rem; }
+.lr-part-card {
+  position: relative; display: flex; flex-direction: column; gap: 0.2rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 0.6rem;
+  padding: 0.7rem 0.8rem 0.7rem 2.1rem;
+}
+.lr-part-index {
+  position: absolute; top: 0.6rem; left: 0.7rem;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--orange); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.7rem; font-weight: 700;
+}
+.lr-part-card strong { color: var(--text); font-size: 0.88rem; }
+.lr-part-card span:not(.lr-part-index) { font-size: 0.82rem; color: var(--text-muted); }
+
+.lr-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+.lr-table th, .lr-table td { border: 1px solid var(--border); padding: 0.4rem 0.6rem; text-align: left; }
+.lr-table th { color: var(--text); font-weight: 600; background: var(--surface); }
+.lr-table td { color: var(--text-muted); }
+
+/* graph_chart — recharts (existing dependency); this only wraps it. */
+.lr-chart { display: flex; flex-direction: column; gap: 0.4rem; }
+.lr-chart-caption { margin: 0; font-size: 0.82rem; font-weight: 600; color: var(--text); }
+
 .spinner {
   width: 34px;
   height: 34px;
