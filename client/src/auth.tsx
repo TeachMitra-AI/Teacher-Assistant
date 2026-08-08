@@ -3,6 +3,7 @@ import { api, ApiError, setSession, getToken, getRefreshToken } from './api';
 import type {
   AuthOutcome,
   AuthResponse,
+  FeatureFlags,
   GoogleAuthOptions,
   LoginCredentials,
   RegisterCredentials,
@@ -13,6 +14,13 @@ import type {
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
+  // Live, admin-toggleable flags as of the last session bootstrap (initial
+  // load or sign-in) — null only before that first response lands. A caller
+  // gating UI on one of these should fall back to the matching build-time
+  // VITE_* constant in config.ts when this is null, the same "courtesy client
+  // gate, server stays authoritative" contract those constants already
+  // document (see MessageBubble.tsx).
+  featureFlags: FeatureFlags | null;
   login: (c: LoginCredentials) => Promise<AuthOutcome>;
   register: (c: RegisterCredentials) => Promise<AuthOutcome>;
   loginWithGoogle: (idToken: string, options?: GoogleAuthOptions) => Promise<AuthOutcome>;
@@ -44,6 +52,7 @@ function outcomeForError(err: unknown): AuthOutcome | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Restore the session from a stored token on first load.
@@ -55,8 +64,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
-        const res = await api<{ user: User }>('/auth/me');
-        if (!cancelled) setUser(res.user);
+        const res = await api<{ user: User; featureFlags: FeatureFlags }>('/auth/me');
+        if (!cancelled) {
+          setUser(res.user);
+          setFeatureFlags(res.featureFlags);
+        }
       } catch {
         // Covers both "no session" and "refresh token also expired/revoked"
         // (api()'s silent-refresh already tried and failed before this
@@ -82,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setSession(res.token, res.refreshToken);
       setUser(res.user);
+      setFeatureFlags(res.featureFlags);
       return { kind: 'signed_in' };
     } catch (err) {
       const outcome = outcomeForError(err);
@@ -122,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const refreshToken = getRefreshToken();
     setSession(null, null);
     setUser(null);
+    setFeatureFlags(null);
     if (refreshToken) {
       api('/auth/logout', { method: 'POST', body: { refreshToken }, auth: false }).catch(() => {});
     }
@@ -134,6 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       user,
+      featureFlags,
       loading,
       login,
       register,
@@ -143,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       updateUser,
     }),
-    [user, loading, login, register, loginWithGoogle, forgotPassword, resetPassword, logout, updateUser]
+    [user, featureFlags, loading, login, register, loginWithGoogle, forgotPassword, resetPassword, logout, updateUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

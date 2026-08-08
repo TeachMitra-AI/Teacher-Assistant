@@ -86,10 +86,41 @@ export interface User {
   avatarUrl?: string | null;
 }
 
+// Effective, admin-toggleable feature flags exposed to every signed-in user
+// as part of session bootstrap (login/google/GET auth/me responses) — see
+// server/src/lib/systemSettings.js's getEffectiveFeatureFlags. Just the
+// booleans a client-side UI gate needs, never the source/audit metadata that
+// AdminFeatureFlag (below) carries for the Admin Settings screen.
+export interface FeatureFlags {
+  learningRepresentationEnabled: boolean;
+}
+
 export interface AuthResponse {
   token: string;
   refreshToken: string;
   user: User;
+  featureFlags: FeatureFlags;
+}
+
+// One entry from GET/PATCH /api/admin/feature-flags (Admin Settings,
+// super_admin only). `source` distinguishes an explicit admin override from
+// the untouched env-var default so the control can show which state it's
+// actually in. `kind` groups entries into the page's two sections; `type`
+// determines which of `enabled`/`roles` is populated — exactly one of the
+// two, matching the server's ADMIN_SETTINGS_REGISTRY entry for this id.
+export type AdminSettingKind = 'feature_flag' | 'access_control';
+export type AdminSettingValueType = 'boolean' | 'role_list';
+
+export interface AdminFeatureFlag {
+  id: string;
+  label: string;
+  description?: string;
+  kind: AdminSettingKind;
+  type: AdminSettingValueType;
+  enabled?: boolean; // present when type === 'boolean'
+  roles?: Role[]; // present when type === 'role_list'
+  source: 'override' | 'env-default';
+  updatedAt: string | null;
 }
 
 // Just enough of a school to render the "which school?" picker, which appears

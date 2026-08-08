@@ -19,6 +19,7 @@ const { CATALOG_VERSION } = require('../src/actions/registry');
 // The example payloads published in docs/ai-action-router-phase1-spec.md §7.1.
 // Named distinctly from the database `fixtures` below, which are unrelated.
 const contractFixtures = require('./helpers/assistantFixtures');
+const { setRoleListSetting, ASSISTANT_ALLOWED_ROLES_SETTING_KEY } = require('../src/lib/systemSettings');
 
 const ASSISTANT_ENV_KEYS = [
   'ASSISTANT_ENABLED',
@@ -258,6 +259,61 @@ describe('GET /api/assistant/catalog — rollout gates', () => {
     const res = await request(app)
       .get('/api/assistant/catalog')
       .set('Authorization', `Bearer ${teacherToken}`);
+
+    expect(res.body).toEqual({ catalogVersion: 0, actions: [] });
+  });
+});
+
+describe('GET /api/assistant/catalog — Admin Settings > AI Access override precedence', () => {
+  afterEach(async () => {
+    // Cleans up what these tests write directly via setRoleListSetting — the
+    // shared beforeEach's clearAssistantEnv() only resets env vars, so a
+    // leftover SystemSetting row here would otherwise leak into a later test
+    // in this file that assumes ASSISTANT_ALLOWED_ROLES alone governs.
+    await prisma.systemSetting.deleteMany({ where: { key: ASSISTANT_ALLOWED_ROLES_SETTING_KEY } });
+  });
+
+  test('an override can widen access beyond ASSISTANT_ALLOWED_ROLES, without a deploy', async () => {
+    enableAssistant({ ASSISTANT_ALLOWED_ROLES: 'teacher' }); // env alone would exclude school_admin
+    await setRoleListSetting(ASSISTANT_ALLOWED_ROLES_SETTING_KEY, ['teacher', 'school_admin'], 'test-admin');
+
+    const res = await request(app)
+      .get('/api/assistant/catalog')
+      .set('Authorization', `Bearer ${adminToken}`); // adminToken is a school_admin — see beforeAll
+
+    expect(res.status).toBe(200);
+    expect(res.body.actions.length).toBe(2);
+  });
+
+  test('an override can narrow access below ASSISTANT_ALLOWED_ROLES, removing a role the env allowed', async () => {
+    enableAssistant({ ASSISTANT_ALLOWED_ROLES: 'teacher' }); // env alone would include the teacher
+    await setRoleListSetting(ASSISTANT_ALLOWED_ROLES_SETTING_KEY, ['school_admin'], 'test-admin');
+
+    const res = await request(app)
+      .get('/api/assistant/catalog')
+      .set('Authorization', `Bearer ${teacherToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ catalogVersion: 0, actions: [] });
+  });
+
+  test('an explicit empty override disables the Assistant for every role', async () => {
+    enableAssistant({ ASSISTANT_ALLOWED_ROLES: 'teacher,school_admin' });
+    await setRoleListSetting(ASSISTANT_ALLOWED_ROLES_SETTING_KEY, [], 'test-admin');
+
+    const teacherRes = await request(app).get('/api/assistant/catalog').set('Authorization', `Bearer ${teacherToken}`);
+    const adminRes = await request(app).get('/api/assistant/catalog').set('Authorization', `Bearer ${adminToken}`);
+
+    expect(teacherRes.body).toEqual({ catalogVersion: 0, actions: [] });
+    expect(adminRes.body).toEqual({ catalogVersion: 0, actions: [] });
+  });
+
+  test('with no override row, ASSISTANT_ALLOWED_ROLES alone still governs (unchanged baseline behavior)', async () => {
+    enableAssistant({ ASSISTANT_ALLOWED_ROLES: 'teacher' });
+
+    const res = await request(app)
+      .get('/api/assistant/catalog')
+      .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.body).toEqual({ catalogVersion: 0, actions: [] });
   });

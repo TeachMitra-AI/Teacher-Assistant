@@ -3,6 +3,8 @@ import FollowUpChips from './FollowUpChips';
 import AttachmentTray from './AttachmentTray';
 import LearningRepresentationPanel from './LearningRepresentationPanel';
 import { useHelpSupport } from './HelpSupport';
+import { useAuth } from '../auth';
+import { resolveFeatureFlag } from '../lib/featureFlags';
 import { HELP_SUPPORT_ENABLED, LEARNING_REPRESENTATION_ENABLED, type FollowUpAction } from '../config';
 import type { Turn } from '../types';
 
@@ -16,6 +18,14 @@ interface MessageBubbleProps {
 export default function MessageBubble({ turn, onFeedback, onFollowUp, onRetry }: MessageBubbleProps) {
   const hasAttachments = !!turn.attachments && turn.attachments.length > 0;
   const { openBugReport } = useHelpSupport();
+  // Live, admin-toggleable value from session bootstrap wins when present;
+  // falls back to the build-time env constant otherwise (e.g. featureFlags
+  // still null right after mount) — see lib/featureFlags.ts.
+  const { featureFlags } = useAuth();
+  const learningRepresentationEnabled = resolveFeatureFlag(
+    featureFlags?.learningRepresentationEnabled,
+    LEARNING_REPRESENTATION_ENABLED
+  );
 
   return (
     <div className="message-group">
@@ -82,7 +92,7 @@ export default function MessageBubble({ turn, onFeedback, onFollowUp, onRetry }:
             {!hasAttachments && (
               <FollowUpChips language={turn.response.language} onAction={(action) => onFollowUp(turn, action)} />
             )}
-            {LEARNING_REPRESENTATION_ENABLED && (
+            {learningRepresentationEnabled && (
               <LearningRepresentationPanel query={turn.query} answer={turn.response.text} />
             )}
           </>

@@ -132,6 +132,13 @@ All features below are verified against the current source code.
   no admin list endpoint can return an unbounded result set regardless of what a client asks for.
 - **Session revocation** — admins can revoke a user's active sessions ("kill a compromised
   account"); teachers can view and revoke their own sessions.
+- **Admin Settings** (`/admin/settings`, super admin only) — runtime configuration for a small,
+  allowlisted set of existing env-var settings, changeable without a redeploy or restart:
+  **Feature Management** (e.g. Learning Representation on/off) and **AI Access** (which roles
+  may use the AI Assistant). Every override is DB-backed (survives restarts, consistent across
+  instances), audited, and always falls back to the existing environment variable if unset or
+  unreadable. See [`docs/admin-feature-flags-architecture.md`](docs/admin-feature-flags-architecture.md)
+  for the full design and how to add another setting.
 
 ### Cross-cutting
 - **Dark / light theme** with the choice persisted in `localStorage`.
@@ -481,6 +488,17 @@ header; admin routes additionally enforce role.
 - `PATCH /admin/users/:id/role` — super admin changes a role
 - `POST /admin/users/:id/revoke-sessions` — revoke a user's sessions
 
+**Admin Settings** (`server/src/routes/adminSettings.js`) — super admin only; see
+[`docs/admin-feature-flags-architecture.md`](docs/admin-feature-flags-architecture.md)
+- `GET /admin/feature-flags` — every admin-controllable setting's effective state
+  (boolean feature flags under Feature Management, role-list access controls under AI
+  Access), and whether each came from an admin override or the env-var default
+- `PATCH /admin/feature-flags/:id` — update one setting's override: `{ enabled: boolean }`
+  for a boolean flag (e.g. `learning-representation`), or `{ roles: string[] }` for a
+  role-list access control (e.g. `assistant-allowed-roles` — which roles may use the AI
+  Assistant; an empty array is valid and disables the Assistant for everyone). Writes
+  an audit `Event`. The underlying env var remains the safe fallback for both.
+
 **Health**
 - `GET /health` — liveness check
 
@@ -558,6 +576,11 @@ of them runs a completely inert assistant.
   convenience, never an emergency lever.
 - **Staged exposure:** `ASSISTANT_ALLOWED_SCHOOL_CODES` narrows the rollout to named schools.
   ⚠️ **An empty value means ALL schools** — it is a filter, not a gate.
+- **Role rollout, at runtime:** `ASSISTANT_ALLOWED_ROLES` (default `teacher`) is also
+  temporarily overridable from **Admin Settings > AI Access** — a `super_admin` can widen or
+  narrow which roles may reach the assistant without a redeploy. ⚠️ Unlike the school-code
+  filter above, an **empty role override means NO role** (server-enforced) — see
+  [`docs/admin-feature-flags-architecture.md`](docs/admin-feature-flags-architecture.md) §4.1.
 - **Read the launch metric:** `npm run assistant:metrics` (field-edit rate; `n/a` means no evidence,
   not 0%).
 - **Retention:** schedule `npm run assistant:prune-events` weekly once the feature is enabled —

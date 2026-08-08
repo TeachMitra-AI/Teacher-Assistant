@@ -46,6 +46,7 @@ const supportRouter = require('./routes/support');
 // sibling of adminRouter, not an extension of it (see routes/adminSupport.js
 // for why access is modeled differently here).
 const adminSupportRouter = require('./routes/adminSupport');
+const adminSettingsRouter = require('./routes/adminSettings');
 // AI Learning Representation System (ADR Phase D). A sibling feature, same
 // "fail at boot on a malformed module" reasoning as assistantRouter/
 // attachmentsRouter/supportRouter above. Requiring it here also validates
@@ -722,6 +723,9 @@ app.use('/api/admin', adminRouter);
 // /api/coach is, and authRequired + requireRole('super_admin') already gate
 // every route in this router.
 app.use('/api/admin/support', adminSupportRouter);
+// Admin Settings > Feature Management — same "no dedicated rate limiter"
+// reasoning as adminSupportRouter above.
+app.use('/api/admin/feature-flags', adminSettingsRouter);
 
 // AI Action Router. Mounted alongside the existing routers — after them, before
 // the global error handler — so no existing route's middleware chain changes.

@@ -22,6 +22,7 @@ const { sendPasswordResetEmail } = require('../lib/email');
 // function that reaches out to Google stays substitutable from a test without
 // the route needing a seam of its own.
 const googleAuth = require('../lib/googleAuth');
+const { getEffectiveFeatureFlags } = require('../lib/systemSettings');
 const {
   signAccessToken,
   authRequired,
@@ -300,7 +301,12 @@ router.post('/login', asyncHandler(async (req, res) => {
   });
 
   const { token, refreshToken } = await issueSession(user, req);
-  return res.json({ token, refreshToken, user: publicUser(user, user.school) });
+  return res.json({
+    token,
+    refreshToken,
+    user: publicUser(user, user.school),
+    featureFlags: await getEffectiveFeatureFlags(),
+  });
 }));
 
 const googleAuthSchema = z.object({
@@ -410,7 +416,12 @@ router.post('/google', asyncHandler(async (req, res) => {
   });
 
   const { token, refreshToken } = await issueSession(user, req);
-  return res.json({ token, refreshToken, user: publicUser(user, user.school) });
+  return res.json({
+    token,
+    refreshToken,
+    user: publicUser(user, user.school),
+    featureFlags: await getEffectiveFeatureFlags(),
+  });
 }));
 
 const forgotPasswordSchema = z.object({ email: emailField });
@@ -627,7 +638,7 @@ router.get('/me', authRequired, asyncHandler(async (req, res) => {
     include: { school: true, profilePicture: { select: { updatedAt: true } } },
   });
   if (!user) return res.status(404).json({ error: 'User not found.' });
-  return res.json({ user: publicUser(user, user.school) });
+  return res.json({ user: publicUser(user, user.school), featureFlags: await getEffectiveFeatureFlags() });
 }));
 
 // PATCH /api/auth/me — update the caller's own display name and/or preferences.
