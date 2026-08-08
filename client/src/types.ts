@@ -78,6 +78,12 @@ export interface User {
   role: Role;
   preferences: TeacherPreferences;
   school: School;
+  // A path relative to the API root (like every path passed to api()), e.g.
+  // '/users/<id>/avatar?v=<timestamp>' — never the image bytes themselves.
+  // null when the teacher has no custom photo, in which case avatar
+  // rendering falls back to preferences.avatar (emoji) or initials. Build
+  // the full <img src> as `${API_BASE}${avatarUrl}` — see TopBar.tsx.
+  avatarUrl?: string | null;
 }
 
 export interface AuthResponse {

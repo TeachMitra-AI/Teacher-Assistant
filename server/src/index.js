@@ -34,6 +34,10 @@ const assistantRouter = require('./routes/assistant');
 // for why. Requiring it here is the same "fail at boot, not at request time"
 // reasoning as assistantRouter above.
 const attachmentsRouter = require('./routes/attachments');
+// Custom profile pictures — a sibling feature, same "fail at boot" reasoning
+// as the routers above. Reuses auth.js's publicUser() internally (see that
+// file's exports).
+const avatarRouter = require('./routes/avatar');
 // Help & Support (Phase 1: bug reports + feedback, no attachment upload yet).
 // A sibling feature, same "fail at boot on a malformed module" reasoning as
 // assistantRouter/attachmentsRouter above.
@@ -482,6 +486,19 @@ const generateLimiter = createGenerateLimiter({
   windowMinutes: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10),
 });
 
+// Separate bucket for POST/DELETE /api/auth/me/avatar. Hardcoded (not
+// env-parsed like the AI-feature limiters above) — this is a core Settings
+// capability with no rollout to tune, not a cost-tunable AI call. Uploads are
+// infrequent for a legitimate user, so this only needs to be generous enough
+// to not be annoying while still bounding someone hammering the endpoint.
+const avatarLimiter = rateLimit({
+  windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
+  max: isProduction ? 20 : 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please wait a few minutes and try again.' },
+});
+
 // Stricter limiter for auth endpoints to slow down credential guessing.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -719,6 +736,13 @@ app.use('/api/assistant', assistantLimiter, assistantRouter);
 // is affected, and no existing router's mount changes.
 app.use('/api/coach/attachment', attachmentLimiter);
 app.use('/api', attachmentsRouter);
+
+// The GET serving route inside avatarRouter is deliberately NOT behind this
+// limiter — app.use('/api/auth/me/avatar', ...) only matches that exact path
+// prefix, so it applies to the POST/DELETE upload/remove paths only, leaving
+// the cache-friendly, read-only GET /users/:id/avatar unlimited.
+app.use('/api/auth/me/avatar', avatarLimiter);
+app.use('/api', avatarRouter);
 
 // Help & Support. Same mounting shape as the attachment limiter above: bound
 // to the exact path ahead of the router that serves it, so nothing else on

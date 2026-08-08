@@ -171,6 +171,16 @@ function parsePreferences(raw) {
   }
 }
 
+// avatarUrl is a path relative to the API root (matching every path the
+// client already passes to api(), e.g. '/auth/me') — the client prepends its
+// own API_BASE when rendering it in an <img> tag, since <img> requests never
+// go through the api() fetch wrapper (no Authorization header to attach
+// anyway; see routes/avatar.js for why the serving route is public).
+// Versioned by the picture's own updatedAt so the URL changes whenever the
+// photo changes, which is what makes the aggressive immutable Cache-Control
+// on that route safe. Requires the caller to have loaded
+// `profilePicture: { select: { updatedAt: true } }` alongside `school` —
+// never `data`, which this DTO must never carry.
 function publicUser(user, school) {
   return {
     id: user.id,
@@ -179,6 +189,9 @@ function publicUser(user, school) {
     displayName: user.displayName || null,
     role: user.role,
     preferences: parsePreferences(user.preferences),
+    avatarUrl: user.profilePicture
+      ? `/users/${user.id}/avatar?v=${user.profilePicture.updatedAt.getTime()}`
+      : null,
     school: { id: school.id, name: school.name, code: school.code },
   };
 }
@@ -232,7 +245,7 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   const matches = await prisma.user.findMany({
     where: { email, ...(schoolId ? { schoolId } : {}) },
-    include: { school: true },
+    include: { school: true, profilePicture: { select: { updatedAt: true } } },
     orderBy: { createdAt: 'asc' },
   });
 
@@ -370,7 +383,7 @@ router.post('/google', asyncHandler(async (req, res) => {
   // ---- Sign-IN: no school code ----
   const matches = await prisma.user.findMany({
     where: { googleSub: identity.sub, ...(schoolId ? { schoolId } : {}) },
-    include: { school: true },
+    include: { school: true, profilePicture: { select: { updatedAt: true } } },
     orderBy: { createdAt: 'asc' },
   });
 
@@ -533,7 +546,7 @@ router.post('/refresh', asyncHandler(async (req, res) => {
 
   const session = await prisma.session.findUnique({
     where: { tokenHash: hashToken(refreshToken) },
-    include: { user: { include: { school: true } } },
+    include: { user: { include: { school: true, profilePicture: { select: { updatedAt: true } } } } },
   });
   if (!session) {
     return res.status(401).json({ error: 'Session not found. Please log in again.' });
@@ -611,7 +624,7 @@ router.delete('/sessions/:id', authRequired, asyncHandler(async (req, res) => {
 router.get('/me', authRequired, asyncHandler(async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user.id },
-    include: { school: true },
+    include: { school: true, profilePicture: { select: { updatedAt: true } } },
   });
   if (!user) return res.status(404).json({ error: 'User not found.' });
   return res.json({ user: publicUser(user, user.school) });
@@ -628,7 +641,7 @@ router.patch('/me', authRequired, asyncHandler(async (req, res) => {
 
   const existing = await prisma.user.findUnique({
     where: { id: req.user.id },
-    include: { school: true },
+    include: { school: true, profilePicture: { select: { updatedAt: true } } },
   });
   if (!existing) return res.status(404).json({ error: 'User not found.' });
 
@@ -645,7 +658,7 @@ router.patch('/me', authRequired, asyncHandler(async (req, res) => {
   const updated = await prisma.user.update({
     where: { id: req.user.id },
     data,
-    include: { school: true },
+    include: { school: true, profilePicture: { select: { updatedAt: true } } },
   });
   return res.json({ user: publicUser(updated, updated.school) });
 }));
@@ -684,3 +697,10 @@ router.patch('/me/password', authRequired, asyncHandler(async (req, res) => {
 }));
 
 module.exports = router;
+// Attached to the router function so routes/avatar.js can build the same
+// user DTO after an upload/remove (it responds with { user: publicUser(...) }
+// exactly like PATCH /me does) without duplicating the shape. index.js's
+// `app.use('/api/auth', ..., authRouter)` is unaffected — Express only cares
+// that the export is callable as middleware, and an extra own property on a
+// function is invisible to it.
+module.exports.publicUser = publicUser;
