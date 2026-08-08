@@ -6,7 +6,7 @@ import { useOnboarding } from '../onboarding';
 import { usePreferences } from '../hooks/usePreferences';
 import { useDismissable } from '../hooks/useDismissable';
 import { useHelpSupport } from './HelpSupport';
-import { ADMIN_ROLES, HELP_SUPPORT_ENABLED, ROLE_LABELS } from '../config';
+import { ADMIN_ROLES, API_BASE, HELP_SUPPORT_ENABLED, ROLE_LABELS } from '../config';
 
 interface TopBarProps {
   preferences: ReturnType<typeof usePreferences>;
@@ -31,10 +31,23 @@ export default function TopBar({ preferences, onSidebarToggle, sidebarOpen }: To
   const isAdmin = user && ADMIN_ROLES.includes(user.role);
   const displayName = user ? user.displayName || user.name : '';
   const avatarEmoji = user?.preferences?.avatar;
+  // Precedence: custom photo > emoji > initials. avatarUrl is a path
+  // relative to the API root (see types.ts), never the image bytes
+  // themselves — API_BASE is prepended the same way api() does internally.
+  const avatarPhotoUrl = user?.avatarUrl ? `${API_BASE}${user.avatarUrl}` : null;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useDismissable(menuOpen, menuRef, () => setMenuOpen(false));
+
+  // Tracks a photo URL that failed to load (e.g. a stale cached reference,
+  // or the serving route being briefly unreachable) so the UI falls back to
+  // the emoji/initials span instead of a broken-image icon. Comparing
+  // against the CURRENT avatarPhotoUrl (not just a boolean) means a fresh
+  // upload/removal — which always changes the URL — naturally clears a
+  // stale failure without needing a separate reset effect.
+  const [brokenAvatarUrl, setBrokenAvatarUrl] = useState<string | null>(null);
+  const showAvatarPhoto = Boolean(avatarPhotoUrl) && avatarPhotoUrl !== brokenAvatarUrl;
 
   return (
     <header className="topbar">
@@ -114,8 +127,17 @@ export default function TopBar({ preferences, onSidebarToggle, sidebarOpen }: To
                 aria-expanded={menuOpen}
                 aria-label={`Account menu for ${displayName}`}
               >
-                <span className={`user-avatar${avatarEmoji ? ' user-avatar-emoji' : ''}`} aria-hidden="true">
-                  {avatarEmoji || initialsOf(displayName)}
+                <span className={`user-avatar${avatarEmoji && !showAvatarPhoto ? ' user-avatar-emoji' : ''}`} aria-hidden="true">
+                  {showAvatarPhoto ? (
+                    <img
+                      src={avatarPhotoUrl as string}
+                      alt=""
+                      className="user-avatar-photo"
+                      onError={() => setBrokenAvatarUrl(avatarPhotoUrl)}
+                    />
+                  ) : (
+                    avatarEmoji || initialsOf(displayName)
+                  )}
                 </span>
                 <span className="user-meta">
                   <span className="user-name">{displayName}</span>
