@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import TopBar from '../components/TopBar';
 import Sidebar from '../components/Sidebar';
@@ -6,6 +14,7 @@ import WelcomeScreen from '../components/WelcomeScreen';
 import MessageList from '../components/MessageList';
 import ContextBar from '../components/ContextBar';
 import Composer from '../components/Composer';
+import ChatResizeHandle from '../components/ChatResizeHandle';
 import AiClarifyPrompt from '../components/AiClarifyPrompt';
 import { useToast } from '../components/Toast';
 import { useVoiceInput } from '../hooks/useVoiceInput';
@@ -31,6 +40,17 @@ function isMobileViewport(): boolean {
 
 function newTurnId(): string {
   return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `t${Date.now()}${Math.random()}`;
+}
+
+// Chat/composer resize handle: keeps the composer usable at its smallest and
+// prevents a drag from ever swallowing the whole viewport at its largest.
+const COMPOSER_MIN_HEIGHT = 110;
+const COMPOSER_MAX_HEIGHT_RATIO = 0.65;
+const COMPOSER_KEYBOARD_STEP = 24;
+
+function clampComposerHeight(value: number): number {
+  const max = window.innerHeight * COMPOSER_MAX_HEIGHT_RATIO;
+  return Math.min(Math.max(value, COMPOSER_MIN_HEIGHT), max);
 }
 
 export default function CoachPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
@@ -66,8 +86,16 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   const [historyLoading, setHistoryLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(() => !isMobileViewport());
 
+  // null = the composer keeps its default content-sized (auto) height; a
+  // number is only ever set once the teacher actually drags the resize
+  // handle, and only applies on desktop/tablet in the active-chat state.
+  const [composerHeight, setComposerHeight] = useState<number | null>(null);
+  const [isMobile, setIsMobile] = useState(() => isMobileViewport());
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerDockRef = useRef<HTMLDivElement>(null);
+  const resizeDragRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
 
   const voice = useVoiceInput(SPEECH_LOCALE[language] || 'en-US', (text) => {
     setQuery((q) => (q ? `${q} ${text}` : text));
@@ -107,7 +135,14 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     let wasMobile = isMobileViewport();
     function onResize() {
       const nowMobile = isMobileViewport();
-      if (nowMobile && !wasMobile) setSidebarOpen(false);
+      if (nowMobile && !wasMobile) {
+        setSidebarOpen(false);
+        // A composer height dragged on desktop/tablet has no safe meaning on
+        // a phone viewport — drop it so mobile always gets the default,
+        // content-sized composer.
+        setComposerHeight(null);
+      }
+      setIsMobile(nowMobile);
       wasMobile = nowMobile;
     }
     window.addEventListener('resize', onResize);
@@ -386,6 +421,60 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   const activeHistoryId = turns.length === 1 ? turns[0].response?.queryId ?? null : null;
   const isEmpty = turns.length === 0;
 
+  // The resize handle only exists on desktop/tablet, in the active-chat
+  // state — never on mobile, and never over the empty welcome screen (which
+  // uses its own natural-scroll layout on mobile and has nothing to resize
+  // against on desktop either).
+  const resizeEnabled = !isMobile && !isEmpty;
+
+  // If the thread is cleared mid-drag (e.g. "New chat"), the handle unmounts
+  // under the pointer — drop any in-flight drag state so a stray pointerup
+  // on a since-removed element can't do anything.
+  useEffect(() => {
+    if (!resizeEnabled) resizeDragRef.current = null;
+  }, [resizeEnabled]);
+
+  function currentComposerHeight(): number {
+    if (composerHeight != null) return composerHeight;
+    return composerDockRef.current?.getBoundingClientRect().height ?? COMPOSER_MIN_HEIGHT;
+  }
+
+  function handleResizePointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    if (!resizeEnabled) return;
+    resizeDragRef.current = { pointerId: e.pointerId, startY: e.clientY, startHeight: currentComposerHeight() };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }
+
+  function handleResizePointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    const drag = resizeDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    // The handle sits above the composer, so dragging up (negative deltaY)
+    // grows the composer and dragging down shrinks it.
+    const deltaY = e.clientY - drag.startY;
+    setComposerHeight(clampComposerHeight(drag.startHeight - deltaY));
+  }
+
+  function handleResizePointerUp(e: ReactPointerEvent<HTMLDivElement>) {
+    const drag = resizeDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    resizeDragRef.current = null;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+  }
+
+  function handleResizeKeyDown(e: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!resizeEnabled) return;
+    const current = currentComposerHeight();
+    let next: number | null = null;
+    if (e.key === 'ArrowUp') next = clampComposerHeight(current + COMPOSER_KEYBOARD_STEP);
+    else if (e.key === 'ArrowDown') next = clampComposerHeight(current - COMPOSER_KEYBOARD_STEP);
+    else if (e.key === 'Home') next = clampComposerHeight(COMPOSER_MIN_HEIGHT);
+    else if (e.key === 'End') next = clampComposerHeight(window.innerHeight * COMPOSER_MAX_HEIGHT_RATIO);
+    if (next == null) return;
+    e.preventDefault();
+    setComposerHeight(next);
+  }
+
   return (
     <div className={`page coach-shell${isEmpty ? ' coach-empty' : ''}`}>
       <TopBar preferences={preferences} onSidebarToggle={() => setSidebarOpen((o) => !o)} sidebarOpen={sidebarOpen} />
@@ -428,7 +517,23 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
             </div>
           </div>
 
-          <div className="composer-dock">
+          {resizeEnabled && (
+            <ChatResizeHandle
+              height={composerHeight}
+              min={COMPOSER_MIN_HEIGHT}
+              max={window.innerHeight * COMPOSER_MAX_HEIGHT_RATIO}
+              onPointerDown={handleResizePointerDown}
+              onPointerMove={handleResizePointerMove}
+              onPointerUp={handleResizePointerUp}
+              onKeyDown={handleResizeKeyDown}
+            />
+          )}
+
+          <div
+            className={`composer-dock${resizeEnabled && composerHeight != null ? ' composer-dock--resized' : ''}`}
+            ref={composerDockRef}
+            style={resizeEnabled && composerHeight != null ? { height: `${composerHeight}px` } : undefined}
+          >
             <div className="composer-dock-inner">
               {router.pendingAsk?.action.ask && (
                 <AiClarifyPrompt
