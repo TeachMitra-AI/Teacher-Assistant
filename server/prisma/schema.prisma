@@ -256,6 +256,21 @@ model SupportTicket {
   @@index([userId])
 }
 
+// A single admin-configurable runtime override — e.g. a temporary
+// feature-flag toggle set from Admin Settings > Feature Management (see
+// lib/systemSettings.js). Absence of a row for a given key is a first-class
+// state, not an error: it means "no override yet", and the caller falls back
+// to that feature's existing env-var default. `updatedById` is a soft
+// reference to the acting admin (not a FK — mirrors Resource.sourceQueryId's
+// precedent above), since the durable audit trail is the Event row the same
+// write also creates, not this table.
+model SystemSetting {
+  key         String   @id
+  value       String
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
+
 // An admin's internal note on a SupportTicket (Phase 2: the admin inbox).
 // Never exposed to the ticket's submitter — there is no teacher-facing
 // endpoint that returns these rows, by omission rather than a per-field

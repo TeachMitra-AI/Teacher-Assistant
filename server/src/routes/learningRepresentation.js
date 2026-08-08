@@ -37,6 +37,7 @@ const { prisma } = require('../lib/db');
 const { asyncHandler } = require('../lib/asyncHandler');
 const { authRequired } = require('../middleware/auth');
 const { readLearningRepresentationFlags } = require('../lib/flags');
+const { resolveBoolSetting, LEARNING_REPRESENTATION_SETTING_KEY } = require('../lib/systemSettings');
 const { classify } = require('../learningRepresentation/classifier');
 const { resolveRenderableRepresentation } = require('../learningRepresentation/rendering/resolve');
 const { renderWithCache } = require('../learningRepresentation/rendering/cache');
@@ -103,7 +104,11 @@ function friendlyValidationMessage(parsed) {
  * @returns {Promise<boolean>}
  */
 async function isWithinRollout(user, flags) {
-  if (!flags.enabled) return false;
+  // The admin-configurable override (Admin Settings > Feature Management)
+  // takes precedence over the env var when set; absent, `flags.enabled` (the
+  // env-derived value) is the fallback — see lib/systemSettings.js.
+  const { enabled } = await resolveBoolSetting(LEARNING_REPRESENTATION_SETTING_KEY, flags.enabled);
+  if (!enabled) return false;
   if (flags.allowedSchoolCodes.length === 0) return true;
 
   // Fails closed, same reasoning as routes/assistant.js: a database we

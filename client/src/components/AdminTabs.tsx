@@ -20,6 +20,11 @@ export default function AdminTabs() {
       {isSuperAdmin && (
         <Link to="/admin/support" className={pathname.startsWith('/admin/support') ? 'active' : ''}>Support</Link>
       )}
+      {/* Feature Management is a global, app-wide switch, not a school's own
+          data — same super_admin-only reasoning as Support above. */}
+      {isSuperAdmin && (
+        <Link to="/admin/settings" className={pathname.startsWith('/admin/settings') ? 'active' : ''}>Settings</Link>
+      )}
     </div>
   );
 }
