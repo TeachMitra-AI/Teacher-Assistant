@@ -32,6 +32,45 @@ export function formatResponse(raw: string): string {
     return `<h${level}${isAnswerKey ? ' class="fmt-answer-key"' : ''}>${content}</h${level}>`;
   });
 
+  // Pipe tables. Added for the Lesson Plan's Presentation section (Classroom
+  // Mode P6), where the teacher-activity / student-activity PAIRING is the
+  // information — two parallel lists would lose it.
+  //
+  // Runs BEFORE the option and list passes below: a table cell can legitimately
+  // begin with "A. " or "1. ", and those passes are line-anchored, so they
+  // would shred a row into <div>s and <li>s before it was ever a table. Running
+  // first also means the emitted HTML contains no bare "|" lines for the
+  // paragraph pass to mangle.
+  //
+  // Deliberately strict — a header row, a separator row of dashes, then body
+  // rows. Anything that is not that exact shape is left as text rather than
+  // half-rendered, matching the "never guess" rule the rest of this file
+  // follows. Escaped pipes (\|) inside a cell are unescaped after splitting,
+  // so a cell may contain one (the server escapes them when rendering).
+  text = text.replace(
+    /^\|(.+)\|[ \t]*\n\|[ \t]*:?-{2,}:?[ \t]*(?:\|[ \t]*:?-{2,}:?[ \t]*)*\|[ \t]*\n((?:\|.*\|[ \t]*\n?)+)/gm,
+    (_m, headerRow: string, bodyRows: string) => {
+      const cells = (row: string) =>
+        row
+          .replace(/^\||\|[ \t]*$/g, '')
+          // Split on pipes that are NOT escaped, then unescape the rest.
+          .split(/(?<!\\)\|/)
+          .map((c) => c.replace(/\\\|/g, '|').trim());
+
+      const head = cells(headerRow)
+        .map((c) => `<th>${c}</th>`)
+        .join('');
+
+      const body = bodyRows
+        .split('\n')
+        .filter((r) => r.trim().startsWith('|'))
+        .map((r) => `<tr>${cells(r).map((c) => `<td>${c}</td>`).join('')}</tr>`)
+        .join('');
+
+      return `<table class="fmt-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>\n`;
+    }
+  );
+
   // MCQ option lines ("A. ...", "B. ...", "C. ...", "D. ...") and lettered
   // sub-parts ("(a) ...", "(b) ..."). These are rendered as their own block
   // elements — not list items — so they can't be swept into the numbered

@@ -210,13 +210,17 @@ export const RESOURCE_TYPES: ResourceType[] = [
 // CHANGE THESE AND THE SERVER MODULE IN THE SAME COMMIT. A drift guard covering
 // this pair is a mandatory acceptance criterion of M2 (see
 // docs/AI_ACTION_ROUTER_README.md §11).
-export const ASSESSMENT_FORMATS: { value: 'quiz' | 'worksheet' | 'exit_ticket'; label: string; hint: string }[] = [
+export const ASSESSMENT_FORMATS: { value: 'quiz' | 'worksheet' | 'exit_ticket' | 'homework'; label: string; hint: string }[] = [
   { value: 'quiz', label: 'Quiz', hint: 'Questions with a separate answer key' },
   { value: 'worksheet', label: 'Worksheet', hint: 'Printable sheet with name/date and teacher answer key' },
   // Added for Classroom Mode (docs/classroom-mode.md P4), but offered on the
   // Generator page too — a teacher who wants a quick end-of-lesson check should
   // not have to go through the chat to get one.
   { value: 'exit_ticket', label: 'Exit Ticket', hint: 'A 3-question check for the last minutes of a lesson' },
+  // Added for Classroom Mode (docs/classroom-mode.md P5), offered here too for
+  // the same reason as exit_ticket: setting homework is a routine task that
+  // should not require going through the chat.
+  { value: 'homework', label: 'Homework', hint: 'Practice to do at home, with a note for parents' },
 ];
 
 export const DIFFICULTIES: { value: 'easy' | 'medium' | 'hard'; label: string }[] = [

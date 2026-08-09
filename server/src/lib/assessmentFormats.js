@@ -48,6 +48,22 @@ const FORMAT_META = Object.freeze({
       + 'Every question must target the SINGLE most important idea of the lesson — not the wider topic — and must be answerable in under a minute with no reference material. '
       + 'Prefer questions whose wrong answers reveal a specific misunderstanding, so a wrong answer tells the teacher something rather than just being marked wrong.',
   }),
+  homework: Object.freeze({
+    noun: 'homework',
+    title: 'Homework',
+    answerKeyHeading: '## Teacher Answer Key',
+    // The setting is the whole difference from `worksheet`. A worksheet is
+    // attempted with the teacher in the room; homework is attempted alone,
+    // often late, sometimes with a parent who did not attend the lesson and may
+    // not read the language of instruction. Every clause below exists because
+    // that changes what a good question looks like — not to make it easier.
+    purpose:
+      'Homework: practice students complete at home, on their own, with NO teacher available to explain anything. '
+      + 'Every question must be answerable from what was already taught in class — never introduce a new idea, notation or vocabulary word here. '
+      + 'Each question must be fully self-contained: state everything needed inside the question, because a student who is stuck cannot ask what it means. '
+      + 'Use only materials certain to be at home (paper, pencil, everyday household objects) — never lab equipment, printouts, internet access or a device. '
+      + 'End the student section with one short note addressed to a parent or guardian saying what the child practised and how they can help, phrased so it is useful to an adult who did not attend the lesson and may not have studied the topic themselves.',
+  }),
 });
 
 /**

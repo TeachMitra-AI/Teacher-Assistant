@@ -20,12 +20,12 @@
 | **Owner** | Teacher Assistant engineering |
 | **Base branch** | `main` |
 | **Working branch** | `classroom-mode` ✅ created |
-| **Current phase** | **P5 — Homework** (next) |
-| **Overall progress** | **~70%** — P0–P4 complete. Worksheet, quiz **and exit ticket** generate and save. P5 (homework) and P6 (lesson plan) remain. |
+| **Current phase** | **Feature complete** — P0–P7 built; live verification outstanding |
+| **Overall progress** | **~95%** — P0–P7 built. All five artifacts generate and save. Classroom Mode now costs **4 model calls per question, down from 7** (D23). Remaining work is not code: one live Gemini pass, and the cost measurement P7's daily-cap decision depends on. |
 | **Feature flags** | `CLASSROOM_MODE_ENABLED` (server, the real kill switch) + `VITE_CLASSROOM_MODE_ENABLED` (client UI) — **both default OFF** |
-| **DB migration needed** | ❌ **No.** Nothing in `server/prisma/schema.prisma` changes. |
-| **Last updated** | 2026-08-06 |
-| **Next task** | ▶️ **P5 — Homework.** Follow the P4 recipe exactly — it is now a four-file change (§8 P4 lists them) and the boot assertion + drift tests will catch anything missed. |
+| **DB migration needed** | ✅ **Yes, two** — `20260807021500_add_classroom_plan_to_query` ([D24](#d24--the-plan-is-persisted-on-the-query-row-the-artifacts-are-not)) and `20260807024500_add_classroom_artifacts_to_query` ([D25](#d25--the-generated-artifacts-are-persisted-on-the-turn-overturns-d11-in-part)). Both nullable and additive; no backfill. |
+| **Last updated** | 2026-08-07 |
+| **Next task** | ▶️ **Live verification.** Nothing since P4 has hit real Gemini — and the maths notation ([D22](#d22--the-model-writes-plain-maths-notation-not-latex)) and batched set ([D23](#d23--the-four-question-shaped-artifacts-share-one-gemini-call)) both changed what the model is ASKED for, so the whole set needs one live pass. Per §7 rule 8: ONE run, not a batch. Then measure cost (P7) and decide the cap (D9). |
 
 ### Progress by phase
 
@@ -36,9 +36,9 @@
 | P2 | Planner call, gates, context merge, empty state | ✅ **Complete** (2026-08-06) |
 | P3 | Artifact cards + generation queue (quiz, worksheet) | ✅ **Complete** (2026-08-06) |
 | P4 | Exit Ticket artifact | ✅ **Complete** (2026-08-06) |
-| P5 | Homework artifact | ⬜ Not started |
-| P6 | Lesson Plan artifact (the big one) | ⬜ Not started |
-| P7 | Telemetry, mobile polish, optional daily cap | ⬜ Not started |
+| P5 | Homework artifact | ✅ **Complete** (2026-08-07) |
+| P6 | Lesson Plan artifact (the big one) | ✅ **Complete** (2026-08-07) |
+| P7 | Telemetry, mobile polish, optional daily cap | 🟡 **Built** (2026-08-07) — cost measurement + cap decision need live data |
 
 ---
 
@@ -55,19 +55,35 @@ is visible while on, and never saves anything without the teacher pressing Save.
 
 ## 3. The five artifacts
 
-| Artifact | Key | Exists today? | Work needed |
-|---|---|---|---|
-| Lesson Plan | `lesson_plan` | ❌ Only as a Library *type* — produced by free-form chat, no structure | **Large.** Needs its own response schema + deterministic renderer. |
-| Worksheet | `worksheet` | ✅ `POST /api/resources/generate` | None — reuse as-is |
-| Quiz | `quiz` | ✅ `POST /api/resources/generate` | None — reuse as-is |
-| Homework | `homework` | ❌ | Small–medium. A worksheet framed for home + parent/guardian instructions. |
-| Exit Ticket | `exit_ticket` | ❌ | Small. A 2–3 question end-of-class check. Cheapest to add. |
+All five are built as of 2026-08-07. Where each one is generated:
 
-**Why Lesson Plan is different:** today lesson plans come out of the coaching chat as prose
-(`templates` in `server/src/prompts.js:163`) and are saved by a string-match heuristic
-(`client/src/components/SaveToLibrary.tsx:22`). There is no schema, no JSON contract, no renderer.
-The other four are all question-shaped and ride the existing assessment pipeline. This is why
-Lesson Plan is sequenced **last** (P6) and everything else ships before it.
+| Artifact | Key | Endpoint | Shape | Saves as |
+|---|---|---|---|---|
+| Lesson Plan | `lesson_plan` | `POST /api/resources/generate-lesson-plan` | 10 named prose sections | `lesson_plan` |
+| Worksheet | `worksheet` | `POST /api/resources/generate-set` (batched) | 8 questions, mixed, medium | `assessment` |
+| Quiz | `quiz` | `POST /api/resources/generate-set` (batched) | 10 questions, MCQ, medium | `assessment` |
+| Homework | `homework` | `POST /api/resources/generate-set` (batched) | 6 questions, mixed, medium | `assessment` |
+| Exit Ticket | `exit_ticket` | `POST /api/resources/generate-set` (batched) | 3 questions, MCQ, easy | `assessment` |
+
+The four question-shaped artifacts travel in **one** Gemini call
+([D23](#d23--the-four-question-shaped-artifacts-share-one-gemini-call)); the lesson plan keeps its
+own. Each still exists individually at `POST /api/resources/generate` (and on the `/generator` page),
+so a teacher can produce any one of them without Classroom Mode.
+
+**Why Lesson Plan is different, and why it was sequenced last:** the other four are the same
+document — questions, options, an answer key — which is why they share one schema, one renderer and
+now one call. A lesson plan has neither questions nor an answer key, so it needed its own schema,
+prompt, renderer and endpoint
+([D21](#d21--the-lesson-plan-is-its-own-endpoint-not-a-fourth-assessment-format)). Before P6 it
+existed only as a Library *type*, produced as free-form chat prose and saved by a string-match
+heuristic (`client/src/components/SaveToLibrary.tsx:22`) — that path still exists for ordinary chat
+answers and is untouched by Classroom Mode.
+
+**Counts differ on purpose.** Five documents of identical length would look machine-made, and each
+artifact is for a different moment: an exit ticket is answered in the last two minutes of a lesson,
+homework is done alone at home with nobody to ask, a worksheet fills a period with the teacher in
+the room. Pinned by `client/src/lib/classroom.test.ts`, which asserts the three practice artifacts
+stay ordered by how long they take.
 
 ---
 
@@ -89,7 +105,9 @@ topic into a second form is duplicate work. The chat already collects grade/subj
 **Why:** if the mode only revealed chips, the chips could just live in normal chat and the toggle
 would earn nothing. The toggle has to buy something real — the teacher saying *"I'm planning a
 lesson, do the work for me."* Same shape as ChatGPT's Deep Research toggle.
-**Cost of this choice:** ~5–6× a normal question's AI spend, every time it's used. That is
+**Cost of this choice:** ~5–6× a normal question's AI spend in OUTPUT tokens, every time it's used
+— batching (D23) cut the number of CALLS from 7 to 4 but not the amount generated, which is the
+expensive half. That is
 precisely why it is opt-in and default-off, and why [D9](#d9--no-usage-cap-in-the-pilot) exists.
 
 ### D3 — Default OFF, visible while ON
@@ -170,13 +188,24 @@ and hammers the Gemini quota); one big blocking spinner (a 60-second dead screen
 **Why:** the answer arrives at normal speed and the teacher reads it while materials land
 underneath. Wall-clock time is roughly the same as firing all five, without the burst.
 
-### D11 — Nothing auto-saves
+> ⚠️ **Partly superseded by [D23](#d23--the-four-question-shaped-artifacts-share-one-gemini-call)
+> (2026-08-07).** The *outcome* still holds — at most two requests are in flight for a turn — but it
+> is now **structural rather than enforced**: the four question-shaped artifacts travel in ONE
+> batched call and the lesson plan in another, so the `CONCURRENCY = 2` worker pool this decision
+> described no longer exists. Progressive rendering is unchanged for the lesson plan (its own call,
+> lands independently); the other four now flip to `ready` together when the batch returns, which is
+> the one thing D23 costs.
+
+
+### D11 — Nothing auto-saves *(scope narrowed to the Library — see [D25](#d25--the-generated-artifacts-are-persisted-on-the-turn-overturns-d11-in-part))*
+> ⚠️ **Partly overturned 2026-08-07.** Still true for **My Library**: a document only becomes a saved `Resource` when the teacher presses Save. No longer true for the **chat turn**, which now keeps the artifacts it generated so reopening it does not silently discard four model calls of work.
 Each ready card carries its own **Save to Library** button. Cards are **collapsed** by default
 (title + first two lines, tap to expand) — five full documents inline is unreadable on a phone.
 **Why:** this is the app's existing principle everywhere else. `POST /api/resources/generate`
 explicitly persists nothing; the teacher saves deliberately (`GeneratorPage.tsx` `handleSave`).
 
 ### D12 — No database changes
+> ⚠️ **Superseded by [D24](#d24--the-plan-is-persisted-on-the-query-row-the-artifacts-are-not) (2026-08-07).** One nullable column (`Query.classroomPlan`) was added so reopening a chat can restore the artifact cards. Everything else below still holds: a saved artifact is still an ordinary `Resource` row, and there is still no grouping model.
 Each saved artifact is an ordinary `Resource` row, tagged with its topic. No grouping model, no
 "pack" concept, no migration.
 **Rejected (for now):** a `ClassroomPack` model or a `packId` grouping five artifacts together.
@@ -275,6 +304,146 @@ every routable value is still valid. Advertising more would be exactly the failu
 Pinned by a test asserting `ROUTABLE_FORMATS ⊆ FORMATS`.
 **To add a format to the router later:** budget the live eval pass and update `FROZEN_PROMPT_SHA16`
 in the same commit, saying why.
+
+### D21 — The Lesson Plan is its own endpoint, not a fourth assessment format
+**Chosen (during P6, 2026-08-07):** `POST /api/resources/generate-lesson-plan`, with its own request
+schema (`actions/schemas/generateLessonPlan.js`), document schema (`lib/lessonPlanSchema.js`), prompt
+and renderer (`lib/lessonPlanPrompt.js`). It shares the assessment path's generation **machinery** —
+the LaTeX repair-and-verify retry loop, the error mapping — but none of its **shape**.
+**Rejected:** adding `lesson_plan` to `FORMATS` and reusing `/resources/generate`, which is how P4
+and P5 shipped and would have been the cheap-looking move.
+**Why:** worksheet, quiz, homework and exit ticket are the *same document* — questions, options, an
+answer key — which is exactly why they are formats of one endpoint sharing one schema. A lesson plan
+has no questions and no answer key; it is ten named prose sections. Making it a format would force
+`assessmentDocumentSchema` to stop requiring `questions`, and then every consumer of that schema
+(the renderer, the four AI-assist edit actions, the client's answer-key split) needs a branch for a
+document that has none. That is precisely the ternary sprawl `FORMAT_META` was introduced in P4 to
+remove — the P4 recipe's own §8 note calls those ternaries "correct while there were exactly two
+formats, and silently wrong the moment there is a third".
+**Consequence for the client:** `generateArtifact()` in `lib/classroom.ts` dispatches on artifact
+kind, so `useClassroomQueue` never learns there are two endpoints. Routing knowledge stays in one
+place instead of three (the worker, the retry path, and the request builder).
+**Consequence for saving:** a lesson plan saves as `type: 'lesson_plan'`, the one exception to
+[D17](#d17--all-four-question-artifacts-save-as-assessment-no-new-library-types) — and not a new
+Library type either, since `lesson_plan` already existed in `RESOURCE_TYPES` with its own
+`ResourceWorkspace` handling. Saving it as an `assessment` would push a document with no answer key
+through the answer-key split, which is the branch D17 exists to avoid.
+
+### D22 — The model writes PLAIN maths notation, not LaTeX
+**Chosen (2026-08-07):** the generation prompts ask for `$5/9$`, `$x^2$`, `$sqrt(16)$`, `$45 deg$` —
+notation with **no backslashes**. `server/src/lib/mathNotation.js` converts it to LaTeX
+deterministically before validation.
+**Rejected:** a fourth repair layer for the next way the model mangles a backslash.
+**Why:** every LaTeX repair in `assessmentSchema.js` — `repairControlCharLatex`,
+`normalizeDegenerateLatex`, `restoreBareCommands` — exists for ONE root cause: a backslash inside a
+JSON string. `JSON.parse` turns `"\frac"` into FORMFEED+`"rac"`; the model dodges `"\sin"` (an
+invalid JSON escape) into `\text{sin}`; and on 2026-08-07 a live Class 4 quiz reached a teacher
+reading *"In the fraction f r a c 59, which number is the numerator?"* — a lost backslash producing
+`$frac59$`, which is **valid KaTeX** and therefore passed every check we had. The prompt already
+demanded double-backslash escaping, in capitals. A model instruction is a request, not a guarantee,
+and each new failure mode had cost another repair pass. Plain notation removes the cause instead of
+the symptom, and the conversion is code we unit-test rather than a prompt we hope about.
+**Safety contract (the part that matters):** anything containing a backslash is already LaTeX and is
+returned **unchanged**; anything the parser cannot read confidently returns null and the text is left
+**exactly as it arrived**. So every saved resource, and any model that ignores the new prompt, keeps
+working — and the old repair layers stay behind this as a net. They become dead code only once live
+traffic proves the new path holds.
+
+### D23 — The four question-shaped artifacts share ONE Gemini call
+**Chosen (2026-08-07):** `POST /api/resources/generate-set` generates worksheet, quiz, homework and
+exit ticket in a single call. Classroom Mode goes from **7 model calls per teacher question to 4**
+(answer, planner, assessment set, lesson plan).
+**Rejected (a):** one call per artifact, as P3–P5 shipped.
+**Rejected (b):** all five artifacts plus the coaching answer in one call.
+**Why not (a):** the binding constraint is the free tier's **20 requests per MINUTE**, not token
+price. At 7 calls a question a teacher was throttled after three questions. Note what this does and
+does not save: the duplicated instructions are ~750–1000 input tokens; the **output** — the same five
+documents — is identical either way, and output is the expensive half. This is a rate-limit fix that
+happens to save some input tokens, not a cost fix.
+**Why not (b):** the lesson plan is a different document shape (D21), so folding it in means one
+union schema — the thing D21 rejected — and it is the largest single output in the set. The coaching
+answer must stay separate anyway; it is what the teacher reads first.
+**The part that makes it work — per-artifact retry:** a naive batch discards the whole response when
+one artifact is bad and regenerates all four, which with `MAX_LATEX_REGEN_ATTEMPTS` can cost **more**
+than separate calls ever did. Each artifact is normalized, LaTeX-checked and schema-checked
+independently; the good ones are kept and returned, and only the failures are re-requested as a
+smaller set. Partial success is a success — one bad quiz must not cost the teacher the other three.
+Pinned by `test/routes/generateSet.test.js`, which asserts the retry asks for `['quiz']` alone.
+
+### D24 — The plan is persisted on the Query row; the artifacts are not
+**Chosen (2026-08-07):** a nullable `classroomPlan` column on `Query` holds the plan as JSON. Its
+migration is `20260807021500_add_classroom_plan_to_query`. Reopening a chat restores the artifact
+**cards**; each card generates only when the teacher presses **Generate**.
+**Rejected (a):** leaving it — the behaviour a teacher actually hit: ask a question with the mode on,
+refresh, reopen the chat, and the materials are simply gone. They had cost four model calls and
+vanished with no warning and no way back.
+**Rejected (b):** caching plan + artifacts in `sessionStorage` — survives a refresh but not a closed
+tab, and puts generated content outside the Library with no Save, which bends [D11](#d11--nothing-auto-saves).
+**Rejected (c):** persisting the generated artifacts too — that IS auto-saving, which D11 exists to
+prevent, and it would put five full documents on a row read by every history list.
+**Why this line, between plan and artifacts:** the plan is small, cheap, and describes what the
+teacher asked for. The artifacts are large, are the product, and D11 says the teacher decides what
+enters their Library. Storing the plan restores the *offer*; storing the artifacts would be making
+the decision for them.
+
+**⚠️ The trap this decision had to avoid, spelled out because it is silent and expensive:** restoring
+a plan hands `useClassroomQueue` a plan it has never seen, and its effect generates the whole set.
+Without a guard, simply BROWSING history would cost four model calls per chat opened — on a free
+tier allowing twenty calls a MINUTE. Hence the `restored` flag: a restored plan renders its cards in
+`stopped`, and nothing is spent until a teacher asks. `stopped` was reused rather than adding a sixth
+status, since "planned, not made" is exactly what it already meant.
+
+**[D12](#d12--no-database-changes) is superseded.** It said "no database changes"; this is one. It
+is nullable and additive, so every existing row and every row from a teacher who never turns the
+mode on stays NULL, and nothing that already reads a `Query` had to change. `GET /api/queries` omits
+the key entirely rather than sending `null`, so an ordinary history payload is byte-for-byte what it
+always was — [§7 rule 3](#7-guardrails) applies to this response too, not only to `/api/coach`.
+
+**Note on how the migration was applied:** `prisma migrate dev` could not be used — the shared
+`dev.db` carries a migration record (`20260720193726_add_conversations_and_messages`) that exists in
+no branch, so Prisma saw drift and wanted to reset. The migration was hand-written, the `ALTER TABLE`
+applied directly, and `prisma migrate resolve --applied` used to record it. **That pre-existing drift
+is still there** and will block the next person who runs `migrate dev`.
+
+### D25 — The generated artifacts ARE persisted on the turn (overturns D11 in part)
+**Chosen (2026-08-07):** a nullable `classroomArtifacts` column on `Query` holds
+`{ artifactKind: markdown }` for the turn. Migration
+`20260807024500_add_classroom_artifacts_to_query`. Reopening a chat shows what was already
+generated, exactly as the teacher left it.
+**Rejected:** keeping [D11](#d11--nothing-auto-saves) intact and offering only a Generate button
+(the state D24 shipped a few hours earlier).
+**Why D11 is overturned here:** D11 says "nothing auto-saves", and it was written before anyone had
+watched a teacher lose four model calls' worth of materials to a page refresh. It is still right
+about the LIBRARY — pressing **Save** is what puts a document somewhere a teacher goes looking for
+it, and that is unchanged. This is a different thing: keeping the CHAT TURN intact. A turn that
+shows an answer but has silently discarded the materials generated beside it is not "not saving",
+it is losing work. **D11 now governs the Library only; the turn keeps its own artifacts.**
+
+**Where the line sits now:**
+
+| | Persisted | Where | Decision |
+|---|---|---|---|
+| The plan (topic, which artifacts fit) | ✅ | `Query.classroomPlan` | [D24](#d24--the-plan-is-persisted-on-the-query-row-the-artifacts-are-not) |
+| The generated documents | ✅ | `Query.classroomArtifacts` | D25 |
+| A document in My Library | Only on **Save** | `Resource` row | [D11](#d11--nothing-auto-saves) — unchanged |
+
+**⚠️ The performance trap, because it is invisible until it is slow:** this column holds up to five
+full documents. `GET /api/queries` returns twenty rows to render a sidebar that displays none of
+them — pulling this column there would move hundreds of kilobytes per history load. So
+`routes/queries.js` uses an **explicit `select`** that omits it, and the artifacts are fetched on
+demand for ONE turn via `GET /api/queries/:id/classroom-artifacts`. A test asserts the list payload
+never contains them. If someone later "tidies" that select back to a default `findMany`, history
+gets slow for every teacher and nothing will fail loudly.
+
+**Bounds and ownership:** 60000 bytes per turn (well above a realistic ~25KB set), rejected with a
+413 rather than truncated. Both endpoints are owner-only and return the SAME 404 for "missing" and
+"not yours", so one teacher cannot probe another's history — the rule `routes/resources.js` already
+follows.
+
+**One thing this change required that was easy to miss:** `/api/queries` was on the app's **16kb**
+JSON body limit. A realistic five-artifact set is 15–25KB, so storing one would have failed in
+production while passing every unit test. `index.js` now routes this one path to the 64kb parser,
+and a test stores a realistic 25KB set to keep that honest.
 
 ### 4.1 Small decisions (recorded so they are not re-litigated)
 
@@ -427,7 +596,10 @@ sits out this one.
 5. 🔒 **Feature flag `VITE_CLASSROOM_MODE_ENABLED` defaults OFF.** Flag off ⇒ the `+` button does not
    render at all. Mirrors `ASSISTANT_ENABLED` / `ATTACHMENTS_ENABLED` / `HELP_SUPPORT_ENABLED`
    (`client/src/config.ts:277`, `:288`, `:297`).
-6. 🔒 **Nothing is persisted by a generation call.** Saving is always an explicit teacher action.
+6. 🔒 **Nothing is persisted to MY LIBRARY by a generation call.** A document becomes a saved
+   `Resource` only when the teacher presses Save. *(Narrowed 2026-08-07 by
+   [D25](#d25--the-generated-artifacts-are-persisted-on-the-turn-overturns-d11-in-part): the chat
+   turn itself now keeps the artifacts it generated, so a refresh no longer discards them.)*
 7. 🔒 **Emergency block is unconditional** ([§6](#6-the-emergency-block)).
 8. 🔒 **Never batch-run real Gemini calls.** The key is free tier — **20 requests/minute** for
    `gemini-2.5-flash` — and one `POST /api/coach` costs several calls (answer + retries/
@@ -645,6 +817,12 @@ confirmed in the Library.
 > | 5 | `client/src/lib/classroom.ts` | `BUILDABLE_ARTIFACTS` + `GENERATION_CONFIG` |
 > | 6 | `client/src/pages/GeneratorPage.tsx` | `FORMAT_LABELS` + `FORMAT_ICONS` — both `Record<AssessmentFormat, …>`, so a missing entry is a **compile error** |
 >
+> **Still exactly six files after batching ([D23](#d23--the-four-question-shaped-artifacts-share-one-gemini-call)).**
+> `assessmentSetInputFor` builds the batch by reading `GENERATION_CONFIG`, so step 5 puts a new
+> format in the batched call automatically — there is no seventh place to register it. Nothing to
+> do for maths notation either ([D22](#d22--the-model-writes-plain-maths-notation-not-latex)): the
+> rules live once in `MATH_NOTATION_RULES` and every prompt interpolates it.
+>
 > Steps 2, 4 and 6 now fail loudly (boot assertion / type error) rather than silently mislabelling
 > the new format as a quiz — which is what the old ternaries did.
 
@@ -658,22 +836,36 @@ confirmed in the Library.
 
 ---
 
-### P5 — Homework ⬜
+### P5 — Homework ✅ Complete (2026-08-07)
 
 **Goal:** a worksheet framed for home.
 
 > Same as P4: saves as `type: 'assessment'`, no Library type added
 > ([D17](#d17--all-four-question-artifacts-save-as-assessment-no-new-library-types)).
+>
+> **The P4 six-file recipe held exactly.** No surprises, no seventh file — the first phase where
+> the recipe was followed as written rather than discovered. All six edits landed in one commit;
+> the boot assertion and the pair-B drift test were what confirmed nothing was missed.
 
-- [ ] `homework` added to `FORMATS` + `ASSESSMENT_FORMATS` (same commit)
-- [ ] Prompt reflects the different setting: done at home, no teacher present, parent/guardian note,
+- [x] `homework` added to `FORMATS` + `ASSESSMENT_FORMATS` (same commit)
+- [x] `AssessmentFormat` union widened (`client/src/lib/resources.ts`)
+- [x] `BUILDABLE_ARTIFACTS` + `GENERATION_CONFIG` (`client/src/lib/classroom.ts`) — **this is the
+      edit that makes the card appear**; without it the planner still proposes homework and
+      `buildableFrom` silently drops it
+- [x] `FORMAT_LABELS` + `FORMAT_ICONS` (`client/src/pages/GeneratorPage.tsx`, icon `House`)
+- [x] Prompt reflects the different setting: done at home, no teacher present, parent/guardian note,
       only materials likely available at home
-- [ ] Works from both Classroom Mode and `/generator`
-- [x] Tests updated — 11 new (`test/lib/assessmentFormats.test.js`), plus 1 new client test
+- [x] 6 questions, mixed, medium — shorter than a worksheet's 8, deliberately not harder
+- [x] Works from both Classroom Mode and `/generator`
+- [x] Tests updated — 1 new server test (homework's purpose states its constraints), 2 new client
+      tests (homework ≠ relabelled worksheet; the three practice artifacts are ordered by length)
+- [ ] ⚠️ **Not yet verified against a real Gemini call** — no live generation has been run for
+      `format: 'homework'`. Per §7 rule 8 this needs ONE manual run, not a batch. Until then the
+      prompt is untested in production shape.
 
 ---
 
-### P6 — Lesson Plan ⬜
+### P6 — Lesson Plan ✅ Complete (2026-08-07)
 
 **Goal:** the one genuinely new generator. **Treat this as its own project.**
 
@@ -704,26 +896,47 @@ lesson plan. Proposed sections:
 **Before building:** get one real lesson plan from a pilot-school teacher and match this against it.
 Section *names* matter here — teachers and head teachers recognise the format by its headings.
 
-- [ ] Structure confirmed against a real teacher's lesson plan
-- [ ] Schema + renderer written; output passes the same LaTeX/KaTeX safety path as assessments
-      (`normalizeAssessmentMath` → `sanitizeAssessmentDocument`)
-- [ ] Endpoint decision recorded in this document
-- [ ] Generates from Classroom Mode
-- [ ] Saves as a `lesson_plan` Resource and opens correctly in `ResourceWorkspace`
+- [ ] ⚠️ **Structure NOT yet confirmed against a real teacher's lesson plan.** Built to D15 from this
+      document alone. Section names are load-bearing — a head teacher recognises the format by its
+      headings — so this still needs one real plan from a pilot school held up against it. This is
+      the highest-value remaining check and it needs a person, not code.
+- [x] Schema + renderer written; output passes the same LaTeX/KaTeX safety path as assessments
+      (`normalizeLessonPlanMath` → `sanitizeTextFields`, sharing `latexGuard`'s repair and verify)
+- [x] Endpoint decision recorded in this document — **[D21](#d21--the-lesson-plan-is-its-own-endpoint-not-a-fourth-assessment-format)**
+- [x] Generates from Classroom Mode (`generateArtifact` dispatches; the queue stays endpoint-agnostic)
+- [x] Saves as a `lesson_plan` Resource and opens correctly in `ResourceWorkspace`
       (note `isLessonPlan` at `client/src/pages/ResourceWorkspace.tsx:296`)
-- [ ] Tests
+- [x] Markdown **tables** added to `client/src/lib/format.ts` — the Presentation section is a
+      two-column teacher/student table, and the formatter had no table support at all, so it would
+      have rendered as raw pipe characters
+- [x] Tests — 22 server (`test/lib/lessonPlanSchema.test.js`), 8 client (`src/lib/format.table.test.ts`)
+- [ ] ⚠️ **Not yet verified against a real Gemini call.** Per §7 rule 8, ONE manual run.
 
 ---
 
-### P7 — Telemetry, polish, optional cap ⬜
+### P7 — Telemetry, polish, optional cap 🟡 Built (2026-08-07)
 
-- [ ] `Event` rows for: mode enabled/disabled, artifacts planned, artifacts generated, saved, stopped
-      (reuse the existing `Event` model — no schema change)
-- [ ] Measure the real cost per Classroom Mode use
-- [ ] Decide on a daily cap ([D9](#d9--no-usage-cap-in-the-pilot)) with real numbers
-- [ ] Onboarding tip for the `+` button (`useOnboardingTip`, as `generator-intro` does)
-- [ ] Full mobile pass
-- [ ] Accessibility pass: card status changes announced, queue progress not colour-only
+- [x] `Event` rows, no schema change as promised:
+      - `classroom_mode_planned` (server, `index.js`) — mode requested, gate passed, what the planner
+        decided. `planned: 0` is the interesting row: a teacher who turned the mode on and got nothing.
+      - `classroom_artifact_saved` (server, `routes/resources.js`) — recorded where the save already
+        passes through, tagged `source: 'classroom_mode'`. Saving is the honest success signal; an
+        artifact generated but never saved helped nobody.
+- [ ] `Event` rows for **generated** and **stopped** — deliberately deferred. Both are client-only
+      states, and the existing `assistant/telemetry.ts` is the Action Router's with a closed event
+      set that these do not belong in. Needs a small dedicated transport; not worth inventing one
+      before the two rows above show whether the funnel question is even live.
+- [ ] ⚠️ **Measure the real cost per Classroom Mode use** — BLOCKED on live usage. The telemetry to
+      measure it now exists; the numbers do not.
+- [ ] ⚠️ **Decide on a daily cap ([D9](#d9--no-usage-cap-in-the-pilot))** — blocked on the above. Do
+      not guess a number; that is the whole point of D9.
+- [x] Onboarding tip for the `+` button — `classroom-mode-intro`, shown only while the mode is OFF
+      (once it is on, the teacher has found the button and the pill explains the rest)
+- [x] Mobile pass — the Presentation table scrolls inside its own box rather than forcing the page
+      to scroll sideways, and keeps its borders and repeats its header when printed
+- [x] Accessibility pass — progress is now announced **while generating**, not only at the end. It
+      previously swapped the "N of M ready" count for the Stop button, so the one moment a teacher
+      most wants to know how far along it is said nothing. Card status was already text, not colour.
 
 ---
 
@@ -747,7 +960,7 @@ Section *names* matter here — teachers and head teachers recognise the format 
 | Risk | Mitigation |
 |---|---|
 | ~5–6× AI spend per use | Opt-in, default off, visible pill; measure in P7; cap available ([D9](#d9--no-usage-cap-in-the-pilot)) |
-| Rate limiter trips on a burst | 2 concurrent max ([D10](#d10--two-artifacts-at-a-time-progressively-rendered)); verified in P3 |
+| Rate limiter trips on a burst | Was 7 model calls per question; now **4** ([D23](#d23--the-four-question-shaped-artifacts-share-one-gemini-call)). At most 2 requests in flight, structurally — the free tier's 20/min was the binding limit, not token price |
 | Planner misjudges applicability | P2 gate: 20 real questions verified before any generation is built |
 | Planner call slows the answer | Parallel + shorter timeout + failure swallowed ([D7](#d7--the-planner-is-a-separate-call-run-in-parallel)) |
 | Materials appear during a real emergency | Unconditional hard block ([§6](#6-the-emergency-block)) |

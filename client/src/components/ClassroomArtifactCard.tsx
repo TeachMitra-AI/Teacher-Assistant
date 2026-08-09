@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2, Save, RefreshCw, AlertCircle, Check } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Save, RefreshCw, AlertCircle, Check, Sparkles } from 'lucide-react';
 import { formatResponse } from '../lib/format';
 import { stripAssessmentPreamble } from '../lib/assessment';
 import { ARTIFACT_META, artifactTitle } from '../lib/classroom';
@@ -41,10 +41,17 @@ export default function ClassroomArtifactCard({ item, plan, onRetry }: Classroom
     setSaving(true);
     try {
       const saved = await createResource({
-        // D17: every question-shaped artifact is an `assessment`. No new
+        // D17: every QUESTION-SHAPED artifact is an `assessment`. No new
         // Library types — the format lives in `structured`, exactly as the
         // Generator records it.
-        type: 'assessment',
+        //
+        // A lesson plan is the one exception, and not a new type either:
+        // `lesson_plan` already exists in RESOURCE_TYPES and already has its
+        // own handling in ResourceWorkspace (isLessonPlan). Saving it as an
+        // assessment would put a document with no questions and no answer key
+        // through the answer-key split, which is exactly the branch D17 exists
+        // to avoid.
+        type: item.artifact === 'lesson_plan' ? 'lesson_plan' : 'assessment',
         title: artifactTitle(item.artifact, plan),
         grade: plan.grade || undefined,
         subject: plan.subject || undefined,
@@ -97,6 +104,17 @@ export default function ClassroomArtifactCard({ item, plan, onRetry }: Classroom
             <RefreshCw size={14} aria-hidden="true" /> Retry
           </button>
         )}
+
+        {/* `stopped` covers two situations that want the same button: the
+            teacher pressed Stop mid-queue, and a set restored from history
+            (D24) which deliberately generated nothing. Both are "planned, not
+            made" — so the label is Generate rather than Retry, because for a
+            restored card nothing was ever attempted to retry. */}
+        {item.status === 'stopped' && (
+          <button type="button" className="classroom-card-save" onClick={onRetry}>
+            <Sparkles size={14} aria-hidden="true" /> Generate
+          </button>
+        )}
       </div>
 
       {item.status === 'failed' && item.error && (
@@ -133,7 +151,10 @@ function ClassroomCardStatus({ status }: { status: ArtifactState['status'] }) {
     );
   }
   if (status === 'waiting') return <span className="classroom-card-status">Queued</span>;
-  if (status === 'stopped') return <span className="classroom-card-status">Stopped</span>;
+  // No label for `stopped`: the Generate button beside it already says what
+  // the card is for, and "Stopped" reads as an error on a restored set that
+  // was never started (D24).
+  if (status === 'stopped') return null;
   if (status === 'failed') return <span className="classroom-card-status failed">Failed</span>;
   return <span className="classroom-card-status ready">Ready</span>;
 }

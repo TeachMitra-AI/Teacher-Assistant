@@ -71,6 +71,19 @@ describe('assessmentFormats — coverage', () => {
     expect(new Set(purposes).size).toBe(FORMATS.length);
   });
 
+  // Homework's whole reason for existing as a separate format is the SETTING:
+  // done alone, at home, with no teacher to ask and often a parent who did not
+  // attend the lesson. A purpose that omits those constraints produces a
+  // worksheet with a different title — the exact bug FORMAT_META was
+  // introduced to prevent.
+  test('homework states the constraints that make it homework, not a worksheet', () => {
+    const { purpose } = FORMAT_META.homework;
+    expect(purpose).toMatch(/home/i);
+    expect(purpose, 'must say no teacher is available').toMatch(/no teacher|without a teacher/i);
+    expect(purpose, 'must ask for a parent/guardian note').toMatch(/parent|guardian/i);
+    expect(purpose, 'must bound the materials to what is at home').toMatch(/materials|household/i);
+  });
+
   test('answer-key headings match what the client splits on', () => {
     // client/src/lib/assessment.ts ANSWER_KEY_HEADING — a heading the client
     // cannot recognise means the answer key is printed to students.

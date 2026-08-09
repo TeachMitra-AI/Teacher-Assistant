@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  FileQuestion, ClipboardList, Sparkles, Loader2, Pencil, Eye, Save, ArrowRight, Ticket,
+  FileQuestion, ClipboardList, Sparkles, Loader2, Pencil, Eye, Save, ArrowRight, Ticket, House,
   type LucideIcon,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
@@ -40,12 +40,14 @@ const FORMAT_LABELS: Record<AssessmentFormat, string> = {
   quiz: 'Quiz',
   worksheet: 'Worksheet',
   exit_ticket: 'Exit Ticket',
+  homework: 'Homework',
 };
 
 const FORMAT_ICONS: Record<AssessmentFormat, LucideIcon> = {
   quiz: FileQuestion,
   worksheet: ClipboardList,
   exit_ticket: Ticket,
+  homework: House,
 };
 
 // Sensible default title for a generated assessment (editable before saving).

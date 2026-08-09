@@ -1,7 +1,31 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { coercePrefillValues, loadPrefill } from './generatorPrefill';
 import { createDraft, markConsumed, DRAFT_STORAGE_KEY } from './draftStore';
 import { drainTelemetry } from './telemetry';
+
+// The TRANSPORT is stubbed out, and that is what makes the buffer assertions in
+// this file mean anything.
+//
+// `loadPrefill` records to the in-memory telemetry buffer and then, on the very
+// next line, calls `notePrefillDelivered`. That function legitimately calls
+// `drainTelemetry()` itself (telemetryTransport.ts) to discard corrections
+// belonging to a previous prefill — so the event this file is trying to observe
+// is wiped microseconds after it is written.
+//
+// That made these tests depend on an AMBIENT BUILD FLAG: the transport bails
+// early when `ASSISTANT_ENABLED` is false, leaving the buffer intact, so the
+// suite passed with `VITE_ASSISTANT_ENABLED=false` in .env and failed with it
+// set to true. A unit test should not change verdict because of a developer's
+// local .env.
+//
+// Stubbing the collaborator pins that down. This file imports nothing from the
+// transport and asserts nothing about it — its own behaviour is covered by
+// telemetryTransport.test.ts — so nothing is lost by isolating it here.
+vi.mock('./telemetryTransport', () => ({
+  notePrefillDelivered: vi.fn(),
+  notePrefillGenerated: vi.fn(),
+  notePrefillUndone: vi.fn(),
+}));
 
 // coercePrefillValues is the boundary between an untrusted params object and
 // the Generator's typed form state. Everything it rejects is a field the

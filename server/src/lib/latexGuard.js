@@ -23,6 +23,13 @@
 //   4. anything that still fails is reported as unsafe; callers must not
 //      forward that document to the client (see resources.js's retry loop)
 const katex = require('katex');
+const { BARE_COMMANDS } = require('./assessmentSchema');
+
+// Same two patterns restoreBareCommands uses, rebuilt here rather than
+// exported, so this backstop stays independent of the repair's internals —
+// the point of a second pass is that it does not share the first one's state.
+const BARE_COMMAND_RE = new RegExp(`(?<![\\\\a-zA-Z])(${BARE_COMMANDS.join('|')})(?![a-zA-Z])`, 'g');
+const TEXT_ARG_RE = /\\(?:text|textbf|textit|textrm|mathrm|mbox|operatorname)\s*\{[^{}]*\}/g;
 
 // Same shape as client/src/lib/math.ts's BLOCK_MATH/INLINE_MATH — kept as a
 // separate copy (CJS server vs ESM client) rather than a cross-package
@@ -243,6 +250,37 @@ function findUnrenderableSegments(text) {
 }
 
 /**
+ * Backstop for the backslash-less mangling repaired by
+ * assessmentSchema.js's restoreBareCommands ("$frac59$" for "$\frac59$").
+ *
+ * This exists because findUnrenderableSegments CANNOT catch it: "frac59" is
+ * valid KaTeX, so the render check passes and the teacher receives italic
+ * gibberish. Renderability is not meaningfulness, and this is the one case
+ * where the difference reaches a classroom.
+ *
+ * The repair upstream should have fixed it; anything still here means the
+ * repair missed a form, and the document must not be forwarded.
+ * @param {string} text
+ * @returns {string[]} error messages, empty if every segment is clean
+ */
+function findBareCommandSegments(text) {
+  const errors = [];
+  for (const { source } of findExistingMathRanges(text)) {
+    // Same \text{...}-protection as the repair: prose inside a text argument
+    // is not a mangled command.
+    const stripped = source.replace(TEXT_ARG_RE, '');
+    BARE_COMMAND_RE.lastIndex = 0;
+    const hit = BARE_COMMAND_RE.exec(stripped);
+    if (hit) {
+      errors.push(
+        `"${source}": "${hit[1]}" is missing its backslash — this renders as italic letters, not as \\${hit[1]}.`
+      );
+    }
+  }
+  return errors;
+}
+
+/**
  * Runs the full detect → repair → verify pipeline on one string field.
  * @param {string} text
  * @returns {{ text: string, ok: boolean, errors: string[] }}
@@ -257,6 +295,7 @@ function sanitizeLatex(text) {
     errors.push('LaTeX command found outside $...$/$$...$$ that could not be safely repaired.');
   }
   errors.push(...findUnrenderableSegments(repaired));
+  errors.push(...findBareCommandSegments(repaired));
 
   return { text: repaired, ok: errors.length === 0, errors };
 }
@@ -319,8 +358,36 @@ function sanitizeAssessmentDocument(doc) {
   return { ok: errors.length === 0, doc: out, errors };
 }
 
+/**
+ * Runs sanitizeLatex over an arbitrary set of already-extracted text fields.
+ *
+ * sanitizeAssessmentDocument above walks the assessment shape directly because
+ * it predates there being a second shape. A lesson plan (P6) has ten named
+ * sections and no questions, so rather than teach this module a second
+ * document layout, the caller flattens its own document to {path, value} pairs
+ * and gets the repaired values back keyed the same way. The LaTeX rules are
+ * identical; only the traversal differs, and traversal is the caller's
+ * business.
+ *
+ * @param {Array<{path: string, value: string}>} fields
+ * @returns {{ ok: boolean, repaired: Record<string, string>, errors: string[] }}
+ */
+function sanitizeTextFields(fields) {
+  const errors = [];
+  const repaired = {};
+
+  for (const { path, value } of fields) {
+    const r = sanitizeLatex(value);
+    repaired[path] = r.text;
+    if (!r.ok) errors.push(...r.errors.map((e) => `${path}: ${e}`));
+  }
+
+  return { ok: errors.length === 0, repaired, errors };
+}
+
 module.exports = {
   sanitizeAssessmentDocument,
+  sanitizeTextFields,
   sanitizeLatex,
   // Exported for unit testing only.
   repairBareLatex,

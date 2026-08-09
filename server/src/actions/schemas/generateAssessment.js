@@ -41,7 +41,12 @@ const { MAX_META, MAX_LANGUAGE } = require('../../lib/resourceFields');
 // (very few questions, checking one lesson's understanding) lives in
 // FORMAT_META in routes/resources.js, not here: this list is the vocabulary,
 // not the behaviour.
-const FORMATS = ['quiz', 'worksheet', 'exit_ticket'];
+// `homework` added for Classroom Mode (docs/classroom-mode.md P5), on the same
+// reasoning as exit_ticket above: it is questions with an answer key, so it is a
+// FORMAT and saves as `type: 'assessment'` (D17). What makes it homework rather
+// than a worksheet is the SETTING it is written for — done at home with no
+// teacher to ask — and that lives in FORMAT_META, not in this list.
+const FORMATS = ['quiz', 'worksheet', 'exit_ticket', 'homework'];
 
 // What the AI ACTION ROUTER advertises — deliberately a SUBSET of FORMATS.
 //

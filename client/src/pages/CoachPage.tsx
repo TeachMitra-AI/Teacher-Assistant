@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import TopBar from '../components/TopBar';
 import Sidebar from '../components/Sidebar';
@@ -7,6 +8,7 @@ import MessageList from '../components/MessageList';
 import ContextBar from '../components/ContextBar';
 import Composer from '../components/Composer';
 import ClassroomModePill from '../components/ClassroomModePill';
+import OnboardingTip from '../components/OnboardingTip';
 import AiClarifyPrompt from '../components/AiClarifyPrompt';
 import { useToast } from '../components/Toast';
 import { useVoiceInput } from '../hooks/useVoiceInput';
@@ -14,6 +16,7 @@ import { useAttachments, type SelectedAttachment } from '../hooks/useAttachments
 import { usePreferences } from '../hooks/usePreferences';
 import { useAuth } from '../auth';
 import { useOnboarding } from '../onboarding';
+import { useOnboardingTip } from '../hooks/useOnboardingTip';
 import { api, ApiError } from '../api';
 // This page's ONLY import from the AI Action Router (milestone M6). Keeping the
 // coupling to a single line is what makes the feature deletable and what keeps
@@ -69,6 +72,8 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   // mode remembered across sessions is one a teacher stops noticing. Two taps
   // tomorrow is the cheaper mistake.
   const [classroomMode, setClassroomMode] = useState(false);
+  // First-visit tip pointing at the "+" button (P7).
+  const classroomTip = useOnboardingTip('classroom-mode-intro');
 
   function setClassroomModeOn(on: boolean) {
     setClassroomMode(on);
@@ -393,12 +398,17 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
       context: mergedContext,
       status: 'done',
       rating: item.rating,
+      // Reopening a chat must not spend model calls. The plan is restored so
+      // the cards reappear, but `restored` keeps them idle until the teacher
+      // presses Generate on the one they want (D24).
+      restored: true,
       response: {
         success: true,
         text: item.text,
         language: item.language,
         context: item.context,
         queryId: item.id,
+        ...(item.classroom ? { classroom: item.classroom } : {}),
       },
     }]);
     setLanguage(item.language);
@@ -472,6 +482,17 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                   conversation-level controls rather than inside the text box. */}
               {CLASSROOM_MODE_ENABLED && classroomMode && (
                 <ClassroomModePill onDismiss={() => setClassroomModeOn(false)} />
+              )}
+              {/* First-visit tip for the "+" button (P7). Shown only while the
+                  mode is OFF: once a teacher has turned it on they have found
+                  the button, and the pill above already explains what the mode
+                  does. Sits directly above the Composer that holds the button
+                  it describes, the same placement generator-intro uses. */}
+              {CLASSROOM_MODE_ENABLED && !classroomMode && classroomTip.visible && (
+                <OnboardingTip icon={Sparkles} onDismiss={classroomTip.dismiss}>
+                  Tap <strong>+</strong> below and turn on <strong>Classroom Mode</strong> to get a lesson
+                  plan, worksheet, quiz, homework and exit ticket alongside your answer.
+                </OnboardingTip>
               )}
               <ContextBar language={language} onLanguageChange={setLanguage} context={context} onContextChange={setCtx} />
               <Composer

@@ -247,6 +247,9 @@ export interface Turn {
   status: 'pending' | 'done' | 'error';
   response?: CoachResponse;
   rating: 'helpful' | 'not_helpful' | null;
+  // True when this turn was rebuilt from history rather than just answered.
+  // Classroom Mode reads it to decide whether its cards may generate (D24).
+  restored?: boolean;
   error?: string;
   // Set when `error` came from a network failure (ApiError status 0) rather
   // than a server response — the one error category Phase 1 of Help &
@@ -274,6 +277,9 @@ export interface HistoryItem {
   responseTime: number;
   createdAt: string;
   rating: 'helpful' | 'not_helpful' | null;
+  // Classroom Mode's plan for this turn (D24). Present only for turns where
+  // the mode actually produced one; absent for every ordinary question.
+  classroom?: ClassroomPlan;
 }
 
 export interface Analytics {

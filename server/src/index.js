@@ -353,6 +353,11 @@ const jsonSmall = express.json({ limit: '16kb' });
 const jsonLarge = express.json({ limit: '64kb' });
 app.use((req, res, next) => {
   if (req.path.startsWith('/api/resources')) return jsonLarge(req, res, next);
+  // Classroom Mode stores a turn's generated artifacts (D25) — up to five full
+  // documents in one body, which comfortably exceeds 16kb. Same reasoning as
+  // the resources routes above, scoped to the one path that needs it rather
+  // than raising the limit for all of /api/queries.
+  if (/^\/api\/queries\/[^/]+\/classroom-artifacts$/.test(req.path)) return jsonLarge(req, res, next);
   return jsonSmall(req, res, next);
 });
 
@@ -720,6 +725,57 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
     // the key entirely rather than sending an empty object, so a client that
     // never uses this feature receives the response it has always received.
     const classroomPlan = await classroomPlanSettled;
+
+    // Classroom Mode telemetry (P7). Best-effort and non-blocking, exactly like
+    // the injection telemetry above: a failed write must never cost the teacher
+    // their answer. METADATA ONLY — the artifact names and counts, never the
+    // question, the topic, or any generated text.
+    //
+    // Written here rather than in the planner because this is the only place
+    // that knows all three of: the mode was requested, the rollout gate
+    // allowed it, and what the planner ultimately decided. `planned: 0` is the
+    // interesting row — it is a teacher who turned the mode on and got
+    // nothing, which is the signal that the planner's gates are too tight.
+    if (classroomRequested) {
+      // Persist the plan on the Query row so reopening this chat can restore
+      // the artifact cards (D24). Done as an UPDATE after the fact rather than
+      // as part of the create above, deliberately: the plan settles later than
+      // the answer, and folding it in would make every ORDINARY question wait
+      // on a promise it has no interest in. Mode off is one write, exactly as
+      // before — §7 rule 3.
+      //
+      // Best-effort. A failure here costs the teacher nothing they can see
+      // right now; the cards for this turn are already on screen. It only
+      // means reopening the chat later will not restore them.
+      if (queryId && classroomPlan) {
+        try {
+          await prisma.query.update({
+            where: { id: queryId },
+            data: { classroomPlan: JSON.stringify(classroomPlan) },
+          });
+        } catch (planError) {
+          logAiEvent('error', 'classroom_plan_persist_failed', { requestId, message: planError.message });
+        }
+      }
+
+      try {
+        await prisma.event.create({
+          data: {
+            userId: req.user.id,
+            schoolId: req.user.schoolId,
+            type: 'classroom_mode_planned',
+            metadata: JSON.stringify({
+              planned: classroomPlan ? classroomPlan.artifacts.length : 0,
+              artifacts: classroomPlan ? classroomPlan.artifacts : [],
+              language: classroomPlan ? classroomPlan.language : language,
+              queryId,
+            }),
+          },
+        });
+      } catch (eventError) {
+        logAiEvent('error', 'classroom_event_write_failed', { requestId, message: eventError.message });
+      }
+    }
 
     return res.json({
       success: true,

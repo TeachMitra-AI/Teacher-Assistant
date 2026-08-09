@@ -26,11 +26,65 @@ const validInput = {
   utterance: 'Generate a Class 5 fractions worksheet',
 };
 
+// ---------------------------------------------------------------------------
+// Simulating unavailable storage.
+//
+// jsdom's `sessionStorage` is a PROXY, not a plain Storage instance. Its
+// prototype is not `Storage.prototype`, and its `set` trap writes through
+// rather than replacing a method — so BOTH of the obvious approaches silently
+// do nothing:
+//
+//   vi.spyOn(window.Storage.prototype, 'setItem')  → never intercepts
+//   vi.spyOn(window.sessionStorage,   'setItem')   → never intercepts
+//
+// "Silently" is the dangerous part. The spy installs without error, storage
+// keeps working, and the test exercises the NORMAL path while its name claims
+// it covers the failure path. These tests passed under an older jsdom and
+// stopped meaning anything after an upgrade, without ever going red for a
+// reason anyone would connect to storage.
+//
+// Replacing the whole object is the only thing that works. The evidence that
+// it now bites: with no change to draftStore.ts, these tests went from FAILING
+// (createDraft returned a handle, because the write never threw) to passing.
+// The only path to `null` there is the write actually failing, so the fake is
+// reaching the code under test.
+function breakStorage(broken: Partial<Record<'getItem' | 'setItem' | 'removeItem', () => never>>) {
+  const backing = new Map<string, string>();
+  const fake: Storage = {
+    get length() { return backing.size; },
+    key: (i: number) => [...backing.keys()][i] ?? null,
+    getItem: broken.getItem ?? ((k: string) => backing.get(k) ?? null),
+    setItem: broken.setItem ?? ((k: string, v: string) => { backing.set(k, String(v)); }),
+    removeItem: broken.removeItem ?? ((k: string) => { backing.delete(k); }),
+    clear: () => backing.clear(),
+  } as Storage;
+
+  // Seed the fake with whatever the real storage holds, so a test that wrote a
+  // draft BEFORE breaking storage can still read it back through the working
+  // methods — which is exactly the "wrote fine, now reading fails" shape the
+  // private-browsing tests need.
+  for (let i = 0; i < window.sessionStorage.length; i += 1) {
+    const k = window.sessionStorage.key(i);
+    if (k !== null) backing.set(k, window.sessionStorage.getItem(k) ?? '');
+  }
+
+  Object.defineProperty(window, 'sessionStorage', { value: fake, configurable: true, writable: true });
+}
+
+// Captured once, before any test replaces it.
+const realSessionStorage = window.sessionStorage;
+
 beforeEach(() => {
   window.sessionStorage.clear();
 });
 
 afterEach(() => {
+  // Put the real Proxy back. `vi.restoreAllMocks()` cannot undo a
+  // defineProperty, so this is explicit — without it, one broken-storage test
+  // would poison every test after it in the file.
+  Object.defineProperty(window, 'sessionStorage', {
+    value: realSessionStorage, configurable: true, writable: true,
+  });
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
@@ -175,9 +229,7 @@ describe('markConsumed', () => {
 
 describe('fail-soft: storage unavailable', () => {
   it('returns null from createDraft when writing throws (quota exceeded)', () => {
-    vi.spyOn(window.Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new DOMException('QuotaExceededError');
-    });
+    breakStorage({ setItem: () => { throw new DOMException('QuotaExceededError'); } });
 
     // A null handle is a normal outcome, not an error: the caller navigates
     // without ?ai= and the teacher gets an ordinary empty Generator.
@@ -186,18 +238,14 @@ describe('fail-soft: storage unavailable', () => {
 
   it('returns null from readDraft when reading throws (private browsing)', () => {
     const id = createDraft(validInput)!;
-    vi.spyOn(window.Storage.prototype, 'getItem').mockImplementation(() => {
-      throw new DOMException('SecurityError');
-    });
+    breakStorage({ getItem: () => { throw new DOMException('SecurityError'); } });
 
     expect(readDraft(id)).toBeNull();
   });
 
   it('does not throw from markConsumed when storage is unavailable', () => {
     const id = createDraft(validInput)!;
-    vi.spyOn(window.Storage.prototype, 'getItem').mockImplementation(() => {
-      throw new DOMException('SecurityError');
-    });
+    breakStorage({ getItem: () => { throw new DOMException('SecurityError'); } });
 
     expect(() => markConsumed(id)).not.toThrow();
   });

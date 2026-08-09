@@ -96,7 +96,13 @@ export default function MessageBubble({ turn, onFeedback, onFollowUp, onRetry }:
             {/* The whole of P3's footprint on the chat path: one conditional
                 line. Everything about generating, queuing, previewing and
                 saving lives inside ClassroomSet. */}
-            {turn.response.classroom && <ClassroomSet plan={turn.response.classroom} />}
+            {turn.response.classroom && (
+              <ClassroomSet
+                plan={turn.response.classroom}
+                restored={turn.restored === true}
+                queryId={turn.response.queryId ?? undefined}
+              />
+            )}
             {!hasAttachments && (
               <FollowUpChips language={turn.response.language} onAction={(action) => onFollowUp(turn, action)} />
             )}

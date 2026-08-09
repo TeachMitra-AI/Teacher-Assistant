@@ -866,6 +866,39 @@ button { font-family: inherit; cursor: pointer; }
   .response-body .fmt-options { grid-template-columns: 1fr; }
 }
 
+/* Pipe tables (format.ts) — the Lesson Plan's Presentation section, where the
+   teacher/student pairing is the information. */
+.response-body .fmt-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.6rem 0 1rem;
+  font-size: 0.95em;
+}
+.response-body .fmt-table th,
+.response-body .fmt-table td {
+  border: 1px solid var(--border, #d8d8d8);
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+.response-body .fmt-table th {
+  background: var(--surface-2, #f4f4f5);
+  font-weight: 600;
+}
+/* The step number column stays as narrow as its content. */
+.response-body .fmt-table td:first-child,
+.response-body .fmt-table th:first-child { width: 1%; white-space: nowrap; }
+
+/* A table cannot reflow to one column without losing the pairing that makes it
+   a table, so on a narrow screen it scrolls sideways inside its own box rather
+   than forcing the whole page to scroll. */
+@media (max-width: 640px) {
+  .response-body .fmt-table { display: block; overflow-x: auto; }
+  .response-body .fmt-table td, .response-body .fmt-table th { min-width: 8rem; }
+  .response-body .fmt-table td:first-child,
+  .response-body .fmt-table th:first-child { min-width: 2rem; }
+}
+
 .response-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.1rem; }
 .action-chip {
   background: var(--surface-2);
@@ -2808,6 +2841,13 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   .print-body p { margin: 0.6rem 0; }
   .print-body .fmt-subpart { margin: 0.3rem 0 0.3rem 1.9em; }
   .print-body p, .print-body li, .print-body .fmt-option, .print-body .fmt-subpart { page-break-inside: avoid; break-inside: avoid; }
+  /* A lesson plan is printed and carried into class, so the Presentation table
+     must keep its borders and repeat its header on a second page rather than
+     scrolling (there is nothing to scroll on paper). */
+  .print-body .fmt-table { display: table; overflow: visible; width: 100%; border-collapse: collapse; }
+  .print-body .fmt-table thead { display: table-header-group; }
+  .print-body .fmt-table tr { page-break-inside: avoid; break-inside: avoid; }
+  .print-body .fmt-table th, .print-body .fmt-table td { border: 1px solid #999999; padding: 0.35rem 0.5rem; }
   .print-body p { orphans: 3; widows: 3; }
   /* Keep a question and its options on the same page, together: never break
      right after the question text, never break inside the option block. */
