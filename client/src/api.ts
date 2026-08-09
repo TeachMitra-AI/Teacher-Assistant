@@ -1,6 +1,10 @@
 import { API_BASE } from './config';
 
-const TOKEN_KEY = 'auth_token';
+// Exported so auth.tsx's cross-tab 'storage' listener can recognize which
+// localStorage key is the identity-bearing one (see lib/authStorageSync.ts) —
+// single source of truth for the key name, rather than a second literal
+// string living in auth.tsx.
+export const TOKEN_KEY = 'auth_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
 
 export function getToken(): string | null {
