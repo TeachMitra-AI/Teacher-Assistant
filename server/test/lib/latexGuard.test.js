@@ -164,3 +164,36 @@ describe('sanitizeAssessmentDocument', () => {
     expect(sanitizeAssessmentDocument([1, 2])).toEqual({ ok: true, doc: [1, 2], errors: [] });
   });
 });
+
+// --- Backstop for backslash-less commands, 2026-08-07 -------------------------
+describe('findBareCommandSegments — the case KaTeX cannot catch', () => {
+  // The whole reason this backstop exists: "frac59" IS valid KaTeX. The render
+  // check passes it happily, so without this the document ships as gibberish.
+  test('a rendered-but-meaningless segment is rejected, not passed', () => {
+    const r = sanitizeLatex('In the fraction $frac59$, which is the numerator?');
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(' ')).toMatch(/missing its backslash/);
+  });
+
+  test('confirms the render check alone would have passed it', () => {
+    expect(findUnrenderableSegments('$frac59$')).toEqual([]);
+  });
+
+  test('correct LaTeX still passes', () => {
+    expect(sanitizeLatex('$\\frac{5}{9}$').ok).toBe(true);
+    expect(sanitizeLatex('$\\dfrac{1}{2}$').ok).toBe(true);
+  });
+
+  test('prose in a \\text{...} argument is not flagged', () => {
+    expect(sanitizeLatex('$\\text{the sum of}$').ok).toBe(true);
+  });
+
+  test('an unsafe document is reported so the caller can retry', () => {
+    const { ok, errors } = sanitizeAssessmentDocument({
+      instructions: 'Read carefully.',
+      questions: [{ type: 'mcq', text: '$frac35$ of the shape', options: ['$frac15$'], correctAnswer: 'A' }],
+    });
+    expect(ok).toBe(false);
+    expect(errors.length).toBeGreaterThanOrEqual(2);
+  });
+});

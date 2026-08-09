@@ -94,7 +94,10 @@ export async function deleteResource(id: string): Promise<void> {
 }
 
 // --- Quiz / Worksheet Generator ---
-export type AssessmentFormat = 'quiz' | 'worksheet';
+// Must match FORMATS in server/src/actions/schemas/generateAssessment.js — the
+// runtime authority. Pinned by the pair-B drift test in
+// server/test/assistant/contractDrift.test.js via ASSESSMENT_FORMATS.
+export type AssessmentFormat = 'quiz' | 'worksheet' | 'exit_ticket' | 'homework';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type QuestionType = 'mcq' | 'true_false' | 'short_answer' | 'mixed';
 
@@ -120,4 +123,67 @@ export interface GenerateAssessmentResult {
 // explicitly with createResource (type "assessment").
 export async function generateAssessment(input: GenerateAssessmentInput): Promise<GenerateAssessmentResult> {
   return api<GenerateAssessmentResult>('/resources/generate', { method: 'POST', body: input });
+}
+
+// --- Batched assessment generation (Classroom Mode) ---
+// One call for several question-shaped artifacts instead of one call each.
+// Classroom Mode cost 7 Gemini calls per question; the free tier allows 20 a
+// minute, so three questions throttled a teacher. This takes it to 4.
+// Must match generateAssessmentSetSchema in
+// server/src/actions/schemas/generateAssessmentSet.js.
+export interface GenerateSetItem {
+  format: AssessmentFormat;
+  difficulty: Difficulty;
+  questionType: QuestionType;
+  questionCount: number;
+}
+
+export interface GenerateSetInput {
+  topic: string;
+  grade?: string;
+  subject?: string;
+  language?: string;
+  instructions?: string;
+  items: GenerateSetItem[];
+}
+
+// Per-artifact outcome. `content` and `error` are exclusive: the server
+// returns whatever succeeded even when one artifact could not be produced, so
+// a single failure never costs the teacher the rest of the set.
+export interface GenerateSetResult {
+  format: AssessmentFormat;
+  content: string | null;
+  error: string | null;
+}
+
+export async function generateAssessmentSet(
+  input: GenerateSetInput
+): Promise<{ results: GenerateSetResult[]; requestId: string }> {
+  return api('/resources/generate-set', { method: 'POST', body: input });
+}
+
+// --- Lesson Plan (Classroom Mode P6) ---
+// A separate endpoint, not a fourth assessment format: a lesson plan has no
+// questions and no answer key. See server/src/lib/lessonPlanSchema.js (D21).
+// Must match generateLessonPlanSchema in
+// server/src/actions/schemas/generateLessonPlan.js.
+export type LessonDuration = '30 minutes' | '35 minutes' | '40 minutes' | '45 minutes' | '60 minutes';
+export type ClassroomType = 'standard' | 'multi_grade' | 'large_class' | 'mixed_ability';
+
+export interface GenerateLessonPlanInput {
+  topic: string;
+  grade?: string;
+  subject?: string;
+  language?: string;
+  duration?: LessonDuration;
+  classroomType?: ClassroomType;
+  instructions?: string;
+}
+
+// Same contract as generateAssessment: nothing is persisted by this call — the
+// teacher saves it explicitly with createResource (type "lesson_plan").
+export async function generateLessonPlan(
+  input: GenerateLessonPlanInput
+): Promise<GenerateAssessmentResult> {
+  return api<GenerateAssessmentResult>('/resources/generate-lesson-plan', { method: 'POST', body: input });
 }

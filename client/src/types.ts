@@ -174,6 +174,23 @@ export interface QueryContext {
   issueType?: string;
 }
 
+// The five classroom artifacts Classroom Mode can offer. Mirrors ARTIFACTS in
+// server/src/lib/classroomPlan.js, which is the runtime authority — the server
+// never returns a value outside this set.
+export type ClassroomArtifact = 'lesson_plan' | 'worksheet' | 'quiz' | 'homework' | 'exit_ticket';
+
+// What the planner decided for one turn (docs/classroom-mode.md §5). Present
+// only when Classroom Mode was on AND a teachable topic was found — the server
+// omits the key entirely otherwise, so its presence IS the "we have something
+// to offer" signal. `artifacts` is never empty when this exists.
+export interface ClassroomPlan {
+  topic: string;
+  grade: string;
+  subject: string;
+  language: string;
+  artifacts: ClassroomArtifact[];
+}
+
 export interface CoachResponse {
   success: boolean;
   text: string;
@@ -183,6 +200,13 @@ export interface CoachResponse {
   finishReason?: string;
   context: QueryContext;
   queryId: string | null;
+  // Set when the planner found a teachable topic and materials worth making.
+  classroom?: ClassroomPlan;
+  // Set when Classroom Mode was ON and actually ran for this turn. The pair
+  // matters: `classroomMode` without `classroom` is "the mode looked and found
+  // nothing", which the teacher is told about; neither field is "the mode was
+  // off", which is silent. Without this flag those two are indistinguishable.
+  classroomMode?: boolean;
 }
 
 // AI Learning Representation System (ADR Phase D). Mirrors the server's
@@ -260,6 +284,9 @@ export interface Turn {
   status: 'pending' | 'done' | 'error';
   response?: CoachResponse;
   rating: 'helpful' | 'not_helpful' | null;
+  // True when this turn was rebuilt from history rather than just answered.
+  // Classroom Mode reads it to decide whether its cards may generate (D24).
+  restored?: boolean;
   error?: string;
   // Set when `error` came from a network failure (ApiError status 0) rather
   // than a server response — the one error category Phase 1 of Help &
@@ -270,6 +297,12 @@ export interface Turn {
   // CoachPage.runTurnWithAttachments). All attachments on a turn were sent
   // together in ONE request, not one request per file.
   attachments?: AttachmentMeta[];
+  // Whether Classroom Mode was on when this turn was SUBMITTED
+  // (docs/classroom-mode.md). Recorded on the turn, alongside `language` and
+  // `context`, rather than read live — a turn can be retried (see
+  // CoachPage's handleRetry), and a retry must repeat the request that was
+  // actually made, not one shaped by whatever the mode happens to be now.
+  classroomMode?: boolean;
 }
 
 export interface HistoryItem {
@@ -281,6 +314,9 @@ export interface HistoryItem {
   responseTime: number;
   createdAt: string;
   rating: 'helpful' | 'not_helpful' | null;
+  // Classroom Mode's plan for this turn (D24). Present only for turns where
+  // the mode actually produced one; absent for every ordinary question.
+  classroom?: ClassroomPlan;
 }
 
 export interface Analytics {

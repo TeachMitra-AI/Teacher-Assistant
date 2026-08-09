@@ -41,6 +41,25 @@ const TEST_ENV = {
   // enough generate() calls can otherwise exhaust .env's production-sized
   // default (30) well before the file finishes.
   RESOURCE_GENERATE_RATE_LIMIT_MAX: '1000',
+  // The AI Action Router's OWN budgets, which are separate from the LLM_*
+  // values below and were previously left at their production defaults
+  // (3.5s per call, 5s overall — see index.js ASSISTANT_LLM_TIMEOUT_MS).
+  //
+  // Those defaults are right in production and wrong here. The router treats
+  // exceeding its deadline as PASSTHROUGH — "a DECISION, NOT AN ERROR"
+  // (guardrail G20) — so a call that merely runs slow does not fail loudly, it
+  // quietly returns `passthrough: true`. Under a full ~50-second suite on a
+  // busy machine, a mocked call occasionally crossed 3.5s and the happy-path
+  // tests that assert `passthrough === false` failed at random: roughly 2 runs
+  // in 9, a different test each time, never reproducible in isolation.
+  //
+  // Raised here so the assistant tests measure ROUTING, not the machine's load
+  // at that moment. Same reasoning, and same shape, as the two rate-limit
+  // ceilings below — this pair was simply missed when they were added.
+  // Timeout BEHAVIOUR is still covered: the tests that exercise it set their
+  // own deadlines explicitly rather than relying on these defaults.
+  ASSISTANT_LLM_TIMEOUT_MS: '10000',
+  ASSISTANT_LLM_TOTAL_TIMEOUT_MS: '15000',
   // Kept small so route-level retry tests stay fast. Only affects the shared
   // GeminiService instance index.js constructs from env — gemini.contract.js
   // and gemini.reliability.js build their own GeminiService with explicit

@@ -7,6 +7,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
+import { Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import TopBar from '../components/TopBar';
 import Sidebar from '../components/Sidebar';
@@ -14,6 +15,8 @@ import WelcomeScreen from '../components/WelcomeScreen';
 import MessageList from '../components/MessageList';
 import ContextBar from '../components/ContextBar';
 import Composer from '../components/Composer';
+import ClassroomModePill from '../components/ClassroomModePill';
+import OnboardingTip from '../components/OnboardingTip';
 import ChatResizeHandle from '../components/ChatResizeHandle';
 import AiClarifyPrompt from '../components/AiClarifyPrompt';
 import { useToast } from '../components/Toast';
@@ -22,6 +25,7 @@ import { useAttachments, type SelectedAttachment } from '../hooks/useAttachments
 import { usePreferences } from '../hooks/usePreferences';
 import { useAuth } from '../auth';
 import { useOnboarding } from '../onboarding';
+import { useOnboardingTip } from '../hooks/useOnboardingTip';
 import { api, ApiError } from '../api';
 // This page's ONLY import from the AI Action Router (milestone M6). Keeping the
 // coupling to a single line is what makes the feature deletable and what keeps
@@ -29,7 +33,7 @@ import { api, ApiError } from '../api';
 import { useAssistantRouting, type RoutingOutcome } from '../assistant/RouterProvider';
 import { buildSuffixedQuery } from '../lib/followUp';
 import { persistOnboarding } from '../lib/onboarding';
-import { ADMIN_ROLES, SPEECH_LOCALE, type FollowUpAction } from '../config';
+import { ADMIN_ROLES, CLASSROOM_MODE_ENABLED, SPEECH_LOCALE, type FollowUpAction } from '../config';
 import type { AttachmentMeta, CoachResponse, HistoryItem, QueryContext, Turn } from '../types';
 
 const EMPTY_CONTEXT: QueryContext = { grade: '', subject: '', classroomType: '', issueType: '' };
@@ -78,6 +82,23 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     classroomType: prefs.defaultClassroomType ?? '',
     issueType: '',
   });
+
+  // ---- Classroom Mode (docs/classroom-mode.md) -----------------------------
+  //
+  // Plain component state, deliberately NOT persisted to user.preferences (D16).
+  // It survives navigation within the session and resets to OFF on a reload.
+  // The risk being managed is not annoyance but silent spend: this is the one
+  // mode where every question costs several model calls instead of one, and a
+  // mode remembered across sessions is one a teacher stops noticing. Two taps
+  // tomorrow is the cheaper mistake.
+  const [classroomMode, setClassroomMode] = useState(false);
+  // First-visit tip pointing at the "+" button (P7).
+  const classroomTip = useOnboardingTip('classroom-mode-intro');
+
+  function setClassroomModeOn(on: boolean) {
+    setClassroomMode(on);
+    show(on ? 'Classroom Mode on' : 'Classroom Mode off', 'success');
+  }
 
   const [turns, setTurns] = useState<Turn[]>([]);
   const isSubmitting = turns.some((t) => t.status === 'pending');
@@ -164,11 +185,14 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }));
   }
 
-  async function runTurn(id: string, queryText: string, lang: string, ctx: QueryContext) {
+  async function runTurn(id: string, queryText: string, lang: string, ctx: QueryContext, classroom: boolean) {
     try {
       const res = await api<CoachResponse>('/coach', {
         method: 'POST',
-        body: { query: queryText, language: lang, context: ctx },
+        // `classroomMode` is sent only when it is actually on, so a teacher who
+        // never touches the feature produces a request body identical to the
+        // one this page has always sent.
+        body: { query: queryText, language: lang, context: ctx, ...(classroom ? { classroomMode: true } : {}) },
       });
       setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'done', response: res, rating: null } : t)));
       loadHistory();
@@ -196,9 +220,16 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     closeIntro();
     markIntroSeen();
     const id = newTurnId();
-    setTurns((ts) => [...ts, { id, query: queryText, language: lang, context: ctx, status: 'pending', rating: null }]);
+    // Snapshotted onto the turn at submit time, exactly as `language` and
+    // `context` are — see the field's comment in types.ts for why a retry must
+    // not read it live.
+    const classroom = CLASSROOM_MODE_ENABLED && classroomMode;
+    setTurns((ts) => [
+      ...ts,
+      { id, query: queryText, language: lang, context: ctx, status: 'pending', rating: null, classroomMode: classroom },
+    ]);
     scrollToBottom();
-    await runTurn(id, queryText, lang, ctx);
+    await runTurn(id, queryText, lang, ctx, classroom);
   }
 
   // The multimodal-attachment sibling of runTurn/submitTurn — a SEPARATE path
@@ -306,7 +337,10 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
       return;
     }
     setTurns((ts) => ts.map((t) => (t.id === turn.id ? { ...t, status: 'pending', error: undefined } : t)));
-    await runTurn(turn.id, turn.query, turn.language, turn.context);
+    // `turn.classroomMode ?? false` — the mode as it was when this turn was
+    // first submitted, not as it is now. Turns created before this field
+    // existed simply retry without it.
+    await runTurn(turn.id, turn.query, turn.language, turn.context, turn.classroomMode ?? false);
   }
 
   function handleFollowUp(turn: Turn, action: FollowUpAction) {
@@ -399,12 +433,17 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
       context: mergedContext,
       status: 'done',
       rating: item.rating,
+      // Reopening a chat must not spend model calls. The plan is restored so
+      // the cards reappear, but `restored` keeps them idle until the teacher
+      // presses Generate on the one they want (D24).
+      restored: true,
       response: {
         success: true,
         text: item.text,
         language: item.language,
         context: item.context,
         queryId: item.id,
+        ...(item.classroom ? { classroom: item.classroom } : {}),
       },
     }]);
     setLanguage(item.language);
@@ -543,6 +582,23 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                   onCancel={() => settleRouting(router.cancelAsk())}
                 />
               )}
+              {/* Above the Composer, below the Context Bar: the mode is a
+                  property of the conversation, so it sits with the other
+                  conversation-level controls rather than inside the text box. */}
+              {CLASSROOM_MODE_ENABLED && classroomMode && (
+                <ClassroomModePill onDismiss={() => setClassroomModeOn(false)} />
+              )}
+              {/* First-visit tip for the "+" button (P7). Shown only while the
+                  mode is OFF: once a teacher has turned it on they have found
+                  the button, and the pill above already explains what the mode
+                  does. Sits directly above the Composer that holds the button
+                  it describes, the same placement generator-intro uses. */}
+              {CLASSROOM_MODE_ENABLED && !classroomMode && classroomTip.visible && (
+                <OnboardingTip icon={Sparkles} onDismiss={classroomTip.dismiss}>
+                  Tap <strong>+</strong> below and turn on <strong>Classroom Mode</strong> to get a lesson
+                  plan, worksheet, quiz, homework and exit ticket alongside your answer.
+                </OnboardingTip>
+              )}
               <ContextBar language={language} onLanguageChange={setLanguage} context={context} onContextChange={setCtx} />
               <Composer
                 value={query}
@@ -552,6 +608,8 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                 voice={voice}
                 attachments={attachments}
                 textareaRef={textareaRef}
+                classroomMode={classroomMode}
+                onClassroomModeChange={setClassroomModeOn}
               />
             </div>
           </div>

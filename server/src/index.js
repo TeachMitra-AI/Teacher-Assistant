@@ -54,7 +54,13 @@ const adminSettingsRouter = require('./routes/adminSettings');
 // guard at boot (both throw on load if their data is out of sync) rather
 // than surfacing as a strange failure on the first real request.
 const learningRepresentationRouter = require('./routes/learningRepresentation');
-const { readAssistantFlags, readAttachmentFlags, readLearningRepresentationFlags } = require('./lib/flags');
+const {
+  readAssistantFlags,
+  readAttachmentFlags,
+  readLearningRepresentationFlags,
+  readClassroomModeFlags,
+} = require('./lib/flags');
+const { planClassroom } = require('./lib/classroomPlan');
 const { createBudgetCounter } = require('./assistant/budget');
 const { createRenderCache } = require('./learningRepresentation/rendering/cache');
 const { createRouterBreaker } = require('./assistant/breaker');
@@ -294,6 +300,14 @@ const learningRepresentationBudget = createBudgetCounter({
 // already applied to assistantBudget/attachmentBudget above.
 const learningRepresentationRenderCache = createRenderCache();
 
+// Classroom Mode (docs/classroom-mode.md). Read once at boot, like every flag
+// above. This is the authoritative gate: the client's own
+// VITE_CLASSROOM_MODE_ENABLED decides only whether the "+" button renders, and
+// a PWA can serve a cached client whose flag is stale by hours. Turning this
+// off stops the planner and every downstream artifact call for everyone,
+// including those clients — which is what makes it a usable spend control (D13).
+const classroomModeFlagsAtBoot = readClassroomModeFlags(process.env);
+
 // ---- App setup -------------------------------------------------------------
 
 const app = express();
@@ -402,6 +416,11 @@ const jsonSmall = express.json({ limit: '16kb' });
 const jsonLarge = express.json({ limit: '64kb' });
 app.use((req, res, next) => {
   if (req.path.startsWith('/api/resources')) return jsonLarge(req, res, next);
+  // Classroom Mode stores a turn's generated artifacts (D25) — up to five full
+  // documents in one body, which comfortably exceeds 16kb. Same reasoning as
+  // the resources routes above, scoped to the one path that needs it rather
+  // than raising the limit for all of /api/queries.
+  if (/^\/api\/queries\/[^/]+\/classroom-artifacts$/.test(req.path)) return jsonLarge(req, res, next);
   return jsonSmall(req, res, next);
 });
 
@@ -516,9 +535,28 @@ const avatarLimiter = rateLimit({
 });
 
 // Stricter limiter for auth endpoints to slow down credential guessing.
+//
+// The ceiling is env-overridable and development-aware, like every other
+// limiter in this file. It previously was not, and that was a bug rather than
+// extra strictness: this limiter is mounted on the whole /api/auth router, so
+// it counts POST /refresh and GET /me — which fire on EVERY page load — against
+// the same 30-request budget as login itself. A developer reloading the client
+// a dozen times would exhaust it without a single failed sign-in and then be
+// locked out for the full 15 minutes, with "Too many attempts" pointing at
+// their password.
+//
+// The PRODUCTION default is deliberately unchanged at 30. The security property
+// here — making online credential guessing slow — is real, and only the
+// development ceiling is raised. The 15-minute window is also unchanged (it is
+// intentionally longer than RATE_LIMIT_WINDOW_MINUTES; a guessing attack is
+// measured in minutes, not seconds).
+const AUTH_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS, {
+  name: 'AUTH_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 30 : 300, min: 1, max: 100000,
+});
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: AUTH_RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many attempts. Please wait a few minutes and try again.' },
@@ -532,13 +570,33 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/auth', authLimiter, authRouter);
 
+// Is this teacher inside Classroom Mode's staged rollout? Mirrors
+// `isWithinRollout` in routes/attachments.js, including its fail-closed
+// behaviour: an empty allow-list means every school, a non-empty one costs a
+// single indexed lookup, and a lookup that throws denies rather than allows.
+//
+// Not shared with the attachments copy on purpose — that one is bound to the
+// attachment flag shape and lives behind that router's own gate middleware.
+// Two short readable functions beat one parameterised one that both features
+// must then agree on forever.
+async function isWithinClassroomRollout(user, flags) {
+  if (!flags.enabled) return false;
+  if (flags.allowedSchoolCodes.length === 0) return true;
+  try {
+    const school = await prisma.school.findUnique({ where: { id: user.schoolId }, select: { code: true } });
+    return Boolean(school && flags.allowedSchoolCodes.includes(school.code));
+  } catch {
+    return false;
+  }
+}
+
 app.post('/api/coach', authRequired, limiter, async (req, res) => {
   // Correlation ID for this AI request — logged with every event and returned
   // to the client so a teacher/admin can quote it when reporting a problem.
   // Not sensitive; contains no user data.
   const requestId = crypto.randomUUID();
 
-  const { query, context = {}, language = 'en' } = req.body || {};
+  const { query, context = {}, language = 'en', classroomMode = false } = req.body || {};
 
   // --- Input validation (system boundary) ---
   if (typeof query !== 'string' || query.trim().length === 0) {
@@ -574,6 +632,50 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
   }
 
   try {
+    // ---- Classroom Mode: start the planner NOW, alongside the answer -------
+    //
+    // Issued before the answer call rather than after it, so the two overlap
+    // and the planner's latency is hidden entirely behind the (much longer)
+    // coaching call. Awaited only once the answer is in hand.
+    //
+    // `classroomMode === true` is an exact check, not truthiness: this decides
+    // whether to spend a model call, so a stray "false" string or a 1 must not
+    // buy one. The server flag is checked here too — a client sending
+    // classroomMode after the feature has been switched off gets it ignored,
+    // which is the whole point of the server being the real kill switch.
+    const classroomRequested = classroomMode === true && classroomModeFlagsAtBoot.enabled;
+    const classroomPlanPromise = classroomRequested
+      ? isWithinClassroomRollout(req.user, classroomModeFlagsAtBoot).then((allowed) =>
+          allowed
+            ? planClassroom({
+                // `geminiFast`, NOT the coaching `gemini`. The planner is a
+                // small classification call returning a fixed JSON shape —
+                // structurally identical to the AI Action Router's intent
+                // classification, which is what geminiFast was built for
+                // (flash-lite, short timeouts, maxContinuations: 0).
+                //
+                // Three things follow from this, all of them wanted:
+                //   - it is much cheaper per call than the coaching model;
+                //   - it is faster, which matters for a call whose entire job
+                //     is to finish before the answer does;
+                //   - it draws on a DIFFERENT model's quota, so planning can
+                //     never starve the coaching answer of rate limit — the
+                //     answer is the thing the teacher is actually waiting for.
+                gemini: geminiFast,
+                query: normalizedQuery,
+                context: safeContext,
+                language,
+                requestId,
+                log: logAiEvent,
+              })
+            : null
+        )
+      : Promise.resolve(null);
+    // planClassroom already swallows its own failures; this is belt-and-braces
+    // so that an unexpected throw in the rollout lookup can never surface as an
+    // unhandled rejection while the answer call is still in flight.
+    const classroomPlanSettled = classroomPlanPromise.catch(() => null);
+
     // Read the teacher's saved response-style preference server-side so it is
     // authoritative and cannot be spoofed by the client.
     let responseStyle = 'balanced';
@@ -651,7 +753,76 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
       }
     }
 
-    return res.json({ success: true, ...clientResult, context: safeContext, queryId, requestId });
+    // The answer is ready; collect whatever the planner decided. `null` — the
+    // mode being off, a gate firing, no teachable topic, or any failure — omits
+    // the key entirely rather than sending an empty object, so a client that
+    // never uses this feature receives the response it has always received.
+    const classroomPlan = await classroomPlanSettled;
+
+    // Classroom Mode telemetry (P7). Best-effort and non-blocking, exactly like
+    // the injection telemetry above: a failed write must never cost the teacher
+    // their answer. METADATA ONLY — the artifact names and counts, never the
+    // question, the topic, or any generated text.
+    //
+    // Written here rather than in the planner because this is the only place
+    // that knows all three of: the mode was requested, the rollout gate
+    // allowed it, and what the planner ultimately decided. `planned: 0` is the
+    // interesting row — it is a teacher who turned the mode on and got
+    // nothing, which is the signal that the planner's gates are too tight.
+    if (classroomRequested) {
+      // Persist the plan on the Query row so reopening this chat can restore
+      // the artifact cards (D24). Done as an UPDATE after the fact rather than
+      // as part of the create above, deliberately: the plan settles later than
+      // the answer, and folding it in would make every ORDINARY question wait
+      // on a promise it has no interest in. Mode off is one write, exactly as
+      // before — §7 rule 3.
+      //
+      // Best-effort. A failure here costs the teacher nothing they can see
+      // right now; the cards for this turn are already on screen. It only
+      // means reopening the chat later will not restore them.
+      if (queryId && classroomPlan) {
+        try {
+          await prisma.query.update({
+            where: { id: queryId },
+            data: { classroomPlan: JSON.stringify(classroomPlan) },
+          });
+        } catch (planError) {
+          logAiEvent('error', 'classroom_plan_persist_failed', { requestId, message: planError.message });
+        }
+      }
+
+      try {
+        await prisma.event.create({
+          data: {
+            userId: req.user.id,
+            schoolId: req.user.schoolId,
+            type: 'classroom_mode_planned',
+            metadata: JSON.stringify({
+              planned: classroomPlan ? classroomPlan.artifacts.length : 0,
+              artifacts: classroomPlan ? classroomPlan.artifacts : [],
+              language: classroomPlan ? classroomPlan.language : language,
+              queryId,
+            }),
+          },
+        });
+      } catch (eventError) {
+        logAiEvent('error', 'classroom_event_write_failed', { requestId, message: eventError.message });
+      }
+    }
+
+    return res.json({
+      success: true,
+      ...clientResult,
+      context: safeContext,
+      queryId,
+      requestId,
+      ...(classroomPlan ? { classroom: classroomPlan } : {}),
+      // Distinguishes "the mode was on and found nothing to make" from "the
+      // mode was off". Only the first should show the teacher an explanation;
+      // without this the client cannot tell them apart, because both are the
+      // absence of `classroom`.
+      ...(classroomRequested ? { classroomMode: true } : {}),
+    });
   } catch (error) {
     // Metadata-only failure log, including the reliability metrics the service
     // attaches to the error (call counts, whether we timed out / were rate

@@ -13,6 +13,8 @@
 // off-by-one mismatch against `options` if the model miscounts.
 const { z } = require('zod');
 
+const { convertMathSegments } = require('./mathNotation');
+
 const QUESTION_TYPES = ['mcq', 'true_false', 'short_answer'];
 const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
 
@@ -56,11 +58,62 @@ function repairControlCharLatex(text) {
   );
 }
 
+// --- Bare (backslash-less) commands -------------------------------------------
+// A THIRD mangling, distinct from the two above and far nastier because it is
+// silent: the command arrives with its backslash simply gone — "$frac59$"
+// rather than "$\frac59$".
+//
+// The other two manglings leave evidence. A JSON-eaten \frac leaves a FORMFEED
+// control character; a degenerate \text{sqrt} leaves a \text. This one leaves
+// nothing: "frac59" is PERFECTLY VALID KaTeX. It renders, without error, as the
+// five italic variables f·r·a·c·59 — which is why latexGuard's render check
+// (findUnrenderableSegments) passes it and a teacher receives a question
+// reading "In the fraction f r a c 59, which number is the numerator?".
+// Observed 2026-08-07 in a live Class 4 fractions quiz.
+//
+// Only ever applied INSIDE $...$ math segments, and never inside a \text{...}
+// argument — "the sum of" is English prose there, and turning its "sum" into
+// \sum would be the same class of corruption in reverse.
+//
+// Deliberately excludes two-letter commands (\pm, \mp, \mu, \ln) except \pi:
+// in math mode "pm" really can be the product p·m, and a wrong repair is worse
+// than a missed one. \pi is kept because p·i is vanishingly rare next to π.
+const BARE_COMMANDS = [
+  'dfrac', 'tfrac', 'frac', 'sqrt', 'times', 'div', 'cdots', 'cdot', 'ldots',
+  'leq', 'geq', 'neq', 'approx', 'equiv', 'propto', 'infty',
+  'alpha', 'beta', 'gamma', 'delta', 'theta', 'lambda', 'sigma', 'omega', 'phi', 'pi',
+  'sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'log', 'exp',
+  'circ', 'angle', 'triangle', 'rightarrow', 'leftarrow',
+  'overline', 'underline', 'binom', 'boxed', 'vec', 'sum', 'prod', 'int', 'lim',
+  'quad', 'left', 'right',
+].sort((a, b) => b.length - a.length); // longest first: \dfrac before \frac
+
+// Not preceded by a backslash OR a letter (so "\frac" and the "frac" inside
+// "\dfrac" are both skipped), and not followed by a letter (so the English
+// word "fraction" is never mistaken for a mangled \frac).
+const BARE_COMMAND_RE = new RegExp(`(?<![\\\\a-zA-Z])(${BARE_COMMANDS.join('|')})(?![a-zA-Z])`, 'g');
+
+// Spans whose contents are prose by design and must never be repaired.
+const TEXT_ARG_RE = /\\(?:text|textbf|textit|textrm|mathrm|mbox|operatorname)\s*\{[^{}]*\}/g;
+
+function restoreBareCommands(mathSource) {
+  let out = '';
+  let cursor = 0;
+  let m;
+  TEXT_ARG_RE.lastIndex = 0;
+  while ((m = TEXT_ARG_RE.exec(mathSource))) {
+    out += mathSource.slice(cursor, m.index).replace(BARE_COMMAND_RE, '\\$1');
+    out += m[0]; // \text{...} argument passes through verbatim
+    cursor = m.index + m[0].length;
+  }
+  return out + mathSource.slice(cursor).replace(BARE_COMMAND_RE, '\\$1');
+}
+
 // Degenerate command forms the model produces to dodge invalid JSON escapes
 // (\s, \c, \o...). Only applied INSIDE $...$ math segments, where \text{sin}
 // can only mean the \sin the model couldn't emit.
 function normalizeDegenerateLatex(mathSource) {
-  return mathSource
+  return restoreBareCommands(mathSource)
     .replace(/\\text\{\s*(sin|cos|tan|sec|cot|csc|log|ln)\s*\}/g, '\\$1 ')
     .replace(/\\text\{\s*(cosec|arcsin|arccos|arctan)\s*\}/g, '\\operatorname{$1} ')
     .replace(/\\text\{\s*sqrt\s*\}\s*\(([^()]*)\)/g, '\\sqrt{$1}')
@@ -79,7 +132,14 @@ function normalizeDegenerateLatex(mathSource) {
  * newline in prose is not.
  */
 function normalizeMathText(text) {
-  const repaired = repairControlCharLatex(text);
+  // FIRST: plain notation → LaTeX. The model is now asked for "5/9", which has
+  // no backslash for JSON to eat, so this is the path that should carry
+  // essentially all traffic. convertMathSegments returns anything it cannot
+  // parse confidently — and anything already containing a backslash —
+  // completely untouched, so the repair layers below still see exactly what
+  // they saw before for old content and for a model that ignores the prompt.
+  const converted = convertMathSegments(text);
+  const repaired = repairControlCharLatex(converted);
   // Inline segments are single-line only — a broader matcher could pair two
   // unrelated "$" (currency amounts on different lines) into one bogus
   // "segment" and corrupt the prose between them. Newline repair therefore
@@ -88,6 +148,32 @@ function normalizeMathText(text) {
   return repaired.replace(/\$\$[\s\S]+?\$\$|\$[^$\n]+\$/g, (segment) =>
     normalizeDegenerateLatex(segment.replace(/\n(?=[a-z])/g, '\\n'))
   );
+}
+
+// The renderer (routes/resources.js renderAssessmentBody) numbers every
+// question itself — "1. ", "2. " — because it owns the document's structure.
+// The model frequently numbers them a SECOND time inside the question text,
+// producing "1. 1. Which fraction represents…" on the page, and the matching
+// "1. 1. A" in the answer key. Observed 2026-08-07 in a live Class 4 quiz.
+//
+// Requires a dot or a bracket after the digits, so a question that genuinely
+// opens with a quantity ("5 apples are shared between…") is never touched.
+// Two digits at most: "12." is question twelve, "2026." is a year.
+const LEADING_NUMBER_RE = /^\s*\d{1,2}\s*[.)]\s+/;
+
+function stripLeadingQuestionNumber(text) {
+  return typeof text === 'string' ? text.replace(LEADING_NUMBER_RE, '') : text;
+}
+
+// Same problem one level down: renderAssessmentBody prefixes each option with
+// "A. ", "B. "… so a model-supplied "A. 3/5" renders as "A. A. 3/5".
+// Single letter A-D only, and a following dot/bracket is required — an option
+// whose whole content is the letter "A" (a valid answer to "which letter…")
+// has nothing after it to strip and is left alone.
+const LEADING_OPTION_RE = /^\s*[A-Da-d]\s*[.)]\s+/;
+
+function stripLeadingOptionLetter(text) {
+  return typeof text === 'string' ? text.replace(LEADING_OPTION_RE, '') : text;
 }
 
 /**
@@ -103,11 +189,17 @@ function normalizeAssessmentMath(raw) {
     out.questions = out.questions.map((q) => {
       if (!q || typeof q !== 'object' || Array.isArray(q)) return q;
       const nq = { ...q };
-      if (typeof nq.text === 'string') nq.text = normalizeMathText(nq.text);
+      if (typeof nq.text === 'string') nq.text = stripLeadingQuestionNumber(normalizeMathText(nq.text));
       if (Array.isArray(nq.options)) {
-        nq.options = nq.options.map((o) => (typeof o === 'string' ? normalizeMathText(o) : o));
+        // Options are lettered by the renderer the same way questions are
+        // numbered, so "A. 3/5" arrives doubly-lettered for the same reason.
+        nq.options = nq.options.map((o) =>
+          typeof o === 'string' ? stripLeadingOptionLetter(normalizeMathText(o)) : o
+        );
       }
-      if (typeof nq.correctAnswer === 'string') nq.correctAnswer = normalizeMathText(nq.correctAnswer);
+      if (typeof nq.correctAnswer === 'string') {
+        nq.correctAnswer = stripLeadingQuestionNumber(normalizeMathText(nq.correctAnswer));
+      }
       return nq;
     });
   }
@@ -195,4 +287,7 @@ module.exports = {
   normalizeMathText,
   QUESTION_TYPES,
   OPTION_LETTERS,
+  // Exported for latexGuard's backstop check and for unit testing.
+  BARE_COMMANDS,
+  restoreBareCommands,
 };

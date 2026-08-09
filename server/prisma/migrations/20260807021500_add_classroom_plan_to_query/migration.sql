@@ -1,0 +1,11 @@
+-- Classroom Mode: persist the plan for a turn so reopening a chat can restore
+-- the artifact cards (docs/classroom-mode.md D24).
+--
+-- Nullable and additive. Every existing row, and every row written by a
+-- teacher who never turns the mode on, stays NULL — so no backfill is needed
+-- and nothing that already reads a Query has to change.
+--
+-- Stores the PLAN only (topic, grade, subject, language, applicable artifacts),
+-- never the generated artifacts themselves: those are still saved only by an
+-- explicit teacher action (D11).
+ALTER TABLE "Query" ADD COLUMN "classroomPlan" TEXT;

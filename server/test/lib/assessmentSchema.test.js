@@ -244,3 +244,92 @@ describe('normalizeAssessmentMath', () => {
       .toEqual({ instructions: 1, questions: [null, 5] });
   });
 });
+
+// --- Regressions from the live Class 4 fractions quiz, 2026-08-07 -------------
+//
+// A teacher received a quiz reading "In the fraction f r a c 59, which number
+// is the numerator?" and questions numbered "1. 1.". Both are model-output
+// manglings that every layer downstream passed through, because both produce
+// documents that are structurally valid and (for the LaTeX one) render without
+// error. These tests pin the repairs.
+
+describe('restoreBareCommands — backslash-less LaTeX', () => {
+  test('repairs the reported case: $frac59$ renders as italic letters, not a fraction', () => {
+    expect(normalizeMathText('In the fraction $frac59$, which is the numerator?'))
+      .toBe('In the fraction $\\frac59$, which is the numerator?');
+  });
+
+  test('repairs the braced form too', () => {
+    expect(normalizeMathText('$frac{5}{9}$')).toBe('$\\frac{5}{9}$');
+  });
+
+  test('leaves already-correct commands untouched', () => {
+    expect(normalizeMathText('$\\frac{5}{9}$')).toBe('$\\frac{5}{9}$');
+    expect(normalizeMathText('$\\frac59$')).toBe('$\\frac59$');
+  });
+
+  // The regex must not treat the "frac" inside "\dfrac" as a bare command,
+  // which would produce the unrenderable "\d\frac".
+  test('does not split a longer command that ends in a shorter one', () => {
+    expect(normalizeMathText('$\\dfrac{1}{2}$')).toBe('$\\dfrac{1}{2}$');
+    expect(normalizeMathText('$\\tfrac{1}{2}$')).toBe('$\\tfrac{1}{2}$');
+  });
+
+  // The mirror-image corruption: prose inside \text{...} is English by design.
+  test('never touches prose inside a \\text{...} argument', () => {
+    expect(normalizeMathText('$\\text{the sum of}$')).toBe('$\\text{the sum of}$');
+    expect(normalizeMathText('$\\text{fraction of}$')).toBe('$\\text{fraction of}$');
+    expect(normalizeMathText('$\\text{turn left}$')).toBe('$\\text{turn left}$');
+  });
+
+  test('leaves genuine variable juxtaposition alone', () => {
+    expect(normalizeMathText('$abc$')).toBe('$abc$');
+    expect(normalizeMathText('$xyz = 5$')).toBe('$xyz = 5$');
+  });
+
+  test('does not touch text outside math delimiters', () => {
+    expect(normalizeMathText('Explain what a fraction is.')).toBe('Explain what a fraction is.');
+    expect(normalizeMathText('Find the sum of two numbers.')).toBe('Find the sum of two numbers.');
+  });
+});
+
+describe('duplicate numbering from the model', () => {
+  test("strips the model's own question number — the renderer supplies it", () => {
+    const doc = normalizeAssessmentMath({
+      questions: [
+        { type: 'mcq', text: '1. Which fraction is shaded?', options: ['A. 3/5', 'B. 2/5'], correctAnswer: 'A' },
+        { type: 'short_answer', text: '2) Add the fractions.', correctAnswer: '3. 7/9' },
+      ],
+    });
+    expect(doc.questions[0].text).toBe('Which fraction is shaded?');
+    expect(doc.questions[1].text).toBe('Add the fractions.');
+    expect(doc.questions[1].correctAnswer).toBe('7/9');
+  });
+
+  test("strips the model's own option letters", () => {
+    const doc = normalizeAssessmentMath({
+      questions: [{ type: 'mcq', text: 'Pick one', options: ['A. 3/5', 'B) 2/5', 'c. 1/5', '4/5'] }],
+    });
+    expect(doc.questions[0].options).toEqual(['3/5', '2/5', '1/5', '4/5']);
+  });
+
+  // The false positive that would matter most: a word problem opening with a
+  // quantity must survive intact.
+  test('a question that genuinely starts with a number is untouched', () => {
+    const doc = normalizeAssessmentMath({
+      questions: [
+        { type: 'short_answer', text: '5 apples are shared between 2 friends. What fraction each?' },
+        { type: 'short_answer', text: '12 students in a class of 30 wear glasses.' },
+      ],
+    });
+    expect(doc.questions[0].text).toBe('5 apples are shared between 2 friends. What fraction each?');
+    expect(doc.questions[1].text).toBe('12 students in a class of 30 wear glasses.');
+  });
+
+  test('an option that IS the letter A is not emptied', () => {
+    const doc = normalizeAssessmentMath({
+      questions: [{ type: 'mcq', text: 'Which letter marks the vertex?', options: ['A', 'B', 'C', 'D'] }],
+    });
+    expect(doc.questions[0].options).toEqual(['A', 'B', 'C', 'D']);
+  });
+});

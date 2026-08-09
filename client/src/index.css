@@ -899,6 +899,39 @@ button { font-family: inherit; cursor: pointer; }
   .response-body .fmt-options { grid-template-columns: 1fr; }
 }
 
+/* Pipe tables (format.ts) — the Lesson Plan's Presentation section, where the
+   teacher/student pairing is the information. */
+.response-body .fmt-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.6rem 0 1rem;
+  font-size: 0.95em;
+}
+.response-body .fmt-table th,
+.response-body .fmt-table td {
+  border: 1px solid var(--border, #d8d8d8);
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+.response-body .fmt-table th {
+  background: var(--surface-2, #f4f4f5);
+  font-weight: 600;
+}
+/* The step number column stays as narrow as its content. */
+.response-body .fmt-table td:first-child,
+.response-body .fmt-table th:first-child { width: 1%; white-space: nowrap; }
+
+/* A table cannot reflow to one column without losing the pairing that makes it
+   a table, so on a narrow screen it scrolls sideways inside its own box rather
+   than forcing the whole page to scroll. */
+@media (max-width: 640px) {
+  .response-body .fmt-table { display: block; overflow-x: auto; }
+  .response-body .fmt-table td, .response-body .fmt-table th { min-width: 8rem; }
+  .response-body .fmt-table td:first-child,
+  .response-body .fmt-table th:first-child { min-width: 2rem; }
+}
+
 .response-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.1rem; }
 .action-chip {
   background: var(--surface-2);
@@ -1361,10 +1394,244 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   font-weight: 400;
 }
 .composer-textarea:focus { outline: none; }
-.composer-controls { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; margin-top: 0.2rem; }
-.composer-buttons { display: flex; align-items: center; gap: 0.4rem; }
+/* flex-start + `margin-left: auto` on the buttons rather than space-between:
+   with only the char count and the buttons present the result is identical to
+   the previous space-between, but it also survives a THIRD child (the mode
+   menu) being added at the left, which space-between would have pushed the
+   char count into the middle of the row to accommodate. */
+.composer-controls { display: flex; align-items: center; justify-content: flex-start; gap: 0.6rem; margin-top: 0.2rem; }
+.composer-buttons { display: flex; align-items: center; gap: 0.4rem; margin-left: auto; }
 .char-count { font-size: 0.78rem; color: var(--text-muted); }
 .char-count.warn { color: var(--orange); font-weight: 700; }
+
+/* ---- Mode menu ("+" in the Composer) — docs/classroom-mode.md ------------ */
+.mode-menu { position: relative; display: inline-flex; }
+/* Smaller than .icon-btn's 40px default so the "+" sits comfortably on the
+   controls row beside the char count without making the composer taller. */
+.mode-menu-btn { min-width: 32px; min-height: 32px; padding: 0 0.35rem; border-radius: 50%; }
+.mode-menu-btn.active { border-color: var(--orange); color: var(--orange); background: var(--orange-soft); }
+
+.mode-menu-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  min-width: 280px;
+  max-width: min(340px, calc(100vw - 2rem));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  z-index: 120;
+}
+.mode-menu-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.6rem;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  color: var(--text);
+  transition: background 0.12s ease;
+}
+.mode-menu-item:hover { background: var(--surface-2); }
+.mode-menu-item:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
+.mode-menu-item.active { background: var(--orange-soft); }
+.mode-menu-item-icon { flex-shrink: 0; margin-top: 0.1rem; color: var(--orange); }
+.mode-menu-item-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.mode-menu-item-label { font-weight: 700; font-size: 0.9rem; }
+.mode-menu-item-desc { font-size: 0.78rem; color: var(--text-muted); line-height: 1.35; }
+.mode-menu-item-check { flex-shrink: 0; margin-left: auto; align-self: center; color: var(--orange); }
+
+/* ---- Classroom Mode pill (sits above the Composer while the mode is on) -- */
+.classroom-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  align-self: flex-start;
+  padding: 0.35rem 0.5rem 0.35rem 0.6rem;
+  margin-bottom: 0.4rem;
+  background: var(--orange-soft);
+  border: 1px solid var(--orange);
+  border-radius: 999px;
+  color: var(--orange);
+  font-size: 0.8rem;
+  font-weight: 700;
+  max-width: 100%;
+}
+.classroom-pill-label { white-space: nowrap; }
+/* The explanatory half is the first thing to go when space is tight — the
+   label and the way out matter more than the hint. */
+.classroom-pill-hint {
+  color: var(--text-muted);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.classroom-pill-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  color: var(--orange);
+}
+.classroom-pill-close:hover { background: var(--orange); color: #fff; }
+.classroom-pill-close:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+
+/* "Classroom Mode looked and found nothing" — deliberately quiet. It is an
+   explanation, not a result, and must not compete with the answer above it. */
+.classroom-empty-note {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.classroom-empty-note svg { flex-shrink: 0; color: var(--orange); }
+
+/* ---- Classroom materials set (P3) ---------------------------------------- */
+.classroom-set {
+  margin-top: 0.85rem;
+  padding: 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.classroom-set-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.6rem; }
+.classroom-set-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  min-width: 0;
+}
+.classroom-set-title svg { color: var(--orange); flex-shrink: 0; }
+.classroom-set-topic {
+  font-weight: 400;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.classroom-set-count { margin-left: auto; font-size: 0.75rem; color: var(--text-muted); }
+.classroom-set-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  padding: 0.25rem 0.55rem;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.classroom-set-stop:hover { border-color: var(--orange); color: var(--orange); }
+.classroom-set-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.classroom-set-note { margin: 0.6rem 0 0; font-size: 0.72rem; color: var(--text-muted); }
+
+.classroom-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.classroom-card-ready { border-color: var(--orange); }
+.classroom-card-head { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.6rem; }
+.classroom-card-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+}
+.classroom-card-toggle:disabled { cursor: default; }
+.classroom-card-toggle:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.classroom-card-chevron { display: inline-flex; color: var(--text-muted); flex-shrink: 0; }
+.classroom-card-chevron-gap { display: inline-block; width: 16px; }
+.classroom-card-title { font-size: 0.85rem; font-weight: 700; flex-shrink: 0; }
+.classroom-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.classroom-card-status.ready { color: var(--orange); }
+.classroom-card-status.failed { color: #c0392b; }
+.classroom-card-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  padding: 0.3rem 0.6rem;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.classroom-card-save:hover:not(:disabled) { border-color: var(--orange); color: var(--orange); }
+.classroom-card-save:disabled { opacity: 0.6; cursor: default; }
+.classroom-card-hint { margin: 0 0.6rem 0.5rem 1.65rem; font-size: 0.75rem; color: var(--text-muted); }
+.classroom-card-error {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0 0.6rem 0.5rem;
+  font-size: 0.75rem;
+  color: #c0392b;
+}
+.classroom-card-body {
+  padding: 0.2rem 0.75rem 0.75rem;
+  border-top: 1px solid var(--border);
+  max-height: 460px;
+  overflow-y: auto;
+}
+
+/* "Classroom Mode looked and found nothing" — deliberately quiet. It is an
+   explanation, not a result, and must not compete with the answer above it. */
+.classroom-empty-note {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.classroom-empty-note svg { flex-shrink: 0; color: var(--orange); }
+
+@media (max-width: 640px) {
+  .classroom-pill-hint { display: none; }
+  .mode-menu-popover { min-width: 0; width: calc(100vw - 2.5rem); }
+  .classroom-set { padding: 0.6rem; }
+  .classroom-card-hint { display: none; }
+}
 .voice-btn.listening { background: var(--orange); color: #fff; animation: pulse 1.2s infinite; }
 @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
 .composer-send {
@@ -2653,6 +2920,13 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   .print-body p { margin: 0.6rem 0; }
   .print-body .fmt-subpart { margin: 0.3rem 0 0.3rem 1.9em; }
   .print-body p, .print-body li, .print-body .fmt-option, .print-body .fmt-subpart { page-break-inside: avoid; break-inside: avoid; }
+  /* A lesson plan is printed and carried into class, so the Presentation table
+     must keep its borders and repeat its header on a second page rather than
+     scrolling (there is nothing to scroll on paper). */
+  .print-body .fmt-table { display: table; overflow: visible; width: 100%; border-collapse: collapse; }
+  .print-body .fmt-table thead { display: table-header-group; }
+  .print-body .fmt-table tr { page-break-inside: avoid; break-inside: avoid; }
+  .print-body .fmt-table th, .print-body .fmt-table td { border: 1px solid #999999; padding: 0.35rem 0.5rem; }
   .print-body p { orphans: 3; widows: 3; }
   /* Keep a question and its options on the same page, together: never break
      right after the question text, never break inside the option block. */

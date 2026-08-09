@@ -210,9 +210,17 @@ export const RESOURCE_TYPES: ResourceType[] = [
 // CHANGE THESE AND THE SERVER MODULE IN THE SAME COMMIT. A drift guard covering
 // this pair is a mandatory acceptance criterion of M2 (see
 // docs/AI_ACTION_ROUTER_README.md §11).
-export const ASSESSMENT_FORMATS: { value: 'quiz' | 'worksheet'; label: string; hint: string }[] = [
+export const ASSESSMENT_FORMATS: { value: 'quiz' | 'worksheet' | 'exit_ticket' | 'homework'; label: string; hint: string }[] = [
   { value: 'quiz', label: 'Quiz', hint: 'Questions with a separate answer key' },
   { value: 'worksheet', label: 'Worksheet', hint: 'Printable sheet with name/date and teacher answer key' },
+  // Added for Classroom Mode (docs/classroom-mode.md P4), but offered on the
+  // Generator page too — a teacher who wants a quick end-of-lesson check should
+  // not have to go through the chat to get one.
+  { value: 'exit_ticket', label: 'Exit Ticket', hint: 'A 3-question check for the last minutes of a lesson' },
+  // Added for Classroom Mode (docs/classroom-mode.md P5), offered here too for
+  // the same reason as exit_ticket: setting homework is a routine task that
+  // should not require going through the chat.
+  { value: 'homework', label: 'Homework', hint: 'Practice to do at home, with a note for parents' },
 ];
 
 export const DIFFICULTIES: { value: 'easy' | 'medium' | 'hard'; label: string }[] = [
@@ -326,6 +334,23 @@ export const LEARNING_REPRESENTATION_ENABLED = import.meta.env.VITE_LEARNING_REP
 // see .env.example). Empty hides the WhatsApp option; the in-app form still
 // works either way.
 export const SUPPORT_WHATSAPP_NUMBER = import.meta.env.VITE_SUPPORT_WHATSAPP_NUMBER || '';
+
+// ---- Classroom Mode --------------------------------------------------------
+//
+// See docs/classroom-mode.md. Client-side gate, same deliberately-opt-in shape
+// and same "not the real kill switch" caveat as the flags above. When false
+// (the default), the Composer never renders the "+" mode button at all, so a
+// deployment that sets nothing ships zero new UI.
+//
+// The distinction matters more here than for the other features. Classroom Mode
+// is the only place in the app where ONE teacher action fans out into several
+// model calls (a coaching answer, a planner call, then one generation per
+// applicable artifact), so its kill switch is a spend control as well as an
+// incident control — and a build-time constant cannot be either. The server's
+// CLASSROOM_MODE_ENABLED refuses to plan or attach anything regardless of this
+// flag, which is what makes a response possible against already-loaded PWA
+// clients that still have this value baked in.
+export const CLASSROOM_MODE_ENABLED = import.meta.env.VITE_CLASSROOM_MODE_ENABLED === 'true';
 
 // Short build identifier auto-attached to bug reports so a report can be
 // matched to the deploy it came from (see docs/help-support-architecture.md).

@@ -149,6 +149,25 @@ model Query {
   responseText   String
   responseTimeMs Int?
   finishReason   String?
+  // Classroom Mode's plan for this turn, as a JSON string, or NULL for every
+  // ordinary question (docs/classroom-mode.md D24). Nullable and additive on
+  // purpose: a row written before this column existed, and every row written
+  // by a teacher who never uses the mode, is simply NULL — so nothing that
+  // reads a Query needs to know this column exists.
+  //
+  // Stores the PLAN (topic, grade, subject, language, which artifacts fit),
+  // never the generated artifacts themselves — those are still only saved by
+  // an explicit teacher action (D11).
+  classroomPlan  String?
+  // The artifacts Classroom Mode generated for this turn, as a JSON object of
+  // { artifactKind: markdown } (docs/classroom-mode.md D25). NULL for every
+  // ordinary question.
+  //
+  // ⚠️ NEVER select this in a LIST query. It holds up to five full documents;
+  // a 20-row history that pulled it would move hundreds of kilobytes to render
+  // a sidebar. routes/queries.js uses an explicit `select` for exactly this
+  // reason, and the artifacts are fetched on demand for ONE turn instead.
+  classroomArtifacts String?
   createdAt      DateTime @default(now())
 
   feedback Feedback[]

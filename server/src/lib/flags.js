@@ -336,6 +336,53 @@ function readLearningRepresentationFlags(env, { warn = console.warn } = {}) {
   };
 }
 
+// ---- Classroom Mode --------------------------------------------------------
+//
+// See docs/classroom-mode.md. Same shape and same "default OFF" reasoning as
+// every flag above.
+//
+// This one matters more than most, because the feature is the only place in the
+// app where ONE teacher action costs several model calls instead of one (a
+// coaching answer, a planner call, then one generation per applicable
+// artifact). CLASSROOM_MODE_ENABLED is therefore a real spend control as well
+// as a kill switch: flipping it false stops that fan-out for everyone in under
+// a minute, including already-loaded PWA clients that still have the client
+// flag baked in. The client's VITE_CLASSROOM_MODE_ENABLED only decides whether
+// the "+" button renders — it is NOT the incident control (G28's reasoning
+// applies here exactly as it does to the assistant and attachment flags).
+//
+// No daily-budget-per-user tunable here yet: the pilot ships uncapped by owner
+// decision D9, with usage measured first (P7 telemetry) so any future cap is
+// set from real numbers rather than a guess. allowedSchoolCodes is what bounds
+// exposure until then.
+
+const CLASSROOM_MODE_FLAG_DEFAULTS = Object.freeze({
+  enabled: false,
+  // Tenant rollout by school code, same "empty means all schools" contract as
+  // ATTACHMENT_FLAG_DEFAULTS.allowedSchoolCodes — a filter, not a gate.
+  allowedSchoolCodes: Object.freeze([]),
+});
+
+/**
+ * Read Classroom Mode's global flags from an environment object.
+ * @param {Record<string, string|undefined>} env
+ * @param {{warn?: (msg: string) => void}} [opts]
+ * @returns {{enabled: boolean, allowedSchoolCodes: string[]}}
+ */
+function readClassroomModeFlags(env, { warn = console.warn } = {}) {
+  return {
+    enabled: parseBoolEnv(env.CLASSROOM_MODE_ENABLED, {
+      name: 'CLASSROOM_MODE_ENABLED',
+      defaultValue: CLASSROOM_MODE_FLAG_DEFAULTS.enabled,
+      warn,
+    }),
+    allowedSchoolCodes: parseListEnv(env.CLASSROOM_MODE_ALLOWED_SCHOOL_CODES, {
+      name: 'CLASSROOM_MODE_ALLOWED_SCHOOL_CODES',
+      defaultValue: CLASSROOM_MODE_FLAG_DEFAULTS.allowedSchoolCodes,
+    }),
+  };
+}
+
 module.exports = {
   parseBoolEnv,
   parseListEnv,
@@ -348,4 +395,6 @@ module.exports = {
   HELP_SUPPORT_FLAG_DEFAULTS,
   readLearningRepresentationFlags,
   LEARNING_REPRESENTATION_FLAG_DEFAULTS,
+  readClassroomModeFlags,
+  CLASSROOM_MODE_FLAG_DEFAULTS,
 };

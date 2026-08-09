@@ -1,10 +1,13 @@
 import type { ChangeEvent, FormEvent, RefObject } from 'react';
 import { useRef } from 'react';
 import { Mic, ArrowUp, Paperclip } from 'lucide-react';
-import { ATTACHMENT_ACCEPT, ATTACHMENTS_ENABLED, MAX_ATTACHMENTS_COUNT, MAX_QUERY_LENGTH } from '../config';
+import {
+  ATTACHMENT_ACCEPT, ATTACHMENTS_ENABLED, CLASSROOM_MODE_ENABLED, MAX_ATTACHMENTS_COUNT, MAX_QUERY_LENGTH,
+} from '../config';
 import type { useVoiceInput } from '../hooks/useVoiceInput';
 import type { useAttachments } from '../hooks/useAttachments';
 import AttachmentTray from './AttachmentTray';
+import ModeMenu from './ModeMenu';
 
 interface ComposerProps {
   value: string;
@@ -14,9 +17,14 @@ interface ComposerProps {
   voice: ReturnType<typeof useVoiceInput>;
   attachments: ReturnType<typeof useAttachments>;
   textareaRef: RefObject<HTMLTextAreaElement>;
+  classroomMode: boolean;
+  onClassroomModeChange: (on: boolean) => void;
 }
 
-export default function Composer({ value, onChange, onSubmit, loading, voice, attachments, textareaRef }: ComposerProps) {
+export default function Composer({
+  value, onChange, onSubmit, loading, voice, attachments, textareaRef,
+  classroomMode, onClassroomModeChange,
+}: ComposerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const atMaxAttachments = attachments.attachments.length >= MAX_ATTACHMENTS_COUNT;
 
@@ -62,6 +70,17 @@ export default function Composer({ value, onChange, onSubmit, loading, voice, at
           aria-label="Your question"
         />
         <div className="composer-controls">
+          {/* Leftmost, where the character count used to sit alone. The count
+              moves to its right rather than away, so nothing a teacher relied
+              on disappears. Flag off ⇒ this renders nothing at all and the row
+              is byte-for-byte what it was. */}
+          {CLASSROOM_MODE_ENABLED && (
+            <ModeMenu
+              classroomMode={classroomMode}
+              onClassroomModeChange={onClassroomModeChange}
+              disabled={loading}
+            />
+          )}
           <span className={`char-count${value.length > MAX_QUERY_LENGTH * 0.9 ? ' warn' : ''}`}>
             {value.length}/{MAX_QUERY_LENGTH}
           </span>
