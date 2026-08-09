@@ -366,17 +366,71 @@ const roleSchema = z.object({
 });
 
 // PATCH /api/admin/users/:id/role — super_admin changes a user's role.
+//
+// The client raises a confirmation dialog in front of this (ManagePage), but
+// that only guards against a mis-click — it does nothing for a direct call, so
+// the two ways this endpoint can strand the deployment are blocked here:
+//
+//   - changing your OWN role, which for a super_admin means instantly losing
+//     access to every route that could put it back; and
+//   - demoting the LAST super_admin, after which nobody can grant the role to
+//     anyone, including themselves.
+//
+// Each successful change writes an Event, the same durable record approve and
+// reject keep (see decidePendingUser) — a privilege grant is the last thing
+// that should be invisible after the fact.
 router.patch('/users/:id/role', authRequired, requireRole('super_admin'), asyncHandler(async (req, res) => {
   const parsed = roleSchema.safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid role.' });
+  const nextRole = parsed.data.role;
+
+  if (req.params.id === req.user.id) {
+    return res.status(403).json({ error: 'You cannot change your own role. Ask another super admin.' });
+  }
+
+  const target = await prisma.user.findUnique({ where: { id: req.params.id } });
+  if (!target) return res.status(404).json({ error: 'User not found.' });
+
+  // A no-op is reported as success but writes no Event — otherwise a repeated
+  // click would pad the audit trail with changes that never happened.
+  if (target.role === nextRole) return res.json({ id: target.id, role: target.role });
+
+  // The count and the update share one transaction so two concurrent
+  // demotions cannot both read "2 super admins" and both proceed.
   try {
-    const user = await prisma.user.update({
-      where: { id: req.params.id },
-      data: { role: parsed.data.role },
+    const updated = await prisma.$transaction(async (tx) => {
+      if (target.role === 'super_admin') {
+        const remaining = await tx.user.count({ where: { role: 'super_admin', id: { not: target.id } } });
+        if (remaining === 0) {
+          const err = new Error('LAST_SUPER_ADMIN');
+          err.code = 'LAST_SUPER_ADMIN';
+          throw err;
+        }
+      }
+      const user = await tx.user.update({ where: { id: target.id }, data: { role: nextRole } });
+      await tx.event.create({
+        data: {
+          userId: req.user.id, // the admin who made the change, not its subject
+          schoolId: target.schoolId,
+          type: 'user_role_changed',
+          metadata: JSON.stringify({
+            targetUserId: target.id,
+            targetEmail: target.email,
+            fromRole: target.role,
+            toRole: nextRole,
+          }),
+        },
+      });
+      return user;
     });
-    res.json({ id: user.id, role: user.role });
-  } catch {
-    res.status(404).json({ error: 'User not found.' });
+    return res.json({ id: updated.id, role: updated.role });
+  } catch (err) {
+    if (err && err.code === 'LAST_SUPER_ADMIN') {
+      return res.status(409).json({
+        error: 'This is the only super admin. Promote someone else before changing this role.',
+      });
+    }
+    throw err;
   }
 }));
 

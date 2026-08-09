@@ -21,17 +21,41 @@ import type { ClassroomPlan } from '../types';
 // Saving is per-card and explicit. Nothing here writes to the Library on its
 // own — the same rule the Generator follows, for the same reason: AI output
 // becomes the teacher's saved work only when the teacher says so.
+//
+// "Saved" survives a reload. The state is not kept here alone (it used to be,
+// and a set reopened from history offered to save the same quiz again, with no
+// server-side deduplication behind it) — the parent looks up what this turn
+// already put in the Library and passes it down as `savedResourceId`.
 
 interface ClassroomArtifactCardProps {
   item: ArtifactState;
   plan: ClassroomPlan;
   onRetry: () => void;
+  /** The turn this artifact belongs to, recorded on the saved resource so a
+   *  reopened set can tell what it already saved. */
+  queryId?: string;
+  /** Id of the Library resource this artifact was already saved as, looked up
+   *  by the parent. Undefined means "not saved" — including while the lookup
+   *  is still in flight, which is why the button is disabled until then. */
+  savedResourceId?: string;
+  /** True until the parent knows what is already saved. */
+  checkingSaved?: boolean;
 }
 
-export default function ClassroomArtifactCard({ item, plan, onRetry }: ClassroomArtifactCardProps) {
+export default function ClassroomArtifactCard({
+  item,
+  plan,
+  onRetry,
+  queryId,
+  savedResourceId,
+  checkingSaved = false,
+}: ClassroomArtifactCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [savedId, setSavedId] = useState<string | null>(null);
+  // Saves made in THIS session. The prop covers saves made in an earlier one;
+  // either is enough to call the card saved.
+  const [locallySavedId, setLocallySavedId] = useState<string | null>(null);
+  const savedId = locallySavedId ?? savedResourceId ?? null;
   const { show } = useToast();
 
   const meta = ARTIFACT_META[item.artifact];
@@ -58,8 +82,12 @@ export default function ClassroomArtifactCard({ item, plan, onRetry }: Classroom
         language: plan.language,
         content: item.content,
         structured: JSON.stringify({ format: item.artifact, topic: plan.topic, source: 'classroom_mode' }),
+        // Provenance, and the key the "already saved?" lookup matches on. A
+        // save made without it still works; the card just cannot recognise it
+        // after a reload.
+        sourceQueryId: queryId,
       });
-      setSavedId(saved.id);
+      setLocallySavedId(saved.id);
       show('Saved to your library', 'success');
     } catch (err) {
       show(err instanceof ApiError ? err.message : 'Could not save', 'error');
@@ -92,7 +120,10 @@ export default function ClassroomArtifactCard({ item, plan, onRetry }: Classroom
             type="button"
             className="classroom-card-save"
             onClick={handleSave}
-            disabled={saving || savedId !== null}
+            // Also disabled while the parent is still checking what this turn
+            // already saved: pressing Save in that window is exactly how a
+            // duplicate gets made.
+            disabled={saving || checkingSaved || savedId !== null}
           >
             {savedId ? <Check size={14} aria-hidden="true" /> : saving ? <Loader2 size={14} aria-hidden="true" className="spin" /> : <Save size={14} aria-hidden="true" />}
             {savedId ? 'Saved' : saving ? 'Saving…' : 'Save'}

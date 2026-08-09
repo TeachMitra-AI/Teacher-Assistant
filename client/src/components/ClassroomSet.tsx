@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { GraduationCap, Square } from 'lucide-react';
 import ClassroomArtifactCard from './ClassroomArtifactCard';
 import { useClassroomQueue } from '../hooks/useClassroomQueue';
+import { loadSavedArtifactIds, type SavedArtifactIds } from '../lib/classroom';
 import type { ClassroomPlan } from '../types';
 
 // The set of classroom materials attached to one Classroom Mode turn.
@@ -29,6 +31,25 @@ interface ClassroomSetProps {
 
 export default function ClassroomSet({ plan, restored = false, queryId }: ClassroomSetProps) {
   const queue = useClassroomQueue(plan, restored, queryId);
+
+  // What this turn has ALREADY put in the Library. Fetched once for the whole
+  // set rather than once per card — five cards asking the same question would
+  // be five identical requests for one answer.
+  const [savedIds, setSavedIds] = useState<SavedArtifactIds>({});
+  const [checkingSaved, setCheckingSaved] = useState(false);
+
+  useEffect(() => {
+    if (!queryId) return;
+    let active = true;
+    setCheckingSaved(true);
+    loadSavedArtifactIds(queryId)
+      .then((ids) => { if (active) setSavedIds(ids); })
+      // A failed lookup is not worth a toast: the teacher did not ask for it,
+      // and the cost is only that a card offers Save when it did not need to.
+      .catch(() => {})
+      .finally(() => { if (active) setCheckingSaved(false); });
+    return () => { active = false; };
+  }, [queryId]);
 
   // The planner proposed only artifacts we cannot build yet. Render nothing at
   // all rather than an empty container — before P4/P5/P6 land this is a real
@@ -72,6 +93,9 @@ export default function ClassroomSet({ plan, restored = false, queryId }: Classr
             item={item}
             plan={plan}
             onRetry={() => queue.retry(item.artifact)}
+            queryId={queryId}
+            savedResourceId={savedIds[item.artifact]}
+            checkingSaved={checkingSaved}
           />
         ))}
       </div>

@@ -1,5 +1,6 @@
 import { GraduationCap } from 'lucide-react';
 import ResponseCard from './ResponseCard';
+import RunStatus from './RunStatus';
 import ClassroomSet from './ClassroomSet';
 import FollowUpChips from './FollowUpChips';
 import AttachmentTray from './AttachmentTray';
@@ -50,10 +51,17 @@ export default function MessageBubble({ turn, onFeedback, onFollowUp, onRetry }:
 
       <div className="message message-assistant">
         {turn.status === 'pending' && (
-          <div className="message-bubble assistant-pending" role="status" aria-live="polite">
-            <span className="spinner spinner-sm" aria-hidden="true" />
-            Preparing practical advice for you…
-          </div>
+          // `startedAt` is absent only on a turn built before this field
+          // existed (a restored one never renders as pending anyway) — fall
+          // back to the plain line rather than a timer counting from 1970.
+          turn.startedAt ? (
+            <RunStatus startedAt={turn.startedAt} />
+          ) : (
+            <div className="message-bubble assistant-pending" role="status" aria-live="polite">
+              <span className="spinner spinner-sm" aria-hidden="true" />
+              Preparing practical advice for you…
+            </div>
+          )
         )}
 
         {turn.status === 'error' && (

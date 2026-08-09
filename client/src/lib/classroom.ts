@@ -1,10 +1,11 @@
 // Classroom Mode — what the client can actually build, and how it labels it.
 // See docs/classroom-mode.md.
 import { api } from '../api';
-import type { ClassroomArtifact, ClassroomPlan } from '../types';
+import type { ClassroomArtifact, ClassroomPlan, LibraryResource } from '../types';
 import {
   generateAssessment,
   generateLessonPlan,
+  listResources,
   type AssessmentFormat,
   type Difficulty,
   type GenerateAssessmentInput,
@@ -224,4 +225,51 @@ export async function loadStoredArtifacts(queryId: string): Promise<StoredArtifa
 
 export async function storeArtifacts(queryId: string, artifacts: StoredArtifacts): Promise<void> {
   await api(`/queries/${queryId}/classroom-artifacts`, { method: 'PUT', body: { artifacts } });
+}
+
+// ---- Which of a set's artifacts are already in the Library -----------------
+//
+// A card's "Saved" state used to live only in component state, so reopening a
+// turn from history offered to save the same quiz again — and nothing on the
+// server deduplicates, so pressing it produced a second copy.
+//
+// The answer is derived from the Library rather than stored a second time
+// beside the artifacts: the Library is what "saved" actually means, so if the
+// teacher deletes the quiz the card correctly offers to save it again instead
+// of claiming a copy exists that does not.
+//
+// The link is the `structured` blob the card already writes on save
+// ({ format, topic, source: 'classroom_mode' }) plus `sourceQueryId`, which
+// the card now sends. Resources saved before that field was populated simply
+// do not match — they show as unsaved, which is the pre-existing behaviour and
+// never a wrong save.
+
+/** artifact kind -> id of the Library resource it was saved as. */
+export type SavedArtifactIds = Partial<Record<ClassroomArtifact, string>>;
+
+export function savedArtifactIds(resources: LibraryResource[]): SavedArtifactIds {
+  const out: SavedArtifactIds = {};
+  for (const r of resources) {
+    if (!r.structured) continue;
+    let meta: { format?: string; source?: string };
+    try {
+      meta = JSON.parse(r.structured);
+    } catch {
+      // A resource whose `structured` is not JSON is not one of ours.
+      continue;
+    }
+    if (meta?.source !== 'classroom_mode') continue;
+    const format = meta.format as ClassroomArtifact | undefined;
+    if (!format || !(format in ARTIFACT_META)) continue;
+    // Resources arrive newest-first; keep the first match so a card that was
+    // somehow saved twice points at the most recent copy.
+    if (!out[format]) out[format] = r.id;
+  }
+  return out;
+}
+
+/** The saved ids for one turn, or an empty map when the turn was never saved. */
+export async function loadSavedArtifactIds(queryId: string): Promise<SavedArtifactIds> {
+  const resources = await listResources({ sourceQueryId: queryId });
+  return savedArtifactIds(resources);
 }

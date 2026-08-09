@@ -3,6 +3,7 @@ import { Search } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import AdminTabs from '../components/AdminTabs';
 import TablePager from '../components/TablePager';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../auth';
 import { ApiError } from '../api';
@@ -16,6 +17,7 @@ import {
   listAdminUsers,
   listPendingUsers,
 } from '../lib/admin';
+import { roleChangeConfirmation } from '../lib/roleChange';
 import { ROLE_LABELS } from '../config';
 import type { AdminSchool, AdminUser, Role, UserStatus } from '../types';
 
@@ -121,19 +123,47 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
     }
   }
 
-  async function changeRole(target: AdminUser, role: Role) {
-    users.patchItem((u) => u.id === target.id, (u) => ({ ...u, role }));
+  // A role change is never applied straight from the <select>. Picking an
+  // option only stages the change here; the dialog below is what commits it.
+  // The row itself is NOT patched optimistically the way approve/reject is —
+  // the select keeps showing the user's real current role until the server
+  // confirms, which is what makes Cancel a no-op with nothing to roll back.
+  const [pendingRole, setPendingRole] = useState<{ target: AdminUser; role: Role } | null>(null);
+  const [applyingRole, setApplyingRole] = useState(false);
+
+  function requestRoleChange(target: AdminUser, role: Role) {
+    // Re-selecting the role a user already has is not a change worth
+    // confirming (and the server would reject it as a no-op anyway).
+    if (role === target.role) return;
+    setPendingRole({ target, role });
+  }
+
+  async function confirmRoleChange() {
+    if (!pendingRole) return;
+    const { target, role } = pendingRole;
+    setApplyingRole(true);
     try {
       await changeUserRole(target.id, role);
       show('Role updated', 'success');
-      // A role change can move the row out of the current view when a role
-      // filter is active, so the page has to be re-read either way.
-      await users.refetch();
+      setPendingRole(null);
     } catch (err) {
       show(err instanceof ApiError ? err.message : 'Could not update role', 'error');
+      // The dialog closes on failure too: the message is in the toast, and
+      // leaving a modal up over a table the user now needs to re-read is
+      // worse than dismissing it.
+      setPendingRole(null);
+    } finally {
+      setApplyingRole(false);
+      // Runs either way. A role change can move the row out of the current
+      // view when a role filter is active, and on failure this is what proves
+      // the select is still showing the true server-side role.
       await users.refetch();
     }
   }
+
+  const roleConfirm = pendingRole
+    ? roleChangeConfirmation(pendingRole.target.role, pendingRole.role, pendingRole.target.name)
+    : null;
 
   return (
     <div className="page">
@@ -358,7 +388,11 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
                     <td>{u.school || '—'}{u.schoolCode ? ` (${u.schoolCode})` : ''}</td>
                     <td>
                       {isSuperAdmin ? (
-                        <select value={u.role} onChange={(e) => changeRole(u, e.target.value as Role)}>
+                        <select
+                          value={u.role}
+                          onChange={(e) => requestRoleChange(u, e.target.value as Role)}
+                          aria-label={`Role for ${u.name}`}
+                        >
                           {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                         </select>
                       ) : (
@@ -389,6 +423,19 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
           />
         </section>
       </main>
+
+      {roleConfirm && (
+        <ConfirmDialog
+          open
+          title={roleConfirm.title}
+          body={roleConfirm.body}
+          confirmLabel={roleConfirm.confirmLabel}
+          tone={roleConfirm.tone}
+          busy={applyingRole}
+          onConfirm={confirmRoleChange}
+          onCancel={() => setPendingRole(null)}
+        />
+      )}
     </div>
   );
 }
