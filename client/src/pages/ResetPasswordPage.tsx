@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { Lock, Eye, EyeOff, Sun, Moon, CircleAlert, KeyRound } from 'lucide-react';
 import { useAuth } from '../auth';
 import { ApiError } from '../api';
 import { usePreferences } from '../hooks/usePreferences';
@@ -15,10 +16,13 @@ export default function ResetPasswordPage({ preferences }: { preferences: Return
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [confirmTouched, setConfirmTouched] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const { theme, toggleTheme } = preferences;
+
+  const confirmMismatch = confirmTouched && confirm.length > 0 && confirm !== password;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -29,7 +33,9 @@ export default function ResetPasswordPage({ preferences }: { preferences: Return
       return;
     }
     if (password !== confirm) {
-      setError('The two passwords do not match.');
+      // Surfaced inline under the Confirm field (see confirmMismatch) rather
+      // than duplicated here in the top-level banner.
+      setConfirmTouched(true);
       return;
     }
 
@@ -54,13 +60,13 @@ export default function ResetPasswordPage({ preferences }: { preferences: Return
         aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
         aria-pressed={theme === 'dark'}
       >
-        {theme === 'dark' ? '☀️' : '🌙'}
+        {theme === 'dark' ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
       </button>
 
       <div className="auth-layout">
         <div className="auth-card">
           <div className="auth-brand">
-            <span className="auth-brand-logo" aria-hidden="true">🔑</span>
+            <span className="auth-brand-logo" aria-hidden="true"><KeyRound size={22} /></span>
             <h1>Choose a new password</h1>
             <p>{done ? 'Your password has been changed.' : 'Pick something you will remember.'}</p>
           </div>
@@ -80,7 +86,7 @@ export default function ResetPasswordPage({ preferences }: { preferences: Return
               <label className="auth-field">
                 <span className="auth-field-label">New password</span>
                 <span className="auth-input">
-                  <span className="auth-input-icon" aria-hidden="true">🔑</span>
+                  <Lock className="auth-input-icon" size={16} aria-hidden="true" />
                   <input
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -97,7 +103,7 @@ export default function ResetPasswordPage({ preferences }: { preferences: Return
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                     aria-pressed={showPassword}
                   >
-                    {showPassword ? '🙈' : '👁️'}
+                    {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
                   </button>
                 </span>
               </label>
@@ -105,22 +111,28 @@ export default function ResetPasswordPage({ preferences }: { preferences: Return
               <label className="auth-field">
                 <span className="auth-field-label">Confirm new password</span>
                 <span className="auth-input">
-                  <span className="auth-input-icon" aria-hidden="true">🔑</span>
+                  <Lock className="auth-input-icon" size={16} aria-hidden="true" />
                   <input
                     value={confirm}
                     onChange={(e) => setConfirm(e.target.value)}
+                    onBlur={() => setConfirmTouched(true)}
                     type={showPassword ? 'text' : 'password'}
                     placeholder="Type it again"
                     autoComplete="new-password"
                     minLength={8}
+                    aria-invalid={confirmMismatch}
+                    aria-describedby={confirmMismatch ? 'confirm-error' : undefined}
                     required
                   />
                 </span>
+                {confirmMismatch && (
+                  <span className="auth-field-error" id="confirm-error">The two passwords do not match.</span>
+                )}
               </label>
 
               {error && (
                 <p className="auth-error" role="alert">
-                  <span aria-hidden="true">⚠️</span> {error}
+                  <CircleAlert size={16} aria-hidden="true" /> {error}
                 </p>
               )}
 
