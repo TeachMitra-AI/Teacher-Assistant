@@ -1,8 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api, ApiError, setSession, getToken, getRefreshToken } from './api';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { api, ApiError, setSession, getToken, getRefreshToken, TOKEN_KEY } from './api';
+import { shouldResyncAuthOnStorageEvent } from './lib/authStorageSync';
 import type {
   AuthOutcome,
   AuthResponse,
+  FeatureFlags,
   GoogleAuthOptions,
   LoginCredentials,
   RegisterCredentials,
@@ -13,6 +15,13 @@ import type {
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
+  // Live, admin-toggleable flags as of the last session bootstrap (initial
+  // load or sign-in) — null only before that first response lands. A caller
+  // gating UI on one of these should fall back to the matching build-time
+  // VITE_* constant in config.ts when this is null, the same "courtesy client
+  // gate, server stays authoritative" contract those constants already
+  // document (see MessageBubble.tsx).
+  featureFlags: FeatureFlags | null;
   login: (c: LoginCredentials) => Promise<AuthOutcome>;
   register: (c: RegisterCredentials) => Promise<AuthOutcome>;
   loginWithGoogle: (idToken: string, options?: GoogleAuthOptions) => Promise<AuthOutcome>;
@@ -44,33 +53,87 @@ function outcomeForError(err: unknown): AuthOutcome | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Bumped on every reconciliation attempt (the initial mount restore below,
+  // and any later cross-tab resync — see the 'storage' listener effect).
+  // Checking it after each async step is what replaces the old effect-scoped
+  // `cancelled` flag: with two independent call sites now able to trigger a
+  // reconcile, a slower response from an attempt that's since been
+  // superseded by a newer one (e.g. two rapid logins in another tab) must
+  // never win and clobber more current state.
+  const reconcileIdRef = useRef(0);
+
+  // Reads the CURRENT token from storage (never a value captured in a
+  // closure) and syncs user/featureFlags to match it. Used both for the
+  // initial page-load restore and, via the 'storage' listener effect below,
+  // to resync this tab's identity when a DIFFERENT tab changes what's in
+  // localStorage — sign in as someone else, sign out, or a session that
+  // becomes invalid. See docs/enterprise-exploratory-qa-report.md EQA-002.
+  //
+  // Deliberately does not touch `loading` past the very first call: a
+  // cross-tab resync should update the displayed identity/permissions in
+  // place, not take over the whole screen with the app's initial loading
+  // spinner every time. That matters because api.ts's own silent
+  // access-token refresh (tryRefresh) also calls setSession() — a routine,
+  // same-user token rotation that happens automatically in the background —
+  // and that must not be visually disruptive in every other open tab.
+  const reconcile = useCallback(async () => {
+    const id = ++reconcileIdRef.current;
+    if (!getToken()) {
+      if (id === reconcileIdRef.current) {
+        setUser(null);
+        setFeatureFlags(null);
+        setLoading(false);
+      }
+      return;
+    }
+    try {
+      const res = await api<{ user: User; featureFlags: FeatureFlags }>('/auth/me');
+      if (id === reconcileIdRef.current) {
+        setUser(res.user);
+        setFeatureFlags(res.featureFlags);
+      }
+    } catch {
+      // Covers both "no session" and "refresh token also expired/revoked"
+      // (api()'s silent-refresh already tried and failed before this
+      // throws) — either way, there's no valid session to restore.
+      setSession(null, null);
+      if (id === reconcileIdRef.current) {
+        setUser(null);
+        setFeatureFlags(null);
+      }
+    } finally {
+      if (id === reconcileIdRef.current) setLoading(false);
+    }
+  }, []);
 
   // Restore the session from a stored token on first load.
   useEffect(() => {
-    let cancelled = false;
-    async function restore() {
-      if (!getToken()) {
-        setLoading(false);
-        return;
-      }
-      try {
-        const res = await api<{ user: User }>('/auth/me');
-        if (!cancelled) setUser(res.user);
-      } catch {
-        // Covers both "no session" and "refresh token also expired/revoked"
-        // (api()'s silent-refresh already tried and failed before this
-        // throws) — either way, there's no valid session to restore.
-        setSession(null, null);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+    reconcile();
+  }, [reconcile]);
+
+  // Cross-tab session sync (EQA-002 fix). The 'storage' event fires in every
+  // OTHER same-origin tab whenever localStorage changes, but never in the tab
+  // that made the write — so this can only ever be reacting to a DIFFERENT
+  // tab's sign-in/out, which also rules out a same-tab feedback loop
+  // structurally (not something this handler has to guard against itself).
+  // The tab that actually performs a login/logout keeps updating its own
+  // state directly via authenticate()/logout() below, unchanged.
+  useEffect(() => {
+    function onStorage(event: StorageEvent) {
+      // A 'storage' event can in principle be dispatched for sessionStorage
+      // too; this app never uses it for anything auth-related, but checking
+      // storageArea keeps this listener scoped to exactly what setSession()
+      // writes to.
+      if (event.storageArea !== null && event.storageArea !== window.localStorage) return;
+      if (!shouldResyncAuthOnStorageEvent(event.key, TOKEN_KEY)) return;
+      reconcile();
     }
-    restore();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [reconcile]);
 
   // Shared tail of every sign-in path (password and Google alike): store the
   // session, or hand back whichever non-success outcome the server reported.
@@ -80,8 +143,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (res.needsSchoolSelection) {
         return { kind: 'needs_school', schools: res.schools ?? [] };
       }
+      // Invalidate any reconcile() still in flight (initial mount restore,
+      // or a cross-tab resync from the 'storage' listener) so its response —
+      // reflecting whatever the token said a moment ago — can never land
+      // after this and overwrite the identity just signed in here.
+      reconcileIdRef.current += 1;
       setSession(res.token, res.refreshToken);
       setUser(res.user);
+      setFeatureFlags(res.featureFlags);
       return { kind: 'signed_in' };
     } catch (err) {
       const outcome = outcomeForError(err);
@@ -119,9 +188,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Clear local state immediately so sign-out feels instant; tell the
     // server to revoke the session in the background on a best-effort basis
     // (a failure here shouldn't block or roll back the client-side logout).
+    // Same reasoning as authenticate() above: invalidate any reconcile() in
+    // flight first, so it can't land afterward and resurrect a user we just
+    // signed out.
+    reconcileIdRef.current += 1;
     const refreshToken = getRefreshToken();
     setSession(null, null);
     setUser(null);
+    setFeatureFlags(null);
     if (refreshToken) {
       api('/auth/logout', { method: 'POST', body: { refreshToken }, auth: false }).catch(() => {});
     }
@@ -134,6 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       user,
+      featureFlags,
       loading,
       login,
       register,
@@ -143,7 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       updateUser,
     }),
-    [user, loading, login, register, loginWithGoogle, forgotPassword, resetPassword, logout, updateUser]
+    [user, featureFlags, loading, login, register, loginWithGoogle, forgotPassword, resetPassword, logout, updateUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

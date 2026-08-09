@@ -262,6 +262,22 @@ export const RESPONSE_STYLES: { value: ResponseStyle; label: string; hint: strin
 // Lightweight preset avatars (emoji) — no photo upload needed on low-end devices.
 export const AVATAR_PRESETS = ['👩‍🏫', '👨‍🏫', '🧑‍🏫', '📚', '✏️', '🌟', '🍎', '🎓', '🧮', '🔬', '🎨', '🌈'];
 
+// Custom profile pictures (server counterpart: server/src/routes/avatar.js).
+// Types mirror that route's AVATAR_ALLOWED_MIME_TYPES exactly — this is a
+// fast, friendly client-side check only; the server's magic-byte sniff is
+// the real gate, same "courtesy vs. real gate" split as the Coach attachment
+// feature (see lib/attachmentValidation.ts).
+export const AVATAR_ACCEPTED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+// Matches the server's hardcoded cap in routes/avatar.js exactly — the
+// client resizes before upload, so a legitimate photo is never anywhere near
+// this raw limit; this exists to reject an obviously-wrong file quickly with
+// a friendly message instead of waiting on a round trip to find out.
+export const AVATAR_MAX_RAW_SIZE_MB = 5;
+// Every avatar render site (TopBar, Settings preview) shows a square, so the
+// client center-crops to a square and downsizes to this before upload —
+// keeps stored bytes small and every rendered avatar visually consistent.
+export const AVATAR_TARGET_DIMENSION_PX = 512;
+
 export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000/api';
 
 // Google OAuth Web-application client ID. Must be the SAME value the server

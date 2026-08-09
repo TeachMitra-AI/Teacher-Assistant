@@ -24,6 +24,7 @@ const { app, prisma } = require('../helpers/testApp');
 const { createFixtures } = require('../helpers/fixtures');
 const { loginAs } = require('../helpers/auth');
 const { mockGeminiFetch, geminiSuccess, geminiRateLimited, geminiInputBlocked } = require('../helpers/geminiMock');
+const { setBoolSetting, LEARNING_REPRESENTATION_SETTING_KEY } = require('../../src/lib/systemSettings');
 
 const ENV_KEYS = [
   'LEARNING_REPRESENTATION_ENABLED',
@@ -117,6 +118,44 @@ describe('the kill switch — default OFF', () => {
     clearEnv();
     const { mock } = mockGeminiFetch([geminiSuccess(JSON.stringify(HIGH_CONFIDENCE_PROCESS))]);
     await post(VALID_BODY);
+    expect(mock).not.toHaveBeenCalled();
+  });
+});
+
+describe('Admin Settings > Feature Management override precedence', () => {
+  afterEach(async () => {
+    // These tests set a SystemSetting override directly, which the shared
+    // beforeEach's clearEnv() doesn't touch — clean it up here so it can
+    // never leak into a later test in this file that assumes the env var
+    // alone controls the gate.
+    await prisma.systemSetting.deleteMany({ where: { key: LEARNING_REPRESENTATION_SETTING_KEY } });
+  });
+
+  test('an override enabling the flag takes effect even with the env var unset', async () => {
+    clearEnv(); // LEARNING_REPRESENTATION_ENABLED unset -> env default is OFF
+    await setBoolSetting(LEARNING_REPRESENTATION_SETTING_KEY, true, 'test-admin');
+    const { mock } = mockGeminiFetch([geminiSuccess(JSON.stringify({ intent: 'no_visualization', confidence: 'high' }))]);
+    const res = await post(VALID_BODY);
+    expect(res.status).toBe(200);
+    expect(mock).toHaveBeenCalled();
+  });
+
+  test('an override disabling the flag takes effect even with the env var on', async () => {
+    enableFeature(); // LEARNING_REPRESENTATION_ENABLED=true -> env default is ON
+    await setBoolSetting(LEARNING_REPRESENTATION_SETTING_KEY, false, 'test-admin');
+    const { mock } = mockGeminiFetch([geminiSuccess(JSON.stringify(HIGH_CONFIDENCE_PROCESS))]);
+    const res = await post(VALID_BODY);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ representation: 'verbal_explanation', data: null });
+    expect(mock).not.toHaveBeenCalled();
+  });
+
+  test('with no override row, the env var alone still governs (unchanged baseline behavior)', async () => {
+    clearEnv();
+    const { mock } = mockGeminiFetch([geminiSuccess(JSON.stringify(HIGH_CONFIDENCE_PROCESS))]);
+    const res = await post(VALID_BODY);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ representation: 'verbal_explanation', data: null });
     expect(mock).not.toHaveBeenCalled();
   });
 });

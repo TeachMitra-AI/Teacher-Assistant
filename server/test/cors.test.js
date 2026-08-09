@@ -62,4 +62,99 @@ describe('CORS', () => {
     expect(res.status).toBe(200);
     expect(res.headers['access-control-allow-origin']).toBe('https://anything.example.org');
   });
+
+  // Regression coverage for the P2-002 exploratory-QA finding
+  // (docs/enterprise-exploratory-qa-report.md): a malformed JSON body used to
+  // reach the error handler's clean 400 response WITHOUT
+  // Access-Control-Allow-Origin, because cors() was registered after the
+  // JSON body-parser and so never ran when the parser threw. That made a
+  // correct 400 unreadable to the browser, which reported a generic
+  // "Failed to fetch" instead. cors() is now registered before the
+  // body-parser (see src/index.js), so its headers are attached regardless
+  // of what a later middleware throws.
+  describe('malformed JSON body + CORS (P2-002 regression)', () => {
+    test('dev mode: malformed JSON from any origin gets 400 + the real error body + CORS header', async () => {
+      process.env.NODE_ENV = 'test';
+      for (const [k, v] of Object.entries(TEST_ENV)) process.env[k] = v;
+      const devApp = reloadApp();
+
+      const res = await request(devApp)
+        .post('/api/auth/login')
+        .set('Origin', 'https://anything.example.org')
+        .set('Content-Type', 'application/json')
+        .send('{not valid json');
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: 'The request body was not valid JSON.' });
+      expect(res.headers['access-control-allow-origin']).toBe('https://anything.example.org');
+    });
+
+    test('production: malformed JSON from an allowed origin gets 400 + the real error body + CORS header', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.CORS_ORIGINS = 'https://allowed.example.org';
+      for (const [k, v] of Object.entries(TEST_ENV)) {
+        if (k !== 'NODE_ENV' && k !== 'CORS_ORIGINS') process.env[k] = v;
+      }
+      const prodApp = reloadApp();
+
+      const res = await request(prodApp)
+        .post('/api/auth/login')
+        .set('Origin', 'https://allowed.example.org')
+        .set('Content-Type', 'application/json')
+        .send('{not valid json');
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: 'The request body was not valid JSON.' });
+      expect(res.headers['access-control-allow-origin']).toBe('https://allowed.example.org');
+
+      // Restore test env for any subsequent tests/files.
+      process.env.NODE_ENV = 'test';
+      process.env.CORS_ORIGINS = TEST_ENV.CORS_ORIGINS;
+      reloadApp();
+    });
+
+    test('production: malformed JSON from a disallowed origin is still blocked, not given CORS headers', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.CORS_ORIGINS = 'https://allowed.example.org';
+      for (const [k, v] of Object.entries(TEST_ENV)) {
+        if (k !== 'NODE_ENV' && k !== 'CORS_ORIGINS') process.env[k] = v;
+      }
+      const prodApp = reloadApp();
+
+      const res = await request(prodApp)
+        .post('/api/auth/login')
+        .set('Origin', 'https://evil.example.org')
+        .set('Content-Type', 'application/json')
+        .send('{not valid json');
+
+      // Blocked-origin behavior is unchanged by the reorder: the request
+      // never reaches the malformed-JSON branch's 400, and it must not carry
+      // an Access-Control-Allow-Origin for the disallowed origin.
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      expect(res.headers['access-control-allow-origin']).toBeUndefined();
+
+      // Restore test env for any subsequent tests/files.
+      process.env.NODE_ENV = 'test';
+      process.env.CORS_ORIGINS = TEST_ENV.CORS_ORIGINS;
+      reloadApp();
+    });
+
+    test('valid JSON body from an allowed origin is unaffected by the reorder', async () => {
+      process.env.NODE_ENV = 'test';
+      for (const [k, v] of Object.entries(TEST_ENV)) process.env[k] = v;
+      const devApp = reloadApp();
+
+      const res = await request(devApp)
+        .post('/api/auth/login')
+        .set('Origin', 'https://anything.example.org')
+        .send({ email: 'nobody@example.com', password: 'wrong-password' });
+
+      // Valid JSON always reaches the route handler now, same as before this
+      // fix — this asserts the reorder didn't change ordinary request
+      // handling, only what happens when the parser itself throws.
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual({ error: 'Incorrect email or password.' });
+      expect(res.headers['access-control-allow-origin']).toBe('https://anything.example.org');
+    });
+  });
 });

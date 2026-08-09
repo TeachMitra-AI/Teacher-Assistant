@@ -31,6 +31,7 @@ const { prisma } = require('../lib/db');
 const { asyncHandler } = require('../lib/asyncHandler');
 const { authRequired } = require('../middleware/auth');
 const { readAssistantFlags } = require('../lib/flags');
+const { resolveRoleListSetting, ASSISTANT_ALLOWED_ROLES_SETTING_KEY } = require('../lib/systemSettings');
 const { buildCatalog, DISABLED_CATALOG } = require('../actions/registry');
 const {
   MAX_UTTERANCE_LENGTH,
@@ -65,7 +66,15 @@ const router = express.Router();
  */
 async function isWithinRollout(user, flags) {
   if (!flags.enabled) return false;
-  if (!flags.allowedRoles.includes(user.role)) return false;
+
+  // The admin-configurable override (Admin Settings > AI Access) takes
+  // precedence over ASSISTANT_ALLOWED_ROLES when set; absent (or unreadable),
+  // `flags.allowedRoles` — the env-derived value — is the fallback. An empty
+  // override list is a deliberate, valid state meaning "no role may use the
+  // Assistant" — see lib/systemSettings.js's ADMIN_SETTINGS_REGISTRY comment
+  // on this setting for why that must never be read as "no restriction".
+  const { roles: allowedRoles } = await resolveRoleListSetting(ASSISTANT_ALLOWED_ROLES_SETTING_KEY, flags.allowedRoles);
+  if (!allowedRoles.includes(user.role)) return false;
 
   if (flags.allowedSchoolCodes.length === 0) return true;
 

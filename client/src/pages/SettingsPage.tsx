@@ -1,14 +1,16 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Camera, Loader2, Trash2 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import { useToast } from '../components/Toast';
 import { useHelpSupport } from '../components/HelpSupport';
 import { useAuth } from '../auth';
 import { api, ApiError } from '../api';
 import { usePreferences } from '../hooks/usePreferences';
+import { useProfilePicture } from '../hooks/useProfilePicture';
 import {
   LANGUAGES, GRADES, SUBJECTS, CLASSROOM_TYPES, RESPONSE_STYLES, AVATAR_PRESETS, ROLE_LABELS,
-  HELP_SUPPORT_ENABLED,
+  HELP_SUPPORT_ENABLED, API_BASE, AVATAR_ACCEPTED_MIME_TYPES,
 } from '../config';
 import type { ResponseStyle, TeacherPreferences, User } from '../types';
 
@@ -31,6 +33,53 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
   const [defaultClassroomType, setDefaultClassroomType] = useState(prefs.defaultClassroomType ?? '');
   const [responseStyle, setResponseStyle] = useState<ResponseStyle>(prefs.responseStyle ?? 'balanced');
   const [savingProfile, setSavingProfile] = useState(false);
+
+  // Custom profile picture — its own upload/remove round trip, independent of
+  // this form's "Save changes" button (matches how most avatar uploads work:
+  // picking a photo takes effect immediately, not on a later form submit).
+  const { uploading: uploadingPhoto, previewUrl, upload: uploadPhoto, remove: removePhoto } = useProfilePicture();
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const photoUrl = previewUrl || (user?.avatarUrl ? `${API_BASE}${user.avatarUrl}` : null);
+
+  function handlePickPhoto() {
+    photoInputRef.current?.click();
+  }
+
+  async function handlePhotoSelected(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+    const result = await uploadPhoto(file);
+    if ('error' in result) {
+      show(result.error, 'error');
+    } else {
+      updateUser(result.user);
+      show('Profile picture updated', 'success');
+    }
+  }
+
+  async function handleRemovePhoto() {
+    const result = await removePhoto();
+    if ('error' in result) {
+      show(result.error, 'error');
+    } else {
+      updateUser(result.user);
+      show('Profile picture removed', 'success');
+    }
+  }
+
+  // Picking an emoji and having a photo are mutually exclusive (a photo
+  // always outranks an emoji wherever an avatar renders — see TopBar.tsx) —
+  // so choosing an emoji while a photo is set clears the photo immediately,
+  // the same way the dedicated Remove button does.
+  async function handleAvatarEmojiSelected(emoji: string) {
+    setAvatar(emoji);
+    if (user?.avatarUrl) {
+      const result = await removePhoto();
+      if ('error' in result) show(result.error, 'error');
+      else updateUser(result.user);
+    }
+  }
 
   // Exam-paper letterhead defaults (Quiz/Worksheet Generator) — prefilled
   // from the school/teacher identity the app already has, editable/overridable.
@@ -150,12 +199,55 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
             Your sign-in email cannot be changed here — set a display name for how you appear in the app.
           </p>
 
-          <label className="field-label">Avatar</label>
+          <label className="field-label">Profile picture</label>
+          <div className="profile-photo-row">
+            <span className="profile-photo-preview" aria-hidden="true">
+              {photoUrl ? (
+                <img src={photoUrl} alt="" className="profile-photo-img" />
+              ) : (
+                <span>{avatar || '🚫'}</span>
+              )}
+            </span>
+            <div className="profile-photo-actions">
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept={AVATAR_ACCEPTED_MIME_TYPES.join(',')}
+                className="visually-hidden"
+                aria-label="Upload a profile picture"
+                onChange={handlePhotoSelected}
+              />
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={handlePickPhoto}
+                disabled={uploadingPhoto}
+                title={user.avatarUrl ? 'Change photo' : 'Upload photo'}
+                aria-label={uploadingPhoto ? 'Uploading photo…' : user.avatarUrl ? 'Change photo' : 'Upload photo'}
+              >
+                {uploadingPhoto ? <Loader2 size={18} className="spin" aria-hidden="true" /> : <Camera size={18} aria-hidden="true" />}
+              </button>
+              {user.avatarUrl && (
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={handleRemovePhoto}
+                  disabled={uploadingPhoto}
+                  title="Remove photo"
+                  aria-label="Remove photo"
+                >
+                  <Trash2 size={18} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <label className="field-label">Or choose an avatar</label>
           <div className="avatar-grid" role="radiogroup" aria-label="Choose an avatar">
             <button
               type="button"
               className={`avatar-option${avatar === '' ? ' selected' : ''}`}
-              onClick={() => setAvatar('')}
+              onClick={() => handleAvatarEmojiSelected('')}
               aria-pressed={avatar === ''}
               title="No avatar"
             >
@@ -166,7 +258,7 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
                 type="button"
                 key={emoji}
                 className={`avatar-option${avatar === emoji ? ' selected' : ''}`}
-                onClick={() => setAvatar(emoji)}
+                onClick={() => handleAvatarEmojiSelected(emoji)}
                 aria-pressed={avatar === emoji}
               >
                 {emoji}

@@ -70,12 +70,32 @@ model User {
   passwordResetTokens PasswordResetToken[]
   supportTickets      SupportTicket[]
   supportNotes        SupportNote[]
+  profilePicture      ProfilePicture?
 
   // A teacher's email is unique within a school. The same email may hold
   // accounts at more than one school, which is why sign-in looks up by email
   // across schools and asks the user to disambiguate when it matches several.
   @@unique([schoolId, email])
   @@index([googleSub])
+}
+
+// A teacher's custom uploaded profile picture — kept in its own table, never
+// as columns on User, so an ordinary prisma.user.findMany()/findUnique() can
+// never accidentally pull image bytes into memory; only code that explicitly
+// selects `data` (the serving route) ever touches them. One row per user
+// (upsert on upload, deleted on removal); presence/absence of the row is
+// itself the "has a custom photo" flag — see publicUser() in routes/auth.js,
+// which reads only `updatedAt` to build a cache-busted avatarUrl and never
+// loads `data` for that DTO.
+model ProfilePicture {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String   @unique
+  data      Bytes
+  mimeType  String
+  sizeBytes Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // A single-use, time-limited password-reset token. Mirrors the Session model's
@@ -253,6 +273,21 @@ model SupportTicket {
   // searched on either, so neither needed an index until now.
   @@index([category])
   @@index([userId])
+}
+
+// A single admin-configurable runtime override — e.g. a temporary
+// feature-flag toggle set from Admin Settings > Feature Management (see
+// lib/systemSettings.js). Absence of a row for a given key is a first-class
+// state, not an error: it means "no override yet", and the caller falls back
+// to that feature's existing env-var default. `updatedById` is a soft
+// reference to the acting admin (not a FK — mirrors Resource.sourceQueryId's
+// precedent above), since the durable audit trail is the Event row the same
+// write also creates, not this table.
+model SystemSetting {
+  key         String   @id
+  value       String
+  updatedAt   DateTime @updatedAt
+  updatedById String?
 }
 
 // An admin's internal note on a SupportTicket (Phase 2: the admin inbox).
