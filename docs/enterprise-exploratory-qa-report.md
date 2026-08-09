@@ -15,7 +15,7 @@ This report is additive — it does not modify or replace `docs/learning-represe
 
 | ID | Category | Severity | Area | Status | Short Description |
 |----|----------|----------|------|--------|-------------------|
-| EQA-001 | Reliability / Bug | P2 High | Server-wide (`server/src/index.js` middleware order) | Confirmed | Malformed JSON body responses are missing CORS headers, turning a correct 400 into an opaque browser "Failed to fetch" on every JSON endpoint |
+| EQA-001 | Reliability / Bug | P2 High | Server-wide (`server/src/index.js` middleware order) | **Fixed / Verified** (2026-08-09) | Malformed JSON body responses are missing CORS headers, turning a correct 400 into an opaque browser "Failed to fetch" on every JSON endpoint |
 | EQA-002 | Security-UX / Bug | P2 High | Session/auth, multi-tab | Confirmed | A login in one tab silently invalidates another open tab's session; the stale tab keeps showing the old identity and gives a misleading "no permission" error instead of explaining the session changed |
 | EQA-003 | Security / UX | P1 Critical | Admin Dashboard → Manage → Users | Confirmed | Promoting any user to Super Admin (highest privilege) via the role dropdown takes effect instantly with zero confirmation step |
 | EQA-004 | UX / Copy | P3 Low | POST /api/auth/register validation | Confirmed | A malformed registration request surfaces a raw Zod validation string instead of a human-authored message |
@@ -69,7 +69,7 @@ This report is additive — it does not modify or replace `docs/learning-represe
 **Category:** Bug / Reliability
 **Severity:** P2 High
 **Area:** Server-wide — every endpoint that parses a JSON body (`server/src/index.js`)
-**Status:** Confirmed, root-caused
+**Status:** **Fixed / Verified** (2026-08-09). Original finding preserved below unmodified for audit-trail purposes; see "Resolution" at the end of this entry for what changed and how it was verified.
 
 **Steps to reproduce:**
 1. From the browser (or any cross-origin caller), send a request with an invalid JSON body to any endpoint that parses one, e.g.:
@@ -110,6 +110,41 @@ Reproduced identically on `/api/auth/login` and `/api/resources/generate` (both 
 **Recommended fix:** Register `cors()` before the JSON body-parser (or any middleware that can throw), or have the error-handling middleware explicitly set `Access-Control-Allow-Origin` (mirroring the same origin-check logic already in the `cors()` config) before responding.
 
 **Why it matters for enterprise/premium users:** This is invisible on the golden path (the app's own JS never sends malformed JSON), but it directly undermines a deliberate, security-reviewed fix that already exists in this codebase (the code comments explicitly reference two prior incidents this exact branch was hardened against — G22 and G11). Realistic triggers in an enterprise setting include corporate proxies/WAFs or content-inspection middleboxes that rewrite bodies, flaky mobile networks truncating a request mid-flight, or a future client-side bug. In every one of those cases the end user gets zero actionable information (masking the well-worded 400 the server already worked hard to produce) and a developer investigating the report gets a misleading "network error" instead of the true validation failure — materially harder production debugging.
+
+#### Resolution (2026-08-09)
+
+**What caused the issue:** Confirmed as originally root-caused above — `app.use(cors(...))` was registered in `server/src/index.js` *after* the JSON body-parser (`express.json()`) middleware. When the parser threw a `SyntaxError` on an invalid body, Express skipped straight to the error-handling middleware at the bottom of the file, bypassing every regular middleware in between, including `cors()`. The error handler's already-correct `400 {"error":"The request body was not valid JSON."}` response therefore went out with no `Access-Control-Allow-Origin` header, and the browser discarded it as a cross-origin violation before the frontend's JS ever saw it — surfacing as a generic `TypeError: Failed to fetch`.
+
+**What was changed:** A pure reorder, no new logic and no duplicate CORS handling:
+- In `server/src/index.js`, the entire CORS block (`allowedOrigins`, the production fail-fast check, `isOriginAllowed()`, and the `app.use(cors(...))` call) was moved to run immediately after `app.use(helmet())` and *before* the JSON body-parser (`jsonSmall`/`jsonLarge`) is registered. `cors()` reads only the request's `Origin` header and sets response headers synchronously before calling `next()` — it never touches the request body — so this reordering has no effect on any request that parses successfully; it only changes what has already run by the time a later middleware (the body-parser) throws.
+- Added an explanatory comment at the new `cors()` registration site, and a cross-reference note in the error-handling middleware's existing malformed-JSON comment block, so the ordering dependency is documented in place for future maintainers (not just in this report).
+- No changes to the CORS origin-allowlist logic itself (`isOriginAllowed`, the production fail-fast-on-empty-allowlist check, or the `Not allowed by CORS` rejection path) — allowed origins, disallowed origins, and dev-mode any-origin reflection all behave exactly as before.
+- No other application behavior was touched.
+
+**How it was verified:**
+1. *Automated regression tests* (see coverage below) — `npx vitest run test/cors.test.js` → all 7 tests pass (3 pre-existing + 4 new).
+2. *Full server test suite* — `npx vitest run` → 68 test files, 1712 tests, all pass (no regressions introduced elsewhere by the middleware reorder).
+3. *Server lint* — `npm run lint` (server `eslint src evals tools`) → clean, no errors or warnings.
+4. *Manual `curl` verification* (network-layer, mirroring the original repro): a malformed-JSON `PATCH` to `/api/admin/feature-flags/learning-representation` with `Origin: http://localhost:5173` now returns `HTTP/1.1 400` **with** `Access-Control-Allow-Origin: http://localhost:5173` present, where before the fix that header was absent (confirmed by re-running the exact same request against the pre-fix code path during the original audit).
+5. *Manual browser verification* (the actual bug's symptom, not just the wire format): from a live page served at `http://localhost:5173` (via the browser automation tooling used for this audit, exercising the real Chrome fetch/CORS enforcement — not curl), ran:
+   ```js
+   await fetch('http://localhost:3000/api/auth/login', {
+     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{not valid json',
+   });
+   ```
+   **Before the fix**, this call threw `TypeError: Failed to fetch` in the page (reproduced during the original audit — see EQA-001's "Actual" section above). **After the fix**, the same call from the same origin now resolves normally: `{"status":400,"body":{"error":"The request body was not valid JSON."}}`. Re-ran the identical check against the original repro endpoint, `PATCH /api/admin/feature-flags/learning-representation`, with the same result — `400` with the real error body, no thrown exception.
+6. *Disallowed-origin behavior preserved*: a malformed-JSON request from a non-allowlisted origin in production mode (`CORS_ORIGINS` set, `Origin: https://evil.example.org`) still receives no `Access-Control-Allow-Origin` header and is still rejected — confirmed by the new regression test and consistent with the unchanged `isOriginAllowed()`/origin-rejection logic.
+7. *Production and development CORS modes both re-verified*: the pre-existing "production boot fails without `CORS_ORIGINS`," "production only allows listed origins," and "development reflects any origin" tests all continue to pass unmodified, alongside the new malformed-JSON cases run under both `NODE_ENV=test` (dev-like) and `NODE_ENV=production`.
+
+**Regression test coverage added** (`server/test/cors.test.js`, new `describe('malformed JSON body + CORS (P2-002 regression)')` block, 4 tests):
+- Dev mode: malformed JSON from any origin → `400` + the real error body + the reflected `Access-Control-Allow-Origin` header.
+- Production: malformed JSON from an **allowed** origin → `400` + the real error body + the correct `Access-Control-Allow-Origin` header.
+- Production: malformed JSON from a **disallowed** origin → still blocked (`>= 400`), no `Access-Control-Allow-Origin` header leaked to a non-allowlisted caller.
+- Valid JSON from an allowed origin → unchanged behavior (still reaches the route handler, still gets its CORS header), confirming the reorder didn't alter ordinary request handling.
+
+All pre-existing CORS tests (production fails fast on empty allowlist; production allows only listed origins; development reflects any origin) continue to pass unmodified.
+
+**Scope discipline:** Only this finding (EQA-001 / P2-002) was addressed. No other findings from this report (EQA-002 through EQA-010) were touched, and no unrelated application behavior was modified — confirmed via `git diff` before finalizing (see repository state below).
 
 ---
 
@@ -313,6 +348,8 @@ Per this audit's quality bar, these are recorded explicitly rather than omitted,
 ---
 
 ## Final Report
+
+> **Post-audit update (2026-08-09):** EQA-001 has since been fixed and verified (see its "Resolution" subsection under High Priority above). The counts, blocker recommendation, and readiness rating below are left as originally written at audit time, to preserve this report as an accurate point-in-time audit trail — read them together with the Summary table at the top, which reflects EQA-001's current `Fixed / Verified` status.
 
 **1. Total issues found:** 10 (1 Critical/P1, 2 High/P2, 4 Low/P3, 3 Enhancement)
 
