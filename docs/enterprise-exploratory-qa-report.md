@@ -16,7 +16,7 @@ This report is additive — it does not modify or replace `docs/learning-represe
 | ID | Category | Severity | Area | Status | Short Description |
 |----|----------|----------|------|--------|-------------------|
 | EQA-001 | Reliability / Bug | P2 High | Server-wide (`server/src/index.js` middleware order) | **Fixed / Verified** (2026-08-09) | Malformed JSON body responses are missing CORS headers, turning a correct 400 into an opaque browser "Failed to fetch" on every JSON endpoint |
-| EQA-002 | Security-UX / Bug | P2 High | Session/auth, multi-tab | Confirmed | A login in one tab silently invalidates another open tab's session; the stale tab keeps showing the old identity and gives a misleading "no permission" error instead of explaining the session changed |
+| EQA-002 | Security-UX / Bug | P2 High | Session/auth, multi-tab | **Fixed / Verified** (2026-08-09) | A login in one tab silently invalidates another open tab's session; the stale tab keeps showing the old identity and gives a misleading "no permission" error instead of explaining the session changed |
 | EQA-003 | Security / UX | P1 Critical | Admin Dashboard → Manage → Users | Confirmed | Promoting any user to Super Admin (highest privilege) via the role dropdown takes effect instantly with zero confirmation step |
 | EQA-004 | UX / Copy | P3 Low | POST /api/auth/register validation | Confirmed | A malformed registration request surfaces a raw Zod validation string instead of a human-authored message |
 | EQA-005 | Product / Enhancement | Enhancement | Admin Settings page | Confirmed (by design) | No UI action to clear an admin override back to "inherit env default" — only settable to an explicit value |
@@ -153,7 +153,7 @@ All pre-existing CORS tests (production fails fast on empty allowlist; productio
 **Category:** Bug / Session management / UX
 **Severity:** P2 High
 **Area:** Auth/session handling, global (any two tabs of the same browser profile)
-**Status:** Confirmed
+**Status:** **Fixed / Verified** (2026-08-09). Original finding preserved below unmodified for audit-trail purposes; see "Resolution" at the end of this entry for what changed and how it was verified.
 
 **Steps to reproduce:**
 1. Open Tab A, sign in as `superadmin@example.com`, navigate to `/admin/settings`.
@@ -175,6 +175,38 @@ All pre-existing CORS tests (production fails fast on empty allowlist; productio
 **Recommended fix:** Listen for the `storage` event (fires in other tabs when `localStorage` changes) and either re-fetch `/auth/me` to resync the displayed identity, or prompt the user that their session changed and offer a reload. At minimum, distinguish this specific 403 case with a clearer message.
 
 **Why it matters for enterprise/premium users:** Not a security hole — server-side RBAC held correctly in every trial, and the failure mode is fail-closed (the stale tab simply can't perform the write). The cost is confusion and wasted time: an IT admin managing this product across multiple tabs (a very plausible enterprise workflow — one tab for settings, one for support tickets, one for testing as themselves) can be told "you don't have permission" for an action they very much have permission for, with no explanation, which reads as the product being broken.
+
+#### Resolution (2026-08-09)
+
+**What caused the issue:** Confirmed as originally root-caused above — `auth_token`/`refresh_token` live in `localStorage`, shared per-origin across every tab of the same browser profile, but each tab's `user`/`featureFlags` React state (`client/src/auth.tsx`) was only ever populated at that tab's own initial page-load bootstrap or its own sign-in/sign-out. Nothing in `AuthProvider` re-checked the stored token after mount, so a DIFFERENT tab overwriting or clearing that shared token left every other open tab's displayed identity frozen at whatever it was when that tab last checked — until its next full navigation/reload.
+
+**What was changed:**
+- `client/src/auth.tsx` — the one-off "restore session on mount" effect was generalized into a reusable `reconcile()` callback (reads the *current* token from storage, calls `GET /auth/me`, and syncs `user`/`featureFlags` to match, or clears both if there's no token / the token turns out to be invalid). It is called both on initial mount (unchanged behavior) and now also from a new `useEffect` that listens for the browser's native `storage` event — which fires in every OTHER same-origin tab whenever `localStorage` changes, but **never** in the tab that made the write. That platform guarantee is what rules out a same-tab feedback loop structurally, without any extra bookkeeping needed for it.
+- A `reconcileIdRef` monotonic counter guards against races: each call to `reconcile()` gets a ticket, and only the response whose ticket is still current is allowed to update state. This protects against a burst of rapid tab switches (in another tab) where an older, slower `/auth/me` response could otherwise land after a newer one and revert the UI to stale data. `authenticate()` (the shared tail of `login()`/`loginWithGoogle()`) and `logout()` also bump this counter, so a reconcile already in flight when the *current* tab performs its own login/logout can never win and clobber that fresh local action either.
+- `client/src/lib/authStorageSync.ts` (new) — a small pure function, `shouldResyncAuthOnStorageEvent(key, tokenStorageKey)`, extracted specifically so the "which storage events matter" decision is covered by this project's existing PURE-LOGIC-only client test runner (see `vitest.config.ts`'s documented "no component-rendering tests" decision, which this change deliberately respects rather than introducing React Testing Library). It returns `true` for the access-token key itself or for `key === null` (`localStorage.clear()`), and `false` for every other key — which also naturally de-dupes the *pair* of `storage` events a single `setSession()` call produces (it writes the access token and refresh token together) down to one resync, and ignores unrelated keys this app also keeps in `localStorage` (`theme`, `fontScale`).
+- `client/src/api.ts` — `TOKEN_KEY` (`'auth_token'`) was exported (previously module-private) so `auth.tsx` has one source of truth for the key name rather than a second hardcoded string.
+- No new session/auth system, no polling, no change to JWT issuance/verification or server-side authorization — purely a client-side resync of already-existing, already-correct server state. Normal single-tab login/logout is byte-for-byte the same code path as before (`authenticate()`/`logout()` still update state directly and immediately); only a *different* tab's change is now detected.
+
+**How it was verified:**
+1. *Automated tests* — `client/src/lib/authStorageSync.test.ts` (new, 7 cases): resyncs on the token key changing, resyncs on `key === null` (`clear()`), does **not** resync for the paired `refresh_token` key event or for unrelated keys (`theme`, `fontScale`), treats an empty-string key as distinct from `null`, and two tests specifically targeting "no infinite loop / no runaway behavior": the predicate is proven to have no internal state (stable across 50 repeated calls with the same input), and a simulated rapid alternating burst of events resolves each one independently rather than cumulatively. `npx vitest run src/lib/authStorageSync.test.ts` → 7/7 pass.
+2. *Full client test suite* — `npx vitest run` → 370/371 pass; the 1 pre-existing failure (`src/assistant/generatorPrefill.test.ts`, an unrelated Generator-telemetry test) was confirmed via `git stash` to fail identically on the base branch **before** this change, i.e. pre-existing and untouched by this fix.
+3. *Lint* — `npm run lint` (client `eslint src`) → clean.
+4. *Typecheck + build* — `npm run build` (`tsc -b && vite build`) → succeeds with no type errors.
+5. *Manual two-tab browser QA* (real Chrome, two tabs of the same profile, real login/logout through the actual UI — see Notes for one methodology caveat):
+   - **Scenario 1** (Tab A logged in as User A → Tab B signs in as a different User B → return to Tab A without touching it): Tab A's identity chip changed from "Rampur Admin / School Admin" to "Demo Teacher / Teacher" and its "Dashboard" admin nav link disappeared, entirely on its own, with no reload. Step 7 (protected action): navigating Tab A directly to `/admin/manage` afterward correctly redirected away instead of showing stale admin content.
+   - **Scenario 2** (both tabs signed in → sign out from Tab B → return to Tab A): Tab A, untouched, redirected itself from `/` to `/login` the moment Tab B signed out. Console clean.
+   - **Scenario 3** (Tab A signed in as a normal user → Tab B switches to an admin-role user): Tab A's "Dashboard" admin nav link **appeared** on its own (the reverse direction from Scenario 1, confirming admin UI isn't stale-*absent* either) — again with zero interaction with Tab A and no reload.
+   - **Refresh after sync**: a hard reload of a tab mid-session correctly re-authenticated and displayed the current identity (unchanged, pre-existing bootstrap behavior).
+   - **Browser back/forward**: navigating Library → Generator → back correctly returned to Library with identity intact and no console errors.
+   - **Rapid multiple storage changes**: fired a tight synchronous burst of three storage writes in Tab B (a malformed token → removed → the real token, with no `await` between them, so all three `storage` events reached Tab A before any response could land) — Tab A converged cleanly on the final (real) identity with no error, no stuck/flickering UI, and no console errors, confirming the `reconcileIdRef` staleness guard resolves races by *initiation* order rather than response-arrival order.
+   - **Console errors**: none observed in any tab across all scenarios.
+   - **No infinite reload/render loop**: confirmed directly — no `window.location` reload ever fired from the sync mechanism itself (only my own deliberate manual navigations did), and network activity matched one request per meaningful state change with no runaway duplication.
+
+**Regression test coverage added:** `client/src/lib/authStorageSync.test.ts` (7 tests, detailed above). Per this codebase's documented, deliberate testing-architecture boundary (`vitest.config.ts`: pure-logic modules only, no component rendering), `auth.tsx` itself is — like the rest of this app's React components — covered by manual QA rather than an automated component test; that manual verification is documented in full above.
+
+**Notes on methodology:** Testing hit this project's real IP-scoped `authLimiter` (30 requests/15min across all `/api/auth/*` routes) twice, purely from the cumulative volume of logins/logouts this manual QA and the preceding exploratory audit generated in one long session — not a defect. Each time, testing paused and polled (rather than guessing or fabricating results) until the limiter's own `RateLimit-Reset` window genuinely elapsed before continuing. One useful side observation surfaced by hitting it: `reconcile()`'s catch-all — inherited unchanged from the original bootstrap effect's own catch-all — treats *any* `/auth/me` failure, including a transient `429`, the same as "no valid session" and logs out locally. This is pre-existing behavior (verified identical before this change), not a regression introduced here, and is out of scope for EQA-002 per this task's instructions to fix only this finding; it may be worth its own future finding (distinguishing a transient/rate-limited failure from a genuinely invalid session) but was not touched.
+
+**Scope discipline:** Only this finding (EQA-002) was addressed in this pass. EQA-001 remains as previously fixed/verified; EQA-003 through EQA-010 were not touched, and no unrelated application behavior was modified — confirmed via `git diff` before finalizing (see repository state below).
 
 ---
 
@@ -349,7 +381,7 @@ Per this audit's quality bar, these are recorded explicitly rather than omitted,
 
 ## Final Report
 
-> **Post-audit update (2026-08-09):** EQA-001 has since been fixed and verified (see its "Resolution" subsection under High Priority above). The counts, blocker recommendation, and readiness rating below are left as originally written at audit time, to preserve this report as an accurate point-in-time audit trail — read them together with the Summary table at the top, which reflects EQA-001's current `Fixed / Verified` status.
+> **Post-audit update (2026-08-09):** EQA-001 and EQA-002 have since been fixed and verified (see each finding's "Resolution" subsection above). The counts, blocker recommendation, and readiness rating below are left as originally written at audit time, to preserve this report as an accurate point-in-time audit trail — read them together with the Summary table at the top, which reflects both findings' current `Fixed / Verified` status.
 
 **1. Total issues found:** 10 (1 Critical/P1, 2 High/P2, 4 Low/P3, 3 Enhancement)
 
