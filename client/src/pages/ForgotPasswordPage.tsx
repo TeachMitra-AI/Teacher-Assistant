@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { Mail, Sun, Moon, CircleAlert, ArrowLeft, KeyRound } from 'lucide-react';
 import { useAuth } from '../auth';
 import { ApiError } from '../api';
 import { usePreferences } from '../hooks/usePreferences';
@@ -41,13 +42,13 @@ export default function ForgotPasswordPage({ preferences }: { preferences: Retur
         aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
         aria-pressed={theme === 'dark'}
       >
-        {theme === 'dark' ? '☀️' : '🌙'}
+        {theme === 'dark' ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
       </button>
 
       <div className="auth-layout">
         <div className="auth-card">
           <div className="auth-brand">
-            <span className="auth-brand-logo" aria-hidden="true">🔑</span>
+            <span className="auth-brand-logo" aria-hidden="true"><KeyRound size={22} /></span>
             <h1>Reset your password</h1>
             <p>
               {sent
@@ -71,7 +72,7 @@ export default function ForgotPasswordPage({ preferences }: { preferences: Retur
               <label className="auth-field">
                 <span className="auth-field-label">Email</span>
                 <span className="auth-input">
-                  <span className="auth-input-icon" aria-hidden="true">✉️</span>
+                  <Mail className="auth-input-icon" size={16} aria-hidden="true" />
                   <input
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -88,7 +89,7 @@ export default function ForgotPasswordPage({ preferences }: { preferences: Retur
 
               {error && (
                 <p className="auth-error" role="alert">
-                  <span aria-hidden="true">⚠️</span> {error}
+                  <CircleAlert size={16} aria-hidden="true" /> {error}
                 </p>
               )}
 
@@ -103,8 +104,8 @@ export default function ForgotPasswordPage({ preferences }: { preferences: Retur
               </button>
 
               <p className="auth-hint">
-                <Link className="auth-link" to="/login">
-                  ← Back to sign in
+                <Link className="auth-link auth-back-link" to="/login">
+                  <ArrowLeft size={13} aria-hidden="true" /> Back to sign in
                 </Link>
               </p>
             </form>

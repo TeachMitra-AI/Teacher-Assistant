@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
+import { Mail, Lock, User, School, Eye, EyeOff, Sun, Moon, CircleAlert, ArrowLeft, Lightbulb, Languages, BookOpen } from 'lucide-react';
 import { useAuth } from '../auth';
 import { ApiError } from '../api';
 import { GOOGLE_CLIENT_ID } from '../config';
@@ -8,6 +9,8 @@ import { usePreferences } from '../hooks/usePreferences';
 import type { AuthOutcome, SchoolOption } from '../types';
 
 type Mode = 'login' | 'register';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Which panel the card is showing. Sign-in and sign-up can both end somewhere
 // other than "you're in": waiting on an approver, turned down, or needing to
@@ -35,10 +38,45 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const { theme, toggleTheme } = preferences;
 
+  // Field-level errors surface only once a field has been visited (blur) or a
+  // submit was attempted — matching the rest of the form, nothing is flagged
+  // while the user is still typing their first pass through it.
+  const [touched, setTouched] = useState<{ schoolCode?: boolean; email?: boolean; password?: boolean }>({});
+  function touch(field: keyof typeof touched) {
+    setTouched((t) => (t[field] ? t : { ...t, [field]: true }));
+  }
+  const emailError = touched.email && email.length > 0 && !EMAIL_RE.test(email.trim())
+    ? 'Enter a valid email address.'
+    : '';
+  const passwordError = touched.password && password.length > 0 && password.length < 8
+    ? 'Password must be at least 8 characters.'
+    : '';
+  const schoolCodeError = touched.schoolCode && schoolCode.length > 0 && /\s/.test(schoolCode)
+    ? 'School code should not contain spaces.'
+    : '';
+
+  // Google's button won't take a percentage width, so to make it read as
+  // part of the same CTA group as the full-width submit button (rather than
+  // a smaller, disconnected pill), its pixel width is measured off this
+  // wrapper — which is already exactly as wide as the form — and kept in
+  // sync across breakpoints and font-size changes via ResizeObserver.
+  const googleWrapRef = useRef<HTMLDivElement>(null);
+  const [googleWidth, setGoogleWidth] = useState<number>();
+  useEffect(() => {
+    const el = googleWrapRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setGoogleWidth(Math.round(entry.contentRect.width));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   function switchMode(next: Mode) {
     setMode(next);
     setView('form');
     setError('');
+    setTouched({});
   }
 
   function backToForm() {
@@ -86,11 +124,14 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
+    // Marking every field touched surfaces the matching inline error (see
+    // emailError / passwordError / schoolCodeError) instead of duplicating
+    // the same message in the top-level banner below.
+    setTouched({ schoolCode: true, email: true, password: true });
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.');
-      return;
-    }
+    if (!EMAIL_RE.test(email.trim())) return;
+    if (password.length < 8) return;
+    if (mode === 'register' && /\s/.test(schoolCode)) return;
 
     setBusy(true);
     try {
@@ -180,10 +221,10 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
         aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
         aria-pressed={theme === 'dark'}
       >
-        {theme === 'dark' ? '☀️' : '🌙'}
+        {theme === 'dark' ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
       </button>
 
-      <div className="auth-layout">
+      <div className="auth-layout auth-layout--split">
         <aside className="auth-hero" aria-hidden="true">
           <div className="auth-hero-inner">
             <div className="auth-hero-logo">👨‍🏫</div>
@@ -192,9 +233,9 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
               Your AI teaching companion — practical, classroom-ready advice in your language.
             </p>
             <ul className="auth-hero-points">
-              <li><span>💡</span> Instant lesson ideas &amp; activities</li>
-              <li><span>🗣️</span> Answers in 9 Indian languages</li>
-              <li><span>📚</span> Built for real classrooms</li>
+              <li><span><Lightbulb size={15} aria-hidden="true" /></span> Instant lesson ideas &amp; activities</li>
+              <li><span><Languages size={15} aria-hidden="true" /></span> Answers in 9 Indian languages</li>
+              <li><span><BookOpen size={15} aria-hidden="true" /></span> Built for real classrooms</li>
             </ul>
           </div>
         </aside>
@@ -205,6 +246,15 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
             <h1>शिक्षक सहायक</h1>
             <p>{subtitle}</p>
           </div>
+
+          {/* Stands in for the hero panel once it's hidden below 820px (see
+              .auth-value-strip / .auth-hero in index.css) — mobile still gets
+              a value proposition, just a compact one instead of the full panel. */}
+          <ul className="auth-value-strip" aria-hidden="true">
+            <li><Lightbulb size={13} aria-hidden="true" /> Lesson ideas</li>
+            <li><Languages size={13} aria-hidden="true" /> 9 languages</li>
+            <li><BookOpen size={13} aria-hidden="true" /> Classroom-ready</li>
+          </ul>
 
           {view === 'form' && (
             <div className="auth-tabs" role="group" aria-label="Choose sign in or register">
@@ -271,12 +321,12 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
 
                 {error && (
                   <p className="auth-error" role="alert">
-                    <span aria-hidden="true">⚠️</span> {error}
+                    <CircleAlert size={16} aria-hidden="true" /> {error}
                   </p>
                 )}
 
-                <button type="button" className="btn-text" onClick={backToForm} disabled={busy}>
-                  ← Back
+                <button type="button" className="btn-text auth-back" onClick={backToForm} disabled={busy}>
+                  <ArrowLeft size={15} aria-hidden="true" /> Back
                 </button>
               </div>
             </>
@@ -292,23 +342,30 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
                     <label className="auth-field">
                       <span className="auth-field-label">School code</span>
                       <span className="auth-input">
-                        <span className="auth-input-icon" aria-hidden="true">🏫</span>
+                        <School className="auth-input-icon" size={16} aria-hidden="true" />
                         <input
                           value={schoolCode}
                           onChange={(e) => setSchoolCode(e.target.value)}
+                          onBlur={() => touch('schoolCode')}
                           placeholder="e.g. RAMPUR01"
                           autoComplete="off"
                           autoCapitalize="characters"
+                          aria-describedby="schoolcode-help"
+                          aria-invalid={!!schoolCodeError}
                           required
                         />
                       </span>
-                      <span className="auth-field-help">Provided by your school administrator.</span>
+                      {schoolCodeError ? (
+                        <span className="auth-field-error" id="schoolcode-help">{schoolCodeError}</span>
+                      ) : (
+                        <span className="auth-field-help" id="schoolcode-help">Provided by your school administrator.</span>
+                      )}
                     </label>
 
-                    <label className="auth-field">
+                    <label className="auth-field auth-field-spaced">
                       <span className="auth-field-label">Your name</span>
                       <span className="auth-input">
-                        <span className="auth-input-icon" aria-hidden="true">👤</span>
+                        <User className="auth-input-icon" size={16} aria-hidden="true" />
                         <input
                           value={name}
                           onChange={(e) => setName(e.target.value)}
@@ -324,31 +381,38 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
                 <label className="auth-field">
                   <span className="auth-field-label">Email</span>
                   <span className="auth-input">
-                    <span className="auth-input-icon" aria-hidden="true">✉️</span>
+                    <Mail className="auth-input-icon" size={16} aria-hidden="true" />
                     <input
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      onBlur={() => touch('email')}
                       type="email"
                       placeholder="you@example.com"
                       autoComplete="email"
                       autoCapitalize="none"
                       spellCheck={false}
+                      aria-invalid={!!emailError}
+                      aria-describedby={emailError ? 'email-error' : undefined}
                       required
                     />
                   </span>
+                  {emailError && <span className="auth-field-error" id="email-error">{emailError}</span>}
                 </label>
 
                 <label className="auth-field">
                   <span className="auth-field-label">Password</span>
                   <span className="auth-input">
-                    <span className="auth-input-icon" aria-hidden="true">🔑</span>
+                    <Lock className="auth-input-icon" size={16} aria-hidden="true" />
                     <input
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      onBlur={() => touch('password')}
                       type={showPassword ? 'text' : 'password'}
                       placeholder={mode === 'login' ? 'Your password' : 'At least 8 characters'}
                       autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                       minLength={8}
+                      aria-describedby={passwordError ? 'password-help' : mode === 'register' ? 'password-help' : undefined}
+                      aria-invalid={!!passwordError}
                       required
                     />
                     <button
@@ -358,17 +422,21 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                       aria-pressed={showPassword}
                     >
-                      {showPassword ? '🙈' : '👁️'}
+                      {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
                     </button>
                   </span>
-                  {mode === 'register' && (
-                    <span className="auth-field-help">At least 8 characters. Choose something you will remember.</span>
+                  {passwordError ? (
+                    <span className="auth-field-error" id="password-help">{passwordError}</span>
+                  ) : (
+                    mode === 'register' && (
+                      <span className="auth-field-help" id="password-help">At least 8 characters. Choose something you will remember.</span>
+                    )
                   )}
                 </label>
 
                 {error && (
                   <p className="auth-error" role="alert">
-                    <span aria-hidden="true">⚠️</span> {error}
+                    <CircleAlert size={16} aria-hidden="true" /> {error}
                   </p>
                 )}
 
@@ -390,12 +458,13 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
                   is configured; without one there is nothing that could work. */}
               {GOOGLE_CLIENT_ID && (
                 <>
-                  <p className="auth-hint">or</p>
+                  <div className="auth-divider" role="presentation"><span>or</span></div>
                   {/* Blocked until a school code is entered, but only on
                       Register — signing in needs no code, so the button stays
                       live on that tab by design. */}
                   <div
                     className="auth-google"
+                    ref={googleWrapRef}
                     onClick={
                       googleBlocked
                         ? () => setError('Enter your school code first, then continue with Google.')
@@ -406,9 +475,13 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
                       {/* GoogleOAuthProvider lives at the app root (App.tsx) so
                           GSI initializes once, not on every tab switch. */}
                       <GoogleLogin
-                        // Remounts the button when the tab changes, so its label
-                        // follows the mode instead of being cached from first render.
-                        key={mode}
+                        // Remounted on mode/theme/width changes: mode changes
+                        // its label, Google's own button doesn't re-theme
+                        // itself live, and it also won't resize live — each
+                        // needs a fresh render to take effect.
+                        key={`${mode}-${theme}-${googleWidth}`}
+                        theme={theme === 'dark' ? 'filled_black' : 'outline'}
+                        width={googleWidth}
                         text={mode === 'login' ? 'signin_with' : 'signup_with'}
                         onSuccess={(credentialResponse) => {
                           if (credentialResponse.credential) {
