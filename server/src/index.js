@@ -336,16 +336,6 @@ app.locals.learningRepresentationRenderCache = learningRepresentationRenderCache
 // unspoofable by a client-supplied X-Forwarded-For value.
 app.set('trust proxy', 1);
 app.use(helmet());
-// Parse JSON bodies with a 16kb limit everywhere, except the resources routes
-// (My Library), which accept up to 64kb because a saved lesson plan with
-// several structured sections can legitimately exceed 16kb. Scoping the larger
-// limit to just those paths keeps every other endpoint on the tighter bound.
-const jsonSmall = express.json({ limit: '16kb' });
-const jsonLarge = express.json({ limit: '64kb' });
-app.use((req, res, next) => {
-  if (req.path.startsWith('/api/resources')) return jsonLarge(req, res, next);
-  return jsonSmall(req, res, next);
-});
 
 const allowedOrigins = CORS_ORIGINS.split(',')
   .map((o) => o.trim())
@@ -376,6 +366,20 @@ function isOriginAllowed(origin) {
   return allowedOrigins.includes(origin);
 }
 
+// Registered BEFORE the JSON body-parser below (and before every router), on
+// purpose. cors() sets its response headers synchronously and then calls
+// next() — it does not touch the request body — so this ordering has no
+// effect on any successful request. What it fixes: when express.json() below
+// throws on a malformed body, Express jumps straight to the error-handling
+// middleware at the bottom of this file, skipping every regular middleware
+// in between. If cors() were still registered after the body-parser (as it
+// used to be), it would never run for that request, the error response would
+// go out with no Access-Control-Allow-Origin header, and the browser would
+// discard it as a CORS violation — surfacing to the frontend as an opaque
+// "Failed to fetch" instead of the clean 400 the error handler already sends
+// (see the SyntaxError branch below). Running cors() first means its headers
+// are already attached to `res` by the time that branch responds, for every
+// request regardless of whether a later middleware throws.
 app.use(
   cors({
     origin(origin, callback) {
@@ -389,6 +393,17 @@ app.use(
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
+
+// Parse JSON bodies with a 16kb limit everywhere, except the resources routes
+// (My Library), which accept up to 64kb because a saved lesson plan with
+// several structured sections can legitimately exceed 16kb. Scoping the larger
+// limit to just those paths keeps every other endpoint on the tighter bound.
+const jsonSmall = express.json({ limit: '16kb' });
+const jsonLarge = express.json({ limit: '64kb' });
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/resources')) return jsonLarge(req, res, next);
+  return jsonSmall(req, res, next);
+});
 
 const limiter = rateLimit({
   windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
@@ -793,6 +808,15 @@ app.use((err, req, res, _next) => {
   // So the branch answers 400 and logs the SHAPE of the failure, never its
   // content. Applies to every endpoint, which is the point: the leak was never
   // specific to the assistant.
+  //
+  // This response also needs to actually reach the browser: cors() is
+  // registered ABOVE, before the JSON body-parser that throws this error, so
+  // its Access-Control-Allow-Origin header is already attached to `res` by
+  // the time we get here. Without that ordering, a malformed body from a
+  // legitimate allowed origin would still get this clean 400 on the wire, but
+  // the browser would discard it as a CORS violation and the caller would see
+  // a generic "Failed to fetch" instead — see cors() registration above for
+  // the full explanation.
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
     console.warn('Malformed JSON body:', { method: req.method, path: req.path });
     if (res.headersSent) return;
