@@ -16,6 +16,12 @@
   --radius: 14px;
   --radius-sm: 10px;
 
+  /* Highlight stops for the answer skeleton's shimmer (see .sk-line). Defined
+     with the palette rather than at the component so the dark theme can
+     restate them alongside every other surface it overrides. */
+  --sk-mid: #f7f8fa;
+  --sk-peak: #fdf8f5;
+
   /* Height of the mobile bottom navigation (excludes the safe-area inset,
      which is added on top). Used to size the mobile coach shell and to pad
      document-scroll pages so nothing hides behind the fixed bar. */
@@ -31,6 +37,8 @@
   --text-muted: #a1a8b6;
   --orange-soft: rgba(255, 107, 53, 0.16);
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 8px 22px rgba(0, 0, 0, 0.35);
+  --sk-mid: #2a3040;
+  --sk-peak: #333b4c;
 }
 
 * { box-sizing: border-box; }
@@ -838,6 +846,65 @@ button { font-family: inherit; cursor: pointer; }
   padding: 0.4rem 0;
 }
 .spinner-sm { width: 18px; height: 18px; margin: 0; border-width: 2px; }
+
+/* Live waiting state under a submitted prompt (components/RunStatus.tsx).
+   Three shimmering placeholder lines standing in for the answer, with the
+   elapsed time and a message that acknowledges a long wait. No progress bar:
+   /coach is one non-streaming request, so any percentage would be invented. */
+.run-status { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.3rem 0 0.4rem; }
+
+.run-skeleton { display: flex; flex-direction: column; gap: 0.55rem; }
+.sk-line {
+  height: 11px;
+  border-radius: 999px;
+  background-color: var(--surface-2);
+  /* The sweep is a moving highlight over the resting surface colour, warmed a
+     touch at its peak so it reads as this app's light rather than a generic
+     grey shimmer. */
+  background-image: linear-gradient(
+    90deg,
+    var(--surface-2) 0%,
+    var(--sk-mid) 38%,
+    var(--sk-peak) 50%,
+    var(--sk-mid) 62%,
+    var(--surface-2) 100%
+  );
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  animation: sk-sweep 1.5s linear infinite;
+}
+/* Uneven widths and staggered starts: three identical bars moving in lockstep
+   read as a loading widget, not as text about to appear. */
+.sk-line:nth-child(1) { width: 100%; }
+.sk-line:nth-child(2) { width: 93%; animation-delay: 0.12s; }
+.sk-line:nth-child(3) { width: 61%; animation-delay: 0.24s; }
+
+@keyframes sk-sweep {
+  from { background-position: 130% 0; }
+  to { background-position: -30% 0; }
+}
+
+.run-status-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+.run-status-message { flex: 1 1 auto; min-width: 0; }
+.run-status-time {
+  font-variant-numeric: tabular-nums; /* so the row doesn't jitter each tick */
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+/* The shimmer is the only moving part, so it is what stops. The skeleton stays
+   put — still reserving the space, just not sweeping. */
+@media (prefers-reduced-motion: reduce) {
+  .sk-line { animation: none; background-position: 50% 0; }
+}
+
 .assistant-error {
   display: flex;
   align-items: center;
@@ -3238,4 +3305,56 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .ai-clarify-close:hover { background: var(--surface); }
 @media (prefers-reduced-motion: reduce) {
   .ai-clarify { animation: none; }
+}
+
+/* ---- Confirm dialog ------------------------------------------------------
+   Modal confirmation for hard-to-undo actions (see components/ConfirmDialog).
+   Sits above .help-overlay's z-index because a confirmation can be raised
+   from inside a panel that is itself an overlay. */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.confirm-panel {
+  background: var(--surface);
+  color: var(--text);
+  width: 100%;
+  max-width: 420px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  padding: 1.3rem 1.4rem 1.1rem;
+  /* Transform only, never opacity: the panel must be fully visible from the
+     first frame even where animations do not run (reduced-motion, headless
+     rendering). An opacity keyframe made the whole dialog invisible there. */
+  animation: confirm-rise 0.16s ease;
+}
+.confirm-title { font-size: 1.08rem; margin: 0 0 0.5rem; }
+.confirm-body { color: var(--text-muted); font-size: 0.92rem; line-height: 1.5; margin: 0 0 1.2rem; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 0.5rem; flex-wrap: wrap; }
+
+.btn-danger {
+  background: #c62828;
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 1.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: transform 0.12s ease, opacity 0.12s ease, background 0.12s ease;
+}
+.btn-danger:hover:not(:disabled) { background: #a91d1d; transform: translateY(-1px); }
+.btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
+[data-theme='dark'] .btn-danger { background: #d33a3a; }
+[data-theme='dark'] .btn-danger:hover:not(:disabled) { background: #bd2f2f; }
+
+@keyframes confirm-rise { from { transform: translateY(8px) scale(0.98); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .confirm-panel { animation: none; }
 }

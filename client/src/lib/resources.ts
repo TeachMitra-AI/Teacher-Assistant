@@ -18,12 +18,16 @@ export interface CreateResourceInput {
 export interface ListResourcesParams {
   type?: ResourceType | '';
   q?: string;
+  /** Only resources saved from this query/turn. Used by Classroom Mode to tell
+   *  which of a set's artifacts are already in the library. */
+  sourceQueryId?: string;
 }
 
 export async function listResources(params: ListResourcesParams = {}): Promise<LibraryResource[]> {
   const search = new URLSearchParams();
   if (params.type) search.set('type', params.type);
   if (params.q) search.set('q', params.q);
+  if (params.sourceQueryId) search.set('sourceQueryId', params.sourceQueryId);
   const qs = search.toString();
   const data = await api<{ resources: LibraryResource[] }>(`/resources${qs ? `?${qs}` : ''}`);
   return data.resources;

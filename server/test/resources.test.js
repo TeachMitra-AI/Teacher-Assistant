@@ -153,6 +153,43 @@ describe('My Library — /api/resources', () => {
       expect(byContent.body.resources).toHaveLength(1);
       expect(byContent.body.resources[0].title).toBe('Gravity explained');
     });
+
+    // Classroom Mode asks "what did this turn already save?" so a set reopened
+    // from history shows its cards as Saved instead of offering to save the
+    // same quiz twice (nothing deduplicates on create).
+    describe('sourceQueryId filter', () => {
+      test('returns only resources saved from that turn', async () => {
+        await createFor(teacherAToken, { title: 'Quiz from turn 1', sourceQueryId: 'query-one' });
+        await createFor(teacherAToken, { title: 'Quiz from turn 2', sourceQueryId: 'query-two' });
+
+        const res = await asA(request(app).get('/api/resources?sourceQueryId=query-one'));
+        expect(res.status).toBe(200);
+        expect(res.body.resources).toHaveLength(1);
+        expect(res.body.resources[0].title).toBe('Quiz from turn 1');
+        expect(res.body.resources[0].sourceQueryId).toBe('query-one');
+      });
+
+      test('a turn that saved nothing returns an empty list', async () => {
+        const res = await asA(request(app).get('/api/resources?sourceQueryId=never-saved'));
+        expect(res.status).toBe(200);
+        expect(res.body.resources).toHaveLength(0);
+      });
+
+      // The filter narrows the caller's own library — it can never widen it
+      // into someone else's, however the id was obtained.
+      test('cannot reach another user’s resources', async () => {
+        await createFor(teacherBToken, { title: 'B saved this', sourceQueryId: 'shared-id' });
+        const res = await asA(request(app).get('/api/resources?sourceQueryId=shared-id'));
+        expect(res.status).toBe(200);
+        expect(res.body.resources).toHaveLength(0);
+      });
+
+      test('an empty sourceQueryId is ignored rather than matching everything', async () => {
+        const res = await asA(request(app).get('/api/resources?sourceQueryId='));
+        expect(res.status).toBe(200);
+        expect(res.body.resources).toHaveLength(3);
+      });
+    });
   });
 
   describe('get one', () => {

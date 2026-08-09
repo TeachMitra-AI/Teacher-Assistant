@@ -724,7 +724,8 @@ async function findOwned(id, userId) {
   return resource;
 }
 
-// GET /api/resources?type=&q=&limit= — the caller's own library (newest first).
+// GET /api/resources?type=&q=&sourceQueryId=&limit= — the caller's own library
+// (newest first).
 router.get('/resources', authRequired, async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
 
@@ -732,6 +733,16 @@ router.get('/resources', authRequired, async (req, res) => {
 
   const type = typeof req.query.type === 'string' ? req.query.type : '';
   if (type && RESOURCE_TYPES.includes(type)) where.type = type;
+
+  // Answers "what did this turn already save?" — Classroom Mode asks it so a
+  // set reopened from history can show its cards as Saved instead of offering
+  // to save the same quiz a second time. Always ANDed with the caller's own
+  // userId above, so it can only ever narrow what that caller could already
+  // see; an id belonging to someone else's query simply matches nothing.
+  const sourceQueryId = typeof req.query.sourceQueryId === 'string'
+    ? req.query.sourceQueryId.trim().slice(0, MAX_SOURCE_ID)
+    : '';
+  if (sourceQueryId) where.sourceQueryId = sourceQueryId;
 
   const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 200) : '';
   if (q) {

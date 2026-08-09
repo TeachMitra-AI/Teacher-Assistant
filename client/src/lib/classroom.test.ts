@@ -8,6 +8,7 @@ import {
   lessonPlanInputFor,
   assessmentSetInputFor,
   artifactForFormat,
+  savedArtifactIds,
 } from './classroom';
 import type { ClassroomPlan } from '../types';
 
@@ -211,5 +212,52 @@ describe('artifactForFormat', () => {
     for (const item of assessmentSetInputFor(plan())!.items) {
       expect(artifactForFormat(item.format)).not.toBeNull();
     }
+  });
+});
+
+describe('savedArtifactIds', () => {
+  // Shape the card writes on save.
+  const saved = (id: string, format: string, source = 'classroom_mode') => ({
+    id,
+    structured: JSON.stringify({ format, topic: 'Fractions', source }),
+  });
+
+  test('maps each classroom-mode resource to its artifact', () => {
+    const ids = savedArtifactIds([
+      saved('r1', 'quiz'),
+      saved('r2', 'homework'),
+    ] as never);
+    expect(ids.quiz).toBe('r1');
+    expect(ids.homework).toBe('r2');
+    expect(ids.worksheet).toBeUndefined();
+  });
+
+  // A resource saved by the Generator carries the same `format` key but a
+  // different source. Counting it would mark a card Saved that this turn never
+  // saved.
+  test('ignores resources that did not come from classroom mode', () => {
+    const ids = savedArtifactIds([saved('r1', 'quiz', 'generator')] as never);
+    expect(ids.quiz).toBeUndefined();
+  });
+
+  test('ignores resources with no or unparseable structured data', () => {
+    const ids = savedArtifactIds([
+      { id: 'r1', structured: null },
+      { id: 'r2', structured: 'not json' },
+      { id: 'r3', structured: JSON.stringify({ source: 'classroom_mode' }) },
+      { id: 'r4', structured: JSON.stringify({ format: 'nonsense', source: 'classroom_mode' }) },
+    ] as never);
+    expect(Object.keys(ids)).toHaveLength(0);
+  });
+
+  // Resources arrive newest-first, so a duplicate save must resolve to the
+  // most recent copy rather than the oldest.
+  test('keeps the first match when an artifact was saved twice', () => {
+    const ids = savedArtifactIds([saved('newest', 'quiz'), saved('oldest', 'quiz')] as never);
+    expect(ids.quiz).toBe('newest');
+  });
+
+  test('an empty library yields an empty map', () => {
+    expect(savedArtifactIds([])).toEqual({});
   });
 });

@@ -282,6 +282,9 @@ export interface Turn {
   language: string;
   context: QueryContext;
   status: 'pending' | 'done' | 'error';
+  /** Date.now() when this turn was submitted. Drives the elapsed time and the
+   *  wording of the waiting state (components/RunStatus.tsx). */
+  startedAt?: number;
   response?: CoachResponse;
   rating: 'helpful' | 'not_helpful' | null;
   // True when this turn was rebuilt from history rather than just answered.

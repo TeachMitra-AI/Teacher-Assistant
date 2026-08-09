@@ -226,7 +226,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     const classroom = CLASSROOM_MODE_ENABLED && classroomMode;
     setTurns((ts) => [
       ...ts,
-      { id, query: queryText, language: lang, context: ctx, status: 'pending', rating: null, classroomMode: classroom },
+      { id, query: queryText, language: lang, context: ctx, status: 'pending', rating: null, classroomMode: classroom, startedAt: Date.now() },
     ]);
     scrollToBottom();
     await runTurn(id, queryText, lang, ctx, classroom);
@@ -272,7 +272,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     // type, never sent over the wire.
     setTurns((ts) => [
       ...ts,
-      { id, query: queryText, language: lang, context: EMPTY_CONTEXT, status: 'pending', rating: null, attachments: meta },
+      { id, query: queryText, language: lang, context: EMPTY_CONTEXT, status: 'pending', rating: null, attachments: meta, startedAt: Date.now() },
     ]);
     scrollToBottom();
     await runTurnWithAttachments(
@@ -336,7 +336,12 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
       show('To retry, please re-attach the file(s) and ask again.', 'error');
       return;
     }
-    setTurns((ts) => ts.map((t) => (t.id === turn.id ? { ...t, status: 'pending', error: undefined } : t)));
+    setTurns((ts) => ts.map((t) => (t.id === turn.id
+      // startedAt is reset: a retry is a new wait, and inheriting the old
+      // turn's elapsed time would open it already saying "taking longer than
+      // usual" with a Cancel button.
+      ? { ...t, status: 'pending', error: undefined, startedAt: Date.now() }
+      : t)));
     // `turn.classroomMode ?? false` — the mode as it was when this turn was
     // first submitted, not as it is now. Turns created before this field
     // existed simply retry without it.
