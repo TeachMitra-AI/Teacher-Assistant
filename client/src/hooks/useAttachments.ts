@@ -5,8 +5,13 @@ export interface SelectedAttachment {
   id: string;
   file: File;
   kind: AttachmentKind;
-  // An object URL for images only (cheap client-side thumbnail); null for
-  // PDFs, which render as a file icon + name instead (see AttachmentTray).
+  // An object URL for the local file — the image thumbnail in the composer,
+  // and the source for the full-size preview dialog (AttachmentPreviewModal),
+  // where a PDF is handed to the browser's built-in viewer. Created for EVERY
+  // kind, not just images: a PDF still shows a file icon rather than a
+  // thumbnail in the tray, but without a URL it could not be opened for
+  // preview at all. Costs nothing but a handle — an object URL does not copy
+  // the file — and is revoked on remove/clear/unmount like every other one.
   previewUrl: string | null;
 }
 
@@ -62,8 +67,8 @@ export function useAttachments() {
         // something this code controls.
         if (!kind) continue;
         const id = newId();
-        const previewUrl = kind === 'image' ? URL.createObjectURL(file) : null;
-        if (previewUrl) previewUrlsRef.current.set(id, previewUrl);
+        const previewUrl = URL.createObjectURL(file);
+        previewUrlsRef.current.set(id, previewUrl);
         newOnes.push({ id, file, kind, previewUrl });
       }
 

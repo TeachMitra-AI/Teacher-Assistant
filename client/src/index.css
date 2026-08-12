@@ -26,6 +26,16 @@
      which is added on top). Used to size the mobile coach shell and to pad
      document-scroll pages so nothing hides behind the fixed bar. */
   --bottomnav-h: 58px;
+
+  /* The Coach column's reading width — the message thread and the composer
+     below it. ONE token for both: they are the same column visually, and when
+     the width lived as two separate literals nothing stopped one from being
+     changed without the other, which shows up immediately as a composer that
+     doesn't line up with the messages above it. Narrower than the 840px it
+     replaces: a more compact box is easier to scan and keeps a question and
+     its answer closer together. Only applies from tablet up — both are
+     full-width inside the mobile shell's padding regardless. */
+  --chat-max-width: 720px;
 }
 
 [data-theme='dark'] {
@@ -601,10 +611,10 @@ button { font-family: inherit; cursor: pointer; }
 /* ---- Coach main column: welcome / thread / composer -------------------- */
 .coach-main-chat { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
 .chat-scroll { flex: 1; overflow-y: auto; padding: 1.5rem 1rem 1rem; }
-.chat-inner { max-width: 840px; margin: 0 auto; display: flex; flex-direction: column; min-height: 100%; }
+.chat-inner { max-width: var(--chat-max-width); margin: 0 auto; display: flex; flex-direction: column; min-height: 100%; }
 
 .composer-dock { border-top: 1px solid var(--border); background: var(--surface); padding: 0.9rem 1rem 1.1rem; }
-.composer-dock-inner { max-width: 840px; margin: 0 auto; display: flex; flex-direction: column; gap: 0.6rem; }
+.composer-dock-inner { max-width: var(--chat-max-width); margin: 0 auto; display: flex; flex-direction: column; gap: 0.6rem; }
 /* Set only once the teacher has dragged the resize handle below — see
    .chat-resize-handle. The composer's default height stays content-sized. */
 .composer-dock--resized { overflow-y: auto; }
@@ -1444,41 +1454,78 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .composer-box {
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.65rem 0.75rem 0.55rem;
+  /* A pill while everything is on one line, squared off once the box grows
+     into a multi-line panel — a 26px radius on a 200px-tall box looks like a
+     mistake. `--radius` is restored by .composer-box--stacked below. */
+  border-radius: 26px;
+  /* IDENTICAL in both layouts, deliberately. The single-row/stacked decision is
+     made by measuring the text against the row's width, so anything that makes
+     that width depend on the current layout feeds the decision back into
+     itself: a padding change of a few pixels was enough to make borderline text
+     measure as one line in the pill and two lines when stacked, and the two
+     states chased each other until React gave up. Keep any future style that
+     differs between the layouts off the horizontal axis. */
+  padding: 0.45rem 0.5rem;
   box-shadow: var(--shadow);
-  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, border-radius 0.14s ease;
 }
+/* Squared off whenever the box is more than a single line of controls — either
+   the text has grown, or thumbnails are sitting above it. Kept separate from
+   --stacked (which is a LAYOUT change) so staged photos can square the corners
+   without also forcing the text onto its own line. */
+.composer-box--stacked,
+.composer-box--squared { border-radius: var(--radius); }
 .composer-box:focus-within { border-color: var(--orange); box-shadow: 0 0 0 3px var(--orange-soft); }
+/* One line to start, growing with the text. The height itself is set inline by
+   Composer's layout effect; `max-height` here is the same ceiling that effect
+   uses (MAX_TEXTAREA_HEIGHT) restated so the box can never overshoot even for
+   the single frame before the effect runs. `display: block` removes the
+   inline-baseline gap that otherwise makes a one-line box a few pixels taller
+   than one line. */
 .composer-textarea {
   width: 100%;
+  display: block;
   resize: none;
   min-height: 26px;
   max-height: 200px;
   border: none;
   background: none;
-  padding: 0.3rem 0.2rem;
+  padding: 0.3rem 0.35rem;
   font-weight: 400;
 }
 .composer-textarea:focus { outline: none; }
-/* flex-start + `margin-left: auto` on the buttons rather than space-between:
-   with only the char count and the buttons present the result is identical to
-   the previous space-between, but it also survives a THIRD child (the mode
-   menu) being added at the left, which space-between would have pushed the
-   char count into the middle of the row to accommodate. */
-.composer-controls { display: flex; align-items: center; justify-content: flex-start; gap: 0.6rem; margin-top: 0.2rem; }
+/* ONE row holding everything: + · text · char count · controls.
+   `flex-wrap` is what makes the stacked layout possible without a second DOM
+   structure — see .composer-box--stacked below. */
+.composer-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+/* `flex-basis: 0` and `width: auto`, NOT the `flex: 1 1 auto` that reads more
+   naturally here: the base .composer-textarea rule sets `width: 100%`, and an
+   auto basis resolves to that width — so the textarea claimed the whole line
+   and wrapped every control onto rows of their own. A zero basis makes it take
+   the space that is LEFT after the + and the buttons, which is the point. */
+.composer-row .composer-textarea { flex: 1 1 0; width: auto; min-width: 0; }
+/* Stacked: the text claims a whole line, and everything that was beside it
+   wraps underneath — the + staying left, the buttons pushed right by their own
+   `margin-left: auto`. `order: -1` puts that line first even though the
+   textarea comes after the + in the DOM, so the single-row reading order (and
+   the tab order) is the one the markup states. */
+.composer-box--stacked .composer-textarea { flex: 1 1 100%; width: 100%; order: -1; margin-bottom: 0.15rem; }
 .composer-buttons { display: flex; align-items: center; gap: 0.4rem; margin-left: auto; }
-.char-count { font-size: 0.78rem; color: var(--text-muted); }
+.char-count { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; align-self: center; }
 .char-count.warn { color: var(--orange); font-weight: 700; }
 
-/* ---- Mode menu ("+" in the Composer) — docs/classroom-mode.md ------------ */
-.mode-menu { position: relative; display: inline-flex; }
-/* Smaller than .icon-btn's 40px default so the "+" sits comfortably on the
+/* ---- Composer popover menus ---------------------------------------------
+   Shared by the "+" add menu (AddMenu) and the Classroom Mode
+   dropdown (ClassroomModeMenu) — one set of popover/item styles so the two
+   controls on the same row cannot drift into looking like different widgets.
+   Formerly .mode-menu-*, when the "+" was the Classroom Mode toggle. */
+.composer-menu { position: relative; display: inline-flex; }
+/* Smaller than .icon-btn's 40px default so these sit comfortably on the
    controls row beside the char count without making the composer taller. */
-.mode-menu-btn { min-width: 32px; min-height: 32px; padding: 0 0.35rem; border-radius: 50%; }
-.mode-menu-btn.active { border-color: var(--orange); color: var(--orange); background: var(--orange-soft); }
+.composer-menu-btn { min-width: 32px; min-height: 32px; padding: 0 0.35rem; border-radius: 50%; }
+.composer-menu-btn.active { border-color: var(--orange); color: var(--orange); background: var(--orange-soft); }
 
-.mode-menu-popover {
+.composer-menu-popover {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 0;
@@ -1494,7 +1541,10 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   gap: 0.2rem;
   z-index: 120;
 }
-.mode-menu-item {
+/* For a menu whose button sits at the RIGHT of the row: anchoring left would
+   push a 280px popover off the edge of a narrow viewport. */
+.composer-menu-popover--right { left: auto; right: 0; }
+.composer-menu-item {
   display: flex;
   align-items: flex-start;
   gap: 0.6rem;
@@ -1507,56 +1557,44 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   color: var(--text);
   transition: background 0.12s ease;
 }
-.mode-menu-item:hover { background: var(--surface-2); }
-.mode-menu-item:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
-.mode-menu-item.active { background: var(--orange-soft); }
-.mode-menu-item-icon { flex-shrink: 0; margin-top: 0.1rem; color: var(--orange); }
-.mode-menu-item-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
-.mode-menu-item-label { font-weight: 700; font-size: 0.9rem; }
-.mode-menu-item-desc { font-size: 0.78rem; color: var(--text-muted); line-height: 1.35; }
-.mode-menu-item-check { flex-shrink: 0; margin-left: auto; align-self: center; color: var(--orange); }
+.composer-menu-item:hover { background: var(--surface-2); }
+.composer-menu-item:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
+.composer-menu-item.active { background: var(--orange-soft); }
+.composer-menu-item-icon { flex-shrink: 0; margin-top: 0.1rem; color: var(--orange); }
+.composer-menu-item-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.composer-menu-item-label { font-weight: 700; font-size: 0.9rem; }
+.composer-menu-item-desc { font-size: 0.78rem; color: var(--text-muted); line-height: 1.35; }
+.composer-menu-item-check { flex-shrink: 0; margin-left: auto; align-self: center; color: var(--orange); }
 
-/* ---- Classroom Mode pill (sits above the Composer while the mode is on) -- */
-.classroom-pill {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  align-self: flex-start;
-  padding: 0.35rem 0.5rem 0.35rem 0.6rem;
-  margin-bottom: 0.4rem;
-  background: var(--orange-soft);
-  border: 1px solid var(--orange);
-  border-radius: 999px;
-  color: var(--orange);
-  font-size: 0.8rem;
-  font-weight: 700;
-  max-width: 100%;
-}
-.classroom-pill-label { white-space: nowrap; }
-/* The explanatory half is the first thing to go when space is tight — the
-   label and the way out matter more than the hint. */
-.classroom-pill-hint {
-  color: var(--text-muted);
-  font-weight: 400;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.classroom-pill-close {
+/* ---- Classroom Mode dropdown (right of the composer controls row) -------- */
+/* A labelled pill rather than the round icon button "+" uses: this control
+   shows a STATE, and a teacher should be able to read which one it is in
+   without opening it. */
+.classroom-menu-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  background: none;
-  border: none;
-  border-radius: 50%;
-  color: var(--orange);
+  gap: 0.3rem;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
-.classroom-pill-close:hover { background: var(--orange); color: #fff; }
-.classroom-pill-close:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+.classroom-menu-btn.active { border-color: var(--orange); color: var(--orange); background: var(--orange-soft); }
+.classroom-menu-label { white-space: nowrap; }
+/* The narrow-screen stand-in for the full label — hidden by default, swapped in
+   below the breakpoint. The button carries no icon, so one of the two is always
+   showing; neither may be display:none at the same time as the other. */
+.classroom-menu-label-short { display: none; white-space: nowrap; }
+.classroom-menu-caret { flex-shrink: 0; opacity: 0.7; }
+/* Below this the row has to hold the dropdown, the mic and the send button on
+   a phone, so the label shortens to "Mode". */
+@media (max-width: 520px) {
+  .classroom-menu-label { display: none; }
+  .classroom-menu-label-short { display: inline; }
+  .classroom-menu-btn { padding: 0 0.4rem; }
+}
 
 /* "Classroom Mode looked and found nothing" — deliberately quiet. It is an
    explanation, not a result, and must not compete with the answer above it. */
@@ -1694,8 +1732,7 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .classroom-empty-note svg { flex-shrink: 0; color: var(--orange); }
 
 @media (max-width: 640px) {
-  .classroom-pill-hint { display: none; }
-  .mode-menu-popover { min-width: 0; width: calc(100vw - 2.5rem); }
+  .composer-menu-popover { min-width: 0; width: calc(100vw - 2.5rem); }
   .classroom-set { padding: 0.6rem; }
   .classroom-card-hint { display: none; }
 }
@@ -1786,6 +1823,154 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .attachment-tray-more:hover { background: var(--orange); color: #fff; }
 .attachment-tray-clear { width: 26px; height: 26px; flex-shrink: 0; }
 .attachment-error { font-size: 0.8rem; color: var(--orange); margin-bottom: 0.4rem; }
+
+/* ---- Preview variant: staged files INSIDE the composer box ---------------
+   The tray's chrome (its own surface + border) exists for the chips variant,
+   which floats on its own above the box. Inside the box that same chrome reads
+   as a box within a box, so the preview variant drops all of it and lets the
+   thumbnails sit directly on the composer's surface. */
+.attachment-tray--preview {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: 0.5rem;
+  align-items: center;
+}
+/* Not `flex: 1` like the chips variant: letting the row fill the box pushes
+   clear-all to the far right edge, where — sitting on the composer's own
+   surface with nothing between — it reads as "close the composer" rather than
+   "remove these files". Sized to its tiles, it stays attached to them. */
+.attachment-tray--preview .attachment-tray-chips { flex: 0 1 auto; gap: 0.4rem; max-height: 152px; }
+.attachment-tray--preview .attachment-tray-clear {
+  min-width: 26px;
+  min-height: 26px;
+  align-self: center;
+  color: var(--text-muted);
+}
+.attachment-preview {
+  position: relative;
+  display: inline-flex;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  overflow: hidden;
+}
+/* The whole tile is the "open preview" hit target, minus the ✕ that sits on
+   top of it (a sibling, drawn above by z-index — see AttachmentTray). */
+.attachment-preview-open {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+}
+.attachment-preview-open:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
+.attachment-preview-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* A PDF has no picture to show, so it gets its kind icon on a tile of exactly
+   the same size — a mixed selection still lines up as one even row. */
+.attachment-preview-file {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--text-muted);
+  background: var(--surface-2);
+}
+.attachment-preview-remove {
+  position: absolute;
+  z-index: 1;
+  top: 2px;
+  right: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  /* Fixed dark chip rather than a theme surface: this sits on top of an
+     arbitrary photo, where a light-theme surface can vanish entirely. */
+  background: rgba(20, 24, 33, 0.72);
+  color: #fff;
+  border: none;
+}
+.attachment-preview-remove:hover:not(:disabled) { background: rgba(20, 24, 33, 0.9); }
+.attachment-preview-remove:disabled { opacity: 0.5; cursor: not-allowed; }
+.attachment-preview-remove:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+
+/* ---- Full-size preview dialog (AttachmentPreviewModal) -------------------
+   Deliberately a MEDIUM window, not a full-screen viewer: the point is to
+   check a photo is usable before sending, and keeping the chat visible around
+   it makes closing it feel like stepping back rather than leaving. */
+.attachment-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(10, 12, 17, 0.72);
+}
+.attachment-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 100%);
+  max-height: min(80vh, 720px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.attachment-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.6rem 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+.attachment-modal-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-modal-close { min-width: 34px; min-height: 34px; flex-shrink: 0; }
+.attachment-modal-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.9rem;
+  /* Checkerboard-free neutral ground: a transparent PNG or a white scan both
+     need something behind them that is neither pure white nor pure black. */
+  background: var(--surface-2);
+}
+/* Scaled to fit, never cropped — the whole point is seeing the whole page. */
+.attachment-modal-img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.attachment-modal-frame { width: 100%; height: 70vh; max-height: 100%; border: none; background: #fff; }
+.attachment-modal-empty { font-size: 0.9rem; color: var(--text-muted); margin: 2rem 0; padding: 0 1rem; text-align: center; }
+/* The stylesheet sets no global anchor colour, so an unstyled link here would
+   come out browser-default blue — invisible against the dark theme and wrong
+   against the orange one. */
+.attachment-modal-empty a { color: var(--orange); font-weight: 600; text-decoration: underline; }
+.attachment-modal-empty a:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+
+@media (max-width: 640px) {
+  .attachment-modal-backdrop { padding: 0.75rem; }
+  .attachment-modal { max-height: 88vh; }
+}
 
 /* Read-only tray inside a sent message bubble (MessageBubble) — same chips,
    slightly tighter so it doesn't compete with the question text below it. */

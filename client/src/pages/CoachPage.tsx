@@ -15,7 +15,6 @@ import WelcomeScreen from '../components/WelcomeScreen';
 import MessageList from '../components/MessageList';
 import ContextBar from '../components/ContextBar';
 import Composer from '../components/Composer';
-import ClassroomModePill from '../components/ClassroomModePill';
 import OnboardingTip from '../components/OnboardingTip';
 import ChatResizeHandle from '../components/ChatResizeHandle';
 import AiClarifyPrompt from '../components/AiClarifyPrompt';
@@ -302,8 +301,10 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
       return;
     }
     const pendingAttachments = attachments.attachments;
+    // Clearing the text is all that's needed — the Composer resizes itself from
+    // the value it is given (one owner of the box's height, see its layout
+    // effect), so nothing here has to touch the textarea's style.
     setQuery('');
-    if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
     // An attachment-bearing message skips the AI Action Router entirely and
     // goes straight to Coach — see runTurnWithAttachments's comment for why.
@@ -380,7 +381,6 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     // A new conversation must not inherit the previous one's remembered grade,
     // subject or topic — a stale slot produces a confident, wrong worksheet.
     router.resetSession();
-    if (textareaRef.current) textareaRef.current.style.height = 'auto';
     if (isMobileViewport()) setSidebarOpen(false);
   }
 
@@ -587,20 +587,22 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                   onCancel={() => settleRouting(router.cancelAsk())}
                 />
               )}
-              {/* Above the Composer, below the Context Bar: the mode is a
-                  property of the conversation, so it sits with the other
-                  conversation-level controls rather than inside the text box. */}
-              {CLASSROOM_MODE_ENABLED && classroomMode && (
-                <ClassroomModePill onDismiss={() => setClassroomModeOn(false)} />
-              )}
-              {/* First-visit tip for the "+" button (P7). Shown only while the
-                  mode is OFF: once a teacher has turned it on they have found
-                  the button, and the pill above already explains what the mode
-                  does. Sits directly above the Composer that holds the button
-                  it describes, the same placement generator-intro uses. */}
+              {/* The banner that used to sit here — an orange pill announcing
+                  that Classroom Mode was on — is gone. The Assistant Mode
+                  control now shows its own state (active styling, and the
+                  selected mode on hover), so the banner was a second copy of
+                  the same fact taking a permanent strip of the screen above the
+                  grade and subject. It also would not have survived a second
+                  mode: one banner per active mode is not a layout. */}
+              {/* First-visit tip for the Assistant Mode dropdown (P7). Shown
+                  only while no mode is on: once a teacher has turned one on
+                  they have found the control. Sits directly above the Composer
+                  that holds the control it describes, the same placement
+                  generator-intro uses. Copy points at the dropdown, not "+",
+                  since "+" now opens Capture Photo / Upload File. */}
               {CLASSROOM_MODE_ENABLED && !classroomMode && classroomTip.visible && (
                 <OnboardingTip icon={Sparkles} onDismiss={classroomTip.dismiss}>
-                  Tap <strong>+</strong> below and turn on <strong>Classroom Mode</strong> to get a lesson
+                  Tap <strong>Assistant Mode</strong> below and turn on <strong>Classroom Mode</strong> to get a lesson
                   plan, worksheet, quiz, homework and exit ticket alongside your answer.
                 </OnboardingTip>
               )}
