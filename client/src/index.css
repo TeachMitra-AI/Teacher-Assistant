@@ -26,6 +26,16 @@
      which is added on top). Used to size the mobile coach shell and to pad
      document-scroll pages so nothing hides behind the fixed bar. */
   --bottomnav-h: 58px;
+
+  /* The Coach column's reading width — the message thread and the composer
+     below it. ONE token for both: they are the same column visually, and when
+     the width lived as two separate literals nothing stopped one from being
+     changed without the other, which shows up immediately as a composer that
+     doesn't line up with the messages above it. Narrower than the 840px it
+     replaces: a more compact box is easier to scan and keeps a question and
+     its answer closer together. Only applies from tablet up — both are
+     full-width inside the mobile shell's padding regardless. */
+  --chat-max-width: 720px;
 }
 
 [data-theme='dark'] {
@@ -543,14 +553,128 @@ button { font-family: inherit; cursor: pointer; }
   .onboarding-intro-cta { align-self: stretch; }
   .onboarding-tip { margin-bottom: 0.85rem; }
 
-  .composer-dock { padding: 0.7rem 0.8rem 0.85rem; }
+  /* ---- PHONE COACH LAYOUT: response first, controls second ----------------
+     The screen is one column of fixed furniture — header, context row,
+     composer, bottom nav — with the answer taking everything left over. Only
+     the answer scrolls. Every rule below exists to give it more of the screen
+     or to make what is in it easier to read; none of them applies above 640px,
+     where the desktop three-part layout is untouched. */
+
+  /* The context row, rendered under the header on a phone (CoachPage renders it
+     there; this only styles it). A single non-wrapping strip: three selects and
+     the More-context button, scrolling sideways rather than wrapping onto a
+     second line and eating another ~40px of answer. */
+  .coach-context-row {
+    display: block;
+    flex-shrink: 0;
+    padding: 0.55rem 0.75rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .coach-context-row .context-bar {
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+    overflow-x: auto;
+    /* Momentum scrolling without a visible bar — the row is short enough that a
+       scrollbar would take a meaningful slice of it. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .coach-context-row .context-bar::-webkit-scrollbar { display: none; }
+  .coach-context-row .context-pill,
+  .coach-context-row .context-more { flex: 0 0 auto; }
+  .coach-context-row .context-pill { padding: 0.28rem 0.4rem 0.28rem 0.6rem; gap: 0.3rem; font-size: 0.8rem; }
+  /* A <select> is as wide as its WIDEST OPTION, not its selected one — "Social
+     Studies" alone made the Subject pill 188px and pushed the row off a 390px
+     screen even while it displayed "Any". Capping the width decouples the
+     control's size from the vocabulary behind it; a long selected value
+     truncates instead, and the full list is still there when it opens.
+     Sized for comfort rather than for the tightest possible fit: the row
+     scrolls, and squeezing every pill so that nothing ever scrolls bought a
+     cramped control on EVERY phone to avoid scrolling on the smallest. */
+  .coach-context-row .context-pill select {
+    font-size: 0.8rem;
+    max-width: 5.5rem;
+    padding: 0.2rem 0.15rem;
+    text-overflow: ellipsis;
+  }
+  /* All three labels go, not just the language one — see ContextBar: the empty
+     option says "Any grade" / "Any subject" here, and a chosen value names its
+     own field. That is what buys the row enough space to be comfortable rather
+     than merely fitting. */
+  .coach-context-row .context-pill-label { display: none; }
+  .coach-context-row .context-more-btn { padding: 0.34rem 0.5rem; }
+  /* Pinned to the right edge while the filters scroll underneath. Without this
+     the button is just the last item in a scrolling row, and on a 320px screen
+     it starts off-screen — a control a teacher cannot see is one they do not
+     have. `sticky` keeps it in the flow (so it still occupies its own space
+     when everything fits) while never leaving the viewport. */
+  .coach-context-row .context-more {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    background: var(--surface);
+    padding-left: 0.3rem;
+  }
+  /* "There is more over here" — the filters scroll under a short fade instead
+     of vanishing at a hard edge. */
+  .coach-context-row .context-more::before {
+    content: '';
+    position: absolute;
+    left: -18px;
+    top: 0;
+    bottom: 0;
+    width: 18px;
+    background: linear-gradient(to right, rgba(0, 0, 0, 0), var(--surface));
+    pointer-events: none;
+  }
+  /* Icon-only: at 320px the three selects already need every pixel. The
+     button keeps its aria-label, so what it does is still announced. */
+  .coach-context-row .context-more-text { display: none; }
+
   .context-bar { gap: 0.4rem; }
-  /* Anchor the "More context" popover to the composer width instead of the
-     narrow button, so it can never clip past the viewport edge regardless of
-     how the context controls wrap. */
+  /* Anchor the "More context" popover to the row's width instead of the narrow
+     button, so it can never clip past the viewport edge regardless of how the
+     context controls wrap. */
   .composer-dock-inner { position: relative; }
   .context-more { position: static; }
   .context-popover { left: 0.5rem; right: 0.5rem; min-width: 0; }
+
+  /* Answer area: the whole point of this layout. More room (tighter dock and
+     scroller padding) and a longer measure per line. */
+  .chat-scroll { padding: 0.9rem 0.85rem 0.6rem; }
+  .composer-dock { padding: 0.5rem 0.7rem 0.6rem; }
+  .composer-dock-inner { gap: 0.45rem; }
+  .message-list { gap: 1.15rem; padding-bottom: 0.5rem; }
+
+  /* The question, kept visually distinct from the answer: a tinted, right-side
+     bubble that cannot be mistaken for the assistant's prose, but narrower and
+     quieter than the answer it introduces. */
+  .user-bubble { max-width: 88%; font-size: 0.9rem; padding: 0.55rem 0.8rem; }
+
+  /* Reading typography for long answers. The line height and the space between
+     paragraphs and around headings do most of the work here — a wall of 1.5
+     line-height text at 15px is exactly the "compressed" feeling this layout
+     exists to fix. */
+  .response-body { font-size: 1rem; line-height: 1.78; }
+  .response-body p { margin: 0.85rem 0; }
+  .response-body h1 { font-size: 1.25rem; margin: 0 0 0.7rem; }
+  .response-body h2 { font-size: 1.12rem; margin-top: 1.5rem; margin-bottom: 0.5rem; }
+  .response-body h3 { font-size: 1.02rem; margin-top: 1.3rem; margin-bottom: 0.4rem; }
+  .response-body li { margin: 0.4rem 0; }
+  .response-body ul, .response-body ol { padding-left: 1.15rem; }
+
+  /* Clear of the composer and of the right edge, with a slightly larger tap
+     target than the desktop button. */
+  .chat-scroll-down { right: 0.7rem; bottom: 0.5rem; width: 40px; height: 40px; }
+
+  /* 18px is a comfortable click target and an uncomfortable TAP target — below
+     the 24×24 CSS-pixel floor (WCAG 2.2 SC 2.5.8). The tile is 56px, so this
+     costs nothing but a slightly larger circle.
+     The `.attachment-tray--preview` prefix is load-bearing: the base rule for
+     this button is defined LATER in the file, and at equal specificity source
+     order would win over this media query. */
+  .attachment-tray--preview .attachment-preview-remove { width: 24px; height: 24px; top: 3px; right: 3px; }
 
   /* --- Coach EMPTY / WELCOME state (mobile): natural page scroll ----------
      The default coach shell is a fixed-viewport flex column where `.chat-scroll`
@@ -562,17 +686,37 @@ button { font-family: inherit; cursor: pointer; }
      welcome content instead of permanently reserving viewport height. The
      ACTIVE chat state below is unaffected and keeps the fixed-viewport layout. */
   .coach-shell.coach-empty {
-    display: block;
+    /* A COLUMN with a min-height, not a plain block: `height: auto` alone left
+       the composer wherever the (short) welcome content happened to end, with a
+       band of bare page background between it and the bottom nav. Growing the
+       answer area instead pushes the composer to the bottom where it lives in
+       every other state, and because this is `min-height` (and the children
+       below grow but never shrink) taller content still expands the page and
+       scrolls naturally — which is the whole point of this block. */
+    display: flex;
+    flex-direction: column;
     height: auto;
-    min-height: calc(100vh - var(--bottomnav-h)); /* fallback */
-    min-height: calc(100dvh - var(--bottomnav-h) - env(safe-area-inset-bottom));
+    /* The full viewport, NOT the viewport minus the nav: `box-sizing:
+       border-box` means the padding-bottom below already reserves the nav's
+       height inside this figure. Subtracting it here too left a nav-sized band
+       of bare page background between the composer and the nav. */
+    min-height: 100vh; /* fallback */
+    min-height: 100dvh;
     overflow: visible;
     /* Clear the fixed bottom nav (this shell is excluded from the generic
        `.page:not(.coach-shell)` padding rule above). */
     padding-bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom));
   }
-  .coach-empty .coach-body,
-  .coach-empty .coach-main-chat { display: block; min-height: 0; }
+  /* `flex: 1 0 auto` where the axis is VERTICAL — grow to fill a tall screen,
+     never shrink below the content's own height on a short one.
+     `.coach-main-chat` is deliberately NOT given it: it is an item of the ROW
+     that is `.coach-body`, so there the shorthand controls WIDTH, and
+     `flex-shrink: 0` made the column as wide as its widest content (728px in a
+     390px viewport) and overflowed the page sideways. It keeps the base
+     `flex: 1` + `min-width: 0` and only changes its own direction. */
+  .coach-empty .coach-body { display: flex; flex: 1 0 auto; min-height: 0; }
+  .coach-empty .coach-main-chat { display: flex; flex-direction: column; min-height: 0; }
+  .coach-empty .chat-area { display: block; flex: 1 0 auto; min-height: 0; }
   .coach-empty .chat-scroll { flex: initial; overflow: visible; padding: 1rem 1rem 0.25rem; }
   .coach-empty .chat-inner { min-height: 0; }
   /* Let the welcome content size to its natural height rather than stretching,
@@ -592,19 +736,40 @@ button { font-family: inherit; cursor: pointer; }
   .resource-doc-title { font-size: 1.2rem; }
 }
 
-/* Small phone: logo-only brand, tighter hero. */
+/* Small phone (down to 320px): logo-only brand, tighter hero, and just enough
+   trimming that the composer row still holds all five controls plus a usable
+   text slot. Nothing is removed — only tightened. */
 @media (max-width: 400px) {
   .brand-text { display: none; }
   .welcome-title { font-size: 1.3rem; }
+
+  .coach-context-row { padding: 0.4rem 0.5rem; }
+  .chat-scroll { padding: 0.8rem 0.65rem 0.5rem; }
+  .composer-dock { padding: 0.45rem 0.5rem 0.55rem; }
+  /* At 320px the row is: + · text · Mode · mic · send. Shaving the two round
+     buttons by 4px each is what keeps the text slot wide enough to read what
+     you are typing; both stay above the 34px comfortable-tap floor. */
+  .composer-row { gap: 0.25rem; }
+  .voice-btn { min-width: 34px; min-height: 34px; padding: 0 0.4rem; }
+  .composer-send { width: 34px; height: 34px; }
+  .composer-menu-btn { min-width: 30px; min-height: 30px; }
+  /* Slightly shorter measure, so the text does not become uncomfortably dense
+     on the narrowest screens. */
+  .response-body { font-size: 0.97rem; line-height: 1.72; }
+  .user-bubble { max-width: 92%; }
 }
 
 /* ---- Coach main column: welcome / thread / composer -------------------- */
 .coach-main-chat { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+/* Holds the scroller and nothing else, so the scroll-to-latest button inside it
+   lands just above the composer instead of on top of it. It takes the flex
+   growth `.chat-scroll` used to take; the scroller now fills this instead. */
+.chat-area { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .chat-scroll { flex: 1; overflow-y: auto; padding: 1.5rem 1rem 1rem; }
-.chat-inner { max-width: 840px; margin: 0 auto; display: flex; flex-direction: column; min-height: 100%; }
+.chat-inner { max-width: var(--chat-max-width); margin: 0 auto; display: flex; flex-direction: column; min-height: 100%; }
 
 .composer-dock { border-top: 1px solid var(--border); background: var(--surface); padding: 0.9rem 1rem 1.1rem; }
-.composer-dock-inner { max-width: 840px; margin: 0 auto; display: flex; flex-direction: column; gap: 0.6rem; }
+.composer-dock-inner { max-width: var(--chat-max-width); margin: 0 auto; display: flex; flex-direction: column; gap: 0.6rem; }
 /* Set only once the teacher has dragged the resize handle below — see
    .chat-resize-handle. The composer's default height stays content-sized. */
 .composer-dock--resized { overflow-y: auto; }
@@ -1382,6 +1547,53 @@ textarea {
 textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 
 .context-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+/* The phone-only wrapper for the same bar directly under the header (rendered
+   there by CoachPage, not moved by CSS — see its `isPhoneLayout` branch).
+   Hidden above the breakpoint purely as a guard: the element is not rendered at
+   all there, so this should never have anything to hide.
+   Written as a MIN-width query, not a bare `display: none` — this block sits
+   after the phone `@media` block in the file, and a bare rule of equal
+   specificity would win on source order and hide the row at every width. */
+@media (min-width: 641px) {
+  .coach-context-row { display: none; }
+}
+.context-more-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  background: var(--orange);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.context-more-btn.active .context-more-count { background: var(--orange); }
+
+/* ---- Scroll-to-latest button (components/ScrollToBottom.tsx) --------------
+   Positioned against `.coach-main-chat`, which is the column holding the
+   scroller and the composer — so it hovers just above the composer rather than
+   riding along inside the scrolling content. */
+.chat-scroll-down {
+  position: absolute;
+  right: 0.9rem;
+  bottom: 0.6rem;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+.chat-scroll-down:hover { border-color: var(--orange); color: var(--orange); }
+.chat-scroll-down:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
 .context-pill {
   display: flex;
   align-items: center;
@@ -1444,41 +1656,78 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .composer-box {
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.65rem 0.75rem 0.55rem;
+  /* A pill while everything is on one line, squared off once the box grows
+     into a multi-line panel — a 26px radius on a 200px-tall box looks like a
+     mistake. `--radius` is restored by .composer-box--stacked below. */
+  border-radius: 26px;
+  /* IDENTICAL in both layouts, deliberately. The single-row/stacked decision is
+     made by measuring the text against the row's width, so anything that makes
+     that width depend on the current layout feeds the decision back into
+     itself: a padding change of a few pixels was enough to make borderline text
+     measure as one line in the pill and two lines when stacked, and the two
+     states chased each other until React gave up. Keep any future style that
+     differs between the layouts off the horizontal axis. */
+  padding: 0.45rem 0.5rem;
   box-shadow: var(--shadow);
-  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, border-radius 0.14s ease;
 }
+/* Squared off whenever the box is more than a single line of controls — either
+   the text has grown, or thumbnails are sitting above it. Kept separate from
+   --stacked (which is a LAYOUT change) so staged photos can square the corners
+   without also forcing the text onto its own line. */
+.composer-box--stacked,
+.composer-box--squared { border-radius: var(--radius); }
 .composer-box:focus-within { border-color: var(--orange); box-shadow: 0 0 0 3px var(--orange-soft); }
+/* One line to start, growing with the text. The height itself is set inline by
+   Composer's layout effect; `max-height` here is the same ceiling that effect
+   uses (MAX_TEXTAREA_HEIGHT) restated so the box can never overshoot even for
+   the single frame before the effect runs. `display: block` removes the
+   inline-baseline gap that otherwise makes a one-line box a few pixels taller
+   than one line. */
 .composer-textarea {
   width: 100%;
+  display: block;
   resize: none;
   min-height: 26px;
   max-height: 200px;
   border: none;
   background: none;
-  padding: 0.3rem 0.2rem;
+  padding: 0.3rem 0.35rem;
   font-weight: 400;
 }
 .composer-textarea:focus { outline: none; }
-/* flex-start + `margin-left: auto` on the buttons rather than space-between:
-   with only the char count and the buttons present the result is identical to
-   the previous space-between, but it also survives a THIRD child (the mode
-   menu) being added at the left, which space-between would have pushed the
-   char count into the middle of the row to accommodate. */
-.composer-controls { display: flex; align-items: center; justify-content: flex-start; gap: 0.6rem; margin-top: 0.2rem; }
+/* ONE row holding everything: + · text · char count · controls.
+   `flex-wrap` is what makes the stacked layout possible without a second DOM
+   structure — see .composer-box--stacked below. */
+.composer-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+/* `flex-basis: 0` and `width: auto`, NOT the `flex: 1 1 auto` that reads more
+   naturally here: the base .composer-textarea rule sets `width: 100%`, and an
+   auto basis resolves to that width — so the textarea claimed the whole line
+   and wrapped every control onto rows of their own. A zero basis makes it take
+   the space that is LEFT after the + and the buttons, which is the point. */
+.composer-row .composer-textarea { flex: 1 1 0; width: auto; min-width: 0; }
+/* Stacked: the text claims a whole line, and everything that was beside it
+   wraps underneath — the + staying left, the buttons pushed right by their own
+   `margin-left: auto`. `order: -1` puts that line first even though the
+   textarea comes after the + in the DOM, so the single-row reading order (and
+   the tab order) is the one the markup states. */
+.composer-box--stacked .composer-textarea { flex: 1 1 100%; width: 100%; order: -1; margin-bottom: 0.15rem; }
 .composer-buttons { display: flex; align-items: center; gap: 0.4rem; margin-left: auto; }
-.char-count { font-size: 0.78rem; color: var(--text-muted); }
+.char-count { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; align-self: center; }
 .char-count.warn { color: var(--orange); font-weight: 700; }
 
-/* ---- Mode menu ("+" in the Composer) — docs/classroom-mode.md ------------ */
-.mode-menu { position: relative; display: inline-flex; }
-/* Smaller than .icon-btn's 40px default so the "+" sits comfortably on the
+/* ---- Composer popover menus ---------------------------------------------
+   Shared by the "+" add menu (AddMenu) and the Classroom Mode
+   dropdown (ClassroomModeMenu) — one set of popover/item styles so the two
+   controls on the same row cannot drift into looking like different widgets.
+   Formerly .mode-menu-*, when the "+" was the Classroom Mode toggle. */
+.composer-menu { position: relative; display: inline-flex; }
+/* Smaller than .icon-btn's 40px default so these sit comfortably on the
    controls row beside the char count without making the composer taller. */
-.mode-menu-btn { min-width: 32px; min-height: 32px; padding: 0 0.35rem; border-radius: 50%; }
-.mode-menu-btn.active { border-color: var(--orange); color: var(--orange); background: var(--orange-soft); }
+.composer-menu-btn { min-width: 32px; min-height: 32px; padding: 0 0.35rem; border-radius: 50%; }
+.composer-menu-btn.active { border-color: var(--orange); color: var(--orange); background: var(--orange-soft); }
 
-.mode-menu-popover {
+.composer-menu-popover {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 0;
@@ -1494,7 +1743,10 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   gap: 0.2rem;
   z-index: 120;
 }
-.mode-menu-item {
+/* For a menu whose button sits at the RIGHT of the row: anchoring left would
+   push a 280px popover off the edge of a narrow viewport. */
+.composer-menu-popover--right { left: auto; right: 0; }
+.composer-menu-item {
   display: flex;
   align-items: flex-start;
   gap: 0.6rem;
@@ -1507,56 +1759,44 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   color: var(--text);
   transition: background 0.12s ease;
 }
-.mode-menu-item:hover { background: var(--surface-2); }
-.mode-menu-item:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
-.mode-menu-item.active { background: var(--orange-soft); }
-.mode-menu-item-icon { flex-shrink: 0; margin-top: 0.1rem; color: var(--orange); }
-.mode-menu-item-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
-.mode-menu-item-label { font-weight: 700; font-size: 0.9rem; }
-.mode-menu-item-desc { font-size: 0.78rem; color: var(--text-muted); line-height: 1.35; }
-.mode-menu-item-check { flex-shrink: 0; margin-left: auto; align-self: center; color: var(--orange); }
+.composer-menu-item:hover { background: var(--surface-2); }
+.composer-menu-item:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
+.composer-menu-item.active { background: var(--orange-soft); }
+.composer-menu-item-icon { flex-shrink: 0; margin-top: 0.1rem; color: var(--orange); }
+.composer-menu-item-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.composer-menu-item-label { font-weight: 700; font-size: 0.9rem; }
+.composer-menu-item-desc { font-size: 0.78rem; color: var(--text-muted); line-height: 1.35; }
+.composer-menu-item-check { flex-shrink: 0; margin-left: auto; align-self: center; color: var(--orange); }
 
-/* ---- Classroom Mode pill (sits above the Composer while the mode is on) -- */
-.classroom-pill {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  align-self: flex-start;
-  padding: 0.35rem 0.5rem 0.35rem 0.6rem;
-  margin-bottom: 0.4rem;
-  background: var(--orange-soft);
-  border: 1px solid var(--orange);
-  border-radius: 999px;
-  color: var(--orange);
-  font-size: 0.8rem;
-  font-weight: 700;
-  max-width: 100%;
-}
-.classroom-pill-label { white-space: nowrap; }
-/* The explanatory half is the first thing to go when space is tight — the
-   label and the way out matter more than the hint. */
-.classroom-pill-hint {
-  color: var(--text-muted);
-  font-weight: 400;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.classroom-pill-close {
+/* ---- Classroom Mode dropdown (right of the composer controls row) -------- */
+/* A labelled pill rather than the round icon button "+" uses: this control
+   shows a STATE, and a teacher should be able to read which one it is in
+   without opening it. */
+.classroom-menu-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  background: none;
-  border: none;
-  border-radius: 50%;
-  color: var(--orange);
+  gap: 0.3rem;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
-.classroom-pill-close:hover { background: var(--orange); color: #fff; }
-.classroom-pill-close:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+.classroom-menu-btn.active { border-color: var(--orange); color: var(--orange); background: var(--orange-soft); }
+.classroom-menu-label { white-space: nowrap; }
+/* The narrow-screen stand-in for the full label — hidden by default, swapped in
+   below the breakpoint. The button carries no icon, so one of the two is always
+   showing; neither may be display:none at the same time as the other. */
+.classroom-menu-label-short { display: none; white-space: nowrap; }
+.classroom-menu-caret { flex-shrink: 0; opacity: 0.7; }
+/* Below this the row has to hold the dropdown, the mic and the send button on
+   a phone, so the label shortens to "Mode". */
+@media (max-width: 520px) {
+  .classroom-menu-label { display: none; }
+  .classroom-menu-label-short { display: inline; }
+  .classroom-menu-btn { padding: 0 0.4rem; }
+}
 
 /* "Classroom Mode looked and found nothing" — deliberately quiet. It is an
    explanation, not a result, and must not compete with the answer above it. */
@@ -1694,8 +1934,27 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .classroom-empty-note svg { flex-shrink: 0; color: var(--orange); }
 
 @media (max-width: 640px) {
-  .classroom-pill-hint { display: none; }
-  .mode-menu-popover { min-width: 0; width: calc(100vw - 2.5rem); }
+  /* Anchor BOTH composer menus to the composer box, not to their own button.
+     The bug this fixes: the popover was positioned against its button but sized
+     against the viewport (`width: calc(100vw - 2.5rem)`), and the two disagree.
+     The Mode menu is anchored by its RIGHT edge, which sits ~280px in from the
+     left of a 390px screen, so a 340px-wide panel started at -60px and hung off
+     the left of the screen. Spanning the composer's own width instead makes the
+     panel's position and its size come from the same box, so it cannot leave
+     the screen at any width — and it matches how the same menus behave in the
+     apps this composer is modelled on.
+     `.composer-box` prefix beats the later `--right` rule on specificity, which
+     source order alone would not do from up here. */
+  .composer-box { position: relative; }
+  .composer-menu { position: static; }
+  .composer-box .composer-menu-popover,
+  .composer-box .composer-menu-popover--right {
+    left: 0;
+    right: 0;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+  }
   .classroom-set { padding: 0.6rem; }
   .classroom-card-hint { display: none; }
 }
@@ -1786,6 +2045,154 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .attachment-tray-more:hover { background: var(--orange); color: #fff; }
 .attachment-tray-clear { width: 26px; height: 26px; flex-shrink: 0; }
 .attachment-error { font-size: 0.8rem; color: var(--orange); margin-bottom: 0.4rem; }
+
+/* ---- Preview variant: staged files INSIDE the composer box ---------------
+   The tray's chrome (its own surface + border) exists for the chips variant,
+   which floats on its own above the box. Inside the box that same chrome reads
+   as a box within a box, so the preview variant drops all of it and lets the
+   thumbnails sit directly on the composer's surface. */
+.attachment-tray--preview {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: 0.5rem;
+  align-items: center;
+}
+/* Not `flex: 1` like the chips variant: letting the row fill the box pushes
+   clear-all to the far right edge, where — sitting on the composer's own
+   surface with nothing between — it reads as "close the composer" rather than
+   "remove these files". Sized to its tiles, it stays attached to them. */
+.attachment-tray--preview .attachment-tray-chips { flex: 0 1 auto; gap: 0.4rem; max-height: 152px; }
+.attachment-tray--preview .attachment-tray-clear {
+  min-width: 26px;
+  min-height: 26px;
+  align-self: center;
+  color: var(--text-muted);
+}
+.attachment-preview {
+  position: relative;
+  display: inline-flex;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  overflow: hidden;
+}
+/* The whole tile is the "open preview" hit target, minus the ✕ that sits on
+   top of it (a sibling, drawn above by z-index — see AttachmentTray). */
+.attachment-preview-open {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+}
+.attachment-preview-open:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
+.attachment-preview-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* A PDF has no picture to show, so it gets its kind icon on a tile of exactly
+   the same size — a mixed selection still lines up as one even row. */
+.attachment-preview-file {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--text-muted);
+  background: var(--surface-2);
+}
+.attachment-preview-remove {
+  position: absolute;
+  z-index: 1;
+  top: 2px;
+  right: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  /* Fixed dark chip rather than a theme surface: this sits on top of an
+     arbitrary photo, where a light-theme surface can vanish entirely. */
+  background: rgba(20, 24, 33, 0.72);
+  color: #fff;
+  border: none;
+}
+.attachment-preview-remove:hover:not(:disabled) { background: rgba(20, 24, 33, 0.9); }
+.attachment-preview-remove:disabled { opacity: 0.5; cursor: not-allowed; }
+.attachment-preview-remove:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+
+/* ---- Full-size preview dialog (AttachmentPreviewModal) -------------------
+   Deliberately a MEDIUM window, not a full-screen viewer: the point is to
+   check a photo is usable before sending, and keeping the chat visible around
+   it makes closing it feel like stepping back rather than leaving. */
+.attachment-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(10, 12, 17, 0.72);
+}
+.attachment-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 100%);
+  max-height: min(80vh, 720px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.attachment-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.6rem 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+.attachment-modal-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-modal-close { min-width: 34px; min-height: 34px; flex-shrink: 0; }
+.attachment-modal-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.9rem;
+  /* Checkerboard-free neutral ground: a transparent PNG or a white scan both
+     need something behind them that is neither pure white nor pure black. */
+  background: var(--surface-2);
+}
+/* Scaled to fit, never cropped — the whole point is seeing the whole page. */
+.attachment-modal-img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.attachment-modal-frame { width: 100%; height: 70vh; max-height: 100%; border: none; background: #fff; }
+.attachment-modal-empty { font-size: 0.9rem; color: var(--text-muted); margin: 2rem 0; padding: 0 1rem; text-align: center; }
+/* The stylesheet sets no global anchor colour, so an unstyled link here would
+   come out browser-default blue — invisible against the dark theme and wrong
+   against the orange one. */
+.attachment-modal-empty a { color: var(--orange); font-weight: 600; text-decoration: underline; }
+.attachment-modal-empty a:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+
+@media (max-width: 640px) {
+  .attachment-modal-backdrop { padding: 0.75rem; }
+  .attachment-modal { max-height: 88vh; }
+}
 
 /* Read-only tray inside a sent message bubble (MessageBubble) — same chips,
    slightly tighter so it doesn't compete with the question text below it. */

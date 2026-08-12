@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { SlidersHorizontal } from 'lucide-react';
 import { useDismissable } from '../hooks/useDismissable';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import { LANGUAGES, GRADES, SUBJECTS, CLASSROOM_TYPES, ISSUE_TYPES } from '../config';
 import type { QueryContext } from '../types';
 
@@ -13,32 +14,62 @@ interface ContextBarProps {
 }
 
 interface PopoverPosition {
-  bottom: number;
+  /** Set when the popover opens UPWARD (the control is near the bottom). */
+  bottom: number | null;
+  /** Set when it opens DOWNWARD (the control is near the top). */
+  top: number | null;
   right: number;
   left: number | null;
 }
 
+// Roughly how tall the popover is (two labelled selects plus its padding).
+// Only used to decide which way it opens, so an approximation is enough — being
+// a little pessimistic just means opening downward slightly sooner.
+const POPOVER_APPROX_HEIGHT = 230;
+
 // Mirrors the popover-positioning intent of the (now-superseded) CSS: on
 // desktop/tablet it hugs the trigger button; below 640px it spans the whole
-// composer width instead of the narrow button, so it can never clip past
-// the viewport edge regardless of how the context controls wrap — see the
-// matching `@media (max-width: 640px)` rule for `.context-popover` in
-// index.css. Computed in fixed/viewport coordinates so the popover isn't
-// clipped by an ancestor's overflow (e.g. a resized `.composer-dock`).
+// context row instead of the narrow button, so it can never clip past the
+// viewport edge regardless of how the context controls wrap — see the matching
+// `@media (max-width: 640px)` rule for `.context-popover` in index.css.
+// Computed in fixed/viewport coordinates so the popover isn't clipped by an
+// ancestor's overflow (e.g. a resized `.composer-dock`).
 function measurePopoverPosition(anchorEl: HTMLElement): PopoverPosition {
   const mobile = window.matchMedia('(max-width: 640px)').matches;
-  const container = (mobile && anchorEl.closest<HTMLElement>('.composer-dock-inner')) || anchorEl;
+  // The row itself, not the composer dock: on a phone this control now lives
+  // under the header, where there is no dock to measure against.
+  const container = (mobile && anchorEl.closest<HTMLElement>('.context-bar')) || anchorEl;
   const rect = container.getBoundingClientRect();
   const remPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   const inset = mobile ? remPx * 0.5 : 0;
-  return {
-    bottom: window.innerHeight - rect.top + 8,
+  const horizontal = {
     right: window.innerWidth - rect.right + inset,
     left: mobile ? rect.left + inset : null,
   };
+  // Opening upward is the default — the control spent its whole life at the
+  // bottom of the screen. Now that the phone layout puts it under the header
+  // there is nothing above it to open into, so it flips when the space isn't
+  // there. Measured rather than tied to the breakpoint, so it also does the
+  // right thing for a short viewport or a landscape phone.
+  if (rect.top < POPOVER_APPROX_HEIGHT) {
+    return { top: rect.bottom + 8, bottom: null, ...horizontal };
+  }
+  return { bottom: window.innerHeight - rect.top + 8, top: null, ...horizontal };
 }
 
 export default function ContextBar({ language, onLanguageChange, context, onContextChange }: ContextBarProps) {
+  // On a phone this row sits under the header and has to hold three filters
+  // plus a button across as little as 320px. Rather than shrinking every
+  // control until the row is cramped (which is what a separate "Grade" label
+  // plus an "Any" value forced), the LABEL is dropped there and the empty
+  // option names the field itself.
+  const phone = useMediaQuery('(max-width: 640px)');
+  // "Grade" rather than "Any grade": the longer form truncated to "Any gra…"
+  // inside a control narrow enough to fit the row, which says less than the
+  // field name alone. Unset reads as a placeholder naming the filter; set reads
+  // as the value ("Class 6-8"), which names its own field anyway.
+  const anyLabel = (field: string) => (phone ? field : 'Any');
+
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -66,7 +97,11 @@ export default function ContextBar({ language, onLanguageChange, context, onCont
     function measure() {
       if (moreRef.current) {
         const next = measurePopoverPosition(moreRef.current);
-        setPosition((prev) => (prev && prev.bottom === next.bottom && prev.right === next.right && prev.left === next.left ? prev : next));
+        setPosition((prev) => (
+          prev && prev.bottom === next.bottom && prev.top === next.top && prev.right === next.right && prev.left === next.left
+            ? prev
+            : next
+        ));
       }
       frame = requestAnimationFrame(measure);
     }
@@ -79,7 +114,7 @@ export default function ContextBar({ language, onLanguageChange, context, onCont
       <label className="context-pill">
         <span className="context-pill-label">Grade</span>
         <select value={context.grade} onChange={(e) => onContextChange('grade', e.target.value)}>
-          <option value="">Any</option>
+          <option value="">{anyLabel('Grade')}</option>
           {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
         </select>
       </label>
@@ -87,7 +122,7 @@ export default function ContextBar({ language, onLanguageChange, context, onCont
       <label className="context-pill">
         <span className="context-pill-label">Subject</span>
         <select value={context.subject} onChange={(e) => onContextChange('subject', e.target.value)}>
-          <option value="">Any</option>
+          <option value="">{anyLabel('Subject')}</option>
           {SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       </label>
@@ -106,9 +141,17 @@ export default function ContextBar({ language, onLanguageChange, context, onCont
           onClick={() => setMoreOpen((o) => !o)}
           aria-haspopup="dialog"
           aria-expanded={moreOpen}
+          // The accessible name never collapses with the visible text below —
+          // on a phone the button is icon-only, and "More context" is the only
+          // thing that says what it does.
+          aria-label={moreActiveCount > 0 ? `More context (${moreActiveCount} set)` : 'More context'}
         >
           <SlidersHorizontal size={14} aria-hidden="true" />
-          More context{moreActiveCount > 0 ? ` (${moreActiveCount})` : ''}
+          {/* Hidden on phones, where this row has to hold three selects and
+              this button across a 320px screen. The icon and the count dot
+              carry it there; the full label returns on tablet and up. */}
+          <span className="context-more-text">More context</span>
+          {moreActiveCount > 0 && <span className="context-more-count">{moreActiveCount}</span>}
         </button>
 
         {moreOpen && position && createPortal(
@@ -118,7 +161,13 @@ export default function ContextBar({ language, onLanguageChange, context, onCont
             aria-label="More context"
             ref={popoverRef}
             style={{
-              bottom: position.bottom,
+              // Exactly one of top/bottom is applied and THE OTHER IS EXPLICITLY
+              // 'auto'. Leaving it unset is not enough: the stylesheet's own
+              // `bottom: calc(100% + 8px)` would still apply, and an element
+              // pinned to both edges is stretched between them — which
+              // collapsed the panel and left its two fields hanging outside it.
+              top: position.top ?? 'auto',
+              bottom: position.bottom ?? 'auto',
               right: position.right,
               ...(position.left != null ? { left: position.left } : {}),
             }}
