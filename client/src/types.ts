@@ -433,3 +433,202 @@ export interface LibraryResource {
   createdAt: string;
   updatedAt: string;
 }
+
+// ── PYQ Question Paper Intelligence (docs/pyq-implementation-plan.md) ──────
+// Mirrors the server DTOs in routes/adminPyq.js exactly. Admin-only
+// (super_admin) — ingestion/review (Phase 2-4) and taxonomy/classification
+// (Phase 5, pyqSyllabusSeed.js).
+
+export type PyqPaperStatus = 'uploaded' | 'extracting' | 'needs_review' | 'published' | 'archived' | 'extraction_failed';
+export type PyqExamType = 'annual' | 'compartment' | 'pre_board';
+export type PyqClassLevel = '9' | '10' | '11' | '12';
+export type PyqQuestionType = 'mcq' | 'very_short_answer' | 'short_answer' | 'long_answer' | 'case_study';
+export type PyqQuestionReviewStatus = 'extracted' | 'reviewed' | 'approved' | 'rejected';
+export type PyqDifficulty = 'easy' | 'medium' | 'hard';
+export type PyqTopicSource = 'ai' | 'human';
+
+export interface PyqTopic {
+  id: string;
+  name: string;
+}
+
+export interface PyqChapter {
+  id: string;
+  name: string;
+  sequence: number;
+  topics: PyqTopic[];
+}
+
+export interface PyqSubject {
+  id: string;
+  name: string;
+  classLevel: PyqClassLevel;
+  chapters: PyqChapter[];
+}
+
+export interface PyqBoard {
+  id: string;
+  name: string;
+  code: string;
+  region?: string | null;
+  subjects: PyqSubject[];
+}
+
+// A topic tag on a question — GET .../questions' `topics` field.
+export interface PyqQuestionTopic {
+  id: string;
+  name: string;
+  source: PyqTopicSource;
+}
+
+export interface PyqSourceDocumentSummary {
+  mimeType: string;
+  sizeBytes: number;
+  checksum: string;
+  pageCount: number | null;
+  uploadedById: string;
+  uploadedAt: string;
+}
+
+// The list/detail row shape — GET /api/admin/pyq/papers[/:id].
+export interface PyqPaper {
+  id: string;
+  board: { id: string; name: string; code: string };
+  subject: { id: string; name: string; classLevel: PyqClassLevel };
+  classLevel: PyqClassLevel;
+  year: number;
+  examType: PyqExamType;
+  setLabel: string;
+  totalMarks: number | null;
+  language: string;
+  status: PyqPaperStatus;
+  createdAt: string;
+  updatedAt: string;
+  sourceDocument: PyqSourceDocumentSummary | null;
+}
+
+export interface PyqExtractionProgress {
+  pending: number;
+  done: number;
+  failed: number;
+}
+
+export interface PyqQuestionCounts {
+  extracted: number;
+  reviewed: number;
+  approved: number;
+  rejected: number;
+}
+
+// GET /api/admin/pyq/papers/:id's detail envelope.
+export interface PyqPaperDetail {
+  paper: PyqPaper;
+  extractionProgress: PyqExtractionProgress | null;
+  questionCounts: PyqQuestionCounts;
+}
+
+// The review-queue row shape — GET /api/admin/pyq/papers/:id/questions.
+export interface PyqQuestion {
+  id: string;
+  examPaperId: string;
+  chapterId: string | null;
+  topics: PyqQuestionTopic[];
+  boardId: string;
+  subjectId: string;
+  classLevel: PyqClassLevel;
+  year: number;
+  questionNumber: string;
+  parentQuestionId: string | null;
+  requiresGroupSelection: boolean;
+  language: string;
+  translationOfId: string | null;
+  type: PyqQuestionType;
+  text: string;
+  options: string[] | null;
+  marks: number;
+  difficulty: PyqDifficulty | null;
+  correctAnswer: string | null;
+  hasOfficialAnswer: boolean;
+  pageNumber: number | null;
+  hasDiagram: boolean;
+  hasTable: boolean;
+  reviewStatus: PyqQuestionReviewStatus;
+  reviewedById: string | null;
+  reviewedAt: string | null;
+  extractionConfidence: number | null;
+  // Gemini's ORIGINAL, untouched output for this question — the audit trail
+  // against the (possibly reviewer-corrected) fields above. Shape mirrors
+  // server/src/lib/pyqExtractionSchema.js's per-question contract, but is
+  // read here purely for display, never re-validated client-side.
+  rawExtraction: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Only the fields a reviewer may correct — see routes/adminPyq.js's
+// patchQuestionSchema for the identical, server-authoritative allowlist.
+// `hasOfficialAnswer` is deliberately absent: it is DERIVED server-side from
+// whether `correctAnswer` is non-empty, never independently settable.
+export interface PyqQuestionEdits {
+  questionNumber?: string;
+  type?: PyqQuestionType;
+  text?: string;
+  options?: string[];
+  marks?: number;
+  correctAnswer?: string;
+  difficulty?: PyqDifficulty | null;
+  hasDiagram?: boolean;
+  hasTable?: boolean;
+  requiresGroupSelection?: boolean;
+  // Phase 5. null clears the chapter (and, transitively, every topic).
+  chapterId?: string | null;
+  // Provided REPLACES the question's full topic set; omitted leaves it as-is.
+  topicIds?: string[];
+}
+
+// ---- Phase 6: clustering & recurrence --------------------------------
+// Mirrors the server DTOs in routes/adminPyq.js's clusterDto exactly. A
+// cluster's compute (exact/lexical/semantic matching) happens ENTIRELY
+// offline via pyqClusterBatch.js/pyqEmbedBatch.js — this admin surface is
+// purely the human confirm/reject review gate over those proposals.
+
+export type PyqClusterMethod = 'exact' | 'lexical' | 'semantic';
+export type PyqClusterStatus = 'proposed' | 'confirmed' | 'rejected';
+
+export interface PyqClusterMember {
+  questionId: string;
+  questionNumber: string;
+  text: string;
+  year: number;
+  examPaperId: string;
+  // null for exact/lexical matches; a cosine-similarity value (vs. the
+  // cluster's reference question) for semantic matches.
+  similarity: number | null;
+}
+
+// Server-computed, never stored — see lib/pyqClustering.js's occurrenceCount.
+export interface PyqClusterRecurrence {
+  count: number;
+  years: number[];
+}
+
+export interface PyqCluster {
+  id: string;
+  chapterId: string;
+  chapter: {
+    id: string;
+    name: string;
+    subject: { id: string; name: string; classLevel: PyqClassLevel; board: { id: string; name: string; code: string } } | null;
+  } | null;
+  method: PyqClusterMethod;
+  status: PyqClusterStatus;
+  label: string | null;
+  confirmedById: string | null;
+  confirmedAt: string | null;
+  createdAt: string;
+  // Server-computed deterministically (earliest year, tie-broken by id) —
+  // never a stored field.
+  referenceQuestionId: string | null;
+  recurrence: PyqClusterRecurrence;
+  members: PyqClusterMember[];
+}

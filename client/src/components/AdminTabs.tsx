@@ -25,6 +25,12 @@ export default function AdminTabs() {
       {isSuperAdmin && (
         <Link to="/admin/settings" className={pathname.startsWith('/admin/settings') ? 'active' : ''}>Settings</Link>
       )}
+      {/* PYQ content is shared/global, never school-scoped — same
+          super_admin-only reasoning as Support/Settings above (see
+          docs/pyq-implementation-plan.md §12). */}
+      {isSuperAdmin && (
+        <Link to="/admin/pyq" className={pathname.startsWith('/admin/pyq') ? 'active' : ''}>PYQ</Link>
+      )}
     </div>
   );
 }

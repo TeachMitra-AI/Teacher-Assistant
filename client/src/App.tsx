@@ -20,6 +20,9 @@ import ManagePage from './pages/ManagePage';
 import AdminSupportPage from './pages/AdminSupportPage';
 import AdminSupportTicketPage from './pages/AdminSupportTicketPage';
 import AdminSettingsPage from './pages/AdminSettingsPage';
+import AdminPyqIngestionPage from './pages/AdminPyqIngestionPage';
+import AdminPyqReviewPage from './pages/AdminPyqReviewPage';
+import AdminPyqClusterReviewPage from './pages/AdminPyqClusterReviewPage';
 import SettingsPage from './pages/SettingsPage';
 import LibraryPage from './pages/LibraryPage';
 import ResourceView from './pages/ResourceView';
@@ -87,6 +90,24 @@ function AppRoutes() {
       <Route
         path="/admin/settings"
         element={isSuperAdmin ? <AdminSettingsPage preferences={preferences} /> : <Navigate to="/" replace />}
+      />
+      {/* PYQ ingestion/review (Phases 2-4) — super_admin only, same gate as
+          Support/Settings above: PYQ content is shared/global, not a
+          school's own data (docs/pyq-implementation-plan.md §12). */}
+      <Route
+        path="/admin/pyq"
+        element={isSuperAdmin ? <AdminPyqIngestionPage preferences={preferences} /> : <Navigate to="/" replace />}
+      />
+      {/* Cluster review (Phase 6) — a static segment, so React Router ranks
+          it above the dynamic :paperId route below regardless of declaration
+          order; listed first anyway for readability. */}
+      <Route
+        path="/admin/pyq/clusters"
+        element={isSuperAdmin ? <AdminPyqClusterReviewPage preferences={preferences} /> : <Navigate to="/" replace />}
+      />
+      <Route
+        path="/admin/pyq/:paperId"
+        element={isSuperAdmin ? <AdminPyqReviewPage preferences={preferences} /> : <Navigate to="/" replace />}
       />
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

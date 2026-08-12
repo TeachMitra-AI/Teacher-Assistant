@@ -3483,6 +3483,131 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 [data-theme='dark'] .btn-danger { background: #d33a3a; }
 [data-theme='dark'] .btn-danger:hover:not(:disabled) { background: #bd2f2f; }
 
+/* ---- PYQ admin ingestion + review (Phase 4) ------------------------------- */
+
+.pyq-upload-form { display: flex; flex-direction: column; gap: 0.2rem; }
+.pyq-upload-submit { display: inline-flex; align-items: center; gap: 0.5rem; align-self: flex-start; margin-top: 0.9rem; }
+.pyq-row-actions { display: flex; gap: 0.4rem; justify-content: flex-end; white-space: nowrap; }
+
+.pyq-review-main { max-width: 1240px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
+.pyq-review-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 0.4rem 0 0.6rem;
+}
+.pyq-review-title { font-size: 1.3rem; margin-bottom: 0.3rem; }
+.pyq-review-progress { color: var(--text-muted); font-size: 0.88rem; margin: 0 0 1rem; }
+.pyq-review-empty { margin-top: 1rem; }
+
+/* Question navigator strip — a compact, keyboard-reachable list of every
+   question in the paper, color-coded by review decision, so "which
+   questions still need a decision" is scannable without opening each one. */
+.pyq-qnav { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; }
+.pyq-qnav-strip {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding: 0.2rem;
+  flex: 1;
+  scrollbar-width: thin;
+}
+.pyq-qnav-chip {
+  flex-shrink: 0;
+  min-width: 2.4rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+}
+.pyq-qnav-chip:hover { background: var(--border); }
+.pyq-qnav-chip.active { outline: 2px solid var(--orange); outline-offset: 1px; color: var(--text); }
+.pyq-qnav-chip.status-extracted { color: var(--text-muted); border-color: var(--border); }
+.pyq-qnav-chip.status-reviewed { color: var(--orange-dark); border-color: var(--orange); background: var(--orange-soft); }
+.pyq-qnav-chip.status-approved { color: #15803d; border-color: #86efac; background: #f0fdf4; }
+.pyq-qnav-chip.status-rejected { color: #b91c1c; border-color: #fca5a5; background: #fef2f2; }
+[data-theme='dark'] .pyq-qnav-chip.status-approved { color: #6ee7a8; border-color: #14532d; background: rgba(20, 83, 45, 0.35); }
+[data-theme='dark'] .pyq-qnav-chip.status-rejected { color: #fca5a5; border-color: #7f1d1d; background: rgba(127, 29, 29, 0.35); }
+
+/* Same review-status palette applied to the .status-pill badges used
+   elsewhere on the page (question header, paper header uses ExamPaper's own
+   separate status set, already covered by the existing .status-pill rules
+   above). */
+.status-pill.status-extracted { color: var(--text-muted); border-color: var(--border); background: var(--surface-2); }
+.status-pill.status-reviewed { color: var(--orange-dark); border-color: var(--orange); background: var(--orange-soft); }
+.status-pill.status-approved { color: #15803d; border-color: #86efac; background: #f0fdf4; }
+[data-theme='dark'] .status-pill.status-approved { color: #6ee7a8; border-color: #14532d; background: rgba(20, 83, 45, 0.35); }
+/* ExamPaper's own pipeline-stage statuses (§7) — distinct vocabulary from
+   Question.reviewStatus above, reusing the same visual language. */
+.status-pill.status-uploaded { color: var(--text-muted); border-color: var(--border); background: var(--surface-2); }
+.status-pill.status-extracting { color: var(--orange-dark); border-color: var(--orange); background: var(--orange-soft); }
+.status-pill.status-needs_review { color: #b45309; border-color: #fcd34d; background: #fffbeb; }
+.status-pill.status-published { color: #15803d; border-color: #86efac; background: #f0fdf4; }
+.status-pill.status-archived { color: var(--text-muted); border-color: var(--border); background: var(--surface-2); }
+.status-pill.status-extraction_failed { color: #b91c1c; border-color: #fca5a5; background: #fef2f2; }
+[data-theme='dark'] .status-pill.status-needs_review { color: #fcd34d; border-color: #78350f; background: rgba(120, 53, 15, 0.35); }
+[data-theme='dark'] .status-pill.status-published { color: #6ee7a8; border-color: #14532d; background: rgba(20, 83, 45, 0.35); }
+[data-theme='dark'] .status-pill.status-extraction_failed { color: #fca5a5; border-color: #7f1d1d; background: rgba(127, 29, 29, 0.35); }
+
+/* QuestionCluster.status (Phase 6) — 'rejected' already covered above
+   (shared vocabulary with Question.reviewStatus); 'proposed'/'confirmed'
+   are new. */
+.status-pill.status-proposed { color: #b45309; border-color: #fcd34d; background: #fffbeb; }
+.status-pill.status-confirmed { color: #15803d; border-color: #86efac; background: #f0fdf4; }
+[data-theme='dark'] .status-pill.status-proposed { color: #fcd34d; border-color: #78350f; background: rgba(120, 53, 15, 0.35); }
+[data-theme='dark'] .status-pill.status-confirmed { color: #6ee7a8; border-color: #14532d; background: rgba(20, 83, 45, 0.35); }
+
+.pyq-cluster-link { margin-bottom: 0.75rem; }
+.pyq-cluster-members { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.pyq-cluster-members li { font-size: 0.9rem; color: var(--text-muted); }
+
+/* The core split view: source PDF on the left, extracted/editable fields on
+   the right — collapses to a single column on narrow screens, source panel
+   first, same "stack, don't shrink into uselessness" treatment as
+   .ticket-detail-grid. */
+.pyq-review-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; align-items: start; }
+.pyq-source-panel { position: sticky; top: 0.8rem; }
+.pyq-source-frame {
+  width: 100%;
+  height: 70vh;
+  min-height: 420px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.pyq-source-open { display: inline-flex; align-items: center; gap: 0.4rem; margin-top: 0.6rem; }
+
+.pyq-question-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+.pyq-provenance { margin-bottom: 1rem; }
+.pyq-locked-notice {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 1rem;
+}
+.pyq-question-text { resize: vertical; font-family: inherit; line-height: 1.5; }
+.pyq-options-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.6rem; margin: 0.4rem 0 1rem; }
+.pyq-checkbox-row { padding: 0.4rem 0 0.8rem; }
+.pyq-trust-note { margin-top: -0.4rem; font-size: 0.78rem; }
+.pyq-raw-extraction { margin: 0.8rem 0 1.2rem; }
+.pyq-raw-extraction summary { cursor: pointer; font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
+
+.pyq-review-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; padding-top: 0.6rem; border-top: 1px solid var(--border); }
+.pyq-skip-next { display: inline-flex; align-items: center; gap: 0.35rem; margin-left: auto; }
+
+@media (max-width: 900px) {
+  .pyq-review-grid { grid-template-columns: 1fr; }
+  .pyq-source-panel { position: static; }
+  .pyq-source-frame { height: 55vh; }
+}
+
 @keyframes confirm-rise { from { transform: translateY(8px) scale(0.98); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) {
   .confirm-panel { animation: none; }

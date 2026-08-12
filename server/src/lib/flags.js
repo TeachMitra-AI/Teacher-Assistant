@@ -383,6 +383,46 @@ function readClassroomModeFlags(env, { warn = console.warn } = {}) {
   };
 }
 
+// ---- PYQ Question Paper Intelligence ---------------------------------------
+//
+// See docs/pyq-implementation-plan.md. Same shape and same "default OFF"
+// reasoning as every flag above — a deployment that sets nothing ships no new
+// teacher-facing surface. Unlike the other features here, this flag does NOT
+// gate the admin ingestion/review routes (routes/adminPyq.js) at all — those
+// are role-gated only (requireRole('super_admin')), never flag-gated, because
+// ingestion is an always-available admin capability, not a rollout surface
+// (see §12: "write access is role-gated; read access is feature-flag-gated").
+// This flag exists to gate the TEACHER-FACING read/generation endpoints added
+// in a later phase — defined here now (Phase 2) purely as forward-declared
+// infrastructure, the same way index.js constructs an idle `pyqGemini`
+// instance in this same phase before Phase 3 has any use for it.
+const PYQ_FLAG_DEFAULTS = Object.freeze({
+  enabled: false,
+  // Tenant rollout by school code, same "empty means all schools" contract as
+  // ATTACHMENT_FLAG_DEFAULTS.allowedSchoolCodes above — a filter, not a gate.
+  allowedSchoolCodes: Object.freeze([]),
+});
+
+/**
+ * Read the PYQ feature's global flags from an environment object.
+ * @param {Record<string, string|undefined>} env
+ * @param {{warn?: (msg: string) => void}} [opts]
+ * @returns {{enabled: boolean, allowedSchoolCodes: string[]}}
+ */
+function readPyqFlags(env, { warn = console.warn } = {}) {
+  return {
+    enabled: parseBoolEnv(env.PYQ_ENABLED, {
+      name: 'PYQ_ENABLED',
+      defaultValue: PYQ_FLAG_DEFAULTS.enabled,
+      warn,
+    }),
+    allowedSchoolCodes: parseListEnv(env.PYQ_ALLOWED_SCHOOL_CODES, {
+      name: 'PYQ_ALLOWED_SCHOOL_CODES',
+      defaultValue: PYQ_FLAG_DEFAULTS.allowedSchoolCodes,
+    }),
+  };
+}
+
 module.exports = {
   parseBoolEnv,
   parseListEnv,
@@ -397,4 +437,6 @@ module.exports = {
   LEARNING_REPRESENTATION_FLAG_DEFAULTS,
   readClassroomModeFlags,
   CLASSROOM_MODE_FLAG_DEFAULTS,
+  readPyqFlags,
+  PYQ_FLAG_DEFAULTS,
 };

@@ -307,3 +307,206 @@ model SupportNote {
 
   @@index([ticketId])
 }
+
+// ── PYQ Intelligence ──────────────────────────────────────────────────────
+// Shared reference content, NOT tenant-scoped: every model below is
+// deliberately absent a schoolId. Write access is role-gated (requireRole);
+// read access is feature-flag-gated (readPyqFlags). See
+// docs/pyq-implementation-plan.md §12.
+
+model Board {
+  id        String   @id @default(cuid())
+  name      String                    // "Bihar Board", "CBSE"
+  code      String   @unique          // "BSEB", "CBSE" — stable slug for URLs/flags
+  region    String?                   // "Bihar", "National" — display only
+  createdAt DateTime @default(now())
+
+  subjects   Subject[]
+  examPapers ExamPaper[]
+}
+
+model Subject {
+  id         String   @id @default(cuid())
+  board      Board    @relation(fields: [boardId], references: [id])
+  boardId    String
+  classLevel String                   // "9" | "10" | "11" | "12" — exact, never a band
+  name       String                   // "Mathematics"
+  createdAt  DateTime @default(now())
+
+  chapters   Chapter[]
+  examPapers ExamPaper[]
+
+  @@unique([boardId, classLevel, name])
+  @@index([boardId, classLevel])
+}
+
+model Chapter {
+  id        String   @id @default(cuid())
+  subject   Subject  @relation(fields: [subjectId], references: [id])
+  subjectId String
+  name      String
+  sequence  Int                       // syllabus order — admin UI + coverage checks
+  createdAt DateTime @default(now())
+
+  topics    Topic[]
+  questions Question[]
+  clusters  QuestionCluster[]
+
+  @@unique([subjectId, name])
+  @@index([subjectId])
+}
+
+model Topic {
+  id        String   @id @default(cuid())
+  chapter   Chapter  @relation(fields: [chapterId], references: [id])
+  chapterId String
+  name      String
+  createdAt DateTime @default(now())
+
+  questionTopics QuestionTopic[]
+
+  @@unique([chapterId, name])
+  @@index([chapterId])
+}
+
+model ExamPaper {
+  id          String    @id @default(cuid())
+  board       Board     @relation(fields: [boardId], references: [id])
+  boardId     String
+  subject     Subject   @relation(fields: [subjectId], references: [id])
+  subjectId   String
+  classLevel  String                          // denormalized from Subject; immutable once Question rows exist
+  year        Int
+  examType    String    @default("annual")    // annual | compartment | pre_board — closed vocab, Zod-validated
+  setLabel    String    @default("")          // "" not null — NULL is never equal to NULL in a SQLite unique index
+  totalMarks  Int?
+  language    String    @default("en")
+  status      String    @default("uploaded")  // uploaded | extracting | needs_review | published | archived | extraction_failed
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  sourceDocument SourceDocument?
+  questions      Question[]
+
+  @@unique([boardId, subjectId, year, examType, setLabel])
+  @@index([boardId, subjectId, classLevel, year])
+  @@index([status])
+}
+
+model SourceDocument {
+  id              String    @id @default(cuid())
+  examPaper       ExamPaper @relation(fields: [examPaperId], references: [id])
+  examPaperId     String    @unique              // 1:1 for MVP
+  data            Bytes                          // the PDF itself — mirrors ProfilePicture.data
+  mimeType        String
+  sizeBytes       Int
+  checksum        String    @unique               // sha256 hex; dedupes exact re-uploads
+  pageCount       Int?
+  extractionState String?                         // JSON: { "<pageNumber>": "pending"|"done"|"failed" }
+  uploadedById    String                           // soft reference to User.id
+  uploadedAt      DateTime  @default(now())
+
+  @@index([examPaperId])
+}
+
+// Denormalizes boardId/subjectId/classLevel/year from ExamPaper for the hot
+// candidate-pool query (every teacher-facing generation request filters on
+// these). Integrity rule: once an ExamPaper has any Question rows, its
+// board/subject/classLevel/year become immutable — enforced in the route
+// handler, not the DB, so these denormalized copies can never drift.
+model Question {
+  id                     String    @id @default(cuid())
+  examPaper              ExamPaper @relation(fields: [examPaperId], references: [id])
+  examPaperId            String
+  chapter                Chapter?  @relation(fields: [chapterId], references: [id])   // nullable until classified
+  chapterId              String?
+  boardId                String
+  subjectId              String
+  classLevel             String
+  year                   Int
+
+  questionNumber         String                      // "5", "5(a)" — as printed; string, not int
+  parentQuestionId       String?                      // self-relation: sub-part of another Question
+  requiresGroupSelection Boolean   @default(false)    // true on the PARENT only
+  language               String    @default("en")
+  translationOfId        String?                      // self-relation: translation of another Question
+
+  type                   String                        // closed vocabulary: PYQ_QUESTION_TYPES (lib/pyqVocab.js, Phase 5) — see docs/pyq-implementation-plan.md §9
+  text                   String
+  options                String?                       // JSON array, mcq only
+  marks                  Int
+  difficulty             String?                       // easy | medium | hard — nullable/untrusted
+  correctAnswer          String?
+  hasOfficialAnswer      Boolean   @default(false)
+  pageNumber             Int?
+  hasDiagram             Boolean   @default(false)
+  hasTable               Boolean   @default(false)
+
+  rawExtraction          String                        // JSON — Gemini's ORIGINAL output, untouched
+  reviewStatus           String    @default("extracted")  // extracted | reviewed | approved | rejected
+  reviewedById           String?
+  reviewedAt             DateTime?
+  extractionConfidence   Float?
+  embedding              String?                        // JSON float array, nullable
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent             Question? @relation("QuestionParts", fields: [parentQuestionId], references: [id])
+  parts              Question[] @relation("QuestionParts")
+  translationOf      Question? @relation("QuestionTranslation", fields: [translationOfId], references: [id])
+  translations       Question[] @relation("QuestionTranslation")
+  topics             QuestionTopic[]
+  clusterMemberships QuestionClusterMember[]
+
+  @@index([boardId, subjectId, classLevel, year])
+  @@index([chapterId])
+  @@index([examPaperId])
+  @@index([reviewStatus])
+}
+
+model QuestionTopic {
+  id         String   @id @default(cuid())
+  question   Question @relation(fields: [questionId], references: [id])
+  questionId String
+  topic      Topic    @relation(fields: [topicId], references: [id])
+  topicId    String
+  source     String   @default("ai")   // ai | human
+
+  @@unique([questionId, topicId])
+  @@index([topicId])
+}
+
+// A proposed or confirmed group of recurring/duplicate questions, scoped to
+// one chapter. Never a merge — every occurrence keeps its own Question row
+// (year, marks, source paper), so provenance-per-occurrence stays literally
+// true. A machine-proposed cluster never affects a teacher-visible
+// recurrence count until a human moves status to "confirmed".
+model QuestionCluster {
+  id            String    @id @default(cuid())
+  chapter       Chapter   @relation(fields: [chapterId], references: [id])
+  chapterId     String
+  label         String?                          // admin-editable, e.g. "Newton's Second Law — state/derive"
+  method        String                            // exact | lexical | semantic — how it was FIRST proposed
+  status        String    @default("proposed")    // proposed | confirmed | rejected
+  confirmedById String?
+  confirmedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  members QuestionClusterMember[]
+
+  @@index([chapterId])
+  @@index([status])
+}
+
+model QuestionClusterMember {
+  id         String          @id @default(cuid())
+  cluster    QuestionCluster @relation(fields: [clusterId], references: [id])
+  clusterId  String
+  question   Question        @relation(fields: [questionId], references: [id])
+  questionId String
+  similarity Float?          // vs. the cluster's reference question; null for exact/lexical matches
+
+  @@unique([clusterId, questionId])
+  @@index([questionId])
+}

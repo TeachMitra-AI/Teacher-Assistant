@@ -54,6 +54,11 @@ const adminSettingsRouter = require('./routes/adminSettings');
 // guard at boot (both throw on load if their data is out of sync) rather
 // than surfacing as a strange failure on the first real request.
 const learningRepresentationRouter = require('./routes/learningRepresentation');
+// PYQ Question Paper Intelligence (docs/pyq-implementation-plan.md), Phase 2
+// slice: admin upload/list/get/source only — no extraction, no review UI, no
+// generation yet. A sibling feature, same "fail at boot on a malformed
+// module" reasoning as the routers above.
+const adminPyqRouter = require('./routes/adminPyq');
 const {
   readAssistantFlags,
   readAttachmentFlags,
@@ -275,6 +280,48 @@ const attachmentGemini = new GeminiService({
   maxOutputTokens: ATTACHMENT_LLM_MAX_OUTPUT_TOKENS,
 });
 
+// ---- PYQ extraction: a FOURTH GeminiService instance -----------------------
+//
+// Constructed here in Phase 2, per docs/pyq-implementation-plan.md's own
+// Phase 2 file list — but genuinely UNUSED until Phase 3 (Extraction) exists
+// to call it. Same reasoning as geminiFast/attachmentGemini above: per-page
+// PDF extraction (Phase 3) is a materially different call shape (a whole
+// page's worth of structured JSON output) from coaching, routing, or a single
+// multimodal answer, so it gets its own tunables now rather than retrofitting
+// a shared budget later.
+const PYQ_GEMINI_ENDPOINT = process.env.PYQ_GEMINI_ENDPOINT || GEMINI_ENDPOINT;
+
+const PYQ_EXTRACTION_LLM_TIMEOUT_MS = parseIntEnv(process.env.PYQ_EXTRACTION_LLM_TIMEOUT_MS, {
+  name: 'PYQ_EXTRACTION_LLM_TIMEOUT_MS', defaultValue: 30000, min: 1000, max: 120000,
+});
+const PYQ_EXTRACTION_LLM_TOTAL_TIMEOUT_MS = parseIntEnv(process.env.PYQ_EXTRACTION_LLM_TOTAL_TIMEOUT_MS, {
+  name: 'PYQ_EXTRACTION_LLM_TOTAL_TIMEOUT_MS', defaultValue: 60000, min: 5000, max: 180000,
+});
+const PYQ_EXTRACTION_LLM_MAX_RETRIES = parseIntEnv(process.env.PYQ_EXTRACTION_LLM_MAX_RETRIES, {
+  name: 'PYQ_EXTRACTION_LLM_MAX_RETRIES', defaultValue: 2, min: 0, max: 5,
+});
+const PYQ_EXTRACTION_LLM_MAX_CALLS_PER_REQUEST = parseIntEnv(process.env.PYQ_EXTRACTION_LLM_MAX_CALLS_PER_REQUEST, {
+  name: 'PYQ_EXTRACTION_LLM_MAX_CALLS_PER_REQUEST', defaultValue: 8, min: 1, max: 20,
+});
+const PYQ_EXTRACTION_LLM_MAX_OUTPUT_TOKENS = parseIntEnv(process.env.PYQ_EXTRACTION_LLM_MAX_OUTPUT_TOKENS, {
+  name: 'PYQ_EXTRACTION_LLM_MAX_OUTPUT_TOKENS', defaultValue: 8192, min: 256, max: 8192,
+});
+
+const pyqGemini = new GeminiService({
+  apiKey: GEMINI_API_KEY,
+  endpoint: PYQ_GEMINI_ENDPOINT,
+  timeoutMs: PYQ_EXTRACTION_LLM_TIMEOUT_MS,
+  totalTimeoutMs: PYQ_EXTRACTION_LLM_TOTAL_TIMEOUT_MS,
+  maxRetries: PYQ_EXTRACTION_LLM_MAX_RETRIES,
+  maxCallsPerRequest: PYQ_EXTRACTION_LLM_MAX_CALLS_PER_REQUEST,
+  // Structured JSON output, same reasoning geminiFast documents: gemini.js
+  // already skips the continuation loop whenever responseSchema is set (the
+  // reason per-page extraction is chunked at all — see the plan's §01/§08),
+  // so continuations are stated as zero here rather than left implicit.
+  maxContinuations: 0,
+  maxOutputTokens: PYQ_EXTRACTION_LLM_MAX_OUTPUT_TOKENS,
+});
+
 // Per-user daily budget, reusing the router's already-generic counter
 // (assistant/budget.js has no actual dependency on the router — see its own
 // module doc). Same in-memory, per-process, resets-on-restart tradeoffs,
@@ -331,6 +378,12 @@ app.locals.assistantBreaker = assistantBreaker;
 // never a module singleton (so the test suite can build its own app).
 app.locals.attachmentGemini = attachmentGemini;
 app.locals.attachmentBudget = attachmentBudget;
+// PYQ extraction — read by a LATER phase's routes/adminPyq.js extract route
+// as req.app.locals.pyqGemini. Constructed now (Phase 2) but not read by any
+// route yet — same "constructed once, injected explicitly, unused until its
+// phase exists" precedent this file already documents for the other three
+// GeminiService instances above.
+app.locals.pyqGemini = pyqGemini;
 // AI Learning Representation System, read by routes/learningRepresentation.js
 // as req.app.locals.learningRepresentationBudget. Uses the EXISTING gemini /
 // geminiFast locals above directly (no third instance) — see the route's
@@ -912,6 +965,11 @@ app.use('/api/admin/support', adminSupportRouter);
 // Admin Settings > Feature Management — same "no dedicated rate limiter"
 // reasoning as adminSupportRouter above.
 app.use('/api/admin/feature-flags', adminSettingsRouter);
+// PYQ admin ingestion (Phase 2 slice — upload/list/get/source only). Same
+// "no dedicated rate limiter" reasoning as adminSupportRouter above: not a
+// public-facing endpoint, and authRequired + requireRole('super_admin')
+// already gate every route in this router.
+app.use('/api/admin/pyq', adminPyqRouter);
 
 // AI Action Router. Mounted alongside the existing routers — after them, before
 // the global error handler — so no existing route's middleware chain changes.
