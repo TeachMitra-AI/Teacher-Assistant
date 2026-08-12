@@ -1,11 +1,12 @@
 import type { ChangeEvent, FormEvent, RefObject } from 'react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { Mic, ArrowUp } from 'lucide-react';
 import {
   ATTACHMENT_ACCEPT, ATTACHMENTS_ENABLED, CLASSROOM_MODE_ENABLED, MAX_ATTACHMENTS_COUNT, MAX_QUERY_LENGTH,
 } from '../config';
 import type { useVoiceInput } from '../hooks/useVoiceInput';
 import type { useAttachments } from '../hooks/useAttachments';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import AttachmentTray from './AttachmentTray';
 import AddMenu from './AddMenu';
 import ClassroomModeMenu from './ClassroomModeMenu';
@@ -19,6 +20,12 @@ const MAX_TEXTAREA_HEIGHT = 200;
 // four controls, so a shorter one is used. Matches the breakpoint at which the
 // Classroom dropdown drops its own text label.
 const NARROW_QUERY = '(max-width: 520px)';
+// A 320px phone leaves the text slot ~75px wide once the five controls have
+// taken their share. "Ask anything…" does not fit and, because the box is
+// deliberately one line tall, the overflow is CLIPPED mid-word rather than
+// wrapping — which reads as a rendering bug. This tier is the shortest thing
+// that still reads as an invitation to type.
+const TINY_QUERY = '(max-width: 360px)';
 
 // How wide a string renders in a given element's font. Canvas is the only way
 // to ask that question WITHOUT putting the text in the document and measuring
@@ -56,17 +63,9 @@ export default function Composer({
   // a full-width line of its own and the controls drop beneath it. See the
   // layout effect for how the switch is decided.
   const [stacked, setStacked] = useState(false);
-  const [narrow, setNarrow] = useState(() =>
-    typeof window !== 'undefined' && window.matchMedia(NARROW_QUERY).matches
-  );
+  const narrow = useMediaQuery(NARROW_QUERY);
+  const tiny = useMediaQuery(TINY_QUERY);
   const atMaxAttachments = attachments.attachments.length >= MAX_ATTACHMENTS_COUNT;
-
-  useEffect(() => {
-    const mq = window.matchMedia(NARROW_QUERY);
-    const onChangeMq = () => setNarrow(mq.matches);
-    mq.addEventListener('change', onChangeMq);
-    return () => mq.removeEventListener('change', onChangeMq);
-  }, []);
 
   // Auto-grow, driven by the VALUE rather than by the keystroke that changed
   // it. The old version resized inside the textarea's own onChange, which meant
@@ -230,7 +229,7 @@ export default function Composer({
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && (e.ctrlKey || e.metaKey)) onSubmit();
             }}
-            placeholder={narrow ? 'Ask anything…' : 'Ask anything about teaching…'}
+            placeholder={tiny ? 'Ask…' : narrow ? 'Ask anything…' : 'Ask anything about teaching…'}
             rows={1}
             aria-label="Your question"
           />

@@ -650,7 +650,16 @@ yet.**
 - `client/src/components/ModeMenu.tsx` — **new.** The `+` button and its popover. Uses
   `useDismissable`, the same hook as `ContextBar`'s "More context" popover. Modes are a **list**,
   so a second mode is one object, not a restructure.
+  **SUPERSEDED — see [`composer-ui-rework.md`](./composer-ui-rework.md):** this file is now
+  `AddMenu.tsx` and `+` carries Capture Photo / Upload File/Photo. The Classroom Mode control moved
+  to `client/src/components/ClassroomModeMenu.tsx`, an "Assistant Mode" dropdown at the RIGHT of the
+  composer row where the paperclip used to be. Everything below about state ownership still holds —
+  the mode still lives in `CoachPage`, not in the composer — and the CSS classes are now
+  `.composer-menu-*` (shared by both menus) rather than `.mode-menu-*`.
 - `client/src/components/ClassroomModePill.tsx` — **new.** The pill, with its own ✕.
+  **DELETED — see [`composer-ui-rework.md`](./composer-ui-rework.md):** the Assistant Mode control
+  shows its own state (active styling, selected mode on hover), so the pill was a second copy of the
+  same fact holding a permanent strip above the grade and subject.
 - `client/src/components/Composer.tsx` — renders `ModeMenu` leftmost in `composer-controls`; the
   char count moved to its right. Paperclip / mic / send untouched.
 - `client/src/pages/CoachPage.tsx` — `classroomMode` state, the pill, and `classroomMode` in the

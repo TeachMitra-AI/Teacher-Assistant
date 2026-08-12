@@ -18,6 +18,7 @@ import Composer from '../components/Composer';
 import OnboardingTip from '../components/OnboardingTip';
 import ChatResizeHandle from '../components/ChatResizeHandle';
 import AiClarifyPrompt from '../components/AiClarifyPrompt';
+import ScrollToBottom from '../components/ScrollToBottom';
 import { useToast } from '../components/Toast';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { useAttachments, type SelectedAttachment } from '../hooks/useAttachments';
@@ -25,6 +26,7 @@ import { usePreferences } from '../hooks/usePreferences';
 import { useAuth } from '../auth';
 import { useOnboarding } from '../onboarding';
 import { useOnboardingTip } from '../hooks/useOnboardingTip';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import { api, ApiError } from '../api';
 // This page's ONLY import from the AI Action Router (milestone M6). Keeping the
 // coupling to a single line is what makes the feature deletable and what keeps
@@ -111,8 +113,16 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   // handle, and only applies on desktop/tablet in the active-chat state.
   const [composerHeight, setComposerHeight] = useState<number | null>(null);
   const [isMobile, setIsMobile] = useState(() => isMobileViewport());
+  // A SECOND, narrower breakpoint than `isMobile` (768px) above, matching the
+  // 640px at which the stylesheet switches the Coach page into its phone
+  // layout. It decides WHERE the context row is rendered — under the header on
+  // a phone, in the composer dock otherwise — which is a DOM change the
+  // stylesheet cannot make on its own. The two numbers must stay in step with
+  // their respective @media blocks.
+  const isPhoneLayout = useMediaQuery('(max-width: 640px)');
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
   const resizeDragRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
@@ -523,6 +533,18 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     <div className={`page coach-shell${isEmpty ? ' coach-empty' : ''}`}>
       <TopBar preferences={preferences} onSidebarToggle={() => setSidebarOpen((o) => !o)} sidebarOpen={sidebarOpen} />
 
+      {/* PHONE ONLY: the context row sits directly under the header, where it
+          is a compact filter strip that stays out of the way of the answer.
+          Everywhere else it stays in the composer dock (below), beside the
+          question it qualifies. Rendered in exactly ONE of the two places —
+          rendering it in both and hiding one with CSS would put a second set of
+          Grade/Subject/Language comboboxes in the accessibility tree. */}
+      {isPhoneLayout && (
+        <div className="coach-context-row">
+          <ContextBar language={language} onLanguageChange={setLanguage} context={context} onContextChange={setCtx} />
+        </div>
+      )}
+
       <div className="coach-body">
         <Sidebar
           open={sidebarOpen}
@@ -537,7 +559,12 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
         />
 
         <main className="coach-main-chat">
-          <div className="chat-scroll">
+          {/* Wraps the scroller ONLY, so the scroll-to-latest button below can
+              be positioned against the answer area rather than against the
+              whole column — pinned to the column it would sit on top of the
+              composer's send button. */}
+          <div className="chat-area">
+          <div className="chat-scroll" ref={chatScrollRef}>
             <div className="chat-inner">
               {turns.length === 0 ? (
                 <WelcomeScreen
@@ -559,6 +586,23 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                 />
               )}
             </div>
+          </div>
+
+          {/* Sits over the bottom of the answer area, not inside the scroller,
+              so it stays put while the content moves under it. Only rendered
+              in an active chat — the welcome screen scrolls with the page on a
+              phone and has its own end. */}
+          {/* Phone only. It belongs to the tall, mostly-answer phone layout,
+              where a long answer no longer ends anywhere near the composer; on
+              desktop the thread and the composer are visible together and the
+              brief was explicitly to leave that layout alone. */}
+          {!isEmpty && isPhoneLayout && (
+            <ScrollToBottom
+              scrollRef={chatScrollRef}
+              watch={turns}
+              onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })}
+            />
+          )}
           </div>
 
           {resizeEnabled && (
@@ -606,7 +650,12 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                   plan, worksheet, quiz, homework and exit ticket alongside your answer.
                 </OnboardingTip>
               )}
-              <ContextBar language={language} onLanguageChange={setLanguage} context={context} onContextChange={setCtx} />
+              {/* The other half of the phone-only move above: on a phone this
+                  row has already been rendered under the header, and rendering
+                  it again here would duplicate every control. */}
+              {!isPhoneLayout && (
+                <ContextBar language={language} onLanguageChange={setLanguage} context={context} onContextChange={setCtx} />
+              )}
               <Composer
                 value={query}
                 onChange={setQuery}
