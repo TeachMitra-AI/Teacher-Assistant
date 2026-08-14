@@ -4,7 +4,7 @@ import {
   LayoutDashboard, ShieldCheck, FileText, LifeBuoy,
   MessageCircle, Library, PencilRuler, Sparkles,
 } from 'lucide-react';
-import type { Role, ResponseStyle, ResourceType } from './types';
+import type { Role, ResponseStyle, ResourceType, PyqQuestionType } from './types';
 
 // Languages supported for AI responses (UI itself stays in English).
 //
@@ -240,6 +240,30 @@ export const QUESTION_COUNT_MIN = 3;
 export const QUESTION_COUNT_MAX = 30;
 export const QUESTION_COUNT_DEFAULT = 10;
 
+// --- PYQ mode question-type filter (Phase 9) ---
+//
+// A DIFFERENT closed vocabulary from QUESTION_TYPES above — PYQ questions are
+// transcribed from real board papers, which use their own type vocabulary
+// (server/src/lib/pyqVocab.js's PYQ_QUESTION_TYPES), not the AI generator's.
+// The two must never be conflated: offering 'true_false'/'mixed' here would
+// be rejected by generatePyqSchema's questionType enum with a 400 the
+// teacher cannot act on. This is a single OPTIONAL filter (§14's contract,
+// confirmed during Phase 8) — never a typeMix UI.
+export const PYQ_QUESTION_TYPE_OPTIONS: { value: PyqQuestionType; label: string }[] = [
+  { value: 'mcq', label: 'Multiple Choice' },
+  { value: 'very_short_answer', label: 'Very Short Answer' },
+  { value: 'short_answer', label: 'Short Answer' },
+  { value: 'long_answer', label: 'Long Answer' },
+  { value: 'case_study', label: 'Case Study' },
+];
+
+// Starting values for a fresh PYQ-mode form — a common real board-paper shape
+// (comfortably inside generatePyqSchema's own 1-200 marks / 1-30 questions
+// bounds), same UI-convenience role as QUESTION_COUNT_DEFAULT above. Purely a
+// starting point the teacher can change; not a validated/enforced value.
+export const PYQ_TOTAL_MARKS_DEFAULT = 80;
+export const PYQ_QUESTION_COUNT_DEFAULT = 20;
+
 export const ROLE_LABELS: Record<Role, string> = {
   teacher: 'Teacher',
   school_admin: 'School Admin',
@@ -351,6 +375,20 @@ export const SUPPORT_WHATSAPP_NUMBER = import.meta.env.VITE_SUPPORT_WHATSAPP_NUM
 // flag, which is what makes a response possible against already-loaded PWA
 // clients that still have this value baked in.
 export const CLASSROOM_MODE_ENABLED = import.meta.env.VITE_CLASSROOM_MODE_ENABLED === 'true';
+
+// ---- PYQ Question Paper Intelligence (Phase 9) -----------------------------
+//
+// Client-side gate, same deliberately-opt-in shape and same "not the real
+// kill switch" caveat as every flag above (§15 of
+// docs/pyq-implementation-plan.md states this explicitly). When false (the
+// default), GeneratorPage never renders the Source selector at all — a
+// deployment that sets nothing ships zero new UI, exactly like every other
+// flag here. The real, immediately-effective gate is the server's
+// PYQ_ENABLED (readPyqFlags()) — GET /api/pyq/taxonomy and
+// POST /api/resources/generate-pyq both 503 PYQ_DISABLED regardless of this
+// flag, so a stale cached PWA client with this baked in `true` still cannot
+// reach either endpoint once the server flag is off.
+export const PYQ_ENABLED = import.meta.env.VITE_PYQ_ENABLED === 'true';
 
 // Short build identifier auto-attached to bug reports so a report can be
 // matched to the deploy it came from (see docs/help-support-architecture.md).

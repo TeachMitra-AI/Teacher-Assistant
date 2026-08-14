@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  FileQuestion, ClipboardList, Sparkles, Loader2, Pencil, Eye, Save, ArrowRight, Ticket, House,
+  FileQuestion, ClipboardList, Sparkles, Loader2, Pencil, Eye, Save, ArrowRight, Ticket, House, History,
   type LucideIcon,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
@@ -16,7 +16,10 @@ import { useOnboardingTip } from '../hooks/useOnboardingTip';
 import { formatResponse } from '../lib/format';
 import { stripAssessmentPreamble } from '../lib/assessment';
 import { buildInitialExamMeta } from '../lib/examMeta';
-import { generateAssessment, createResource, type GenerateAssessmentInput } from '../lib/resources';
+import {
+  generateAssessment, createResource, generatePyq, getPyqTaxonomy,
+  type GenerateAssessmentInput,
+} from '../lib/resources';
 import {
   discardPrefill,
   loadPrefill,
@@ -27,10 +30,16 @@ import type { ProvenanceSource } from '../assistant/types';
 import {
   ASSESSMENT_FORMATS, DIFFICULTIES, QUESTION_TYPES, LANGUAGES, GRADES, SUBJECTS,
   QUESTION_COUNT_MIN, QUESTION_COUNT_MAX, QUESTION_COUNT_DEFAULT, ASSISTANT_ENABLED,
+  PYQ_ENABLED, PYQ_QUESTION_TYPE_OPTIONS,
 } from '../config';
 import { ApiError } from '../api';
 import type { AssessmentFormat, Difficulty, QuestionType } from '../lib/resources';
-import type { ExamPaperMeta } from '../types';
+import type { ExamPaperMeta, PyqTaxonomyBoard } from '../types';
+import {
+  PYQ_FORM_DEFAULTS, type PyqFormState,
+  findBoard, classLevelsForBoard, subjectsForBoardAndClass, findSubject,
+  defaultYearRange, validatePyqForm, buildGeneratePyqInput, defaultPyqTitle,
+} from '../lib/pyqGenerator';
 
 // Display label per format. A map rather than a ternary: with three formats a
 // `format === 'worksheet' ? … : …` silently titles an exit ticket "Quiz", and
@@ -116,6 +125,78 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
   const [questionCount, setQuestionCount] = useState<number>(FORM_DEFAULTS.questionCount);
   const [language, setLanguage] = useState(FORM_DEFAULTS.language);
   const [instructions, setInstructions] = useState('');
+
+  // ---- PYQ mode (Phase 9, docs/pyq-implementation-plan.md §15) --------------
+  //
+  // A second generation SOURCE, not a fork of this page: 'ai' behaves exactly
+  // as it always has (every state/handler above is untouched), and 'pyq'
+  // swaps in a taxonomy-driven Board -> Class -> Subject flow feeding the
+  // Phase 8 selectPyqPaper() endpoint instead of Gemini. No `mode: 'hybrid'`
+  // option exists here — Hybrid is explicitly postponed past MVP (§18/§20)
+  // and Phase 8's own API contract has no field for it (confirmed decision,
+  // recorded in that phase's completion record).
+  const [source, setSource] = useState<'ai' | 'pyq'>('ai');
+  const [pyqBoards, setPyqBoards] = useState<PyqTaxonomyBoard[] | null>(null);
+  const [pyqTaxonomyLoading, setPyqTaxonomyLoading] = useState(false);
+  const [pyqTaxonomyError, setPyqTaxonomyError] = useState('');
+  const [pyqForm, setPyqForm] = useState<PyqFormState>(PYQ_FORM_DEFAULTS);
+
+  // Lazy, once-per-visit fetch — same ref-latch shape as appliedDraftId/
+  // reportedGeneration below, not React state, so a rapid re-render between
+  // "source just became 'pyq'" and the fetch's own setPyqTaxonomyLoading(true)
+  // commit cannot fire it twice.
+  const pyqTaxonomyFetched = useRef(false);
+  useEffect(() => {
+    if (!PYQ_ENABLED || source !== 'pyq' || pyqTaxonomyFetched.current) return;
+    pyqTaxonomyFetched.current = true;
+    setPyqTaxonomyLoading(true);
+    setPyqTaxonomyError('');
+    getPyqTaxonomy()
+      .then((boards) => setPyqBoards(boards))
+      .catch((err) => {
+        setPyqTaxonomyError(err instanceof ApiError ? err.message : 'Could not load PYQ boards. Please try again.');
+        pyqTaxonomyFetched.current = false; // a failed fetch is worth retrying on a later switch back to PYQ mode
+      })
+      .finally(() => setPyqTaxonomyLoading(false));
+  }, [source]);
+
+  const pyqClassLevels = pyqBoards ? classLevelsForBoard(pyqBoards, pyqForm.boardId) : [];
+  const pyqSubjects = pyqBoards ? subjectsForBoardAndClass(pyqBoards, pyqForm.boardId, pyqForm.classLevel) : [];
+  const pyqSelectedBoard = pyqBoards ? findBoard(pyqBoards, pyqForm.boardId) : undefined;
+  const pyqSelectedSubject = pyqBoards ? findSubject(pyqBoards, pyqForm.boardId, pyqForm.subjectId) : undefined;
+  const pyqFormError = source === 'pyq' ? validatePyqForm(pyqForm) : null;
+
+  function handlePyqBoardChange(boardId: string) {
+    setPyqForm((prev) => ({
+      ...prev, boardId, classLevel: '', subjectId: '', yearFrom: '', yearTo: '',
+    }));
+  }
+  function handlePyqClassChange(classLevel: string) {
+    setPyqForm((prev) => ({
+      ...prev, classLevel, subjectId: '', yearFrom: '', yearTo: '',
+    }));
+  }
+  function handlePyqSubjectChange(subjectId: string) {
+    setPyqForm((prev) => {
+      const subj = pyqBoards ? findSubject(pyqBoards, prev.boardId, subjectId) : undefined;
+      const range = subj ? defaultYearRange(subj) : { yearFrom: '' as const, yearTo: '' as const };
+      return { ...prev, subjectId, yearFrom: range.yearFrom, yearTo: range.yearTo };
+    });
+  }
+
+  // Switching source resets the preview — a stale AI preview sitting above
+  // PYQ input fields (or vice versa) reads as a bug, and the "Regenerating
+  // will replace your edited preview" confirm below has nothing sensible to
+  // say about a preview that no longer corresponds to the form on screen.
+  function handleSourceChange(next: 'ai' | 'pyq') {
+    if (next === source) return;
+    setSource(next);
+    setContent(null);
+    setTitle('');
+    setContentDirty(false);
+    setTab('preview');
+    setError('');
+  }
 
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
@@ -284,10 +365,28 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
   // form the teacher has already acted on.
   const showAiBanner = aiFieldCount > 0 && !bannerDismissed && content === null;
 
+  // Shared by both generation paths below — the four state updates a
+  // successful generation always makes, regardless of source.
+  function finishGeneration(newContent: string, newTitle: string) {
+    setContent(newContent);
+    setTitle(newTitle);
+    setContentDirty(false);
+    setTab('preview');
+    if (user) setExamMeta(buildInitialExamMeta(user, user.preferences.examPaperDefaults));
+  }
+
   async function handleGenerate(e?: FormEvent) {
     e?.preventDefault();
     if (generatingRef.current) return;
-    if (!topic.trim()) {
+
+    // Validation branches by source; everything else below is shared. The AI
+    // path's own topic check is byte-for-byte what it always was.
+    if (source === 'pyq') {
+      if (pyqFormError) {
+        show(pyqFormError, 'error');
+        return;
+      }
+    } else if (!topic.trim()) {
       show('Please enter a topic', 'error');
       return;
     }
@@ -299,25 +398,35 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
     generatingRef.current = true;
     setGenerating(true);
     setError('');
-    const input: GenerateAssessmentInput = {
-      format,
-      grade: grade.trim() || undefined,
-      subject: subject.trim() || undefined,
-      topic: topic.trim(),
-      difficulty,
-      questionType,
-      questionCount,
-      language,
-      instructions: instructions.trim() || undefined,
-    };
     try {
-      const result = await generateAssessment(input);
-      setContent(result.content);
-      setTitle(defaultTitle(format, topic, grade));
-      setContentDirty(false);
-      setTab('preview');
-      if (user) setExamMeta(buildInitialExamMeta(user, user.preferences.examPaperDefaults));
+      if (source === 'pyq') {
+        const input = buildGeneratePyqInput(pyqForm, language);
+        const result = await generatePyq(input);
+        const generatedTitle = pyqSelectedBoard && pyqSelectedSubject
+          ? defaultPyqTitle(pyqSelectedBoard.name, pyqSelectedSubject.name, pyqForm.classLevel)
+          : 'Previous Year Questions';
+        finishGeneration(result.content, generatedTitle);
+      } else {
+        const input: GenerateAssessmentInput = {
+          format,
+          grade: grade.trim() || undefined,
+          subject: subject.trim() || undefined,
+          topic: topic.trim(),
+          difficulty,
+          questionType,
+          questionCount,
+          language,
+          instructions: instructions.trim() || undefined,
+        };
+        const result = await generateAssessment(input);
+        finishGeneration(result.content, defaultTitle(format, topic, grade));
+      }
     } catch (err) {
+      // Same catch for both paths — a PYQ 422 INSUFFICIENT_PYQ_POOL's
+      // explainShortfall message and a 503 PYQ_DISABLED message both arrive
+      // as a plain ApiError and render through this exact same inline error
+      // region, unmodified, per §15's "no client-side message-mapping layer
+      // is needed" instruction.
       setError(err instanceof ApiError ? err.message : 'Could not generate. Please try again.');
     } finally {
       generatingRef.current = false;
@@ -334,15 +443,31 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
     }
     setSaving(true);
     try {
-      const saved = await createResource({
-        type: 'assessment',
-        title: cleanTitle.slice(0, 200),
-        grade: grade.trim() || undefined,
-        subject: subject.trim() || undefined,
-        language,
-        content,
-        structured: JSON.stringify({ format, difficulty, questionType, questionCount, topic: topic.trim(), examMeta }),
-      });
+      // Save flow is otherwise completely unchanged (§15) — same
+      // createResource call, same navigation, same error handling for both
+      // sources. Only grade/subject/structured differ, because PYQ mode has
+      // no free-text grade/subject/topic/format/difficulty fields to read.
+      const saved = await createResource(
+        source === 'pyq'
+          ? {
+            type: 'assessment',
+            title: cleanTitle.slice(0, 200),
+            grade: `Class ${pyqForm.classLevel}`,
+            subject: pyqSelectedSubject?.name,
+            language,
+            content,
+            structured: JSON.stringify({ source: 'pyq', ...pyqForm, examMeta }),
+          }
+          : {
+            type: 'assessment',
+            title: cleanTitle.slice(0, 200),
+            grade: grade.trim() || undefined,
+            subject: subject.trim() || undefined,
+            language,
+            content,
+            structured: JSON.stringify({ format, difficulty, questionType, questionCount, topic: topic.trim(), examMeta }),
+          }
+      );
       show('Saved to your library', 'success');
       // Continue into the full Workspace (edit / AI assist / student & teacher print).
       navigate(`/library/${saved.id}/edit`);
@@ -371,7 +496,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
           </p>
         </header>
 
-        {showAiBanner && (
+        {source === 'ai' && showAiBanner && (
           <AiPrefillBanner
             fieldCount={aiFieldCount}
             lowConfidenceCount={lowConfidence.length}
@@ -385,8 +510,9 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
             Two stacked callouts plus a form pushes the form below the fold on a
             phone, and of the two the banner is the one describing what just
             happened and carrying the undo. The tip is NOT marked dismissed, so
-            it still appears on a later manual visit. */}
-        {generatorTip.visible && !routedVisit && (
+            it still appears on a later manual visit. Neither is relevant once
+            PYQ mode is selected — both describe the AI path specifically. */}
+        {source === 'ai' && generatorTip.visible && !routedVisit && (
           <OnboardingTip onDismiss={generatorTip.dismiss}>
             Pick a format and topic to generate a printable quiz or worksheet with an answer key. Your school
             letterhead comes from your <strong>Settings</strong> paper defaults.
@@ -394,63 +520,216 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
         )}
 
         <form className="generator-form" onSubmit={handleGenerate}>
-          <fieldset className="generator-fieldset">
-            <legend className="ws-label">
-              Format
-              <FieldNote source={provenance.format} uncertain={lowConfidence.includes('format')} />
-            </legend>
-            <div className="generator-format-row" role="radiogroup" aria-label="Format">
-              {ASSESSMENT_FORMATS.map((f) => (
+          {/* Source selector — a second generation SOURCE, not a fork of this
+              form. Only rendered when the feature is switched on (§15's own
+              "a deployment that sets nothing ships zero new UI" convention);
+              with it off, every line below this fieldset is identical to the
+              page's pre-Phase-9 behavior. */}
+          {PYQ_ENABLED && (
+            <fieldset className="generator-fieldset">
+              <legend className="ws-label">Source</legend>
+              <div className="generator-format-row" role="radiogroup" aria-label="Generation source">
                 <button
                   type="button"
-                  key={f.value}
                   role="radio"
-                  aria-checked={format === f.value}
-                  className={`generator-format-card${format === f.value ? ' active' : ''}`}
-                  onClick={() => { setFormat(f.value); noteEdit('format'); }}
+                  aria-checked={source === 'ai'}
+                  className={`generator-format-card${source === 'ai' ? ' active' : ''}`}
+                  onClick={() => handleSourceChange('ai')}
                 >
-                  <span className="generator-format-label">
-                    {(() => { const Icon = FORMAT_ICONS[f.value]; return <Icon size={16} aria-hidden="true" />; })()}
-                    {f.label}
-                  </span>
-                  <span className="generator-format-hint">{f.hint}</span>
+                  <span className="generator-format-label"><Sparkles size={16} aria-hidden="true" /> AI Generated</span>
+                  <span className="generator-format-hint">A fresh quiz or worksheet written by AI</span>
                 </button>
-              ))}
-            </div>
-          </fieldset>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={source === 'pyq'}
+                  className={`generator-format-card${source === 'pyq' ? ' active' : ''}`}
+                  onClick={() => handleSourceChange('pyq')}
+                >
+                  <span className="generator-format-label"><History size={16} aria-hidden="true" /> PYQ Based</span>
+                  <span className="generator-format-hint">A complete board-style paper built from real previous-year questions</span>
+                </button>
+              </div>
+            </fieldset>
+          )}
 
-          <div className="generator-grid">
-            <label className="ws-field">
-              <span className="ws-label">
-                Topic <span className="generator-req" aria-hidden="true">*</span>
-                <FieldNote source={provenance.topic} uncertain={lowConfidence.includes('topic')} />
-              </span>
-              <input
-                type="text"
-                value={topic}
-                onChange={(e) => { setTopic(e.target.value); noteEdit('topic'); }}
-                maxLength={200}
-                required
-                placeholder="e.g. Fractions, Water cycle, Parts of speech"
-                aria-label="Topic (required)"
-              />
-            </label>
-            <label className="ws-field">
-              <span className="ws-label">
-                Grade
-                <FieldNote source={provenance.grade} uncertain={lowConfidence.includes('grade')} />
-              </span>
-              <input type="text" list="gen-grades" value={grade} maxLength={80} onChange={(e) => { setGrade(e.target.value); noteEdit('grade'); }} placeholder="e.g. Class 3-5" />
-            </label>
-            <label className="ws-field">
-              <span className="ws-label">
-                Subject
-                <FieldNote source={provenance.subject} uncertain={lowConfidence.includes('subject')} />
-              </span>
-              <input type="text" list="gen-subjects" value={subject} maxLength={80} onChange={(e) => { setSubject(e.target.value); noteEdit('subject'); }} placeholder="e.g. Mathematics" />
-            </label>
-            <label className="ws-field">
-              <span className="ws-label">
+          {source === 'pyq' ? (
+            <div className="generator-pyq-fields">
+              {pyqTaxonomyLoading && (
+                <div className="response-loading"><div className="spinner spinner-sm" /><p>Loading available boards…</p></div>
+              )}
+              {!pyqTaxonomyLoading && pyqTaxonomyError && (
+                <p className="auth-error generator-error">{pyqTaxonomyError}</p>
+              )}
+              {!pyqTaxonomyLoading && !pyqTaxonomyError && pyqBoards && pyqBoards.length === 0 && (
+                <p className="generator-preview-note">
+                  No published PYQ content is available yet. Check back once an admin has published a paper.
+                </p>
+              )}
+              {!pyqTaxonomyLoading && !pyqTaxonomyError && pyqBoards && pyqBoards.length > 0 && (
+                <>
+                  <div className="generator-grid">
+                    <label className="ws-field">
+                      <span className="ws-label">Board <span className="generator-req" aria-hidden="true">*</span></span>
+                      <select value={pyqForm.boardId} onChange={(e) => handlePyqBoardChange(e.target.value)} aria-label="Board (required)">
+                        <option value="">Select a board</option>
+                        {pyqBoards.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="ws-field">
+                      <span className="ws-label">Class <span className="generator-req" aria-hidden="true">*</span></span>
+                      <select
+                        value={pyqForm.classLevel}
+                        onChange={(e) => handlePyqClassChange(e.target.value)}
+                        disabled={!pyqForm.boardId}
+                        aria-label="Class (required)"
+                      >
+                        <option value="">Select a class</option>
+                        {pyqClassLevels.map((c) => <option key={c} value={c}>Class {c}</option>)}
+                      </select>
+                    </label>
+                    <label className="ws-field">
+                      <span className="ws-label">Subject <span className="generator-req" aria-hidden="true">*</span></span>
+                      <select
+                        value={pyqForm.subjectId}
+                        onChange={(e) => handlePyqSubjectChange(e.target.value)}
+                        disabled={!pyqForm.classLevel}
+                        aria-label="Subject (required)"
+                      >
+                        <option value="">Select a subject</option>
+                        {pyqSubjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="ws-field">
+                      <span className="ws-label">Year from <span className="generator-req" aria-hidden="true">*</span></span>
+                      <input
+                        type="number"
+                        value={pyqForm.yearFrom}
+                        disabled={!pyqForm.subjectId}
+                        onChange={(e) => setPyqForm((prev) => ({ ...prev, yearFrom: e.target.value === '' ? '' : Number(e.target.value) }))}
+                        aria-label="Year from (required)"
+                      />
+                    </label>
+                    <label className="ws-field">
+                      <span className="ws-label">Year to <span className="generator-req" aria-hidden="true">*</span></span>
+                      <input
+                        type="number"
+                        value={pyqForm.yearTo}
+                        disabled={!pyqForm.subjectId}
+                        onChange={(e) => setPyqForm((prev) => ({ ...prev, yearTo: e.target.value === '' ? '' : Number(e.target.value) }))}
+                        aria-label="Year to (required)"
+                      />
+                    </label>
+                    <label className="ws-field">
+                      <span className="ws-label">Total marks <span className="generator-req" aria-hidden="true">*</span></span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={200}
+                        value={pyqForm.totalMarks}
+                        onChange={(e) => setPyqForm((prev) => ({ ...prev, totalMarks: e.target.value === '' ? '' : Number(e.target.value) }))}
+                        aria-label="Total marks (required)"
+                      />
+                    </label>
+                    <label className="ws-field">
+                      <span className="ws-label">Number of questions <span className="generator-req" aria-hidden="true">*</span></span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={pyqForm.questionCount}
+                        onChange={(e) => setPyqForm((prev) => ({ ...prev, questionCount: e.target.value === '' ? '' : Number(e.target.value) }))}
+                        aria-label="Number of questions (required)"
+                      />
+                    </label>
+                    <label className="ws-field">
+                      <span className="ws-label">Question type</span>
+                      <select
+                        value={pyqForm.questionType}
+                        onChange={(e) => setPyqForm((prev) => ({ ...prev, questionType: e.target.value as PyqFormState['questionType'] }))}
+                      >
+                        <option value="">Any type</option>
+                        {PYQ_QUESTION_TYPE_OPTIONS.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}
+                      </select>
+                    </label>
+                    <label className="ws-field">
+                      <span className="ws-label">Language</span>
+                      <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+                        {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <label className="ws-field">
+                    <span className="ws-label">
+                      <input
+                        type="checkbox"
+                        checked={pyqForm.prioritizeRecurring}
+                        onChange={(e) => setPyqForm((prev) => ({ ...prev, prioritizeRecurring: e.target.checked }))}
+                      /> Prioritize frequently-asked questions
+                    </span>
+                  </label>
+                </>
+              )}
+            </div>
+          ) : (
+            <>
+              <fieldset className="generator-fieldset">
+                <legend className="ws-label">
+                  Format
+                  <FieldNote source={provenance.format} uncertain={lowConfidence.includes('format')} />
+                </legend>
+                <div className="generator-format-row" role="radiogroup" aria-label="Format">
+                  {ASSESSMENT_FORMATS.map((f) => (
+                    <button
+                      type="button"
+                      key={f.value}
+                      role="radio"
+                      aria-checked={format === f.value}
+                      className={`generator-format-card${format === f.value ? ' active' : ''}`}
+                      onClick={() => { setFormat(f.value); noteEdit('format'); }}
+                    >
+                      <span className="generator-format-label">
+                        {(() => { const Icon = FORMAT_ICONS[f.value]; return <Icon size={16} aria-hidden="true" />; })()}
+                        {f.label}
+                      </span>
+                      <span className="generator-format-hint">{f.hint}</span>
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <div className="generator-grid">
+                <label className="ws-field">
+                  <span className="ws-label">
+                    Topic <span className="generator-req" aria-hidden="true">*</span>
+                    <FieldNote source={provenance.topic} uncertain={lowConfidence.includes('topic')} />
+                  </span>
+                  <input
+                    type="text"
+                    value={topic}
+                    onChange={(e) => { setTopic(e.target.value); noteEdit('topic'); }}
+                    maxLength={200}
+                    required
+                    placeholder="e.g. Fractions, Water cycle, Parts of speech"
+                    aria-label="Topic (required)"
+                  />
+                </label>
+                <label className="ws-field">
+                  <span className="ws-label">
+                    Grade
+                    <FieldNote source={provenance.grade} uncertain={lowConfidence.includes('grade')} />
+                  </span>
+                  <input type="text" list="gen-grades" value={grade} maxLength={80} onChange={(e) => { setGrade(e.target.value); noteEdit('grade'); }} placeholder="e.g. Class 3-5" />
+                </label>
+                <label className="ws-field">
+                  <span className="ws-label">
+                    Subject
+                    <FieldNote source={provenance.subject} uncertain={lowConfidence.includes('subject')} />
+                  </span>
+                  <input type="text" list="gen-subjects" value={subject} maxLength={80} onChange={(e) => { setSubject(e.target.value); noteEdit('subject'); }} placeholder="e.g. Mathematics" />
+                </label>
+                <label className="ws-field">
+                  <span className="ws-label">
                 Difficulty
                 <FieldNote source={provenance.difficulty} uncertain={lowConfidence.includes('difficulty')} />
               </span>
@@ -497,21 +776,27 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
             <datalist id="gen-subjects">{SUBJECTS.map((s) => <option key={s} value={s} />)}</datalist>
           </div>
 
-          <label className="ws-field generator-instructions">
-            <span className="ws-label">Additional instructions (optional)</span>
-            <textarea
-              value={instructions}
-              maxLength={1000}
-              rows={2}
-              onChange={(e) => setInstructions(e.target.value)}
-              placeholder="e.g. Focus on real-life examples; suitable for a 20-minute class activity"
-            />
-          </label>
+              <label className="ws-field generator-instructions">
+                <span className="ws-label">Additional instructions (optional)</span>
+                <textarea
+                  value={instructions}
+                  maxLength={1000}
+                  rows={2}
+                  onChange={(e) => setInstructions(e.target.value)}
+                  placeholder="e.g. Focus on real-life examples; suitable for a 20-minute class activity"
+                />
+              </label>
+            </>
+          )}
 
           <div className="generator-actions">
-            <button type="submit" className="btn-primary generator-generate" disabled={generating || !topic.trim()}>
+            <button
+              type="submit"
+              className="btn-primary generator-generate"
+              disabled={generating || (source === 'pyq' ? Boolean(pyqFormError) : !topic.trim())}
+            >
               {generating ? <Loader2 size={16} aria-hidden="true" className="spin" /> : <Sparkles size={16} aria-hidden="true" />}
-              {generating ? 'Generating…' : content !== null ? 'Regenerate' : 'Generate'}
+              {generating ? 'Generating…' : content !== null ? 'Regenerate' : source === 'pyq' ? 'Generate PYQ Paper' : 'Generate'}
             </button>
           </div>
 
@@ -519,13 +804,21 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
         </form>
 
         {generating && content === null && (
-          <div className="response-loading"><div className="spinner" /><p>Generating your {format}…</p></div>
+          <div className="response-loading"><div className="spinner" /><p>Generating your {source === 'pyq' ? 'PYQ paper' : format}…</p></div>
         )}
 
         {content !== null && (
           <section className="generator-preview" aria-label="Generated result">
             <div className="generator-preview-head">
-              <h2 className="generator-preview-title">Preview</h2>
+              <h2 className="generator-preview-title">
+                Preview
+                {/* Paper-level distinction between AI-generated and historical
+                    PYQ content (§15). Per-question provenance ("Asked in ...")
+                    is already embedded in `content` itself, below, via the
+                    existing rendering pipeline — no separate per-question UI
+                    is needed for that. */}
+                {source === 'pyq' && <span className="pyq-source-badge">Historical PYQ paper</span>}
+              </h2>
               <p className="generator-preview-note">Review and edit below, then save. Nothing is saved until you click <strong>Save to Library</strong>.</p>
             </div>
 
@@ -564,7 +857,12 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
                 />
               ) : (
                 <div className="response-body workspace-preview exam-paper">
-                  <ExamHeader meta={examMeta} fallbackTitle={title} subject={subject} grade={grade} />
+                  <ExamHeader
+                    meta={examMeta}
+                    fallbackTitle={title}
+                    subject={source === 'pyq' ? (pyqSelectedSubject?.name ?? '') : subject}
+                    grade={source === 'pyq' ? `Class ${pyqForm.classLevel}` : grade}
+                  />
                   {/* The letterhead already presents the title/metadata, so the
                       generated preamble is stripped from display (never from
                       the content that gets saved). */}

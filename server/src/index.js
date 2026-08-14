@@ -574,6 +574,27 @@ const generateLimiter = createGenerateLimiter({
   windowMinutes: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10),
 });
 
+// Phase 8 (docs/pyq-implementation-plan.md §14) — POST /api/resources/generate-pyq.
+// Deliberately its OWN bucket, not a share of generateLimiter above: unlike
+// /resources/generate, this path makes NO Gemini call at all (selectPyqPaper
+// is pure/deterministic, §10/§11), so it is far cheaper per-request — but
+// still a real DB-scanning endpoint an authenticated teacher could otherwise
+// hammer with no bound beyond authRequired, the same gap M9 closed for the
+// AI path. A higher ceiling than generateLimiter's own reflects that lower
+// real cost, same reasoning learningRepresentationLimiter's own comment
+// gives for sitting between assistantLimiter and attachmentLimiter.
+const PYQ_GENERATE_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.PYQ_GENERATE_RATE_LIMIT_MAX_REQUESTS, {
+  name: 'PYQ_GENERATE_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 60 : 600, min: 1, max: 100000,
+});
+
+const pyqGenerateLimiter = rateLimit({
+  windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
+  max: PYQ_GENERATE_RATE_LIMIT_MAX_REQUESTS,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'You have generated a lot of content in a short time. Please wait a few minutes and try again.' },
+});
+
 // Separate bucket for POST/DELETE /api/auth/me/avatar. Hardcoded (not
 // env-parsed like the AI-feature limiters above) — this is a core Settings
 // capability with no rollout to tune, not a cost-tunable AI call. Uploads are
@@ -955,6 +976,10 @@ app.use('/api', dataRouter);
 // Everything else on /api/resources is untouched; only the generate path is
 // matched here.
 app.use('/api/resources/generate', generateLimiter);
+// Phase 8 — same "limiter mounted ahead of the router it guards" shape as
+// generateLimiter immediately above, its own separate bucket (see the
+// limiter's own comment for why it is not shared with generateLimiter).
+app.use('/api/resources/generate-pyq', pyqGenerateLimiter);
 app.use('/api', resourcesRouter);
 app.use('/api/admin', adminRouter);
 // Admin Support Inbox (Phase 2). No dedicated rate limiter, matching every

@@ -632,3 +632,44 @@ export interface PyqCluster {
   recurrence: PyqClusterRecurrence;
   members: PyqClusterMember[];
 }
+
+// ---- Phase 9: teacher-facing generation --------------------------------
+// Mirrors GET /api/pyq/taxonomy and POST /api/resources/generate-pyq's
+// response shapes exactly (docs/pyq-implementation-plan.md §14, Phase 8
+// completion record). Deliberately SEPARATE from PyqBoard/PyqSubject above:
+// those are the admin ingestion DTOs (nested chapters/topics, admin-only);
+// this is the published-only, chapter-free shape a teacher's Board -> Class
+// -> Subject pickers consume — the two must never be confused, since the
+// teacher-facing one intentionally omits chapter/topic (per the PYQ product
+// requirement: the teacher never selects a chapter).
+
+export interface PyqTaxonomySubject {
+  id: string;
+  name: string;
+  classLevel: PyqClassLevel;
+  // [minYear, maxYear] across this subject's PUBLISHED papers only.
+  yearRange: [number, number];
+}
+
+export interface PyqTaxonomyBoard {
+  id: string;
+  name: string;
+  code: string;
+  subjects: PyqTaxonomySubject[];
+}
+
+// One entry per selected question in a generate-pyq response — the extra
+// score fields exist to satisfy §9's own named reproducibility contract
+// (recurrenceScore/recencyScore/finalScore/chapterId), not for display; the
+// human-readable provenance line the teacher actually sees is `source`,
+// already embedded inline in the returned Markdown `content` itself.
+export interface PyqProvenanceEntry {
+  questionId: string;
+  source: string;
+  examPaperId: string;
+  years: number[];
+  recurrenceScore: number;
+  recencyScore: number;
+  finalScore: number;
+  chapterId: string | null;
+}

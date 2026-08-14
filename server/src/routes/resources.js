@@ -40,6 +40,15 @@ const { MAX_META, MAX_LANGUAGE } = require('../lib/resourceFields');
 // enforces the same ceiling the original generation request was held to.
 const { generateAssessmentSchema, MAX_QUESTIONS } = require('../actions/schemas/generateAssessment');
 const { generateAssessmentSetSchema } = require('../actions/schemas/generateAssessmentSet');
+// Phase 8 (docs/pyq-implementation-plan.md §10/§14) — PYQ Question Paper
+// Intelligence. selectPyqPaper is a pure, deterministic, Gemini-free module
+// (see lib/pyqSelection.js's own header); this route's job is exactly the DB
+// reads it needs plus deterministic Markdown rendering, same "app builds the
+// document, model/algorithm only supplies content" discipline as
+// renderAssessmentMarkdown above.
+const { readPyqFlags } = require('../lib/flags');
+const { selectPyqPaper } = require('../lib/pyqSelection');
+const { generatePyqSchema } = require('../actions/schemas/generatePyq');
 // Per-format wording, headings and purpose. Its own module so the "every format
 // has metadata" assertion runs at boot (see lib/assessmentFormats.js) rather
 // than a missing entry silently rendering a new format as a quiz.
@@ -1331,6 +1340,342 @@ router.delete('/resources/:id', authRequired, async (req, res) => {
 
   await prisma.resource.delete({ where: { id: existing.id } });
   res.json({ success: true });
+});
+
+// ─── PYQ Question Paper Intelligence — Phase 8 ─────────────────────────────
+// docs/pyq-implementation-plan.md §10 (selection algorithm), §14 (API
+// design). Teacher-facing only: read access is feature-flag/rollout-gated
+// (§12 — "write access is role-gated; read access is feature-flag-gated"),
+// never role-gated beyond ordinary authRequired, since every authenticated
+// teacher within the rollout may generate a PYQ paper. No route here ever
+// writes to a PYQ table — every PYQ write stays in routes/adminPyq.js.
+
+/**
+ * Same rollout-gate shape as routes/attachments.js's isWithinRollout/
+ * isSchoolAllowed, scoped to PYQ's own flags (lib/flags.js's readPyqFlags).
+ * Kept local rather than shared, same "different flag sets, different
+ * failure semantics" reasoning attachments.js's own copy documents.
+ */
+async function isPyqWithinRollout(user, flags) {
+  if (!flags.enabled) return false;
+  if (flags.allowedSchoolCodes.length === 0) return true;
+  try {
+    const school = await prisma.school.findUnique({ where: { id: user.schoolId }, select: { code: true } });
+    return Boolean(school && flags.allowedSchoolCodes.includes(school.code));
+  } catch {
+    return false; // fails closed, same reasoning as attachments.js
+  }
+}
+
+// GET /api/pyq/taxonomy — published content only (§4: "only boards/subjects
+// with >=1 published paper appear — an empty combination is structurally
+// impossible to select"). No pagination at this scale, same precedent as
+// routes/adminPyq.js's own GET /boards (Phase 0 locks the MVP corpus at 2
+// boards x 1 class x 1 subject).
+router.get('/pyq/taxonomy', authRequired, async (req, res) => {
+  const flags = readPyqFlags(process.env);
+  if (!(await isPyqWithinRollout(req.user, flags))) {
+    return res.status(503).json({ error: 'This feature is not available right now.', code: 'PYQ_DISABLED' });
+  }
+
+  const papers = await prisma.examPaper.findMany({
+    where: { status: 'published' },
+    select: {
+      year: true,
+      board: { select: { id: true, name: true, code: true } },
+      subject: { select: { id: true, name: true, classLevel: true } },
+    },
+  });
+
+  const boards = new Map();
+  for (const p of papers) {
+    if (!boards.has(p.board.id)) {
+      boards.set(p.board.id, {
+        id: p.board.id, name: p.board.name, code: p.board.code, subjects: new Map(),
+      });
+    }
+    const board = boards.get(p.board.id);
+    if (!board.subjects.has(p.subject.id)) {
+      board.subjects.set(p.subject.id, {
+        id: p.subject.id, name: p.subject.name, classLevel: p.subject.classLevel, yearRange: [p.year, p.year],
+      });
+    } else {
+      const subj = board.subjects.get(p.subject.id);
+      subj.yearRange[0] = Math.min(subj.yearRange[0], p.year);
+      subj.yearRange[1] = Math.max(subj.yearRange[1], p.year);
+    }
+  }
+
+  const result = [...boards.values()]
+    .map((b) => ({
+      id: b.id,
+      name: b.name,
+      code: b.code,
+      subjects: [...b.subjects.values()].sort((a, c) => a.name.localeCompare(c.name)),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  res.json({ boards: result });
+});
+
+/** Tolerant JSON parse for Question.options — mirrors routes/adminPyq.js's own safeParseJson. */
+function safeParsePyqOptions(json) {
+  if (!json) return null;
+  try {
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Builds the pure selectPyqPaper() candidate shape (lib/pyqSelection.js) from
+ * a raw Prisma Question row. `confirmedClusterId` is set ONLY when this
+ * question's cluster membership (at most one, per Phase 6's own cardinality
+ * decision) points at a cluster whose status is 'confirmed' — a
+ * still-'proposed' or 'rejected' cluster never counts here, per §7/§9's
+ * "never affects a teacher-visible count until confirmed" rule.
+ */
+function toPyqCandidate(row) {
+  const membership = row.clusterMemberships[0];
+  const confirmedClusterId = membership && membership.cluster.status === 'confirmed' ? membership.clusterId : null;
+  return {
+    id: row.id,
+    examPaperId: row.examPaperId,
+    year: row.year,
+    chapterId: row.chapterId,
+    type: row.type,
+    marks: row.marks,
+    questionNumber: row.questionNumber,
+    parentQuestionId: row.parentQuestionId,
+    requiresGroupSelection: row.requiresGroupSelection,
+    partIds: row.parts.map((p) => p.id),
+    confirmedClusterId,
+    pageNumber: row.pageNumber,
+    text: row.text,
+    options: safeParsePyqOptions(row.options),
+    correctAnswer: row.correctAnswer,
+    hasOfficialAnswer: row.hasOfficialAnswer,
+    hasDiagram: row.hasDiagram,
+    hasTable: row.hasTable,
+  };
+}
+
+/**
+ * Per-question provenance line (§4/§9): a genuinely recurring question (a
+ * CONFIRMED cluster with more than one in-range occurrence) gets the
+ * multi-year phrasing; a question with no such recurrence signal gets its
+ * own single-sitting phrasing instead — never fabricating a recurrence claim
+ * for a question that has none. Also carries §9's own named reproducibility
+ * fields (recurrenceScore/recencyScore/finalScore/chapterId) so a future
+ * Phase 9 client can persist them into Resource.structured on save without
+ * this route inventing a second shape for the same data.
+ */
+function buildPyqProvenance(q, boardName, subjectName) {
+  const years = q.occurrenceYears && q.occurrenceYears.length ? q.occurrenceYears : [q.year];
+  const source = q.recurrenceCount > 1
+    ? `Asked in ${boardName} — ${years.join(', ')}`
+    : `${boardName} ${q.year} ${subjectName}${q.pageNumber ? `, Page ${q.pageNumber}` : ''}`;
+  return {
+    questionId: q.id,
+    source,
+    examPaperId: q.examPaperId,
+    years,
+    recurrenceScore: q.recurrenceScore,
+    recencyScore: q.recencyScore,
+    finalScore: q.score,
+    chapterId: q.chapterId,
+  };
+}
+
+function renderPyqQuestionBody(q, index) {
+  const n = index + 1;
+  const lines = [`${n}. (${q.marks} mark${q.marks === 1 ? '' : 's'}) ${q.text}`];
+  if (q.type === 'mcq' && Array.isArray(q.options)) {
+    q.options.forEach((opt, idx) => lines.push(`   ${OPTION_LETTERS[idx]}. ${opt}`));
+  }
+  return lines.join('\n');
+}
+
+function renderPyqAnswer(q, index) {
+  const n = index + 1;
+  // hasOfficialAnswer: false is permanent and visible (§9/§11's hard trust
+  // boundary) — an absent official answer is stated as absent, never
+  // silently AI-backfilled or omitted from the key entirely.
+  if (!q.hasOfficialAnswer || !q.correctAnswer) {
+    return `${n}. No official answer key available in the source.`;
+  }
+  return `${n}. ${q.correctAnswer}`;
+}
+
+/**
+ * Deterministic Markdown assembly — every part of this is app output, never
+ * model output, same discipline as renderAssessmentMarkdown above (this
+ * pipeline makes no Gemini call at all, so there is no "model formatting
+ * choice" to guard against in the first place).
+ */
+function renderPyqMarkdown(config, questions, provenance) {
+  const {
+    board, subject, classLevel, yearFrom, yearTo, totalMarks, prioritizeRecurring,
+  } = config;
+  const title = `${subject.name} — Previous Year Questions (${board.name}, Class ${classLevel})`;
+  const provenanceById = new Map(provenance.map((p) => [p.questionId, p]));
+
+  const preamble = [
+    `# ${title}`,
+    '',
+    `**Board:** ${board.name}`,
+    `**Class:** ${classLevel}`,
+    `**Subject:** ${subject.name}`,
+    `**Years covered:** ${yearFrom}–${yearTo}`,
+    `**Total marks:** ${totalMarks}`,
+    `**Total questions:** ${questions.length}`,
+    `**Prioritized:** ${prioritizeRecurring ? 'Frequently recurring questions' : 'Broad year coverage'}`,
+  ].join('\n');
+
+  const lines = ['## Instructions', '', 'Attempt all questions. Marks for each question are indicated against it.', '', '## Questions', ''];
+  questions.forEach((q, i) => {
+    lines.push(renderPyqQuestionBody(q, i));
+    const prov = provenanceById.get(q.id);
+    if (prov) lines.push(`   *${prov.source}*`);
+    lines.push('');
+  });
+
+  lines.push('## Answer Key', '');
+  questions.forEach((q, i) => lines.push(renderPyqAnswer(q, i)));
+
+  return `${preamble}\n\n${lines.join('\n')}`;
+}
+
+// POST /api/resources/generate-pyq — the deterministic PYQ counterpart to
+// POST /resources/generate. NOTHING is persisted here — same "preview only,
+// teacher saves explicitly" contract as every other generation endpoint in
+// this file. No Gemini call anywhere in this path (§10/§11): selectPyqPaper
+// operates purely over already-approved+published rows.
+router.post('/resources/generate-pyq', authRequired, async (req, res) => {
+  const requestId = crypto.randomUUID();
+
+  const flags = readPyqFlags(process.env);
+  if (!(await isPyqWithinRollout(req.user, flags))) {
+    return res.status(503).json({ error: 'This feature is not available right now.', code: 'PYQ_DISABLED', requestId });
+  }
+
+  const parsed = generatePyqSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid generation request.', requestId });
+  }
+  const {
+    boardId, classLevel, subjectId, yearFrom, yearTo, totalMarks, questionCount, questionType, prioritizeRecurring, language,
+  } = parsed.data;
+
+  const [board, subject] = await Promise.all([
+    prisma.board.findUnique({ where: { id: boardId }, select: { id: true, name: true } }),
+    prisma.subject.findUnique({ where: { id: subjectId }, select: {
+      id: true, name: true, classLevel: true, boardId: true,
+    } }),
+  ]);
+  if (!board) return res.status(400).json({ error: 'Unknown board.', requestId });
+  if (!subject || subject.boardId !== boardId) {
+    return res.status(400).json({ error: 'Unknown subject for this board.', requestId });
+  }
+  if (subject.classLevel !== classLevel) {
+    return res.status(400).json({
+      error: `This subject is offered at class ${subject.classLevel}, not class ${classLevel}.`,
+      requestId,
+    });
+  }
+
+  // Same "default to 'en' for an unset/unknown language" fallback the AI
+  // generator already applies (buildGeneratorPrompt above) — filtered
+  // unconditionally (never skipped) so an omitted language can never
+  // silently mix languages within one generated paper.
+  const effectiveLanguage = language && LANGUAGE_NAMES[language] ? language : 'en';
+
+  // ── 1: SQL filter — eligibility only, no ranking yet (§10 step 1) ──────
+  // Filters on Question's OWN denormalized boardId/subjectId/classLevel/year
+  // (the hot candidate-pool index, §7) rather than joining through
+  // ExamPaper for them; ExamPaper is still joined for its `status`, which is
+  // NOT denormalized onto Question, per §7/§12's "protection by omission"
+  // eligibility rule (mirrors adminPyq.publish.test.js's own
+  // candidateEligibilityWhere exactly: reviewStatus 'approved' AND
+  // examPaper.status 'published', both unconditional).
+  const rows = await prisma.question.findMany({
+    where: {
+      boardId,
+      subjectId,
+      classLevel,
+      language: effectiveLanguage,
+      year: { gte: yearFrom, lte: yearTo },
+      reviewStatus: 'approved',
+      examPaper: { status: 'published' },
+    },
+    include: {
+      clusterMemberships: { take: 1, include: { cluster: { select: { id: true, status: true } } } },
+      parts: { select: { id: true } },
+    },
+  });
+
+  const candidates = rows.map(toPyqCandidate);
+
+  // One batched query for every CONFIRMED cluster referenced by the pool —
+  // never per-candidate (§17: "do not perform unnecessary O(N^2)
+  // comparisons"). occurrenceCount itself (lib/pyqClustering.js) then runs
+  // inside the pure selectPyqPaper() call, not here.
+  const confirmedClusterIds = [...new Set(candidates.map((c) => c.confirmedClusterId).filter(Boolean))];
+  const clusterMembers = new Map();
+  if (confirmedClusterIds.length > 0) {
+    const members = await prisma.questionClusterMember.findMany({
+      where: { clusterId: { in: confirmedClusterIds } },
+      select: {
+        clusterId: true,
+        question: {
+          select: {
+            boardId: true, subjectId: true, year: true, translationOfId: true,
+            examPaper: { select: { examType: true } },
+          },
+        },
+      },
+    });
+    for (const m of members) {
+      const list = clusterMembers.get(m.clusterId) || [];
+      list.push({
+        boardId: m.question.boardId,
+        subjectId: m.question.subjectId,
+        year: m.question.year,
+        examType: m.question.examPaper ? m.question.examPaper.examType : 'annual',
+        translationOfId: m.question.translationOfId,
+      });
+      clusterMembers.set(m.clusterId, list);
+    }
+  }
+
+  const result = selectPyqPaper({
+    candidates,
+    clusterMembers,
+    request: {
+      yearFrom, yearTo, totalMarks, questionCount, questionType, prioritizeRecurring,
+    },
+  });
+
+  if (!result.ok) {
+    return res.status(422).json({
+      error: result.error,
+      code: 'INSUFFICIENT_PYQ_POOL',
+      diagnostic: result.diagnostic,
+      requestId,
+    });
+  }
+
+  const provenance = result.questions.map((q) => buildPyqProvenance(q, board.name, subject.name));
+  const content = renderPyqMarkdown(
+    {
+      board, subject, classLevel, yearFrom, yearTo, totalMarks, prioritizeRecurring,
+    },
+    result.questions,
+    provenance
+  );
+
+  res.json({ content, requestId, provenance });
 });
 
 module.exports = router;

@@ -2,7 +2,9 @@
 // pages/components don't hand-build request shapes. Ownership is enforced
 // server-side from the auth token — nothing here sends a userId.
 import { api } from '../api';
-import type { LibraryResource, ResourceType } from '../types';
+import type {
+  LibraryResource, ResourceType, PyqTaxonomyBoard, PyqProvenanceEntry, PyqClassLevel, PyqQuestionType,
+} from '../types';
 
 export interface CreateResourceInput {
   type: ResourceType;
@@ -190,4 +192,57 @@ export async function generateLessonPlan(
   input: GenerateLessonPlanInput
 ): Promise<GenerateAssessmentResult> {
   return api<GenerateAssessmentResult>('/resources/generate-lesson-plan', { method: 'POST', body: input });
+}
+
+// --- PYQ (Previous Year Questions) mode — Phase 9 ---
+// docs/pyq-implementation-plan.md §14/§15. Thin wrappers over the Phase 8
+// endpoints, same "typed client, no request-shape logic here" shape as every
+// other function in this file. Both calls require the PYQ rollout flag
+// server-side (Phase 8's readPyqFlags()) — a 503 surfaces through `api()`'s
+// existing ApiError exactly like any other endpoint's failure, so no new
+// error-handling path is needed here.
+
+// GET /api/pyq/taxonomy — published-content-only Board -> Subject list a
+// teacher's PYQ mode selects populate from. Never chapter/topic (the teacher
+// never picks a chapter, per the product requirement) and never free-text.
+export async function getPyqTaxonomy(): Promise<PyqTaxonomyBoard[]> {
+  const data = await api<{ boards: PyqTaxonomyBoard[] }>('/pyq/taxonomy');
+  return data.boards;
+}
+
+// Must match generatePyqSchema in server/src/actions/schemas/generatePyq.js —
+// the runtime authority. Deliberately NO `mode`/`typeMix` fields: §14's own
+// API table (confirmed with the product owner during Phase 8, see that
+// phase's completion record) is the single, frozen request contract —
+// `questionType` is a single optional filter, not a per-type mix.
+export interface GeneratePyqInput {
+  boardId: string;
+  classLevel: PyqClassLevel;
+  subjectId: string;
+  yearFrom: number;
+  yearTo: number;
+  totalMarks: number;
+  questionCount: number;
+  questionType?: PyqQuestionType;
+  prioritizeRecurring: boolean;
+  language?: string;
+}
+
+export interface GeneratePyqResult {
+  content: string;
+  requestId: string;
+  provenance: PyqProvenanceEntry[];
+}
+
+// Ask the server to assemble a PYQ paper. Zero Gemini calls happen anywhere
+// in this path (§10/§11 — selectPyqPaper is pure/deterministic), and — same
+// as generateAssessment — nothing is persisted here; the teacher saves
+// explicitly via createResource (type "assessment"). A 422
+// INSUFFICIENT_PYQ_POOL response's `error` message is already the specific,
+// teacher-readable diagnostic (explainShortfall) — it reaches the caller as
+// a plain ApiError, rendered verbatim through the same error region the AI
+// path already uses, per §15's own "no client-side message-mapping layer is
+// needed" instruction.
+export async function generatePyq(input: GeneratePyqInput): Promise<GeneratePyqResult> {
+  return api<GeneratePyqResult>('/resources/generate-pyq', { method: 'POST', body: input });
 }

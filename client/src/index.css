@@ -3257,6 +3257,12 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   resize: vertical;
 }
 .generator-instructions textarea:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+/* PYQ mode's field block (§15) — reuses .generator-grid/.ws-field for the
+   Board/Class/Subject/Year/marks/count/type/language fields unmodified; this
+   wrapper only supplies the same bottom spacing .generator-instructions
+   already gives the AI path, so the Actions row sits a consistent distance
+   below either mode's last field. */
+.generator-pyq-fields { margin-bottom: 1rem; }
 .generator-actions { display: flex; justify-content: flex-end; }
 .generator-generate { display: inline-flex; align-items: center; gap: 0.5rem; }
 .generator-error { margin-top: 0.8rem; }
@@ -3270,8 +3276,26 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   padding: 1.5rem;
 }
 .generator-preview-head { margin-bottom: 1rem; }
-.generator-preview-title { font-size: 1.15rem; font-weight: 700; color: var(--text); margin: 0 0 0.2rem; }
+.generator-preview-title { font-size: 1.15rem; font-weight: 700; color: var(--text); margin: 0 0 0.2rem; display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
 .generator-preview-note { font-size: 0.83rem; color: var(--text-muted); margin: 0; }
+/* PYQ mode's whole-paper provenance indicator (§15) — same pill visual
+   language as .ai-field-note, reusing the same orange-soft accent this app
+   already uses for every other "AI/notable" marker, rather than inventing a
+   new color. Per-question provenance lines are embedded directly in the
+   generated Markdown content and need no separate React UI. */
+.pyq-source-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+  background: var(--orange-soft);
+  color: var(--orange-dark);
+  border: 1px solid var(--orange);
+}
+[data-theme='dark'] .pyq-source-badge { color: var(--orange); }
 .generator-save-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 1.1rem; }
 .generator-save { display: inline-flex; align-items: center; gap: 0.5rem; }
 .generator-save-hint { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; color: var(--text-muted); }

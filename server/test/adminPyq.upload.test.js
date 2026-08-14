@@ -153,17 +153,22 @@ describe('GET /api/admin/pyq/papers/:id/source — round-trip', () => {
     expect(Buffer.compare(res.body, buffer)).toBe(0);
   });
 
-  test('requires the same role gate as upload', async () => {
+  test('requires a token', async () => {
     const created = await upload(tokens.super_admin, validFields());
     const paperId = created.body.paper.id;
 
     const noAuth = await request(app).get(`/api/admin/pyq/papers/${paperId}/source`);
     expect(noAuth.status).toBe(401);
+  });
 
-    const wrongRole = await request(app)
+  test.each(['teacher', 'school_admin', 'resource_person'])('%s is denied', async (role) => {
+    const created = await upload(tokens.super_admin, validFields());
+    const paperId = created.body.paper.id;
+
+    const res = await request(app)
       .get(`/api/admin/pyq/papers/${paperId}/source`)
-      .set('Authorization', `Bearer ${tokens.teacher}`);
-    expect(wrongRole.status).toBe(403);
+      .set('Authorization', `Bearer ${tokens[role]}`);
+    expect(res.status).toBe(403);
   });
 
   test('404s for an unknown paper id', async () => {
@@ -279,10 +284,15 @@ describe('GET /api/admin/pyq/papers — list', () => {
     for (const p of res.body.papers) expect(p.sourceDocument.data).toBeUndefined();
   });
 
-  test('teacher is denied', async () => {
+  test('requires a token', async () => {
+    const res = await request(app).get('/api/admin/pyq/papers');
+    expect(res.status).toBe(401);
+  });
+
+  test.each(['teacher', 'school_admin', 'resource_person'])('%s is denied', async (role) => {
     const res = await request(app)
       .get('/api/admin/pyq/papers')
-      .set('Authorization', `Bearer ${tokens.teacher}`);
+      .set('Authorization', `Bearer ${tokens[role]}`);
     expect(res.status).toBe(403);
   });
 });
@@ -308,5 +318,19 @@ describe('GET /api/admin/pyq/papers/:id — detail', () => {
       .get('/api/admin/pyq/papers/does-not-exist')
       .set('Authorization', `Bearer ${tokens.super_admin}`);
     expect(res.status).toBe(404);
+  });
+
+  test('requires a token', async () => {
+    const created = await upload(tokens.super_admin, validFields());
+    const res = await request(app).get(`/api/admin/pyq/papers/${created.body.paper.id}`);
+    expect(res.status).toBe(401);
+  });
+
+  test.each(['teacher', 'school_admin', 'resource_person'])('%s is denied', async (role) => {
+    const created = await upload(tokens.super_admin, validFields());
+    const res = await request(app)
+      .get(`/api/admin/pyq/papers/${created.body.paper.id}`)
+      .set('Authorization', `Bearer ${tokens[role]}`);
+    expect(res.status).toBe(403);
   });
 });
