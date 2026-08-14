@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Volume2, Square, Copy, Share2, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Volume2, Square, Copy, Check, Share2, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { formatResponse } from '../lib/format';
 import { isSpeechSupported, speak, stopSpeaking } from '../lib/tts';
 import { useToast } from './Toast';
@@ -19,11 +19,24 @@ interface ResponseCardProps {
 export default function ResponseCard({ query, text, language, context, queryId, rating, onFeedback }: ResponseCardProps) {
   const { show } = useToast();
   const [speaking, setSpeaking] = useState(false);
+  // Shows a Check in place of the Copy icon for a moment after a successful
+  // copy, in the button itself — no toast, so the confirmation sits right
+  // where the teacher's eyes already are.
+  const [copied, setCopied] = useState(false);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Stop any speech if the response changes or the card unmounts.
   useEffect(() => {
     return () => stopSpeaking();
   }, [text]);
+
+  // Clears the revert timer on unmount so it cannot fire setCopied after this
+  // card is gone.
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
 
   function toggleSpeak() {
     if (speaking) {
@@ -38,7 +51,12 @@ export default function ResponseCard({ query, text, language, context, queryId, 
   async function copy() {
     try {
       await navigator.clipboard.writeText(text);
-      show('Copied to clipboard', 'success');
+      setCopied(true);
+      // Restart the revert timer rather than stacking a second one, so
+      // repeated clicks keep the Check showing for a full duration instead of
+      // reverting early from the first click's timer.
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 1500);
     } catch {
       show('Could not copy', 'error');
     }
@@ -75,8 +93,14 @@ export default function ResponseCard({ query, text, language, context, queryId, 
             {speaking ? <Square size={15} aria-hidden="true" /> : <Volume2 size={15} aria-hidden="true" />}
           </button>
         )}
-        <button type="button" className="action-chip" onClick={copy} aria-label="Copy" title="Copy">
-          <Copy size={15} aria-hidden="true" />
+        <button
+          type="button"
+          className="action-chip"
+          onClick={copy}
+          aria-label={copied ? 'Copied' : 'Copy'}
+          title={copied ? 'Copied' : 'Copy'}
+        >
+          {copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
         </button>
         <button type="button" className="action-chip" onClick={shareWhatsApp} aria-label="Share" title="Share">
           <Share2 size={15} aria-hidden="true" />

@@ -724,22 +724,16 @@ button { font-family: inherit; cursor: pointer; }
   .resource-doc-title { font-size: 1.2rem; }
 }
 
-/* Small phone (down to 320px): logo-only brand, tighter hero, and just enough
-   trimming that the composer row still holds all five controls plus a usable
-   text slot. Nothing is removed — only tightened. */
+/* Small phone (down to 320px): logo-only brand, tighter hero. The composer's
+   text and controls are on separate rows (see .composer-controls), so the
+   controls row always has the full box width to itself and needs no
+   narrow-screen shrinking of its own. */
 @media (max-width: 400px) {
   .brand-text { display: none; }
   .welcome-title { font-size: 1.3rem; }
 
   .chat-scroll { padding: 0.8rem 0.65rem 0.5rem; }
   .composer-dock { padding: 0.45rem 0.5rem 0.55rem; }
-  /* At 320px the row is: + · text · Mode · mic · send. Shaving the two round
-     buttons by 4px each is what keeps the text slot wide enough to read what
-     you are typing; both stay above the 34px comfortable-tap floor. */
-  .composer-row { gap: 0.25rem; }
-  .voice-btn { min-width: 34px; min-height: 34px; padding: 0 0.4rem; }
-  .composer-send { width: 34px; height: 34px; }
-  .composer-menu-btn { min-width: 30px; min-height: 30px; }
   /* Slightly shorter measure, so the text does not become uncomfortably dense
      on the narrowest screens. */
   .response-body { font-size: 0.97rem; line-height: 1.72; }
@@ -1601,34 +1595,20 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .composer-box {
   background: var(--surface-2);
   border: 1px solid var(--border);
-  /* A pill while everything is on one line, squared off once the box grows
-     into a multi-line panel — a 26px radius on a 200px-tall box looks like a
-     mistake. `--radius` is restored by .composer-box--stacked below. */
-  border-radius: 26px;
-  /* IDENTICAL in both layouts, deliberately. The single-row/stacked decision is
-     made by measuring the text against the row's width, so anything that makes
-     that width depend on the current layout feeds the decision back into
-     itself: a padding change of a few pixels was enough to make borderline text
-     measure as one line in the pill and two lines when stacked, and the two
-     states chased each other until React gave up. Keep any future style that
-     differs between the layouts off the horizontal axis. */
-  padding: 0.45rem 0.5rem;
+  /* A rounded panel, not a pill — the box always holds two rows (the message,
+     then the controls beneath it), so a fully-round edge never applies here. */
+  border-radius: var(--radius);
+  padding: 0.5rem 0.6rem 0.55rem;
   box-shadow: var(--shadow);
-  transition: border-color 0.14s ease, box-shadow 0.14s ease, border-radius 0.14s ease;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
 }
-/* Squared off whenever the box is more than a single line of controls — either
-   the text has grown, or thumbnails are sitting above it. Kept separate from
-   --stacked (which is a LAYOUT change) so staged photos can square the corners
-   without also forcing the text onto its own line. */
-.composer-box--stacked,
-.composer-box--squared { border-radius: var(--radius); }
 .composer-box:focus-within { border-color: var(--orange); box-shadow: 0 0 0 3px var(--orange-soft); }
-/* One line to start, growing with the text. The height itself is set inline by
-   Composer's layout effect; `max-height` here is the same ceiling that effect
-   uses (MAX_TEXTAREA_HEIGHT) restated so the box can never overshoot even for
-   the single frame before the effect runs. `display: block` removes the
-   inline-baseline gap that otherwise makes a one-line box a few pixels taller
-   than one line. */
+/* Top row: the message itself, full width, growing with the text. The height
+   itself is set inline by Composer's layout effect; `max-height` here is the
+   same ceiling that effect uses (MAX_TEXTAREA_HEIGHT) restated so the box can
+   never overshoot even for the single frame before the effect runs.
+   `display: block` removes the inline-baseline gap that otherwise makes a
+   one-line box a few pixels taller than one line. */
 .composer-textarea {
   width: 100%;
   display: block;
@@ -1641,23 +1621,13 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   font-weight: 400;
 }
 .composer-textarea:focus { outline: none; }
-/* ONE row holding everything: + · text · char count · controls.
-   `flex-wrap` is what makes the stacked layout possible without a second DOM
-   structure — see .composer-box--stacked below. */
-.composer-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
-/* `flex-basis: 0` and `width: auto`, NOT the `flex: 1 1 auto` that reads more
-   naturally here: the base .composer-textarea rule sets `width: 100%`, and an
-   auto basis resolves to that width — so the textarea claimed the whole line
-   and wrapped every control onto rows of their own. A zero basis makes it take
-   the space that is LEFT after the + and the buttons, which is the point. */
-.composer-row .composer-textarea { flex: 1 1 0; width: auto; min-width: 0; }
-/* Stacked: the text claims a whole line, and everything that was beside it
-   wraps underneath — the + staying left, the buttons pushed right by their own
-   `margin-left: auto`. `order: -1` puts that line first even though the
-   textarea comes after the + in the DOM, so the single-row reading order (and
-   the tab order) is the one the markup states. */
-.composer-box--stacked .composer-textarea { flex: 1 1 100%; width: 100%; order: -1; margin-bottom: 0.15rem; }
-.composer-buttons { display: flex; align-items: center; gap: 0.4rem; margin-left: auto; }
+/* Bottom row: every control, on a line of its own beneath the text — it never
+   shares horizontal space with what the teacher is typing, on any screen
+   size. Left holds "add" and "mode" (things chosen before sending); right
+   holds the char count, mic and send (things about sending). */
+.composer-controls { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.4rem; }
+.composer-controls-left,
+.composer-controls-right { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
 .char-count { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; align-self: center; }
 .char-count.warn { color: var(--orange); font-weight: 700; }
 
@@ -1688,9 +1658,6 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   gap: 0.2rem;
   z-index: 120;
 }
-/* For a menu whose button sits at the RIGHT of the row: anchoring left would
-   push a 280px popover off the edge of a narrow viewport. */
-.composer-menu-popover--right { left: auto; right: 0; }
 .composer-menu-item {
   display: flex;
   align-items: flex-start;
@@ -1713,10 +1680,13 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .composer-menu-item-desc { font-size: 0.78rem; color: var(--text-muted); line-height: 1.35; }
 .composer-menu-item-check { flex-shrink: 0; margin-left: auto; align-self: center; color: var(--orange); }
 
-/* ---- Classroom Mode dropdown (right of the composer controls row) -------- */
+/* ---- Assistant Mode dropdown (left of the composer controls row, beside
+   "+") ------------------------------------------------------------------- */
 /* A labelled pill rather than the round icon button "+" uses: this control
-   shows a STATE, and a teacher should be able to read which one it is in
-   without opening it. */
+   shows a STATE — the currently selected mode — and a teacher should be able
+   to read which one it is in without opening it. Sits in its own row beneath
+   the message text (see .composer-controls), so it always has room to show
+   the real selection instead of a truncated stand-in. */
 .classroom-menu-btn {
   display: inline-flex;
   align-items: center;
@@ -1729,19 +1699,10 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   font-weight: 600;
 }
 .classroom-menu-btn.active { border-color: var(--orange); color: var(--orange); background: var(--orange-soft); }
-.classroom-menu-label { white-space: nowrap; }
-/* The narrow-screen stand-in for the full label — hidden by default, swapped in
-   below the breakpoint. The button carries no icon, so one of the two is always
-   showing; neither may be display:none at the same time as the other. */
-.classroom-menu-label-short { display: none; white-space: nowrap; }
+/* Truncates rather than overflows on the narrowest phones — the pill would
+   otherwise be able to push the mic/send buttons out of the row. */
+.classroom-menu-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .classroom-menu-caret { flex-shrink: 0; opacity: 0.7; }
-/* Below this the row has to hold the dropdown, the mic and the send button on
-   a phone, so the label shortens to "Mode". */
-@media (max-width: 520px) {
-  .classroom-menu-label { display: none; }
-  .classroom-menu-label-short { display: inline; }
-  .classroom-menu-btn { padding: 0 0.4rem; }
-}
 
 /* "Classroom Mode looked and found nothing" — deliberately quiet. It is an
    explanation, not a result, and must not compete with the answer above it. */
@@ -1882,18 +1843,13 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   /* Anchor BOTH composer menus to the composer box, not to their own button.
      The bug this fixes: the popover was positioned against its button but sized
      against the viewport (`width: calc(100vw - 2.5rem)`), and the two disagree.
-     The Mode menu is anchored by its RIGHT edge, which sits ~280px in from the
-     left of a 390px screen, so a 340px-wide panel started at -60px and hung off
-     the left of the screen. Spanning the composer's own width instead makes the
-     panel's position and its size come from the same box, so it cannot leave
-     the screen at any width — and it matches how the same menus behave in the
-     apps this composer is modelled on.
-     `.composer-box` prefix beats the later `--right` rule on specificity, which
-     source order alone would not do from up here. */
+     Spanning the composer's own width instead makes the panel's position and
+     its size come from the same box, so it cannot leave the screen at any
+     width — and it matches how the same menus behave in the apps this
+     composer is modelled on. */
   .composer-box { position: relative; }
   .composer-menu { position: static; }
-  .composer-box .composer-menu-popover,
-  .composer-box .composer-menu-popover--right {
+  .composer-box .composer-menu-popover {
     left: 0;
     right: 0;
     width: auto;
