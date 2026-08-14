@@ -1,6 +1,11 @@
-import { Plus, X, Trash2, MessageSquareText } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Plus, X, MessageSquareText, Pin } from 'lucide-react';
 import type { HistoryItem } from '../types';
 import ProfileMenu from './ProfileMenu';
+import HistoryItemMenu from './HistoryItemMenu';
+import ConfirmDialog from './ConfirmDialog';
+import { useToast } from './Toast';
+import { useHistoryOverrides } from '../hooks/useHistoryOverrides';
 
 interface SidebarProps {
   open: boolean;
@@ -13,6 +18,8 @@ interface SidebarProps {
   onDelete: (item: HistoryItem) => void;
   onClearAll: () => void;
 }
+
+const MAX_TITLE_LENGTH = 200;
 
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
@@ -28,6 +35,68 @@ function formatTimestamp(iso: string): string {
 export default function Sidebar({
   open, items, loading, activeId, onClose, onNewChat, onSelect, onDelete, onClearAll,
 }: SidebarProps) {
+  const { show } = useToast();
+  const { isPinned, titleFor, pinnedIds, togglePin, rename: renameHistoryItem, forget } = useHistoryOverrides(items);
+
+  // Only one row's menu open at a time (a self-managed popover per row could
+  // not guarantee that), and only one row renaming at a time.
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [pendingDelete, setPendingDelete] = useState<HistoryItem | null>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (renamingId) renameInputRef.current?.select();
+  }, [renamingId]);
+
+  // Pinned chats float to the top, newest-pinned first, then everything else
+  // in the order the server already returns (most recent first) — reordering
+  // is the whole point of a pin, but nothing else about the list's order
+  // changes.
+  const sortedItems = useMemo(() => {
+    if (pinnedIds.length === 0) return items;
+    return [...items].sort((a, b) => Number(isPinned(b.id)) - Number(isPinned(a.id)));
+  }, [items, pinnedIds, isPinned]);
+
+  function startRename(item: HistoryItem) {
+    setRenamingId(item.id);
+    setRenameDraft(titleFor(item));
+  }
+
+  function cancelRename() {
+    setRenamingId(null);
+    setRenameDraft('');
+  }
+
+  function commitRename(item: HistoryItem) {
+    const trimmed = renameDraft.trim();
+    if (!trimmed) {
+      show('Please enter a title', 'error');
+      return;
+    }
+    renameHistoryItem(item.id, trimmed.slice(0, MAX_TITLE_LENGTH));
+    setRenamingId(null);
+    setRenameDraft('');
+  }
+
+  function shareChat(item: HistoryItem) {
+    // Same mechanism ResponseCard's "Share" action already uses (a wa.me
+    // compose link the teacher reviews and sends themselves) — reused rather
+    // than a new sharing architecture, so there is no new way for chat
+    // content to leave the app unintentionally.
+    const text = `${titleFor(item)}\n\n${item.text}`;
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank', 'noopener');
+  }
+
+  function confirmDelete() {
+    if (!pendingDelete) return;
+    onDelete(pendingDelete);
+    forget(pendingDelete.id);
+    setPendingDelete(null);
+  }
+
   return (
     <>
       <div className={`sidebar-backdrop${open ? ' show' : ''}`} onClick={onClose} hidden={!open} />
@@ -65,24 +134,59 @@ export default function Sidebar({
             </div>
           )}
           {!loading &&
-            items.map((item) => (
+            sortedItems.map((item) => (
               <div key={item.id} className={`history-item${item.id === activeId ? ' active' : ''}`}>
-                <button className="history-item-main" onClick={() => onSelect(item)}>
-                  <span className="history-query">{item.query}</span>
-                  <span className="history-meta">
-                    {[item.context.grade, item.context.subject].filter(Boolean).join(' · ')}
-                    {(item.context.grade || item.context.subject) && ' • '}
-                    {formatTimestamp(item.createdAt)}
-                  </span>
-                </button>
-                <button
-                  className="history-delete"
-                  onClick={() => onDelete(item)}
-                  aria-label="Delete this question"
-                  title="Delete"
-                >
-                  <Trash2 size={15} aria-hidden="true" />
-                </button>
+                {renamingId === item.id ? (
+                  // A <div>, not a <button>, while renaming: an <input> is
+                  // interactive content, which a <button> may never contain
+                  // (invalid HTML, and unreliable focus/typing in practice).
+                  // The row isn't selectable mid-rename anyway, so a button's
+                  // semantics don't belong here for these few moments.
+                  <div className="history-item-main">
+                    <input
+                      ref={renameInputRef}
+                      type="text"
+                      className="history-rename-input"
+                      value={renameDraft}
+                      maxLength={MAX_TITLE_LENGTH}
+                      onChange={(e) => setRenameDraft(e.target.value)}
+                      onBlur={() => commitRename(item)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); commitRename(item); }
+                        else if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
+                      }}
+                      aria-label="Chat title"
+                    />
+                    <span className="history-meta">
+                      {[item.context.grade, item.context.subject].filter(Boolean).join(' · ')}
+                      {(item.context.grade || item.context.subject) && ' • '}
+                      {formatTimestamp(item.createdAt)}
+                    </span>
+                  </div>
+                ) : (
+                  <button className="history-item-main" onClick={() => onSelect(item)}>
+                    <span className="history-query-row">
+                      {isPinned(item.id) && (
+                        <Pin size={12} className="history-pin-icon" aria-hidden="true" />
+                      )}
+                      <span className="history-query">{titleFor(item)}</span>
+                    </span>
+                    <span className="history-meta">
+                      {[item.context.grade, item.context.subject].filter(Boolean).join(' · ')}
+                      {(item.context.grade || item.context.subject) && ' • '}
+                      {formatTimestamp(item.createdAt)}
+                    </span>
+                  </button>
+                )}
+                <HistoryItemMenu
+                  open={openMenuId === item.id}
+                  onOpenChange={(next) => setOpenMenuId(next ? item.id : null)}
+                  pinned={isPinned(item.id)}
+                  onRename={() => startRename(item)}
+                  onTogglePin={() => togglePin(item.id)}
+                  onShare={() => shareChat(item)}
+                  onDelete={() => setPendingDelete(item)}
+                />
               </div>
             ))}
         </div>
@@ -96,6 +200,16 @@ export default function Sidebar({
           <ProfileMenu variant="sidebar" />
         </div>
       </aside>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete this chat?"
+        body={pendingDelete ? `"${titleFor(pendingDelete)}" will be permanently removed. This cannot be undone.` : ''}
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </>
   );
 }

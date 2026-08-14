@@ -30,6 +30,8 @@ router.get('/queries', authRequired, async (req, res) => {
       responseTimeMs: true,
       createdAt: true,
       classroomPlan: true,
+      title: true,
+      pinned: true,
       feedback: { where: { userId: req.user.id }, take: 1, select: { rating: true } },
     },
   });
@@ -43,6 +45,8 @@ router.get('/queries', authRequired, async (req, res) => {
     responseTime: q.responseTimeMs || 0,
     createdAt: q.createdAt,
     rating: q.feedback[0]?.rating || null,
+    title: q.title,
+    pinned: q.pinned,
     // Classroom Mode's plan for this turn (D24), or omitted entirely for an
     // ordinary question. Spread rather than set to null so a history payload
     // for a teacher who never uses the mode is byte-for-byte what it has
@@ -169,6 +173,53 @@ router.delete('/queries/:id', authRequired, async (req, res) => {
     prisma.query.delete({ where: { id } }),
   ]);
   res.json({ success: true });
+});
+
+const MAX_TITLE = 200;
+
+// Deliberately narrow to exactly the two fields the Sidebar's three-dot menu
+// writes (Rename chat / Pin chat) — never a generic "patch any Query field"
+// shape. Same trim/min/max convention routes/resources.js already uses for
+// its own title field (MAX_TITLE = 200 there too), so a rejected title looks
+// and behaves the same way across both save flows.
+const patchQuerySchema = z
+  .object({
+    title: z.string().trim().min(1).max(MAX_TITLE).optional(),
+    pinned: z.boolean().optional(),
+  })
+  .refine((data) => data.title !== undefined || data.pinned !== undefined, {
+    message: 'Provide a title or pinned value to update.',
+  });
+
+// PATCH /api/queries/:id — rename/pin a history entry (owner only).
+//
+// Same ownership check as DELETE /queries/:id above, on purpose: this and
+// DELETE are the two ways a teacher mutates one history row, and a stricter
+// or looser check here would be a silent inconsistency between them.
+router.patch('/queries/:id', authRequired, async (req, res) => {
+  const parsed = patchQuerySchema.safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid request.' });
+
+  const { id } = req.params;
+  const query = await prisma.query.findUnique({ where: { id } });
+  if (!query) return res.status(404).json({ error: 'Query not found.' });
+  if (query.userId && query.userId !== req.user.id) {
+    return res.status(403).json({ error: 'You cannot modify this entry.' });
+  }
+
+  // Built field-by-field from the validated payload, never by spreading
+  // req.body — this is what actually keeps the route to just these two
+  // columns, independent of whatever the zod schema above happens to allow.
+  const data = {};
+  if (parsed.data.title !== undefined) data.title = parsed.data.title;
+  if (parsed.data.pinned !== undefined) data.pinned = parsed.data.pinned;
+
+  const updated = await prisma.query.update({
+    where: { id },
+    data,
+    select: { id: true, title: true, pinned: true },
+  });
+  res.json({ success: true, id: updated.id, title: updated.title, pinned: updated.pinned });
 });
 
 function safeParse(json) {

@@ -169,6 +169,19 @@ model Query {
   // reason, and the artifacts are fetched on demand for ONE turn instead.
   classroomArtifacts String?
   createdAt      DateTime @default(now())
+  // Teacher-set display label for this history entry (Sidebar's three-dot
+  // "Rename chat"). NULL for every row written before this column existed,
+  // and for any row the teacher has never renamed — the client falls back to
+  // showing `queryText` in that case, so nothing that reads a Query needs a
+  // migration-aware branch. Never written to or read from `queryText` itself:
+  // that field stays the original question, unedited, since it's also what
+  // reopening this entry from history replays as the turn's user message.
+  title          String?
+  // "Pin chat" (Sidebar three-dot menu). Defaulted false, not nullable — a
+  // pin is a plain boolean state, not a "was this ever set" question the way
+  // `title`'s NULL-vs-empty distinction is, so every existing row backfills
+  // to the same unpinned default a freshly created one gets.
+  pinned         Boolean  @default(false)
 
   feedback Feedback[]
 

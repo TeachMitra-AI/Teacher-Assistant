@@ -116,7 +116,8 @@ button { font-family: inherit; cursor: pointer; }
 .profile-dropdown-item:focus-visible,
 .user-chip-btn:focus-visible,
 .history-item-main:focus-visible,
-.composer-send:focus-visible {
+.composer-send:focus-visible,
+.action-chip:focus-visible {
   outline: 2px solid var(--orange);
   outline-offset: 2px;
 }
@@ -422,9 +423,11 @@ button { font-family: inherit; cursor: pointer; }
   flex-direction: column;
   gap: 0.25rem;
 }
-.history-delete {
-  flex-shrink: 0;
-  align-self: flex-start;
+/* Three-dot chat-actions menu (components/HistoryItemMenu.tsx) — occupies the
+   same slot the old standalone delete button used to, so the row layout is
+   unchanged; only subtle-until-hover/focus behaviour carries over exactly. */
+.history-item-menu { flex-shrink: 0; align-self: flex-start; }
+.history-item-menu-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -439,25 +442,75 @@ button { font-family: inherit; cursor: pointer; }
   opacity: 0;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 }
-.history-item:hover .history-delete,
-.history-item.active .history-delete,
-.history-delete:focus-visible { opacity: 1; }
-.history-delete:hover {
-  color: #dc2626;
-  background: rgba(220, 38, 38, 0.1);
-  border-color: rgba(220, 38, 38, 0.4);
-}
-.history-delete:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
-[data-theme='dark'] .history-delete:hover {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.16);
-  border-color: rgba(248, 113, 113, 0.5);
-}
-/* Touch devices have no hover — keep the delete affordance always visible. */
+.history-item:hover .history-item-menu-btn,
+.history-item.active .history-item-menu-btn,
+.history-item-menu-btn:focus-visible,
+.history-item-menu-btn.active { opacity: 1; }
+.history-item-menu-btn:hover { background: var(--border); color: var(--text); }
+.history-item-menu-btn.active { background: var(--surface); border-color: var(--orange); color: var(--orange); }
+.history-item-menu-btn:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+/* Touch devices have no hover — keep the affordance always visible. */
 @media (hover: none) {
-  .history-delete { opacity: 1; }
+  .history-item-menu-btn { opacity: 1; }
 }
+
+/* Portalled to document.body (see HistoryItemMenu.tsx) — .sidebar itself has
+   `overflow: hidden` (for its open/close width transition) and .history-list
+   scrolls, so an un-portalled popover would be clipped by one or the other. */
+.history-item-menu-popover {
+  position: fixed;
+  min-width: 180px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  z-index: 1300;
+}
+.history-item-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.history-item-menu-item:hover { background: var(--surface-2); }
+.history-item-menu-item:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
+.history-item-menu-item svg { flex-shrink: 0; color: var(--text-muted); }
+.history-item-menu-item.danger { color: #dc2626; }
+.history-item-menu-item.danger svg { color: inherit; }
+[data-theme='dark'] .history-item-menu-item.danger { color: #f87171; }
+
+/* Pin indicator — same accent colour every other "marked/active" state in the
+   app already uses (active nav link, chosen feedback button, saved bookmark),
+   so a pinned chat reads as marked without a second visual language. */
+.history-pin-icon { color: var(--orange); flex-shrink: 0; }
+
 .history-query { font-weight: 600; font-size: 0.9rem; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.history-query-row { display: flex; align-items: center; gap: 0.3rem; }
+.history-query-row .history-query { flex: 1; min-width: 0; }
+.history-rename-input {
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--orange);
+  border-radius: 6px;
+  padding: 0.15rem 0.35rem;
+  width: 100%;
+}
+.history-rename-input:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .history-meta { font-size: 0.75rem; color: var(--text-muted); }
 
 /* Fixed footer holding the account menu (see Sidebar.tsx / ProfileMenu.tsx).
@@ -1098,35 +1151,33 @@ button { font-family: inherit; cursor: pointer; }
   .response-body .fmt-table th:first-child { min-width: 2rem; }
 }
 
-.response-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.1rem; }
+/* Icon-only response actions (Read aloud, Copy, Share, Save, Like, Dislike) —
+   one row, wrapping via flex-wrap rather than a hardcoded width so a narrow
+   viewport never overflows sideways; it just wraps onto a second line. */
+.response-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 1.1rem; }
 .action-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0.5rem 0.9rem;
-  font-size: 0.85rem;
-  font-weight: 600;
+  border-radius: 50%;
   color: var(--text);
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
-.action-chip:hover { background: var(--border); }
-.action-chip.whatsapp { background: #25d366; color: #fff; border-color: #25d366; }
-.action-chip.speaking { background: var(--orange); color: #fff; border-color: var(--orange); }
-
-.feedback-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.9rem; font-size: 0.88rem; color: var(--text-muted); }
-.feedback-btn {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0.4rem 0.8rem;
-  font-size: 0.85rem;
-  color: var(--text);
-}
-.feedback-btn.chosen { background: var(--orange); color: #fff; border-color: var(--orange); }
-.feedback-btn:disabled { cursor: default; opacity: 0.85; }
+.action-chip:hover:not(:disabled) { background: var(--border); }
+.action-chip:disabled { cursor: default; opacity: 0.6; }
+/* Speaking (Read aloud, mid-playback) and chosen (Like/Dislike, after a
+   rating is picked) both mark "this is the active state" the same way the
+   rest of the app does — see .composer-menu-btn.active, .classroom-menu-btn.active. */
+.action-chip.speaking,
+.action-chip.chosen { background: var(--orange); color: #fff; border-color: var(--orange); }
 
 /* ---- Save to Library (response action + popover) ------------------------- */
 .save-library { position: relative; display: inline-flex; }
-.save-library .action-chip { display: inline-flex; align-items: center; gap: 0.4rem; }
 .action-chip.saved { background: var(--orange-soft); color: var(--orange); border-color: var(--orange); }
 .save-popover {
   position: absolute;
