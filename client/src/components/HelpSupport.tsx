@@ -10,10 +10,11 @@ import { BUG_CATEGORIES, FEEDBACK_CATEGORIES, MAX_SUPPORT_DESCRIPTION_LENGTH, SU
 
 // Help & Support — one globally-mounted panel (same "provider owns its own
 // overlay" shape as ToastProvider) rather than a component instantiated at
-// each entry point. TopBar's profile menu and the Settings card both just
-// call useHelpSupport().openMenu(); error surfaces (network-error toast,
-// the top-level ErrorBoundary) call openBugReport() with a category
-// pre-selected. Reuses the app's existing form controls (.style-grid /
+// each entry point. ProfileMenu (used by both TopBar and the Coach page's
+// Sidebar) and the Settings card both just call useHelpSupport().openMenu();
+// error surfaces (network-error toast, the top-level ErrorBoundary) call
+// openBugReport() with a category pre-selected. Reuses the app's existing
+// form controls (.style-grid /
 // .style-option, .text-input, .btn-primary) rather than inventing new ones.
 //
 // Phase 1 only (see docs/help-support-architecture.md): no attachment, no

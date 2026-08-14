@@ -116,8 +116,7 @@ button { font-family: inherit; cursor: pointer; }
 .profile-dropdown-item:focus-visible,
 .user-chip-btn:focus-visible,
 .history-item-main:focus-visible,
-.composer-send:focus-visible,
-.context-more-btn:focus-visible {
+.composer-send:focus-visible {
   outline: 2px solid var(--orange);
   outline-offset: 2px;
 }
@@ -461,6 +460,20 @@ button { font-family: inherit; cursor: pointer; }
 .history-query { font-weight: 600; font-size: 0.9rem; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .history-meta { font-size: 0.75rem; color: var(--text-muted); }
 
+/* Fixed footer holding the account menu (see Sidebar.tsx / ProfileMenu.tsx).
+   `.history-list` above has `flex: 1` and its own `overflow-y: auto`, so it
+   fills the remaining column height and this footer is pushed to the bottom
+   without needing position:absolute or a fixed height. */
+.sidebar-footer { flex-shrink: 0; border-top: 1px solid var(--border); padding: 0.6rem; }
+.profile-menu--sidebar { width: 100%; }
+.profile-menu--sidebar .user-chip { width: 100%; border-radius: var(--radius-sm); }
+.profile-menu--sidebar .user-chip-btn { width: 100%; }
+.profile-menu--sidebar .user-name,
+.profile-menu--sidebar .user-role { max-width: none; }
+/* Anchored at the bottom of the sidebar, so it opens UPWARD rather than off
+   the bottom of the viewport. */
+.profile-dropdown--sidebar { top: auto; bottom: calc(100% + 8px); left: 0; right: 0; }
+
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
@@ -515,11 +528,13 @@ button { font-family: inherit; cursor: pointer; }
   /* Keep toasts above the bottom nav. */
   .toast-stack { bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom) + 0.8rem); }
 
-  /* Collapse the profile chip to the avatar only. The trigger stays visible
-     and tappable, so Settings / Sign out remain reachable on every phone;
-     the name and role are shown inside the dropdown. */
-  .user-meta { display: none; }
-  .user-chip { padding: 0.15rem; gap: 0; }
+  /* Collapse the TopBar's profile chip to the avatar only (scoped to .topbar
+     so the Sidebar footer's full-width copy — plenty roomy even in its
+     mobile drawer — is unaffected). The trigger stays visible and tappable,
+     so Settings / Sign out remain reachable on every phone; the name and
+     role are shown inside the dropdown. */
+  .topbar .user-meta { display: none; }
+  .topbar .user-chip { padding: 0.15rem; gap: 0; }
 
   /* Density: tighter vertical rhythm so more welcome content fits one phone
      viewport (greeting↔subtitle↔cards, card↔card, last card↔context controls),
@@ -559,86 +574,6 @@ button { font-family: inherit; cursor: pointer; }
      the answer scrolls. Every rule below exists to give it more of the screen
      or to make what is in it easier to read; none of them applies above 640px,
      where the desktop three-part layout is untouched. */
-
-  /* The context row, rendered under the header on a phone (CoachPage renders it
-     there; this only styles it). A single non-wrapping strip: three selects and
-     the More-context button, scrolling sideways rather than wrapping onto a
-     second line and eating another ~40px of answer. */
-  .coach-context-row {
-    display: block;
-    flex-shrink: 0;
-    padding: 0.55rem 0.75rem;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-  }
-  .coach-context-row .context-bar {
-    flex-wrap: nowrap;
-    gap: 0.35rem;
-    overflow-x: auto;
-    /* Momentum scrolling without a visible bar — the row is short enough that a
-       scrollbar would take a meaningful slice of it. */
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-  .coach-context-row .context-bar::-webkit-scrollbar { display: none; }
-  .coach-context-row .context-pill,
-  .coach-context-row .context-more { flex: 0 0 auto; }
-  .coach-context-row .context-pill { padding: 0.28rem 0.4rem 0.28rem 0.6rem; gap: 0.3rem; font-size: 0.8rem; }
-  /* A <select> is as wide as its WIDEST OPTION, not its selected one — "Social
-     Studies" alone made the Subject pill 188px and pushed the row off a 390px
-     screen even while it displayed "Any". Capping the width decouples the
-     control's size from the vocabulary behind it; a long selected value
-     truncates instead, and the full list is still there when it opens.
-     Sized for comfort rather than for the tightest possible fit: the row
-     scrolls, and squeezing every pill so that nothing ever scrolls bought a
-     cramped control on EVERY phone to avoid scrolling on the smallest. */
-  .coach-context-row .context-pill select {
-    font-size: 0.8rem;
-    max-width: 5.5rem;
-    padding: 0.2rem 0.15rem;
-    text-overflow: ellipsis;
-  }
-  /* All three labels go, not just the language one — see ContextBar: the empty
-     option says "Any grade" / "Any subject" here, and a chosen value names its
-     own field. That is what buys the row enough space to be comfortable rather
-     than merely fitting. */
-  .coach-context-row .context-pill-label { display: none; }
-  .coach-context-row .context-more-btn { padding: 0.34rem 0.5rem; }
-  /* Pinned to the right edge while the filters scroll underneath. Without this
-     the button is just the last item in a scrolling row, and on a 320px screen
-     it starts off-screen — a control a teacher cannot see is one they do not
-     have. `sticky` keeps it in the flow (so it still occupies its own space
-     when everything fits) while never leaving the viewport. */
-  .coach-context-row .context-more {
-    position: sticky;
-    right: 0;
-    z-index: 1;
-    background: var(--surface);
-    padding-left: 0.3rem;
-  }
-  /* "There is more over here" — the filters scroll under a short fade instead
-     of vanishing at a hard edge. */
-  .coach-context-row .context-more::before {
-    content: '';
-    position: absolute;
-    left: -18px;
-    top: 0;
-    bottom: 0;
-    width: 18px;
-    background: linear-gradient(to right, rgba(0, 0, 0, 0), var(--surface));
-    pointer-events: none;
-  }
-  /* Icon-only: at 320px the three selects already need every pixel. The
-     button keeps its aria-label, so what it does is still announced. */
-  .coach-context-row .context-more-text { display: none; }
-
-  .context-bar { gap: 0.4rem; }
-  /* Anchor the "More context" popover to the row's width instead of the narrow
-     button, so it can never clip past the viewport edge regardless of how the
-     context controls wrap. */
-  .composer-dock-inner { position: relative; }
-  .context-more { position: static; }
-  .context-popover { left: 0.5rem; right: 0.5rem; min-width: 0; }
 
   /* Answer area: the whole point of this layout. More room (tighter dock and
      scroller padding) and a longer measure per line. */
@@ -743,7 +678,6 @@ button { font-family: inherit; cursor: pointer; }
   .brand-text { display: none; }
   .welcome-title { font-size: 1.3rem; }
 
-  .coach-context-row { padding: 0.4rem 0.5rem; }
   .chat-scroll { padding: 0.8rem 0.65rem 0.5rem; }
   .composer-dock { padding: 0.45rem 0.5rem 0.55rem; }
   /* At 320px the row is: + · text · Mode · mic · send. Shaving the two round
@@ -1529,7 +1463,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ---- Context bar + composer ----------------------------------------------- */
+/* ---- Labelled fields + composer -------------------------------------------- */
 .field { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.82rem; font-weight: 600; color: var(--text-muted); }
 .field select,
 .field input,
@@ -1545,32 +1479,6 @@ textarea {
 .field select:focus,
 .field input:focus,
 textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
-
-.context-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
-/* The phone-only wrapper for the same bar directly under the header (rendered
-   there by CoachPage, not moved by CSS — see its `isPhoneLayout` branch).
-   Hidden above the breakpoint purely as a guard: the element is not rendered at
-   all there, so this should never have anything to hide.
-   Written as a MIN-width query, not a bare `display: none` — this block sits
-   after the phone `@media` block in the file, and a bare rule of equal
-   specificity would win on source order and hide the row at every width. */
-@media (min-width: 641px) {
-  .coach-context-row { display: none; }
-}
-.context-more-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 0.25rem;
-  border-radius: 999px;
-  background: var(--orange);
-  color: #fff;
-  font-size: 0.68rem;
-  font-weight: 700;
-}
-.context-more-btn.active .context-more-count { background: var(--orange); }
 
 /* ---- Scroll-to-latest button (components/ScrollToBottom.tsx) --------------
    Positioned against `.coach-main-chat`, which is the column holding the
@@ -1594,53 +1502,37 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 }
 .chat-scroll-down:hover { border-color: var(--orange); color: var(--orange); }
 .chat-scroll-down:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
-.context-pill {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0.3rem 0.4rem 0.3rem 0.75rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-.context-pill-label { white-space: nowrap; }
-.context-pill select {
-  font-family: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text);
-  background: none;
-  border: none;
-  padding: 0.25rem 0.3rem;
-}
-.context-pill select:focus { outline: 2px solid var(--orange); outline-offset: 1px; border-radius: 999px; }
-.context-more { position: relative; }
-.context-more-btn {
+/* ---- Teaching context icon + popover (components/TeachingContextMenu.tsx)
+   The trigger sits in the TopBar (Coach page only, in the slot the profile
+   chip vacated — see CoachPage's `extraControl`), so unlike the old
+   ContextBar this never needs a portal to escape the composer dock's scroll
+   clipping: a plain absolute-under-relative popover is enough. */
+.context-menu { position: relative; }
+.context-menu-btn { position: relative; }
+.context-menu-btn.active { border-color: var(--orange); color: var(--orange); background: var(--orange-soft); }
+.context-menu-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  background: none;
-  border: 1px dashed var(--border);
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 0.25rem;
   border-radius: 999px;
-  padding: 0.42rem 0.8rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-muted);
+  background: var(--orange);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border: 2px solid var(--surface);
 }
-.context-more-btn:hover { border-color: var(--orange); color: var(--orange); }
-.context-more-btn.active { border-style: solid; border-color: var(--orange); color: var(--orange); }
-.context-popover {
-  /* Rendered via a React portal to document.body (see ContextBar.tsx) so it
-     escapes `.composer-dock`'s scroll clipping once the chat/composer
-     resize handle has shrunk it — bottom/right/left below are computed and
-     applied inline in fixed/viewport coordinates; these are just fallbacks. */
-  position: fixed;
-  bottom: calc(100% + 8px);
+.context-menu-popover {
+  position: absolute;
+  top: calc(100% + 8px);
   right: 0;
-  min-width: 220px;
+  min-width: 240px;
+  max-width: min(300px, calc(100vw - 2rem));
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1649,8 +1541,10 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
-  z-index: 120;
+  z-index: 150;
 }
+.context-menu-divider { height: 1px; background: var(--border); border: none; margin: 0.1rem 0; }
+.context-menu-section-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
 
 .composer { width: 100%; }
 .composer-box {

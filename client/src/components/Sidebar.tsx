@@ -1,5 +1,6 @@
 import { Plus, X, Trash2, MessageSquareText } from 'lucide-react';
 import type { HistoryItem } from '../types';
+import ProfileMenu from './ProfileMenu';
 
 interface SidebarProps {
   open: boolean;
@@ -84,6 +85,15 @@ export default function Sidebar({
                 </button>
               </div>
             ))}
+        </div>
+
+        {/* Fixed at the bottom, below the independently-scrollable history
+            list above (.history-list has its own overflow-y and flex: 1, so
+            it grows to fill the remaining space and this footer never moves).
+            Same ProfileMenu/account-menu state TopBar uses everywhere else —
+            see ProfileMenu.tsx. */}
+        <div className="sidebar-footer">
+          <ProfileMenu variant="sidebar" />
         </div>
       </aside>
     </>

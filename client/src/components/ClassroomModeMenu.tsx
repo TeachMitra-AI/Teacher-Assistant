@@ -41,7 +41,7 @@ export default function ClassroomModeMenu({
   // once there is more than one mode to choose between.
   const selected = OPTIONS.find((o) => o.on === classroomMode)?.label ?? 'Off';
   // Same shared outside-click + Escape behaviour as every other popover in the
-  // app (profile menu, ContextBar's "More context", AddMenu).
+  // app (profile menu, teaching context, AddMenu).
   useDismissable(open, ref, () => setOpen(false));
 
   return (
@@ -54,12 +54,6 @@ export default function ClassroomModeMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Assistant Mode: ${selected}`}
-        // Hovering is where the CURRENT selection is read. The button itself
-        // deliberately says only what the control is, so that adding a second
-        // mode changes nothing about it — and so the selection is not also
-        // announced by a banner taking a strip of the screen above the grade
-        // and subject, which is what this replaced.
-        title={`Assistant Mode: ${selected}`}
       >
         {/* The button names the CONTROL, the popover names the choices inside
             it — which is what lets a second mode be added without the button's

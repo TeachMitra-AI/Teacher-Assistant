@@ -52,10 +52,9 @@ export default function AddMenu({
 }: AddMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  // The same dismissal behaviour (outside click + Escape) as the profile menu
-  // and ContextBar's "More context" popover, from the same shared hook — so
-  // this menu cannot drift into behaving differently from the two popovers a
-  // teacher already knows.
+  // The same dismissal behaviour (outside click + Escape) as every other
+  // popover in the app, from the same shared hook — so this menu cannot drift
+  // into behaving differently from the popovers a teacher already knows.
   useDismissable(open, ref, () => setOpen(false));
 
   const actions: AddAction[] = [
