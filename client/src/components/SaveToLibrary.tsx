@@ -79,9 +79,10 @@ export default function SaveToLibrary({ query, text, language, context, queryId 
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-label={saved ? 'Saved to Library' : 'Save to Library'}
+        title={saved ? 'Saved to Library' : 'Save to Library'}
       >
         {saved ? <Check size={15} aria-hidden="true" /> : <BookmarkPlus size={15} aria-hidden="true" />}
-        {saved ? 'Saved' : 'Save to Library'}
       </button>
 
       {open && (

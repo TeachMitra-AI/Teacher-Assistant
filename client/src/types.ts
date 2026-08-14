@@ -320,6 +320,11 @@ export interface HistoryItem {
   // Classroom Mode's plan for this turn (D24). Present only for turns where
   // the mode actually produced one; absent for every ordinary question.
   classroom?: ClassroomPlan;
+  // Sidebar three-dot menu's Rename/Pin (server/prisma/schema.prisma). `title`
+  // is null until a teacher renames this entry — see useHistoryOverrides'
+  // titleFor(), which falls back to `query` in that case.
+  title: string | null;
+  pinned: boolean;
 }
 
 export interface Analytics {

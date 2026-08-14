@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Volume2, Square, Copy, Share2, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { formatResponse } from '../lib/format';
 import { isSpeechSupported, speak, stopSpeaking } from '../lib/tts';
 import { useToast } from './Toast';
@@ -63,34 +64,51 @@ export default function ResponseCard({ query, text, language, context, queryId, 
 
       <div className="response-actions">
         {isSpeechSupported() && (
-          <button className={`action-chip${speaking ? ' speaking' : ''}`} onClick={toggleSpeak}>
-            {speaking ? '⏹ Stop' : '🔊 Read aloud'}
+          <button
+            type="button"
+            className={`action-chip${speaking ? ' speaking' : ''}`}
+            onClick={toggleSpeak}
+            aria-label={speaking ? 'Stop reading' : 'Read aloud'}
+            aria-pressed={speaking}
+            title={speaking ? 'Stop reading' : 'Read aloud'}
+          >
+            {speaking ? <Square size={15} aria-hidden="true" /> : <Volume2 size={15} aria-hidden="true" />}
           </button>
         )}
-        <button className="action-chip" onClick={copy}>📋 Copy</button>
-        <button className="action-chip whatsapp" onClick={shareWhatsApp}>💬 WhatsApp</button>
+        <button type="button" className="action-chip" onClick={copy} aria-label="Copy" title="Copy">
+          <Copy size={15} aria-hidden="true" />
+        </button>
+        <button type="button" className="action-chip" onClick={shareWhatsApp} aria-label="Share" title="Share">
+          <Share2 size={15} aria-hidden="true" />
+        </button>
         <SaveToLibrary query={query} text={text} language={language} context={context} queryId={queryId} />
+        {queryId && (
+          <>
+            <button
+              type="button"
+              className={`action-chip${rating === 'helpful' ? ' chosen' : ''}`}
+              onClick={() => onFeedback('helpful')}
+              disabled={rating !== null}
+              aria-label="Like"
+              aria-pressed={rating === 'helpful'}
+              title="Like"
+            >
+              <ThumbsUp size={15} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={`action-chip${rating === 'not_helpful' ? ' chosen' : ''}`}
+              onClick={() => onFeedback('not_helpful')}
+              disabled={rating !== null}
+              aria-label="Dislike"
+              aria-pressed={rating === 'not_helpful'}
+              title="Dislike"
+            >
+              <ThumbsDown size={15} aria-hidden="true" />
+            </button>
+          </>
+        )}
       </div>
-
-      {queryId && (
-        <div className="feedback-row">
-          <span>Was this helpful?</span>
-          <button
-            className={`feedback-btn${rating === 'helpful' ? ' chosen' : ''}`}
-            onClick={() => onFeedback('helpful')}
-            disabled={rating !== null}
-          >
-            👍 Yes
-          </button>
-          <button
-            className={`feedback-btn${rating === 'not_helpful' ? ' chosen' : ''}`}
-            onClick={() => onFeedback('not_helpful')}
-            disabled={rating !== null}
-          >
-            👎 No
-          </button>
-        </div>
-      )}
     </div>
   );
 }
