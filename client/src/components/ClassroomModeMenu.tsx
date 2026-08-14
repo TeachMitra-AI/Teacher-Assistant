@@ -23,7 +23,7 @@ interface ClassroomModeMenuProps {
 }
 
 const OPTIONS: { on: boolean; label: string; description: string }[] = [
-  { on: false, label: 'Off', description: 'Just answer my question' },
+  { on: false, label: 'Assistant Mode', description: 'Just answer my question' },
   {
     on: true,
     label: 'Classroom Mode',
@@ -36,10 +36,16 @@ export default function ClassroomModeMenu({
 }: ClassroomModeMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  // What the tooltip and the accessible name report. Reads as a selection
-  // ("Classroom Mode" / "Off") rather than as on/off, so it still makes sense
-  // once there is more than one mode to choose between.
-  const selected = OPTIONS.find((o) => o.on === classroomMode)?.label ?? 'Off';
+  // What the button itself displays, and what the tooltip and accessible name
+  // report. Reads as a selection ("Classroom Mode" / "Assistant Mode") rather
+  // than as on/off, so it still makes sense once there is more than one mode
+  // to choose between — and shows the teacher's actual current choice at a
+  // glance, rather than a generic control name.
+  const selected = OPTIONS.find((o) => o.on === classroomMode)?.label ?? 'Assistant Mode';
+  // The control's own name IS the off-state label ("Assistant Mode"), so
+  // pairing it with itself in the accessible name would read as a stutter —
+  // only prefix it once a real mode is selected.
+  const accessibleLabel = classroomMode ? `Assistant Mode: ${selected}` : 'Assistant Mode';
   // Same shared outside-click + Escape behaviour as every other popover in the
   // app (profile menu, teaching context, AddMenu).
   useDismissable(open, ref, () => setOpen(false));
@@ -53,21 +59,15 @@ export default function ClassroomModeMenu({
         disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Assistant Mode: ${selected}`}
+        aria-label={accessibleLabel}
+        title={accessibleLabel}
       >
-        {/* The button names the CONTROL, the popover names the choices inside
-            it — which is what lets a second mode be added without the button's
-            label becoming a lie. */}
-        <span className="classroom-menu-label">Assistant Mode</span>
-        {/* Shown instead of the full label on a narrow screen. With no icon on
-            this button there is nothing else to identify it, so it shortens
-            rather than disappearing. */}
-        <span className="classroom-menu-label-short">Mode</span>
+        <span className="classroom-menu-label">{selected}</span>
         <ChevronDown size={14} aria-hidden="true" className="classroom-menu-caret" />
       </button>
 
       {open && (
-        <div className="composer-menu-popover composer-menu-popover--right" role="menu" aria-label="Assistant Mode">
+        <div className="composer-menu-popover" role="menu" aria-label="Assistant Mode">
           {OPTIONS.map((option) => (
             <button
               key={option.label}
