@@ -13,7 +13,7 @@ import TopBar from '../components/TopBar';
 import Sidebar from '../components/Sidebar';
 import WelcomeScreen from '../components/WelcomeScreen';
 import MessageList from '../components/MessageList';
-import ContextBar from '../components/ContextBar';
+import TeachingContextMenu from '../components/TeachingContextMenu';
 import Composer from '../components/Composer';
 import OnboardingTip from '../components/OnboardingTip';
 import ChatResizeHandle from '../components/ChatResizeHandle';
@@ -115,10 +115,8 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   const [isMobile, setIsMobile] = useState(() => isMobileViewport());
   // A SECOND, narrower breakpoint than `isMobile` (768px) above, matching the
   // 640px at which the stylesheet switches the Coach page into its phone
-  // layout. It decides WHERE the context row is rendered — under the header on
-  // a phone, in the composer dock otherwise — which is a DOM change the
-  // stylesheet cannot make on its own. The two numbers must stay in step with
-  // their respective @media blocks.
+  // layout. Used below to decide when the scroll-to-latest button is needed —
+  // see its comment.
   const isPhoneLayout = useMediaQuery('(max-width: 640px)');
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -531,19 +529,20 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
 
   return (
     <div className={`page coach-shell${isEmpty ? ' coach-empty' : ''}`}>
-      <TopBar preferences={preferences} onSidebarToggle={() => setSidebarOpen((o) => !o)} sidebarOpen={sidebarOpen} />
-
-      {/* PHONE ONLY: the context row sits directly under the header, where it
-          is a compact filter strip that stays out of the way of the answer.
-          Everywhere else it stays in the composer dock (below), beside the
-          question it qualifies. Rendered in exactly ONE of the two places —
-          rendering it in both and hiding one with CSS would put a second set of
-          Grade/Subject/Language comboboxes in the accessibility tree. */}
-      {isPhoneLayout && (
-        <div className="coach-context-row">
-          <ContextBar language={language} onLanguageChange={setLanguage} context={context} onContextChange={setCtx} />
-        </div>
-      )}
+      {/* showProfileMenu=false: this page's account menu lives at the bottom of
+          the Sidebar below instead (see Sidebar.tsx). extraControl fills the
+          slot that freed up with the teaching-context icon — same context/
+          language state this page has always owned, now behind one icon
+          instead of a permanently-visible row of pills. */}
+      <TopBar
+        preferences={preferences}
+        onSidebarToggle={() => setSidebarOpen((o) => !o)}
+        sidebarOpen={sidebarOpen}
+        showProfileMenu={false}
+        extraControl={(
+          <TeachingContextMenu language={language} onLanguageChange={setLanguage} context={context} onContextChange={setCtx} />
+        )}
+      />
 
       <div className="coach-body">
         <Sidebar
@@ -649,12 +648,6 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                   Tap <strong>Assistant Mode</strong> below and turn on <strong>Classroom Mode</strong> to get a lesson
                   plan, worksheet, quiz, homework and exit ticket alongside your answer.
                 </OnboardingTip>
-              )}
-              {/* The other half of the phone-only move above: on a phone this
-                  row has already been rendered under the header, and rendering
-                  it again here would duplicate every control. */}
-              {!isPhoneLayout && (
-                <ContextBar language={language} onLanguageChange={setLanguage} context={context} onContextChange={setCtx} />
               )}
               <Composer
                 value={query}

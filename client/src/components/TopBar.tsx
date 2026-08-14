@@ -1,53 +1,32 @@
-import { useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { PanelLeft, Sun, Moon, Compass, Settings, LifeBuoy, LogOut } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { PanelLeft, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../auth';
-import { useOnboarding } from '../onboarding';
 import { usePreferences } from '../hooks/usePreferences';
-import { useDismissable } from '../hooks/useDismissable';
-import { useHelpSupport } from './HelpSupport';
-import { ADMIN_ROLES, API_BASE, HELP_SUPPORT_ENABLED, ROLE_LABELS } from '../config';
+import { ADMIN_ROLES } from '../config';
+import ProfileMenu from './ProfileMenu';
 
 interface TopBarProps {
   preferences: ReturnType<typeof usePreferences>;
   onSidebarToggle?: () => void;
   sidebarOpen?: boolean;
+  // False only on the Coach page, where the account menu now lives at the
+  // bottom of the history Sidebar instead — see Sidebar.tsx. Every other page
+  // has no such sidebar, so this stays true (the default) there.
+  showProfileMenu?: boolean;
+  // A page-specific control rendered where this bar has room for one, e.g.
+  // the Coach page's teaching-context icon (which sits in the slot the
+  // profile chip used to occupy there, now that it moved to the Sidebar).
+  extraControl?: ReactNode;
 }
 
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  const letters = parts.slice(0, 2).map((p) => p[0]);
-  return letters.join('').toUpperCase();
-}
-
-export default function TopBar({ preferences, onSidebarToggle, sidebarOpen }: TopBarProps) {
-  const { user, logout } = useAuth();
-  const { reopenIntro } = useOnboarding();
-  const { openMenu: openHelp } = useHelpSupport();
+export default function TopBar({
+  preferences, onSidebarToggle, sidebarOpen, showProfileMenu = true, extraControl,
+}: TopBarProps) {
+  const { user } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
   const { theme, toggleTheme } = preferences;
   const isAdmin = user && ADMIN_ROLES.includes(user.role);
-  const displayName = user ? user.displayName || user.name : '';
-  const avatarEmoji = user?.preferences?.avatar;
-  // Precedence: custom photo > emoji > initials. avatarUrl is a path
-  // relative to the API root (see types.ts), never the image bytes
-  // themselves — API_BASE is prepended the same way api() does internally.
-  const avatarPhotoUrl = user?.avatarUrl ? `${API_BASE}${user.avatarUrl}` : null;
-
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  useDismissable(menuOpen, menuRef, () => setMenuOpen(false));
-
-  // Tracks a photo URL that failed to load (e.g. a stale cached reference,
-  // or the serving route being briefly unreachable) so the UI falls back to
-  // the emoji/initials span instead of a broken-image icon. Comparing
-  // against the CURRENT avatarPhotoUrl (not just a boolean) means a fresh
-  // upload/removal — which always changes the URL — naturally clears a
-  // stale failure without needing a separate reset effect.
-  const [brokenAvatarUrl, setBrokenAvatarUrl] = useState<string | null>(null);
-  const showAvatarPhoto = Boolean(avatarPhotoUrl) && avatarPhotoUrl !== brokenAvatarUrl;
 
   return (
     <header className="topbar">
@@ -118,74 +97,8 @@ export default function TopBar({ preferences, onSidebarToggle, sidebarOpen }: To
             {theme === 'dark' ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
           </button>
 
-          {user && (
-            <div className="profile-menu" ref={menuRef}>
-              <button
-                className="user-chip user-chip-btn"
-                onClick={() => setMenuOpen((o) => !o)}
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
-                aria-label={`Account menu for ${displayName}`}
-              >
-                <span className={`user-avatar${avatarEmoji && !showAvatarPhoto ? ' user-avatar-emoji' : ''}`} aria-hidden="true">
-                  {showAvatarPhoto ? (
-                    <img
-                      src={avatarPhotoUrl as string}
-                      alt=""
-                      className="user-avatar-photo"
-                      onError={() => setBrokenAvatarUrl(avatarPhotoUrl)}
-                    />
-                  ) : (
-                    avatarEmoji || initialsOf(displayName)
-                  )}
-                </span>
-                <span className="user-meta">
-                  <span className="user-name">{displayName}</span>
-                  <span className="user-role">{ROLE_LABELS[user.role]}</span>
-                </span>
-              </button>
-
-              {menuOpen && (
-                <div className="profile-dropdown" role="menu">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="profile-dropdown-item"
-                    onClick={() => { setMenuOpen(false); reopenIntro(); navigate('/'); }}
-                  >
-                    <Compass size={15} aria-hidden="true" /> Getting started
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="profile-dropdown-item"
-                    onClick={() => { setMenuOpen(false); navigate('/settings'); }}
-                  >
-                    <Settings size={15} aria-hidden="true" /> Settings
-                  </button>
-                  {HELP_SUPPORT_ENABLED && (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="profile-dropdown-item"
-                      onClick={() => { setMenuOpen(false); openHelp(); }}
-                    >
-                      <LifeBuoy size={15} aria-hidden="true" /> Need Help?
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="profile-dropdown-item profile-dropdown-danger"
-                    onClick={() => { setMenuOpen(false); logout(); }}
-                  >
-                    <LogOut size={15} aria-hidden="true" />
-                    Sign out
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+          {extraControl}
+          {showProfileMenu && <ProfileMenu variant="topbar" />}
         </div>
       </div>
     </header>

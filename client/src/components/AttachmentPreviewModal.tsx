@@ -13,9 +13,9 @@ import type { AttachmentTrayItem } from './AttachmentTray';
  * frame. This is where that check happens, so a teacher never has to send a
  * question to find out the picture was unusable.
  *
- * Portalled to document.body for the same reason ContextBar's popover is: the
- * composer dock becomes a scroll container once the resize handle shrinks it,
- * and a dialog rendered inside it would be clipped by that scrolling.
+ * Portalled to document.body because the composer dock becomes a scroll
+ * container once the resize handle shrinks it, and a dialog rendered inside
+ * it would be clipped by that scrolling.
  */
 interface AttachmentPreviewModalProps {
   attachment: AttachmentTrayItem;
