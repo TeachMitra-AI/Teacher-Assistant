@@ -1,6 +1,11 @@
 import { ChevronRight } from 'lucide-react';
 import OnboardingIntro from './OnboardingIntro';
-import { QUICK_ACTIONS, ADMIN_SHORTCUTS, SUPER_ADMIN_SHORTCUT } from '../config';
+// HIDDEN FROM THE HOMEPAGE (2026-08-15) — see docs/hide-homepage-items.md.
+// SUPER_ADMIN_SHORTCUT is dropped from this import while the Support Inbox
+// card is hidden; tsconfig's noUnusedLocals makes an unused import a build
+// error, so it cannot simply be left here. Restore with the line below.
+// import { QUICK_ACTIONS, ADMIN_SHORTCUTS, SUPER_ADMIN_SHORTCUT } from '../config';
+import { QUICK_ACTIONS, ADMIN_SHORTCUTS } from '../config';
 
 interface WelcomeScreenProps {
   name: string;
@@ -17,8 +22,19 @@ interface WelcomeScreenProps {
   onNavigate: (to: string) => void;
 }
 
-export default function WelcomeScreen({ name, isAdmin, isSuperAdmin, showIntro, onDismissIntro, onPickAction, onNavigate }: WelcomeScreenProps) {
-  const shortcuts = isSuperAdmin ? [...ADMIN_SHORTCUTS, SUPER_ADMIN_SHORTCUT] : ADMIN_SHORTCUTS;
+// `isSuperAdmin` stays declared in WelcomeScreenProps above but is
+// deliberately NOT destructured here while the Support Inbox card is hidden:
+// an unused interface field is legal, an unused binding is a build error
+// (tsconfig noUnusedLocals). Keeping the prop in the interface means
+// CoachPage.tsx still passes it and needs no edit, so restoring the card is a
+// single-file change. See docs/hide-homepage-items.md.
+export default function WelcomeScreen({ name, isAdmin, showIntro, onDismissIntro, onPickAction, onNavigate }: WelcomeScreenProps) {
+  // HIDDEN FROM THE HOMEPAGE (2026-08-15) — restore the Support Inbox card by
+  // reinstating the commented line and adding `isSuperAdmin` back to the
+  // parameters above. The Support PAGE is untouched and still reachable from
+  // the admin tabs (components/AdminTabs.tsx).
+  // const shortcuts = isSuperAdmin ? [...ADMIN_SHORTCUTS, SUPER_ADMIN_SHORTCUT] : ADMIN_SHORTCUTS;
+  const shortcuts = ADMIN_SHORTCUTS;
   return (
     <div className="welcome-screen">
       <div className="welcome-hero">
