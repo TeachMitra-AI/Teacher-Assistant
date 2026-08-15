@@ -1,11 +1,14 @@
+import { useMemo } from 'react';
 import { ChevronRight } from 'lucide-react';
 import OnboardingIntro from './OnboardingIntro';
+import DailyHighlight from './DailyHighlight';
 // HIDDEN FROM THE HOMEPAGE (2026-08-15) — see docs/hide-homepage-items.md.
 // SUPER_ADMIN_SHORTCUT is dropped from this import while the Support Inbox
 // card is hidden; tsconfig's noUnusedLocals makes an unused import a build
 // error, so it cannot simply be left here. Restore with the line below.
 // import { QUICK_ACTIONS, ADMIN_SHORTCUTS, SUPER_ADMIN_SHORTCUT } from '../config';
 import { QUICK_ACTIONS, ADMIN_SHORTCUTS } from '../config';
+import { getWelcomeGreeting, getDailyHighlight } from '../lib/welcome';
 
 interface WelcomeScreenProps {
   name: string;
@@ -35,12 +38,20 @@ export default function WelcomeScreen({ name, isAdmin, showIntro, onDismissIntro
   // the admin tabs (components/AdminTabs.tsx).
   // const shortcuts = isSuperAdmin ? [...ADMIN_SHORTCUTS, SUPER_ADMIN_SHORTCUT] : ADMIN_SHORTCUTS;
   const shortcuts = ADMIN_SHORTCUTS;
+  // Computed once per mount (and whenever the name changes) rather than on
+  // every re-render, so the greeting/highlight stay stable for the whole
+  // session — see lib/welcome.ts for why the underlying selection is already
+  // deterministic by date.
+  const { greeting, subtitle } = useMemo(() => getWelcomeGreeting(name), [name]);
+  const highlight = useMemo(() => getDailyHighlight(), []);
   return (
     <div className="welcome-screen">
       <div className="welcome-hero">
-        <h1 className="welcome-title">Namaste{name ? `, ${name}` : ''} 👋</h1>
-        <p className="welcome-subtitle">How can I help you teach today?</p>
+        <h1 className="welcome-title">{greeting}</h1>
+        <p className="welcome-subtitle">{subtitle}</p>
       </div>
+
+      <DailyHighlight highlight={highlight} />
 
       {showIntro && <OnboardingIntro isAdmin={isAdmin} onDismiss={onDismissIntro} />}
 
