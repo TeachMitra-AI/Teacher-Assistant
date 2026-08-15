@@ -35,9 +35,8 @@ import { api, ApiError } from '../api';
 // coupling to a single line is what makes the feature deletable and what keeps
 // this file — the most-used path in the product — reviewable.
 import { useAssistantRouting, type RoutingOutcome } from '../assistant/RouterProvider';
-import { buildSuffixedQuery } from '../lib/followUp';
 import { persistOnboarding } from '../lib/onboarding';
-import { ADMIN_ROLES, CLASSROOM_MODE_ENABLED, SPEECH_LOCALE, type FollowUpAction } from '../config';
+import { ADMIN_ROLES, CLASSROOM_MODE_ENABLED, SPEECH_LOCALE } from '../config';
 import type { AttachmentMeta, CoachResponse, HistoryItem, QueryContext, Turn } from '../types';
 
 const EMPTY_CONTEXT: QueryContext = { grade: '', subject: '', classroomType: '', issueType: '' };
@@ -407,16 +406,6 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     await runTurn(turn.id, turn.query, turn.language, turn.context, turn.classroomMode ?? false);
   }
 
-  function handleFollowUp(turn: Turn, action: FollowUpAction) {
-    if (action.kind === 'translate') {
-      setLanguage(action.targetLanguage);
-      submitTurn(turn.query, action.targetLanguage, turn.context);
-    } else {
-      const augmented = buildSuffixedQuery(turn.query, action.suffix);
-      submitTurn(augmented, turn.language, turn.context);
-    }
-  }
-
   async function handleFeedback(turnId: string, rating: 'helpful' | 'not_helpful') {
     const turn = turns.find((t) => t.id === turnId);
     const queryId = turn?.response?.queryId;
@@ -638,7 +627,6 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                 <MessageList
                   turns={turns}
                   onFeedback={handleFeedback}
-                  onFollowUp={handleFollowUp}
                   onRetry={handleRetry}
                   bottomRef={bottomRef}
                 />

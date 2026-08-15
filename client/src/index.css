@@ -1473,19 +1473,6 @@ button { font-family: inherit; cursor: pointer; }
 [data-theme='dark'] .resource-doc-delete:hover { color: #f87171; }
 .resource-doc-body { color: var(--text); }
 
-.follow-up-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid var(--border); }
-.follow-up-chip {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0.45rem 0.85rem;
-  font-size: 0.83rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  transition: border-color 0.12s ease, color 0.12s ease;
-}
-.follow-up-chip:hover { border-color: var(--orange); color: var(--orange); }
-
 /* AI Learning Representation System (ADR Phase D) — the "smaller first
    slice" generic display: plain lists/tables via CSS variables so light and
    dark theme are both covered for free, matching every other component on

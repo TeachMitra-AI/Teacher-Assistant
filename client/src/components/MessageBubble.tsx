@@ -2,23 +2,21 @@ import { GraduationCap } from 'lucide-react';
 import ResponseCard from './ResponseCard';
 import RunStatus from './RunStatus';
 import ClassroomSet from './ClassroomSet';
-import FollowUpChips from './FollowUpChips';
 import AttachmentTray from './AttachmentTray';
 import LearningRepresentationPanel from './LearningRepresentationPanel';
 import { useHelpSupport } from './HelpSupport';
 import { useAuth } from '../auth';
 import { resolveFeatureFlag } from '../lib/featureFlags';
-import { HELP_SUPPORT_ENABLED, LEARNING_REPRESENTATION_ENABLED, type FollowUpAction } from '../config';
+import { HELP_SUPPORT_ENABLED, LEARNING_REPRESENTATION_ENABLED } from '../config';
 import type { Turn } from '../types';
 
 interface MessageBubbleProps {
   turn: Turn;
   onFeedback: (turnId: string, rating: 'helpful' | 'not_helpful') => void;
-  onFollowUp: (turn: Turn, action: FollowUpAction) => void;
   onRetry: (turn: Turn) => void;
 }
 
-export default function MessageBubble({ turn, onFeedback, onFollowUp, onRetry }: MessageBubbleProps) {
+export default function MessageBubble({ turn, onFeedback, onRetry }: MessageBubbleProps) {
   const hasAttachments = !!turn.attachments && turn.attachments.length > 0;
   const { openBugReport } = useHelpSupport();
   // Live, admin-toggleable value from session bootstrap wins when present;
@@ -120,9 +118,6 @@ export default function MessageBubble({ turn, onFeedback, onFollowUp, onRetry }:
                 restored={turn.restored === true}
                 queryId={turn.response.queryId ?? undefined}
               />
-            )}
-            {!hasAttachments && (
-              <FollowUpChips language={turn.response.language} onAction={(action) => onFollowUp(turn, action)} />
             )}
             {learningRepresentationEnabled && (
               <LearningRepresentationPanel query={turn.query} answer={turn.response.text} />
