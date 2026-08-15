@@ -637,6 +637,9 @@ button { font-family: inherit; cursor: pointer; }
   .welcome-hero { gap: 0.2rem; }
   .welcome-title { font-size: 1.4rem; }
   .welcome-subtitle { font-size: 0.95rem; }
+  /* Tighter still on phones — the 1.6rem desktop gap between hero and this
+     card would eat into the already-scarce above-the-fold space. */
+  .daily-highlight-card { margin-top: -0.3rem; padding: 0.5rem 0.75rem; }
   .quick-action-grid,
   .admin-shortcut-grid { grid-template-columns: 1fr; gap: 0.5rem; }
   .quick-action-card { padding: 0.65rem 0.85rem; gap: 0.7rem; }
@@ -937,6 +940,78 @@ button { font-family: inherit; cursor: pointer; }
 .welcome-hero { display: flex; flex-direction: column; gap: 0.35rem; }
 .welcome-title { font-size: 1.7rem; font-weight: 700; color: var(--text); margin: 0; letter-spacing: -0.01em; }
 .welcome-subtitle { font-size: 1.05rem; color: var(--text-muted); margin: 0; }
+
+/* ---- Daily Highlight (welcome screen) -------------------------------------
+   Deliberately quieter than .quick-action-card below: tinted surface instead
+   of white, no hover lift/shadow, smaller radius — so it reads as ambient
+   context, not a sixth action competing with the five real ones. */
+.daily-highlight-card {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  max-width: 460px;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.85rem;
+  color: var(--text);
+  cursor: pointer;
+  /* Pulls it closer to the hero than welcome-screen's 1.6rem flex gap would
+     otherwise leave, without changing that gap for the intro/cards below it. */
+  margin-top: -0.6rem;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+.daily-highlight-card:hover { border-color: var(--orange); background: var(--surface); }
+.daily-highlight-card:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.daily-highlight-emoji { font-size: 1.05rem; line-height: 1; flex-shrink: 0; }
+.daily-highlight-text { display: flex; flex-direction: column; gap: 0.05rem; min-width: 0; }
+.daily-highlight-eyebrow {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--orange);
+}
+.daily-highlight-summary { font-size: 0.82rem; color: var(--text-muted); line-height: 1.35; }
+
+/* Detail dialog opened by the card above. Same overlay/panel/rise convention
+   as .confirm-overlay/.confirm-panel (see ConfirmDialog.tsx) — reuses the
+   confirm-rise keyframe defined later in this file. */
+.highlight-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.highlight-panel {
+  background: var(--surface);
+  color: var(--text);
+  width: 100%;
+  max-width: 440px;
+  max-height: 80vh;
+  overflow-y: auto;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  padding: 1.3rem 1.4rem 1.4rem;
+  text-align: left;
+  animation: confirm-rise 0.16s ease;
+}
+.highlight-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.75rem; }
+.highlight-panel-title { font-size: 1.1rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.highlight-panel-close { flex-shrink: 0; width: 32px; height: 32px; }
+.highlight-panel-body { color: var(--text-muted); font-size: 0.92rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.75rem; }
+.highlight-panel-body p { margin: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .highlight-panel { animation: none; }
+}
+
 .quick-action-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.7rem; width: 100%; max-width: 680px; }
 .quick-action-card {
   display: flex;

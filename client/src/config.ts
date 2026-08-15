@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-  NotebookPen, Target, Lightbulb, ClipboardCheck, Users,
+  NotebookPen, Target, Lightbulb, ClipboardCheck,
   LayoutDashboard, ShieldCheck, FileText, LifeBuoy,
   MessageCircle, Library, PencilRuler, Sparkles,
 } from 'lucide-react';
@@ -75,7 +75,6 @@ export const QUICK_ACTIONS: QuickAction[] = [
   { icon: Target, label: 'Create Classroom Activity', description: 'Engaging, ready-to-run classroom activities', prompt: 'Suggest a classroom activity for ' },
   { icon: Lightbulb, label: 'Explain a Concept', description: 'Simple explanations pitched to your grade', prompt: 'Explain this concept simply: ' },
   { icon: ClipboardCheck, label: 'Create Assessment', description: 'Quizzes and worksheets to check learning', prompt: 'Create a short assessment for ', hideOnMobile: true },
-  { icon: Users, label: 'Manage Classroom', description: 'Strategies for engagement and behaviour', prompt: 'How do I manage ', hideOnMobile: true },
 ];
 
 // First-run onboarding feature intro (Phase 1). Purely informational — unlike
