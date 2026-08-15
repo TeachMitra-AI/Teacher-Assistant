@@ -406,6 +406,25 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     await runTurn(turn.id, turn.query, turn.language, turn.context, turn.classroomMode ?? false);
   }
 
+  // Edit-and-resubmit a sent prompt (MessageBubble's Edit action). Updates
+  // the SAME turn in place — same `id`, same snapshotted language/context/
+  // classroomMode it was first submitted with — rather than appending a new
+  // one, so the thread never grows a duplicate message and the edited
+  // question simply gets a new answer where the old one was. Mirrors
+  // handleRetry above, just with the query text also changing.
+  async function handleEditTurn(turnId: string, newQuery: string) {
+    const turn = turns.find((t) => t.id === turnId);
+    if (!turn) return;
+    setTurns((ts) => ts.map((t) => (t.id === turnId
+      // `restored: false` — this is a fresh generation for the edited text,
+      // not the rebuilt-from-history state selectHistory produces, so
+      // ClassroomSet must not treat its cards as already-idle (D24).
+      ? { ...t, query: newQuery, status: 'pending', error: undefined, response: undefined, rating: null, restored: false, startedAt: Date.now() }
+      : t)));
+    scrollToBottom();
+    await runTurn(turnId, newQuery, turn.language, turn.context, turn.classroomMode ?? false);
+  }
+
   async function handleFeedback(turnId: string, rating: 'helpful' | 'not_helpful') {
     const turn = turns.find((t) => t.id === turnId);
     const queryId = turn?.response?.queryId;
@@ -628,6 +647,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                   turns={turns}
                   onFeedback={handleFeedback}
                   onRetry={handleRetry}
+                  onEdit={handleEditTurn}
                   bottomRef={bottomRef}
                 />
               )}

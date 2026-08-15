@@ -489,6 +489,49 @@ button { font-family: inherit; cursor: pointer; }
 .history-item-menu-item.danger svg { color: inherit; }
 [data-theme='dark'] .history-item-menu-item.danger { color: #f87171; }
 
+/* Share popover (components/ShareMenu.tsx) — a dedicated, compact "share
+   sheet" rather than a reuse of the taller chat-actions list above: tighter
+   width and padding, and a regular (not bold) item weight, so a 3-item share
+   menu reads as its own minimal affordance instead of a stretched action
+   list. Portalled to document.body for the same overflow-clipping reason as
+   .history-item-menu-popover — see ShareMenu.tsx. `width: max-content` lets
+   it shrink to its content instead of always filling min-width; the
+   viewport-relative max-width keeps it from ever overflowing a narrow
+   (mobile) screen regardless of where the trigger sits. */
+.share-menu-popover {
+  position: fixed;
+  width: max-content;
+  min-width: 164px;
+  max-width: calc(100vw - 24px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  z-index: 1300;
+}
+.share-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+}
+.share-menu-item:hover { background: var(--surface-2); }
+.share-menu-item:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; background: var(--surface-2); }
+.share-menu-item svg { flex-shrink: 0; color: var(--text-muted); }
+
 /* Pin indicator — same accent colour every other "marked/active" state in the
    app already uses (active nav link, chosen feedback button, saved bookmark),
    so a pinned chat reads as marked without a second visual language. */
@@ -637,6 +680,7 @@ button { font-family: inherit; cursor: pointer; }
      bubble that cannot be mistaken for the assistant's prose, but narrower and
      quieter than the answer it introduces. */
   .user-bubble { max-width: 88%; font-size: 0.9rem; padding: 0.55rem 0.8rem; }
+  .user-edit-box { max-width: 88%; }
 
   /* Reading typography for long answers. The line height and the space between
      paragraphs and around headings do most of the work here — a wall of 1.5
@@ -736,6 +780,7 @@ button { font-family: inherit; cursor: pointer; }
      on the narrowest screens. */
   .response-body { font-size: 0.97rem; line-height: 1.72; }
   .user-bubble { max-width: 92%; }
+  .user-edit-box { max-width: 92%; }
 }
 
 /* ---- Coach main column: welcome / thread / composer -------------------- */
@@ -1073,7 +1118,7 @@ button { font-family: inherit; cursor: pointer; }
 /* ---- Message thread ------------------------------------------------------- */
 .message-list { display: flex; flex-direction: column; gap: 1.6rem; padding-bottom: 1rem; }
 .message-group { display: flex; flex-direction: column; gap: 0.9rem; }
-.message-user { display: flex; justify-content: flex-end; }
+.message-user { display: flex; justify-content: flex-end; align-items: flex-start; gap: 0.3rem; }
 .user-bubble {
   max-width: 80%;
   background: var(--surface-2);
@@ -1085,6 +1130,109 @@ button { font-family: inherit; cursor: pointer; }
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Copy/Edit actions on a sent prompt (MessageBubble.tsx) — a small group,
+   hidden until the row is hovered/focused (same subtle-until-hover/focus/
+   touch treatment as .history-item-menu-btn), so they don't permanently
+   occupy space next to every message. */
+.message-user-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 0.55rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.message-user:hover .message-user-actions,
+.message-user-actions:focus-within { opacity: 1; }
+@media (hover: none) {
+  .message-user-actions { opacity: 1; }
+}
+.message-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.message-action-btn:hover { background: var(--surface-2); color: var(--text); }
+.message-action-btn:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+
+/* Compact CSS-only tooltip (`.has-tooltip` + `data-tooltip="..."`) for a
+   trigger whose accessible name already carries the label (aria-label) —
+   this is a supplementary VISUAL hint, not the accessibility mechanism.
+   Deliberately NOT the native `title` attribute: browsers render that with
+   an inconsistent, unstyleable delay/appearance, which is what "professional"
+   here is replacing. Fixed dark/neutral regardless of the app's own theme —
+   the same inverted-surface convention most tooltip systems use (GitHub,
+   Slack, Material), since a tooltip has to read clearly over whatever
+   content it floats above, not blend into the page chrome under it. */
+.has-tooltip { position: relative; }
+.has-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%) translateY(2px);
+  background: #20242c;
+  color: #f5f6f7;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  padding: 0.3rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 40;
+}
+.has-tooltip:hover::after,
+.has-tooltip:focus-visible::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+/* Touch has no hover, and a tap does not produce :focus-visible either — the
+   accessible name (aria-label) is what a touch/screen-reader user gets
+   instead, same as every icon-only button in this app. */
+@media (hover: none) {
+  .has-tooltip::after { display: none; }
+}
+
+/* The editable form a user bubble becomes while its Edit action is open —
+   same shape/radius as .user-bubble so the swap doesn't jump the layout. */
+.user-edit-box {
+  max-width: 80%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  background: var(--surface-2);
+  border: 1px solid var(--orange);
+  border-radius: 16px 16px 4px 16px;
+  padding: 0.7rem 1rem;
+}
+.user-edit-textarea {
+  width: 100%;
+  resize: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  padding: 0;
+}
+.user-edit-textarea:focus { outline: none; }
+.user-edit-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+.user-edit-actions .btn-primary,
+.user-edit-actions .btn-text { padding: 0.4rem 0.9rem; font-size: 0.85rem; }
 .message-assistant { display: flex; flex-direction: column; }
 .assistant-pending {
   display: flex;
@@ -1272,6 +1420,10 @@ button { font-family: inherit; cursor: pointer; }
    rest of the app does — see .composer-menu-btn.active, .classroom-menu-btn.active. */
 .action-chip.speaking,
 .action-chip.chosen { background: var(--orange); color: #fff; border-color: var(--orange); }
+/* Share popover open — same "active" treatment as .composer-menu-btn.active
+   rather than the solid-fill "chosen" state above, since this marks an open
+   popover, not a persisted choice. */
+.action-chip.active { border-color: var(--orange); color: var(--orange); background: var(--orange-soft); }
 
 /* ---- Save to Library (response action + popover) ------------------------- */
 .save-library { position: relative; display: inline-flex; }
@@ -2637,21 +2789,34 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   .btn-spinner { animation-duration: 1.4s; }
 }
 
-/* ---- Toast ---------------------------------------------------------------- */
-.toast-stack { position: fixed; bottom: 1.2rem; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; flex-direction: column; gap: 0.5rem; align-items: center; }
+/* ---- Toast ----------------------------------------------------------------
+   A compact, bordered surface card — the same subtle tint-on-neutral
+   language the app already uses for status/state (.status-pill,
+   .type-tag, .history-item-menu-item.danger) — rather than a solid-fill
+   colored pill. Kept small and off to one side of the content it reports
+   on, not a wide banner across it. */
+.toast-stack { position: fixed; bottom: 1.2rem; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; flex-direction: column; gap: 0.4rem; align-items: center; }
 .toast {
-  background: var(--text);
-  color: var(--bg);
-  padding: 0.7rem 1.1rem;
-  border-radius: 999px;
-  font-size: 0.88rem;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: min(340px, calc(100vw - 2rem));
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 0.55rem 0.85rem;
+  border-radius: 10px;
+  font-size: 0.83rem;
+  font-weight: 500;
+  line-height: 1.35;
   box-shadow: var(--shadow);
-  animation: toast-in 0.2s ease;
+  animation: toast-in 0.16s ease;
 }
-.toast-success { background: #2e7d32; color: #fff; }
-.toast-error { background: #c62828; color: #fff; }
-@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+.toast-success { color: #15803d; border-color: #86efac; background: #f0fdf4; }
+.toast-error { color: #b91c1c; border-color: #fca5a5; background: #fef2f2; }
+[data-theme='dark'] .toast-success { color: #6ee7a8; border-color: #14532d; background: rgba(20, 83, 45, 0.35); }
+[data-theme='dark'] .toast-error { color: #fca5a5; border-color: #7f1d1d; background: rgba(127, 29, 29, 0.35); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
 
 /* ---- Admin ---------------------------------------------------------------- */
 .admin-main { max-width: 1080px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
