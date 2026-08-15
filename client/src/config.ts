@@ -126,23 +126,15 @@ export const SUPER_ADMIN_SHORTCUT: AdminShortcut = {
   icon: LifeBuoy, label: 'Support Inbox', description: 'Bug reports and feedback from teachers', to: '/admin/support',
 };
 
-// Contextual follow-up chips shown under an AI response. Each one resubmits
-// a *new*, self-contained turn — either the original short question with a
-// brief instruction appended, or the same question with the language
-// switched. Neither approach needs the (potentially very long) previous
-// answer text, so both stay comfortably under MAX_QUERY_LENGTH without any
-// backend change.
-export type FollowUpAction =
-  | { id: string; label: string; icon: string; kind: 'suffix'; suffix: string }
-  | { id: string; label: string; icon: string; kind: 'translate'; targetLanguage: string };
-
-export const FOLLOW_UP_ACTIONS: FollowUpAction[] = [
-  { id: 'simplify', label: 'Make it simpler', icon: '✨', kind: 'suffix', suffix: ' Explain this more simply, in easy words.' },
-  { id: 'worksheet', label: 'Create a worksheet', icon: '📄', kind: 'suffix', suffix: ' Create a printable worksheet for this.' },
-  { id: 'activity', label: '5-minute activity', icon: '⏱️', kind: 'suffix', suffix: ' Suggest a quick 5-minute classroom activity for this.' },
-  { id: 'translate_hi', label: 'Translate to Hindi', icon: '🌐', kind: 'translate', targetLanguage: 'hi' },
-  { id: 'translate_en', label: 'Translate to English', icon: '🌐', kind: 'translate', targetLanguage: 'en' },
-];
+// The generic follow-up chip row that used to sit under every Coach answer
+// ("Make it simpler", "Create a worksheet", "5-minute activity", "Translate
+// to …") was removed — see docs/remove-coach-followup-chips.md. It cost
+// vertical space on every response while rarely matching the question asked,
+// and each of those actions already has a better home: the Quiz & Worksheet
+// Generator (pages/GeneratorPage.tsx), the workspace's AI_ACTIONS
+// (pages/ResourceWorkspace.tsx) and Classroom Mode (lib/classroom.ts).
+// "View as visual" (LearningRepresentationPanel) is the one action still
+// offered under an answer.
 
 export const MAX_QUERY_LENGTH = 500;
 
