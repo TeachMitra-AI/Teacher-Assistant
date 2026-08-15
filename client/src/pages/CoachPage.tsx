@@ -11,6 +11,7 @@ import { Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import TopBar from '../components/TopBar';
 import Sidebar from '../components/Sidebar';
+import ChatSearchOverlay from '../components/ChatSearchOverlay';
 import WelcomeScreen from '../components/WelcomeScreen';
 import MessageList from '../components/MessageList';
 import TeachingContextMenu from '../components/TeachingContextMenu';
@@ -27,6 +28,8 @@ import { useAuth } from '../auth';
 import { useOnboarding } from '../onboarding';
 import { useOnboardingTip } from '../hooks/useOnboardingTip';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import { useEdgeSwipeToOpen } from '../hooks/useSidebarSwipe';
+import { useHistoryOverrides } from '../hooks/useHistoryOverrides';
 import { api, ApiError } from '../api';
 // This page's ONLY import from the AI Action Router (milestone M6). Keeping the
 // coupling to a single line is what makes the feature deletable and what keeps
@@ -106,7 +109,22 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  // Lifted up from Sidebar (which used to own this directly) so
+  // ChatSearchOverlay can show the same pin/rename state — a chat renamed or
+  // pinned from either surface must show consistently in the other, and two
+  // separate hook instances would each keep their own, disagreeing overrides.
+  const {
+    isPinned, titleFor, pinnedIds, togglePin,
+    rename: renameHistoryItem, forget: forgetHistoryItem,
+  } = useHistoryOverrides(history);
   const [sidebarOpen, setSidebarOpen] = useState(() => !isMobileViewport());
+  // Chat-history search (TopBar's Search icon → ChatSearchOverlay.tsx, an
+  // overlay in the main content column, NOT inside Sidebar). Only whether
+  // it's open lives here; the query text is local to the overlay itself,
+  // since nothing outside it needs to read that. Independent of
+  // sidebarOpen — see toggleHistorySearch below for the one place they
+  // still interact, and why.
+  const [historySearchOpen, setHistorySearchOpen] = useState(false);
 
   // null = the composer keeps its default content-sized (auto) height; a
   // number is only ever set once the teacher actually drags the resize
@@ -146,14 +164,35 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     loadHistory();
   }, [loadHistory]);
 
-  // Close the sidebar (acting as a mobile drawer) with Escape.
+  // Toggles the search overlay. On mobile, the drawer is a fixed full-screen
+  // panel (z-index 1200 — see .sidebar's mobile rule in index.css) that would
+  // otherwise sit visually on top of the overlay (scoped to .coach-main-chat,
+  // a much lower stacking context) if both were open at once — closing it
+  // here avoids that dead-looking overlapping-layers state. Desktop's inline
+  // sidebar has no such conflict (it's a normal-flow column, not an overlay),
+  // so it's left alone there.
+  function toggleHistorySearch() {
+    if (historySearchOpen) {
+      setHistorySearchOpen(false);
+      return;
+    }
+    if (isMobile && sidebarOpen) setSidebarOpen(false);
+    setHistorySearchOpen(true);
+  }
+
+  // Close the sidebar (acting as a mobile drawer) with Escape. Skipped while
+  // search is open: ChatSearchOverlay closes itself on the same Escape press
+  // (via useDismissable), and this would otherwise ALSO fire — on desktop
+  // that means it would collapse the always-visible inline sidebar too, just
+  // because the teacher wanted to dismiss search.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setSidebarOpen(false);
+      if (e.key !== 'Escape' || historySearchOpen) return;
+      setSidebarOpen(false);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [historySearchOpen]);
 
   // When the viewport crosses from desktop into mobile, the sidebar switches
   // from an inline column to a fixed drawer — close it so it doesn't
@@ -176,6 +215,17 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  // Additional gesture on top of the existing tap-to-open icon — swipe right
+  // from the left screen edge to open the drawer (mobile only; see
+  // useSidebarSwipe.ts). Only armed while the drawer is closed, so it never
+  // competes with the swipe-to-close gesture Sidebar attaches to itself.
+  // Also closes search if it happens to be open — same overlapping-layers
+  // concern toggleHistorySearch guards against in the other direction.
+  useEdgeSwipeToOpen(isMobile && !sidebarOpen, () => {
+    setHistorySearchOpen(false);
+    setSidebarOpen(true);
+  });
 
   // "Getting Started" (Phase 2) can be triggered from any page, including while a
   // conversation is on screen. The intro only lives in the empty welcome state,
@@ -538,6 +588,8 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
         preferences={preferences}
         onSidebarToggle={() => setSidebarOpen((o) => !o)}
         sidebarOpen={sidebarOpen}
+        onSearchToggle={toggleHistorySearch}
+        searchOpen={historySearchOpen}
         showProfileMenu={false}
         extraControl={(
           <TeachingContextMenu language={language} onLanguageChange={setLanguage} context={context} onContextChange={setCtx} />
@@ -550,6 +602,13 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
           items={history}
           loading={historyLoading}
           activeId={activeHistoryId}
+          isMobile={isMobile}
+          isPinned={isPinned}
+          titleFor={titleFor}
+          pinnedIds={pinnedIds}
+          togglePin={togglePin}
+          rename={renameHistoryItem}
+          forget={forgetHistoryItem}
           onClose={() => setSidebarOpen(false)}
           onNewChat={handleNewChat}
           onSelect={selectHistory}
@@ -662,6 +721,18 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
               />
             </div>
           </div>
+
+          {/* Positioned against .coach-main-chat (position: relative in
+              index.css), so it covers only the main content column — never
+              the sidebar next to it — matching the Claude-style reference
+              this was built from rather than a full-viewport modal. */}
+          <ChatSearchOverlay
+            open={historySearchOpen}
+            items={history}
+            titleFor={titleFor}
+            onClose={() => setHistorySearchOpen(false)}
+            onSelect={selectHistory}
+          />
         </main>
       </div>
     </div>

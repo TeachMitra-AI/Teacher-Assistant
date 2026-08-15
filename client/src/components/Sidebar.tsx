@@ -5,13 +5,24 @@ import ProfileMenu from './ProfileMenu';
 import HistoryItemMenu from './HistoryItemMenu';
 import ConfirmDialog from './ConfirmDialog';
 import { useToast } from './Toast';
-import { useHistoryOverrides } from '../hooks/useHistoryOverrides';
+import { useDrawerSwipeToClose } from '../hooks/useSidebarSwipe';
+import { formatTimestamp } from '../lib/historyTime';
 
 interface SidebarProps {
   open: boolean;
   items: HistoryItem[];
   loading: boolean;
   activeId?: string | null;
+  isMobile: boolean;
+  // Pin/rename overrides — lifted up to CoachPage (one useHistoryOverrides
+  // instance) rather than called here, so ChatSearchOverlay's results agree
+  // with this list instead of keeping a second, disagreeing set of overrides.
+  isPinned: (id: string) => boolean;
+  titleFor: (item: HistoryItem) => string;
+  pinnedIds: string[];
+  togglePin: (id: string) => void;
+  rename: (id: string, title: string) => void;
+  forget: (id: string) => void;
   onClose: () => void;
   onNewChat: () => void;
   onSelect: (item: HistoryItem) => void;
@@ -21,22 +32,11 @@ interface SidebarProps {
 
 const MAX_TITLE_LENGTH = 200;
 
-function formatTimestamp(iso: string): string {
-  const date = new Date(iso);
-  const diff = Date.now() - date.getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins} min ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} hr ago`;
-  return date.toLocaleDateString();
-}
-
 export default function Sidebar({
-  open, items, loading, activeId, onClose, onNewChat, onSelect, onDelete, onClearAll,
+  open, items, loading, activeId, isMobile, isPinned, titleFor, pinnedIds, togglePin, rename: renameHistoryItem, forget,
+  onClose, onNewChat, onSelect, onDelete, onClearAll,
 }: SidebarProps) {
   const { show } = useToast();
-  const { isPinned, titleFor, pinnedIds, togglePin, rename: renameHistoryItem, forget } = useHistoryOverrides(items);
 
   // Only one row's menu open at a time (a self-managed popover per row could
   // not guarantee that), and only one row renaming at a time.
@@ -45,6 +45,12 @@ export default function Sidebar({
   const [renameDraft, setRenameDraft] = useState('');
   const [pendingDelete, setPendingDelete] = useState<HistoryItem | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
+
+  // Additional gesture on top of the existing tap/click/Escape controls —
+  // swipe right-to-left on the open drawer to close it (mobile only; see
+  // useSidebarSwipe.ts). Desktop's inline sidebar is untouched.
+  useDrawerSwipeToClose(asideRef, isMobile && open, onClose);
 
   useEffect(() => {
     if (renamingId) renameInputRef.current?.select();
@@ -100,7 +106,7 @@ export default function Sidebar({
   return (
     <>
       <div className={`sidebar-backdrop${open ? ' show' : ''}`} onClick={onClose} hidden={!open} />
-      <aside className={`sidebar${open ? ' sidebar-open' : ''}`} aria-hidden={!open}>
+      <aside ref={asideRef} className={`sidebar${open ? ' sidebar-open' : ''}`} aria-hidden={!open}>
         <div className="sidebar-header">
           <button type="button" className="new-chat-btn" onClick={onNewChat}>
             <Plus size={18} strokeWidth={2.4} aria-hidden="true" /> New chat
