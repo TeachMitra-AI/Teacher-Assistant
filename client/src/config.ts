@@ -114,7 +114,11 @@ export interface AdminShortcut {
 
 export const ADMIN_SHORTCUTS: AdminShortcut[] = [
   { icon: LayoutDashboard, label: 'Dashboard', description: 'Usage analytics and teaching insights', to: '/admin' },
-  { icon: ShieldCheck, label: 'Manage', description: 'Schools, users, and roles', to: '/admin/manage' },
+  // HIDDEN FROM THE HOMEPAGE (2026-08-15) — see docs/hide-homepage-items.md.
+  // Commented out rather than deleted so it can be restored: uncomment the
+  // line below and the Manage card reappears. The Manage PAGE is untouched
+  // and still reachable from the admin tabs (components/AdminTabs.tsx).
+  // { icon: ShieldCheck, label: 'Manage', description: 'Schools, users, and roles', to: '/admin/manage' },
 ];
 
 // A separate shortcut, not folded into ADMIN_SHORTCUTS above — that array is
@@ -122,6 +126,12 @@ export const ADMIN_SHORTCUTS: AdminShortcut[] = [
 // AdminTabs.tsx). Kept as its own constant so WelcomeScreen can include it
 // conditionally without widening the AdminShortcut list every other admin
 // role already sees.
+//
+// CURRENTLY UNUSED (2026-08-15) — the Support Inbox card is hidden from the
+// homepage, so nothing imports this today. Left fully intact rather than
+// commented out: it is an `export`, so it costs no build error, and keeping
+// it whole means restoring the card is a one-line change in
+// WelcomeScreen.tsx. See docs/hide-homepage-items.md.
 export const SUPER_ADMIN_SHORTCUT: AdminShortcut = {
   icon: LifeBuoy, label: 'Support Inbox', description: 'Bug reports and feedback from teachers', to: '/admin/support',
 };
