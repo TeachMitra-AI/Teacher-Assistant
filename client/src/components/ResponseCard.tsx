@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Volume2, Square, Copy, Check, Share2, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Volume2, Square, Copy, Check, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { formatResponse } from '../lib/format';
 import { isSpeechSupported, speak, stopSpeaking } from '../lib/tts';
 import { useToast } from './Toast';
 import SaveToLibrary from './SaveToLibrary';
+import ShareMenu from './ShareMenu';
 import type { QueryContext } from '../types';
 
 interface ResponseCardProps {
@@ -62,11 +63,6 @@ export default function ResponseCard({ query, text, language, context, queryId, 
     }
   }
 
-  function shareWhatsApp() {
-    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank', 'noopener');
-  }
-
   const metaParts = [context.grade, context.subject].filter(Boolean);
 
   return (
@@ -102,9 +98,7 @@ export default function ResponseCard({ query, text, language, context, queryId, 
         >
           {copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
         </button>
-        <button type="button" className="action-chip" onClick={shareWhatsApp} aria-label="Share" title="Share">
-          <Share2 size={15} aria-hidden="true" />
-        </button>
+        <ShareMenu text={text} />
         <SaveToLibrary query={query} text={text} language={language} context={context} queryId={queryId} />
         {queryId && (
           <>

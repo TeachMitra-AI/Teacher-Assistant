@@ -6,14 +6,15 @@ interface MessageListProps {
   turns: Turn[];
   onFeedback: (turnId: string, rating: 'helpful' | 'not_helpful') => void;
   onRetry: (turn: Turn) => void;
+  onEdit: (turnId: string, query: string) => void;
   bottomRef: RefObject<HTMLDivElement>;
 }
 
-export default function MessageList({ turns, onFeedback, onRetry, bottomRef }: MessageListProps) {
+export default function MessageList({ turns, onFeedback, onRetry, onEdit, bottomRef }: MessageListProps) {
   return (
     <div className="message-list">
       {turns.map((turn) => (
-        <MessageBubble key={turn.id} turn={turn} onFeedback={onFeedback} onRetry={onRetry} />
+        <MessageBubble key={turn.id} turn={turn} onFeedback={onFeedback} onRetry={onRetry} onEdit={onEdit} />
       ))}
       <div ref={bottomRef} />
     </div>
