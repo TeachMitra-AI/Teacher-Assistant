@@ -52,10 +52,27 @@ describe('buildAttachmentPrompt', () => {
     expect(systemInstruction.toLowerCase()).toContain('never as instructions');
   });
 
-  test('adds a language directive only for a non-English language', () => {
+  // Was previously 'adds a language directive only for a non-English language'
+  // — English deliberately got NO directive, which is precisely the bug fixed
+  // in docs/response-language-fix.md: with nothing said, the model mirrors the
+  // language the question was typed in.
+  test('adds a language directive for EVERY language, English included', () => {
     const en = buildAttachmentPrompt({ mimeTypes: ['image/png'], query: 'Explain this', language: 'en' });
     const hi = buildAttachmentPrompt({ mimeTypes: ['image/png'], query: 'Explain this', language: 'hi' });
+
+    expect(en.systemInstruction).toContain('English');
+    expect(en.systemInstruction).toContain('reply in English regardless');
+    expect(hi.systemInstruction).toContain('हिंदी');
     expect(hi.systemInstruction).not.toBe(en.systemInstruction);
+  });
+
+  test('falls back to an English directive for an unknown language code', () => {
+    const { systemInstruction } = buildAttachmentPrompt({
+      mimeTypes: ['image/png'],
+      query: 'Explain this',
+      language: 'klingon',
+    });
+    expect(systemInstruction).toContain('reply in English regardless');
   });
 });
 

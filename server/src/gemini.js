@@ -324,8 +324,11 @@ class GeminiService {
    */
   async fetchContinuation(previousText, language, baseSystemInstruction, tracker) {
     tracker.continuations += 1;
-    const directive = languageDirective(language);
-    const languageInstruction = directive ? ` ${directive}` : '';
+    // Restated here even though `baseSystemInstruction` already carries it:
+    // this is the point where a long answer is most likely to drift back into
+    // English, so the last thing the model reads before continuing is which
+    // language to continue in.
+    const languageInstruction = ` ${languageDirective(language)}`;
     const continuationSystemInstruction = `${baseSystemInstruction}
 
 CONTINUATION TASK:
@@ -428,8 +431,12 @@ You are continuing a response that was cut off mid-way. The text already written
    */
   async generateResponse({ query, context = {}, language = 'en', responseStyle = 'balanced' }, options = {}) {
     const { systemInstruction: baseInstruction, userContent } = selectTemplate(query, context);
-    const directive = languageDirective(language);
-    const languageInstruction = directive ? `\n\nIMPORTANT: ${directive}` : '';
+    // Always present, for every language including English — see
+    // languageDirective's own comment for why saying nothing is not the same
+    // as saying "English". Kept LAST in the assembled instruction: the
+    // templates above mandate English section names ("Fun Activity 1"), and
+    // this is what tells the model to translate those too.
+    const languageInstruction = `\n\nIMPORTANT: ${languageDirective(language)}`;
     const style = styleDirective(responseStyle);
     const styleInstruction = style ? `\n\nRESPONSE STYLE: ${style}` : '';
     // Language/style directives are app-authored, not user text, so they

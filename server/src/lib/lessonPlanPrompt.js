@@ -4,7 +4,11 @@
 // carries the whole assessment pipeline, and a lesson plan shares none of its
 // shape. Keeping them apart is what stops renderAssessmentBody from growing a
 // "…unless it's a lesson plan" branch in every function.
-const { LANGUAGE_NAMES } = require('../prompts');
+// languageDirective is the SHARED one from prompts.js, not a local copy. This
+// file used to carry its own second implementation, which meant the "no
+// directive at all for English" bug had to be found and fixed twice
+// (docs/response-language-fix.md §6).
+const { LANGUAGE_NAMES, languageDirective } = require('../prompts');
 const { CLASSROOM_TYPES } = require('../actions/schemas/generateLessonPlan');
 
 // What each classroom reality actually demands of a lesson. Written as
@@ -61,11 +65,6 @@ const LESSON_PLAN_RESPONSE_SCHEMA = {
   ],
 };
 
-function languageDirective(lang) {
-  const name = LANGUAGE_NAMES[lang];
-  return name && lang !== 'en' ? `Write the entire lesson plan in ${name}.` : '';
-}
-
 /**
  * Builds the generation prompt for one lesson plan.
  * @param {{topic: string, grade: string, subject: string, language: string,
@@ -74,8 +73,10 @@ function languageDirective(lang) {
 function buildLessonPlanPrompt(config) {
   const { topic, grade, subject, language, duration, classroomType, instructions } = config;
   const lang = language && LANGUAGE_NAMES[language] ? language : 'en';
-  const directive = languageDirective(lang);
-  const languageLine = directive ? `- ${directive}\n` : '';
+  // Structured variant — LESSON_PLAN_SCHEMA's field names are what the
+  // renderer looks up to build the printed page, so they stay English while
+  // the lesson content itself is translated.
+  const languageLine = `- ${languageDirective(lang, { structured: true })}\n`;
 
   const systemInstruction = `You are an experienced Indian government school teacher writing a lesson plan in the standard format used in Indian schools (the NCERT / B.Ed / DIET format), for your own use in class tomorrow.
 

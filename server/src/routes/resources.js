@@ -153,8 +153,9 @@ function actionInstruction(action, targetGrade) {
 }
 
 function buildWorkspacePrompt(action, resource, targetGrade) {
-  const directive = languageDirective(resource.language || 'en');
-  const languageLine = directive ? `- ${directive}\n` : '';
+  // Prose variant: this action returns a complete Markdown document whose
+  // headings are the model's to write, so they must be translated too.
+  const languageLine = `- ${languageDirective(resource.language || 'en')}\n`;
   const systemInstruction = `You are an expert assistant helping an Indian government school teacher revise a saved teaching resource.
 
 RESOURCE CONTEXT:
@@ -249,8 +250,8 @@ function buildGeneratorPrompt(config) {
     format, grade, subject, topic, difficulty, questionType, questionCount, language, instructions,
   } = config;
   const lang = language && LANGUAGE_NAMES[language] ? language : 'en';
-  const directive = languageDirective(lang);
-  const languageLine = directive ? `- ${directive}\n` : '';
+  // Structured variant — this prompt returns JSON against ASSESSMENT_RESPONSE_SCHEMA.
+  const languageLine = `- ${languageDirective(lang, { structured: true })}\n`;
   const meta = formatMeta(format);
 
   const systemInstruction = `You are an expert Indian government school teacher writing exactly ${questionCount} ${meta.noun} questions.
@@ -304,8 +305,8 @@ The topic and any extra instructions are provided next as delimited user content
 function buildAssessmentSetPrompt(config, items) {
   const { grade, subject, topic, language, instructions } = config;
   const lang = language && LANGUAGE_NAMES[language] ? language : 'en';
-  const directive = languageDirective(lang);
-  const languageLine = directive ? `- ${directive}\n` : '';
+  // Structured variant — one JSON response covering every artifact in the set.
+  const languageLine = `- ${languageDirective(lang, { structured: true })}\n`;
 
   const perArtifact = items
     .map((item) => {
@@ -612,8 +613,9 @@ const ASSESSMENT_ACTION_INSTRUCTIONS = {
 
 /** Builds the structured (JSON) prompt for one of the four assessment AI-assist actions. */
 function buildAssessmentActionPrompt(action, resource, doc) {
-  const directive = languageDirective(resource.language || 'en');
-  const languageLine = directive ? `- ${directive}\n` : '';
+  // Structured variant — "mcq" / "True" / "False" are contract values the
+  // validator checks by exact string, so they must NOT be translated.
+  const languageLine = `- ${languageDirective(resource.language || 'en', { structured: true })}\n`;
   const existingJson = JSON.stringify({ instructions: doc.instructions, questions: doc.questions });
 
   const countRule = action === 'more_questions'

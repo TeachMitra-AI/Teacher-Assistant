@@ -3,7 +3,7 @@
 // (no phone numbers). Complements test/gemini.contract.test.js (which
 // exercises GeminiService end-to-end with a mocked fetch) and
 // test/ai-safety.test.js (which exercises the full route).
-const { selectTemplate } = require('../src/prompts');
+const { selectTemplate, languageDirective } = require('../src/prompts');
 
 // A loose "looks like a phone number" pattern: 2+ digit groups of 2-4
 // digits separated by common phone-number punctuation, OR any single run of
@@ -112,5 +112,86 @@ describe('prompts — no hardcoded or fake phone numbers', () => {
     for (const number of KNOWN_EMERGENCY_NUMBERS) {
       expect(overrideSection).not.toMatch(new RegExp(`\\b${number}\\b`));
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// languageDirective — docs/response-language-fix.md
+//
+// Uses NO real Gemini call: these assert the instruction text the app builds,
+// which is where the bug lived. The free tier allows 20 requests a minute, so
+// a loop of live calls here would exhaust the quota for everything else.
+// ---------------------------------------------------------------------------
+describe('prompts.languageDirective', () => {
+  // The actual bug. English used to return '' — and with nothing said about
+  // language at all, the model just mirrors whatever language the question was
+  // typed in, so a Hindi question with English selected came back in Hindi.
+  test('returns a directive for EVERY supported language, English included', () => {
+    for (const lang of ['en', 'hi', 'bn', 'te', 'mr', 'ta', 'gu', 'kn', 'or', 'hinglish']) {
+      expect(languageDirective(lang).length).toBeGreaterThan(0);
+      expect(languageDirective(lang, { structured: true }).length).toBeGreaterThan(0);
+    }
+  });
+
+  test('names the selected language, in its own script', () => {
+    expect(languageDirective('en')).toContain('English');
+    expect(languageDirective('hi')).toContain('हिंदी');
+    expect(languageDirective('bn')).toContain('বাংলা');
+    expect(languageDirective('ta')).toContain('தமிழ்');
+  });
+
+  // The second half of the fix: a Hindi body under English headings is the
+  // most common way this fails, so the directive has to name headings.
+  test('the prose variant demands the headings be translated too', () => {
+    const directive = languageDirective('bn');
+    expect(directive).toContain('every heading and section title');
+    expect(directive).toContain('ENTIRE response');
+    expect(directive).toContain('Do NOT leave the headings in English');
+  });
+
+  // Guards a gibberish sentence the first draft of this fix actually produced:
+  // "do not leave headings in English while the body is in English".
+  test('the half-translated warning is omitted when the target IS English', () => {
+    expect(languageDirective('en')).not.toContain('leave the headings in English');
+    expect(languageDirective('en')).toContain('every heading and section title');
+  });
+
+  // The trap: worksheets and lesson plans come back as JSON the app renders.
+  // Translating the field names, or "mcq"/"True"/"False", fails validation and
+  // the teacher gets an error instead of a worksheet.
+  test('the structured variant protects field names and fixed schema values', () => {
+    const directive = languageDirective('hi', { structured: true });
+    expect(directive).toContain('JSON field names');
+    expect(directive).toContain('stay exactly as specified in English');
+    expect(directive).toContain('"True"/"False"');
+    expect(directive).not.toContain('every heading and section title');
+  });
+
+  test('the directive is independent of the language the question was typed in', () => {
+    expect(languageDirective('en')).toContain('may be written in a different language or script');
+    expect(languageDirective('hi')).toContain('may be written in a different language or script');
+  });
+
+  // The teacher's own words outrank the dropdown — pinning the output language
+  // must not break "reply in Bengali please".
+  test('an explicit in-message request from the teacher overrides the dropdown', () => {
+    for (const lang of ['en', 'hi', 'hinglish']) {
+      expect(languageDirective(lang)).toContain('follow what they asked for instead');
+      expect(languageDirective(lang, { structured: true })).toContain('follow what they asked for instead');
+    }
+  });
+
+  // Hinglish needs describing, not just naming, or the model writes pure Hindi
+  // in Devanagari.
+  test('Hinglish is described as Roman-script Hindi/English, not just named', () => {
+    const directive = languageDirective('hinglish');
+    expect(directive).toContain('Roman (Latin) script');
+    expect(directive).toContain('NOT Devanagari');
+  });
+
+  test('an unknown or missing language code falls back to English', () => {
+    expect(languageDirective('klingon')).toContain('English');
+    expect(languageDirective(undefined)).toContain('English');
+    expect(languageDirective('')).toContain('English');
   });
 });

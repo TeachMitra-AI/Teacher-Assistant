@@ -31,22 +31,65 @@ const LANGUAGE_NAMES = {
   hinglish: 'Hinglish',
 };
 
-// Some languages need a richer instruction than just their name. Hinglish in
-// particular must be described so the model produces a natural Hindi+English
-// mix in Roman script rather than pure Hindi.
-const LANGUAGE_INSTRUCTIONS = {
+// Some languages need more than their name to be an actionable instruction.
+// Hinglish in particular must be described, or the model produces pure Hindi in
+// Devanagari. Appended as an extra sentence AFTER the main directive so it
+// composes with both variants below rather than replacing either.
+const LANGUAGE_NOTES = {
   hinglish:
-    'Respond in Hinglish — a natural, conversational mix of Hindi and English written in the Roman (Latin) script, the way Indian teachers actually speak in class. Use common English words where natural and write Hindi words in Roman script (NOT Devanagari). For example: "Bacchon ko groups mein baant do aur unhe ek fun activity dijiye."',
+    'Hinglish means a natural, conversational mix of Hindi and English written in the Roman (Latin) script, the way Indian teachers actually speak in class — use common English words where natural, and write the Hindi words in Roman script, NOT Devanagari. For example: "Bacchon ko groups mein baant do aur unhe ek fun activity dijiye."',
 };
 
+// The teacher's own words outrank the dropdown. Without this, pinning the
+// output language hard enough to survive a page of English instructions also
+// breaks "reply in Bengali please" typed into a chat set to Hindi — the
+// directive would win over the very person it is serving. Stated in both
+// variants (docs/response-language-fix.md §5).
+const TEACHER_OVERRIDE_CLAUSE =
+  'If — and ONLY if — the teacher explicitly asks in their own message for a different language, follow what they asked for instead of this instruction.';
+
 /**
- * Build the language directive appended to prompts. Returns '' for English.
- * @param {string} language
- * @returns {string}
+ * Build the language directive appended to prompts.
+ *
+ * ALWAYS returns a directive, English included. It used to return '' for
+ * English, on the assumption that English was the model's default anyway — but
+ * with no instruction at all the model simply mirrors the language the question
+ * was written in, so a Hindi question with English selected came back in Hindi.
+ * Saying nothing is not the same as saying "English" (docs/response-language-fix.md §3).
+ *
+ * Two variants, because the callers want genuinely different things:
+ *
+ *   PROSE (default) — the model writes the whole document, headings and all, so
+ *   the headings must be translated too. Half-translating (Hindi body under
+ *   English headings) is the most common way this fails.
+ *
+ *   STRUCTURED (`{ structured: true }`) — the model returns JSON that the app
+ *   renders into a page. Here the field names and the schema's fixed values
+ *   ("mcq", "True"/"False") are part of the contract, NOT prose: translating
+ *   them fails validation and the teacher gets an error instead of a worksheet.
+ *   Only the content inside the fields may be translated.
+ *
+ * @param {string} language one of LANGUAGE_NAMES' keys; anything else means English
+ * @param {{structured?: boolean}} [options]
+ * @returns {string} never empty
  */
-function languageDirective(language) {
-  if (language === 'en' || !LANGUAGE_NAMES[language]) return '';
-  return LANGUAGE_INSTRUCTIONS[language] || `Respond in ${LANGUAGE_NAMES[language]} language.`;
+function languageDirective(language, { structured = false } = {}) {
+  const lang = LANGUAGE_NAMES[language] ? language : 'en';
+  const name = LANGUAGE_NAMES[lang];
+  const note = LANGUAGE_NOTES[lang] ? ` ${LANGUAGE_NOTES[lang]}` : '';
+
+  if (structured) {
+    return `Write all the text content you return in ${name}.${note} The JSON field names, and any fixed values this schema specifies (a question's "type", a "True"/"False" answer), MUST stay exactly as specified in English — translate only the content inside them. The teacher's topic and instructions may be written in a different language or script; use ${name} regardless. ${TEACHER_OVERRIDE_CLAUSE}`;
+  }
+
+  // Naming the specific half-translated failure only makes sense when the
+  // target ISN'T English — "do not leave headings in English while the body is
+  // in English" is gibberish. Skipped for Hinglish too, which contains English
+  // words by definition; its note below already pins the form precisely.
+  const halfTranslatedClause =
+    lang === 'en' || lang === 'hinglish' ? '' : ` Do NOT leave the headings in English while the body is in ${name}.`;
+
+  return `Write your ENTIRE response in ${name}, including every heading and section title.${halfTranslatedClause}${note} The teacher's question may be written in a different language or script; reply in ${name} regardless. ${TEACHER_OVERRIDE_CLAUSE}`;
 }
 
 // Teacher-chosen presentation style for coaching responses. 'balanced' (or an

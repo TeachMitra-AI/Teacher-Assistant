@@ -77,8 +77,7 @@ function describeAttachmentSet(mimeTypes) {
  */
 function buildAttachmentPrompt({ mimeTypes, query, language }) {
   const lang = language && LANGUAGE_NAMES[language] ? language : 'en';
-  const directive = languageDirective(lang);
-  const languageLine = directive ? `\n${directive}` : '';
+  const languageLine = `\n${languageDirective(lang)}`;
   const description = describeAttachmentSet(mimeTypes);
   const plural = mimeTypes.length > 1;
 
