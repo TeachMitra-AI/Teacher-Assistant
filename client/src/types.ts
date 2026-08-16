@@ -499,6 +499,70 @@ export interface Student {
   updatedAt: string;
 }
 
+// ---- Classroom Management — Attendance (Phase 3) ---------------------------
+//
+// Mirrors routes/classroom.js's attendance responses exactly. "unmarked" is
+// a legal STATUS value here (roster/day-view entries, and the marks a save
+// request sends) even though the server never stores it as a row — see
+// schema.prisma's AttendanceRecord doc comment.
+export type AttendanceStatus = 'present' | 'absent' | 'unmarked';
+
+export interface AttendanceRosterEntry {
+  studentId: string;
+  name: string;
+  rollNumber?: string | null;
+  status: AttendanceStatus;
+}
+
+export interface AttendanceDaySummary {
+  present: number;
+  absent: number;
+  unmarked: number;
+  percentage: number | null;
+}
+
+// GET .../attendance?date=
+export interface DailyAttendance {
+  date: string;
+  roster: AttendanceRosterEntry[];
+  summary: AttendanceDaySummary;
+}
+
+export interface AttendanceStudentMonthStats {
+  studentId: string;
+  name: string;
+  rollNumber?: string | null;
+  present: number;
+  absent: number;
+  unmarked: number;
+  percentage: number | null;
+}
+
+// GET .../attendance/summary?month=
+export interface ClassAttendanceMonthSummary {
+  month: string;
+  totalStudents: number;
+  daysMarked: number;
+  present: number;
+  absent: number;
+  unmarked: number;
+  percentage: number | null;
+  perStudent: AttendanceStudentMonthStats[];
+}
+
+// GET /classroom/students/:studentId/attendance/history?month=
+export interface StudentAttendanceHistory {
+  studentId: string;
+  name: string;
+  rollNumber?: string | null;
+  month: string;
+  present: number;
+  absent: number;
+  unmarked: number;
+  percentage: number | null;
+  days: { date: string; status: 'present' | 'absent' }[];
+}
+
 // A saved item in the teacher's personal library. Mirrors the server DTO
 // (see server/src/routes/resources.js) — no ownership/internal fields.
 export interface LibraryResource {

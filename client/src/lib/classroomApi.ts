@@ -3,11 +3,18 @@
 // lib/resources.ts's shape — ownership is enforced server-side from the auth
 // token, so nothing here sends a teacherId.
 //
-// Phase 2 scope only: classes + students. Attendance/fees/analytics/export
-// wrappers land alongside the phases that actually use them (§17), rather
-// than being stubbed out ahead of use.
+// Phase 2 scope: classes + students. Phase 3 adds attendance below.
+// Fees/analytics/export wrappers land alongside the phases that use them
+// (§17), rather than being stubbed out ahead of use.
 import { api } from '../api';
-import type { SchoolClass, Student } from '../types';
+import type {
+  SchoolClass,
+  Student,
+  DailyAttendance,
+  AttendanceStatus,
+  ClassAttendanceMonthSummary,
+  StudentAttendanceHistory,
+} from '../types';
 
 export interface CreateClassInput {
   name: string;
@@ -77,4 +84,29 @@ export async function updateStudent(studentId: string, input: UpdateStudentInput
 export async function deactivateStudent(studentId: string): Promise<Student> {
   const data = await api<{ student: Student }>(`/classroom/students/${studentId}`, { method: 'DELETE' });
   return data.student;
+}
+
+// ---- Attendance (Phase 3) --------------------------------------------------
+
+export async function getDailyAttendance(classId: string, date: string): Promise<DailyAttendance> {
+  return api<DailyAttendance>(`/classroom/classes/${classId}/attendance?date=${date}`);
+}
+
+// Bulk upsert for one class + date — the server rejects the WHOLE batch if
+// any studentId doesn't belong to this teacher's class (§14), never a
+// partial save.
+export async function saveAttendance(
+  classId: string,
+  date: string,
+  marks: { studentId: string; status: AttendanceStatus }[]
+): Promise<{ date: string; saved: number }> {
+  return api(`/classroom/classes/${classId}/attendance`, { method: 'POST', body: { date, marks } });
+}
+
+export async function getAttendanceMonthSummary(classId: string, month: string): Promise<ClassAttendanceMonthSummary> {
+  return api<ClassAttendanceMonthSummary>(`/classroom/classes/${classId}/attendance/summary?month=${month}`);
+}
+
+export async function getStudentAttendanceHistory(studentId: string, month: string): Promise<StudentAttendanceHistory> {
+  return api<StudentAttendanceHistory>(`/classroom/students/${studentId}/attendance/history?month=${month}`);
 }

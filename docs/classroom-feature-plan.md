@@ -1,7 +1,175 @@
-# Classroom Feature — Plan
+# Classroom Feature — Plan & Implementation Status
 
-Status: PLANNING ONLY — no implementation yet.
+Status: Phases 1–3 implemented (backend foundation, Classes/Students UI,
+Attendance UI). Phases 4–5 (Fees UI, Reports/Analytics UI) NOT yet
+implemented — see "Implementation status" immediately below. Everything
+after that section (§1 onward) is the original design document, kept as-is
+for its architecture rationale; it describes what was *planned*, not always
+what shipped — where the two differ, this status section is authoritative.
+
 Branch: `feature/classroom-management` (cut from `main` @ `89856c9`, 2026-08-16).
+
+## Implementation status (read this first)
+
+Last updated: 2026-08-16, after Phase 3 (Attendance).
+
+### COMPLETED
+
+**Phase 1 — Backend foundation**
+- Prisma models: `SchoolClass`, `Student`, `AttendanceRecord`, `FeeRecord`
+  (migration `20260816141736_add_classroom_management`).
+- Router `server/src/routes/classroom.js`, mounted at `/api/classroom/*`
+  behind its own rate-limit bucket.
+- Class CRUD: list, create, get, rename, archive (soft-delete), restore.
+- Student CRUD: list, add, edit, deactivate (soft-delete), restore.
+- Ownership/tenant isolation: every route scoped to `teacherId: req.user.id`
+  via `findOwnedClass`/`findOwnedStudent` helpers; cross-teacher access 404s,
+  never 403s (no existence leak).
+- Attendance backend: day roster GET, bulk-upsert POST, month summary GET,
+  month day-by-day history GET, CSV export GET, plus (added in Phase 3)
+  per-student date-level history GET.
+- Fee backend foundation: status GET, per-student PATCH (Paid/Pending only),
+  CSV export GET — see Phase 4 below for what's still missing (the UI).
+- Analytics backend foundation: `GET /api/classroom/analytics/overview` and
+  `/analytics/classes/:classId` (cross-class and per-class totals) —
+  **backend only**, see Phase 5 below.
+- Feature flags: `CLASSROOM_MANAGEMENT_ENABLED` (server kill switch) +
+  `CLASSROOM_MANAGEMENT_ALLOWED_SCHOOL_CODES` (rollout filter) in
+  `server/src/lib/flags.js`; `VITE_CLASSROOM_MANAGEMENT_ENABLED` client
+  cosmetic gate.
+- CSV/export foundation: `server/src/lib/csv.js` shared helper, used by both
+  the attendance and fee export routes.
+- Shared attendance-math helper: `server/src/lib/classroomAttendance.js`
+  (`attendancePercentage`, `deriveUnmarked`, day/month aggregation) — the one
+  implementation every route (day view, month summary, CSV export, student
+  history) calls, so the number can never drift between views.
+
+**Phase 2 — Classes & Students UI**
+- `/classroom` route (`client/src/pages/ClassroomPage.tsx`).
+- Desktop nav: "Classroom" link in `TopBar.tsx`.
+- Mobile nav: "Classroom" entry in `BottomNav.tsx`.
+- `ClassroomTabs` sub-navigation: My Classes / Students / Attendance / Fees /
+  Reports (the shell for all five tabs exists; only the first three have
+  real content — see below).
+- My Classes: create, list, rename, archive, restore, "show archived" toggle
+  (`components/classroom/ClassList.tsx`).
+- Students: add, list, edit, deactivate, restore, "show deactivated" toggle
+  (`components/classroom/StudentRoster.tsx`).
+- Responsive mobile UI: single-panel-at-a-time layout below 640px (sidebar
+  vs. tab content toggles instead of showing both).
+
+**Phase 3 — Attendance**
+- Daily attendance marking: pick a class + date, see the active roster, mark
+  each student Present or Absent, or leave them Unmarked.
+- Present / Absent / Unmarked three-state model — Unmarked is never a stored
+  status, it's the absence of an `AttendanceRecord` row for that student/date.
+- Date navigation: Previous/Next-day buttons plus a native date picker,
+  capped at today (`max` attribute + disabled Next) — no future-dating.
+- Attendance persistence: one bulk `POST` per class+date; the UI reloads
+  from the server immediately after save (not just trusting local state) —
+  confirmed by a full page reload in browser testing.
+- Daily summary: live Present/Absent/Unmarked/% tiles that update instantly
+  as the teacher taps, before Save is even pressed.
+- Monthly summary: month navigation (Previous/Next, capped at the current
+  month), Total Students / Days Marked / Present / Absent / Unmarked /
+  Average Attendance tiles, plus a per-student breakdown row.
+- Attendance percentage: `Present / (Present + Absent) × 100`, Unmarked
+  excluded from both sides — computed by the one shared helper everywhere
+  (day view, month summary, CSV export, student history); never
+  reimplemented per view.
+- Student attendance history: new endpoint
+  `GET /api/classroom/students/:studentId/attendance/history?month=`, wired
+  to an expandable row per student inside Monthly Summary showing a
+  date-by-date list of Present/Absent chips.
+- Teacher ownership/isolation: every attendance route, including the new
+  student-history route, scoped to `teacherId`; 404s on cross-teacher access;
+  covered by `classroom-tenant-isolation.test.js`.
+- Bulk attendance: one `POST` per class+date carrying a `marks[]` array —
+  never one request per student; the server rejects the *whole* batch if any
+  student doesn't belong to the caller's class (no partial save).
+- Responsive/mobile attendance UI: card-per-student rows (not a dense
+  table), full-width stacked Present/Absent buttons and a 3-column summary
+  grid under the existing 640px breakpoint. **Implemented and code-reviewed,
+  but NOT interactively verified at a real 375px viewport this session** —
+  the browser automation's window resize did not take effect in this
+  environment, so this is a code-review-level check only, not a screenshot
+  of an actual narrow rendering. Flagged here rather than claimed as done.
+- CSV download for attendance is **not** wired into this tab's UI yet — the
+  backend export route (`GET .../attendance/export?month=`) already exists
+  and works (curl-verified), but no button calls it. Tracked under Phase 5
+  below ("Downloadable reports"), since the original plan grouped export UI
+  with Reports.
+- New/changed files: `client/src/components/classroom/AttendancePanel.tsx`,
+  `AttendanceDaily.tsx`, `AttendanceMonthly.tsx`; `client/src/lib/classroomApi.ts`
+  (+4 endpoint wrappers), `client/src/lib/classroomDate.ts` (new date/month
+  helpers); `server/src/routes/classroom.js` (+1 route), `server/src/lib/classroomAttendance.js`
+  (+1 helper, `getStudentAttendanceDates`).
+- Tests: `server/test/classroom.attendance.test.js` (new student-history
+  endpoint coverage), `server/test/classroom-tenant-isolation.test.js` (+1
+  isolation case), `client/src/lib/classroomDate.test.ts` (new).
+- Test results: server 2118/2119 passing (`npm test`, vitest — the actual
+  runner; 1 pre-existing, unrelated flaky failure in `resources.test.js`,
+  reproduced on `main`-derived code untouched by this feature). Client
+  482/482 passing. Lint, `tsc --noEmit`, and `vite build` all clean.
+- Browser verification: real Chrome session, signed in as the seeded
+  `teacher@example.com` account. Created a throwaway class + 3 students,
+  marked and saved attendance across two dates, confirmed persistence via a
+  full page reload, verified independent per-date state, verified monthly
+  summary math (including the unmarked-exclusion formula) and the
+  student-history drill-down, then deleted all test data via Prisma
+  afterward. Along the way, found and fixed an unrelated environment issue —
+  a stale `node` process was already squatting on port 3000 from a prior
+  session, silently serving old code; killed it and restarted the dev server
+  cleanly before verification.
+
+### NOT YET IMPLEMENTED
+
+**Phase 4 — Fees / Payment Management**
+- Backend foundation already exists (`FeeRecord` model, GET/PATCH/export
+  routes, `classroomFees.js` helper) — but there is **no teacher-facing Fees
+  UI**. The Fees tab still shows the Phase 2 "coming soon" placeholder.
+- Monthly payment tracking UI: not built.
+- Paid/Pending status toggle UI: not built.
+- Student-wise payment status view: not built.
+- Payment notes: out of V1 scope by design — `amount`/`paidAt`/`note`
+  columns exist on `FeeRecord` but are reserved-unused; no route accepts
+  them from the client (`.strict()` schema rejects them), matching the
+  original plan's "Paid/Pending only" V1 scope.
+- Monthly fee view: not built.
+- CSV download button for fees: backend route exists and works
+  (curl-verified), no UI trigger yet.
+
+**Phase 5 — Reports & Analytics**
+- Backend foundation already exists (`analytics/overview`,
+  `analytics/classes/:classId`) — but there is **no Reports tab UI**. The
+  Reports tab still shows the Phase 2 "coming soon" placeholder.
+- Teacher dashboard/classroom analytics UI: not built.
+- Total-students / present-absent stat cards on a dedicated Reports view:
+  not built (the data is available from the existing backend route, just not
+  rendered anywhere outside the Attendance tab's own Monthly Summary).
+- Attendance trends (e.g. week-over-week/month-over-month): not built.
+- Monthly/class-wise analytics UI beyond the Attendance tab's own Monthly
+  Summary: not built.
+- Student-level reports UI: the only student-level view that exists today is
+  the ad hoc history drill-down added inside Attendance → Monthly Summary
+  (Phase 3) — there is no equivalent under a dedicated Reports tab.
+- Downloadable attendance/fee reports: both backend CSV export routes exist
+  and work (curl-verified against the running dev server), but **no UI
+  download button exists yet** on the Attendance tab, the Fees tab, or a
+  Reports tab.
+- Any other reporting features from the original plan's Analytics section
+  (§12) beyond what's listed above: not built.
+
+### Current branch / development status
+
+- Branch: `feature/classroom-management`.
+- Phase 1 + Phase 2 committed (`a8af6a4`) and pushed to
+  `origin/feature/classroom-management`.
+- Phase 3 (Attendance) implemented, tested, and browser-verified this
+  session — committed and pushed alongside this document update.
+- `main` has **not** been modified directly; no PR has been opened.
+- Next planned work: **Phase 4 — Fees/Payment Management UI** (backend
+  already exists; this is a frontend-only phase, same shape as Phase 3).
 
 ## Naming note (read first)
 
@@ -714,22 +882,28 @@ Mirrors the existing per-feature test layout exactly:
 
 ## 17. Implementation phases
 
-1. **Schema + API (backend only).** Migration, `routes/classroom.js`, Zod
+Status tags below reflect reality as of this document's "Implementation
+status" section above — treat that section as authoritative if the two ever
+disagree.
+
+1. **✅ DONE — Schema + API (backend only).** Migration, `routes/classroom.js`, Zod
    schemas, `lib/csv.js` helper, `flags.js` entry, `index.js` mount + rate
    limiter, **both CSV export routes**, full test suite from §15 (including
    `classroom.export.test.js` and the percentage-formula pinning test). No
    UI yet — verifiable via Supertest alone, including downloading and
    parsing the CSV bodies.
-2. **Frontend — My Classes + Students.** `ClassroomPage` shell, tabs,
+2. **✅ DONE — Frontend — My Classes + Students.** `ClassroomPage` shell, tabs,
    `ClassList`, `StudentRoster`, nav entries (mobile + desktop), behind the
    flag.
-3. **Frontend — Attendance.** `AttendanceMarker` (three-state control),
-   `AttendanceHistory`, summary stats (all three counts + §10 formula), and
-   the "Download CSV" action wired to the Phase 1 export route.
-4. **Frontend — Fees.** `FeeStatusBoard` (Paid/Pending only, per §11) and
+3. **✅ DONE — Frontend — Attendance.** Marking (three-state control), monthly
+   summary, and student-history drill-down, all using the §10 formula.
+   **Exception:** the "Download CSV" action described here was not wired up
+   — the export route works but no UI button calls it yet (see Phase 5).
+4. **⬜ NOT STARTED — Frontend — Fees.** `FeeStatusBoard` (Paid/Pending only, per §11) and
    its "Download CSV" action wired to the Phase 1 export route.
-5. **Frontend — Analytics.** `ClassroomAnalytics` overview + per-class view.
-6. **Rollout.** Flip `CLASSROOM_MANAGEMENT_ENABLED` for an allow-listed pilot
+5. **⬜ NOT STARTED — Frontend — Analytics.** `ClassroomAnalytics` overview + per-class view.
+   Also where the still-missing attendance/fee "Download CSV" UI buttons belong.
+6. **⬜ NOT STARTED — Rollout.** Flip `CLASSROOM_MANAGEMENT_ENABLED` for an allow-listed pilot
    school via `CLASSROOM_MANAGEMENT_ALLOWED_SCHOOL_CODES`, then broaden.
 
 CSV export is therefore fully built (API in Phase 1, UI trigger in Phases 3

@@ -264,4 +264,54 @@ describe('Classroom Management — attendance', () => {
       expect(res.status).toBe(400);
     });
   });
+
+  describe('GET /api/classroom/students/:studentId/attendance/history', () => {
+    let classId;
+    let s1;
+
+    beforeAll(async () => {
+      classId = await makeClass(teacherAToken, 'Student History Test');
+      s1 = await addStudent(teacherAToken, classId, 'Farah', '7');
+      await as(teacherAToken)(
+        request(app).post(`/api/classroom/classes/${classId}/attendance`).send({ date: '2026-05-01', marks: [{ studentId: s1, status: 'present' }] })
+      );
+      await as(teacherAToken)(
+        request(app).post(`/api/classroom/classes/${classId}/attendance`).send({ date: '2026-05-02', marks: [{ studentId: s1, status: 'absent' }] })
+      );
+      // A third marked day where this student was never touched — counts
+      // toward daysMarked (denominator) but not toward this student's
+      // present/absent, so it should surface as one "unmarked" day.
+      const other = await addStudent(teacherAToken, classId, 'Gita');
+      await as(teacherAToken)(
+        request(app).post(`/api/classroom/classes/${classId}/attendance`).send({ date: '2026-05-03', marks: [{ studentId: other, status: 'present' }] })
+      );
+    });
+
+    test('returns the date-level list plus present/absent/unmarked/percentage, using the shared formula', async () => {
+      const res = await as(teacherAToken)(request(app).get(`/api/classroom/students/${s1}/attendance/history?month=2026-05`));
+      expect(res.status).toBe(200);
+      expect(res.body.name).toBe('Farah');
+      expect(res.body.rollNumber).toBe('7');
+      expect(res.body.present).toBe(1);
+      expect(res.body.absent).toBe(1);
+      expect(res.body.unmarked).toBe(1); // 2026-05-03 was marked for the class but not for this student
+      expect(res.body.percentage).toBe(50);
+      expect(res.body.days).toEqual([
+        { date: '2026-05-01', status: 'present' },
+        { date: '2026-05-02', status: 'absent' },
+      ]);
+    });
+
+    test('requires a valid month param', async () => {
+      const res = await as(teacherAToken)(request(app).get(`/api/classroom/students/${s1}/attendance/history`));
+      expect(res.status).toBe(400);
+    });
+
+    test('404s for a student owned by another teacher', async () => {
+      const bClassId = await makeClass(teacherBToken, 'Teacher B History Class');
+      const bStudent = await addStudent(teacherBToken, bClassId, 'Teacher B Student');
+      const res = await as(teacherAToken)(request(app).get(`/api/classroom/students/${bStudent}/attendance/history?month=2026-05`));
+      expect(res.status).toBe(404);
+    });
+  });
 });

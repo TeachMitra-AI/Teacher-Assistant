@@ -140,6 +140,11 @@ describe('Classroom Management — tenant isolation', () => {
       expect(history.status).toBe(404);
     });
 
+    test('cannot read the student-level attendance history', async () => {
+      const res = await as(getToken())(request(app).get(`/api/classroom/students/${studentId}/attendance/history?month=2026-10`));
+      expect(res.status).toBe(404);
+    });
+
     test('cannot download the attendance or fee CSV export', async () => {
       const attendance = await as(getToken())(request(app).get(`/api/classroom/classes/${classId}/attendance/export?month=2026-10`));
       expect(attendance.status).toBe(404);

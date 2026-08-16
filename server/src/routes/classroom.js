@@ -33,6 +33,7 @@ const {
   utcMonthString,
   computeClassAttendanceMonthSummary,
   getClassAttendanceHistory,
+  getStudentAttendanceDates,
   getTeacherAttendanceToday,
   getTeacherAttendanceMonth,
 } = require('../lib/classroomAttendance');
@@ -439,6 +440,43 @@ router.get('/classroom/classes/:classId/attendance/export', asyncHandler(async (
   res.set('Content-Type', 'text/csv; charset=utf-8');
   res.set('Content-Disposition', `attachment; filename="${filename}"`);
   res.status(200).send(csv);
+}));
+
+// GET one student's day-by-day history for a month (Phase 3 UI's "Student
+// Attendance History"). present/absent are tallied straight from `days`
+// (this student's own records — correct even for a deactivated student, who
+// computeClassAttendanceMonthSummary's active-only perStudent would silently
+// drop), then run through the SAME attendancePercentage/deriveUnmarked calls
+// every other attendance view uses (§10) — never a reimplementation of that
+// math. `daysMarked` (the denominator for "unmarked") is the class's own
+// count of marked days, also class-wide and not active-filtered, so it lines
+// up with the summary/export views for the same class + month.
+router.get('/classroom/students/:studentId/attendance/history', asyncHandler(async (req, res) => {
+  const student = await findOwnedStudent(req.params.studentId, req.user.id);
+  if (!student) return res.status(404).json({ error: 'Student not found.' });
+  if (!isValidMonth(req.query.month)) {
+    return res.status(400).json({ error: 'A valid "month" query param (YYYY-MM) is required.' });
+  }
+  const month = req.query.month;
+
+  const [summary, days] = await Promise.all([
+    computeClassAttendanceMonthSummary(prisma, { classId: student.classId, teacherId: req.user.id, month }),
+    getStudentAttendanceDates(prisma, { studentId: student.id, teacherId: req.user.id, month }),
+  ]);
+  const present = days.filter((d) => d.status === 'present').length;
+  const absent = days.filter((d) => d.status === 'absent').length;
+
+  res.json({
+    studentId: student.id,
+    name: student.name,
+    rollNumber: student.rollNumber,
+    month,
+    present,
+    absent,
+    unmarked: deriveUnmarked(summary.daysMarked, present, absent),
+    percentage: attendancePercentage(present, absent),
+    days,
+  });
 }));
 
 // ---- Fees -------------------------------------------------------------------

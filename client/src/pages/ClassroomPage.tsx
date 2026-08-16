@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { GraduationCap, ClipboardCheck, Wallet, FileBarChart, type LucideIcon } from 'lucide-react';
+import { GraduationCap, Wallet, FileBarChart, type LucideIcon } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import ClassroomTabs, { type ClassroomTabKey } from '../components/classroom/ClassroomTabs';
 import ClassList from '../components/classroom/ClassList';
 import StudentRoster from '../components/classroom/StudentRoster';
+import AttendancePanel from '../components/classroom/AttendancePanel';
 import { useToast } from '../components/Toast';
 import { usePreferences } from '../hooks/usePreferences';
 import { ApiError } from '../api';
@@ -177,7 +178,7 @@ export default function ClassroomPage({ preferences }: { preferences: ReturnType
             {tab === 'students' && (selectedClass ? <StudentRoster classId={selectedClass.id} className={selectedClass.name} /> : <SelectClassPrompt />)}
             {tab === 'attendance' && (
               selectedClass
-                ? <ComingSoonPanel icon={ClipboardCheck} title="Attendance" selectedClassName={selectedClass.name} />
+                ? <AttendancePanel classId={selectedClass.id} className={selectedClass.name} />
                 : <SelectClassPrompt />
             )}
             {tab === 'fees' && (

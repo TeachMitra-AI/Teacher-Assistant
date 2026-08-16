@@ -3301,6 +3301,151 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   margin-bottom: 0.4rem;
 }
 
+/* Attendance (docs/classroom-feature-plan.md Phase 3) — Mark Attendance /
+   Monthly Summary. Reuses .classroom-empty/.classroom-summary-tile/etc.'s
+   existing card language rather than introducing a second visual system. */
+
+/* "Mark Attendance" / "Monthly Summary" segmented control — deliberately NOT
+   styled like .classroom-tabs (the outer My Classes/Students/.../Reports
+   nav): a smaller pill toggle keeps the two levels visually distinct so
+   they don't read as one six-item tab strip. */
+.classroom-subtabs { display: flex; gap: 0.4rem; margin-bottom: 1.1rem; }
+.classroom-subtabs button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.4rem 0.9rem;
+  min-height: 36px;
+}
+.classroom-subtabs button.active { border-color: var(--orange); color: var(--orange); background: var(--orange-soft); }
+.classroom-subtabs button:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+
+/* Date/month navigation strip — one-handed on mobile: big flanking tap
+   targets, the picker/label centered and free to shrink. */
+.classroom-date-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-bottom: 1.1rem;
+}
+.classroom-date-nav .icon-btn { min-width: 40px; min-height: 40px; }
+.classroom-date-input {
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.6rem;
+  min-height: 40px;
+}
+.classroom-date-display { font-size: 0.95rem; font-weight: 700; min-width: 9rem; text-align: center; }
+
+/* Stat tiles — Present/Absent/Unmarked/Attendance % (daily) and Total
+   Students/Days Marked/Average Attendance (monthly) share this same grid. */
+.classroom-summary-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 1.1rem;
+}
+.classroom-summary-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.4rem;
+  text-align: center;
+}
+.classroom-summary-value { font-size: 1.15rem; font-weight: 700; color: var(--text); }
+.classroom-summary-label { font-size: 0.7rem; color: var(--text-muted); }
+.classroom-summary-tile.tile-present .classroom-summary-value { color: #15803d; }
+.classroom-summary-tile.tile-absent .classroom-summary-value { color: #b91c1c; }
+[data-theme='dark'] .classroom-summary-tile.tile-present .classroom-summary-value { color: #6ee7a8; }
+[data-theme='dark'] .classroom-summary-tile.tile-absent .classroom-summary-value { color: #fca5a5; }
+
+/* Attendance-marking roster and the monthly per-student list — a card-per-
+   student list (never a dense table), so it stays one-hand-usable at any
+   viewport rather than switching layouts at a breakpoint. */
+.classroom-att-list { display: flex; flex-direction: column; gap: 0.5rem; list-style: none; margin: 0 0 1.1rem; padding: 0; }
+.classroom-att-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: 0.6rem 0.75rem;
+}
+.classroom-att-info { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.classroom-att-name { font-weight: 600; font-size: 0.92rem; color: var(--text); }
+.classroom-att-roll { font-size: 0.76rem; color: var(--text-muted); }
+.classroom-att-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+.classroom-att-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.5rem 0.7rem;
+  min-height: 40px;
+}
+.classroom-att-btn:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.classroom-att-btn.present.active { border-color: #86efac; background: #f0fdf4; color: #15803d; }
+.classroom-att-btn.absent.active { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; }
+[data-theme='dark'] .classroom-att-btn.present.active { border-color: #14532d; background: rgba(20, 83, 45, 0.35); color: #6ee7a8; }
+[data-theme='dark'] .classroom-att-btn.absent.active { border-color: #7f1d1d; background: rgba(127, 29, 29, 0.35); color: #fca5a5; }
+
+/* Sticky-feeling but in-flow save bar — always the last thing in the
+   roster, full-width on mobile so it's reachable without a long reach up. */
+.classroom-save-bar { position: sticky; bottom: 0.75rem; display: flex; justify-content: flex-end; }
+.classroom-save-bar .btn-primary { min-height: 44px; padding-left: 1.4rem; padding-right: 1.4rem; box-shadow: var(--shadow); }
+
+/* Monthly per-student list — an expandable row per student (Student
+   Attendance History), not a second modal layer. */
+.classroom-history-item { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); overflow: hidden; }
+.classroom-history-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+}
+.classroom-history-toggle:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
+.classroom-history-stats { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-muted); flex-shrink: 0; }
+.classroom-history-stats .tile-present { color: #15803d; font-weight: 600; }
+.classroom-history-stats .tile-absent { color: #b91c1c; font-weight: 600; }
+[data-theme='dark'] .classroom-history-stats .tile-present { color: #6ee7a8; }
+[data-theme='dark'] .classroom-history-stats .tile-absent { color: #fca5a5; }
+.classroom-history-pct { font-weight: 700; color: var(--text); }
+.classroom-history-detail { border-top: 1px solid var(--border); padding: 0.6rem 0.75rem; }
+.classroom-history-days { display: flex; flex-direction: column; gap: 0.3rem; list-style: none; margin: 0; padding: 0; }
+.classroom-history-day { font-size: 0.82rem; padding: 0.3rem 0.5rem; border-radius: var(--radius-sm); }
+.classroom-history-day.present { background: #f0fdf4; color: #15803d; }
+.classroom-history-day.absent { background: #fef2f2; color: #b91c1c; }
+[data-theme='dark'] .classroom-history-day.present { background: rgba(20, 83, 45, 0.35); color: #6ee7a8; }
+[data-theme='dark'] .classroom-history-day.absent { background: rgba(127, 29, 29, 0.35); color: #fca5a5; }
+
 @media (max-width: 640px) {
   .classroom-main { padding: 1.25rem 0.9rem 2rem; }
   .classroom-layout { display: block; }
@@ -3310,6 +3455,16 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
      are always scoped to one class at a time on small screens"). */
   .classroom-sidebar.mobile-hidden,
   .classroom-content.mobile-hidden { display: none; }
+
+  /* Attendance rows/tiles narrow further so nothing needs horizontal
+     scroll — Present/Absent buttons go full-width and stack under the
+     student's name rather than being squeezed onto one line. */
+  .classroom-att-row { flex-direction: column; align-items: stretch; }
+  .classroom-att-actions { width: 100%; }
+  .classroom-att-btn { flex: 1; justify-content: center; }
+  .classroom-summary-tiles { grid-template-columns: repeat(3, 1fr); }
+  .classroom-save-bar { justify-content: stretch; }
+  .classroom-save-bar .btn-primary { width: 100%; }
 }
 
 .type-tag {

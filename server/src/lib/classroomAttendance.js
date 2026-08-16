@@ -173,6 +173,22 @@ async function getClassAttendanceHistory(prisma, { classId, teacherId, month }) 
     }));
 }
 
+/**
+ * Raw per-date records for ONE student within a month — powers only the
+ * day-by-day list in the Student Attendance History view. The
+ * present/absent/unmarked/percentage numbers themselves always come from
+ * computeClassAttendanceMonthSummary's `perStudent` entry (one implementation
+ * of that math, per §10), never recomputed here.
+ */
+async function getStudentAttendanceDates(prisma, { studentId, teacherId, month }) {
+  const { start, end } = monthRange(month);
+  const records = await prisma.attendanceRecord.findMany({
+    where: { studentId, teacherId, date: { gte: start, lt: end } },
+    orderBy: { date: 'asc' },
+  });
+  return records.map((r) => ({ date: dateKey(r.date), status: r.status }));
+}
+
 /** Today's attendance across every one of a teacher's classes (Analytics). */
 async function getTeacherAttendanceToday(prisma, { teacherId, date }) {
   const [totalStudents, records] = await Promise.all([
@@ -229,6 +245,7 @@ module.exports = {
   utcMonthString,
   computeClassAttendanceMonthSummary,
   getClassAttendanceHistory,
+  getStudentAttendanceDates,
   getTeacherAttendanceToday,
   getTeacherAttendanceMonth,
 };
