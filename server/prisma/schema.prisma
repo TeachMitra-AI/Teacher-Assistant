@@ -71,6 +71,7 @@ model User {
   supportTickets      SupportTicket[]
   supportNotes        SupportNote[]
   profilePicture      ProfilePicture?
+  notifications       Notification[]
 
   // A teacher's email is unique within a school. The same email may hold
   // accounts at more than one school, which is why sign-in looks up by email
@@ -301,6 +302,48 @@ model SystemSetting {
   value       String
   updatedAt   DateTime @updatedAt
   updatedById String?
+}
+
+// A single notification, one row PER RECIPIENT (fan-out on write, not a
+// broadcast + read-receipt join table) — mirrors how Event already does one
+// row per user per occurrence. Simpler to query ("my unread count" is one
+// indexed WHERE), and pilot-scale (a school's teacher count) never makes the
+// fan-out write expensive; createMany() is used for multi-recipient sends
+// (see lib/notificationService.js) so a broadcast is one INSERT, not N round
+// trips. See docs/notification-system-plan.md §3.
+model Notification {
+  id          String    @id @default(cuid())
+  recipient   User      @relation(fields: [recipientId], references: [id])
+  recipientId String
+  // Closed vocabulary — see lib/notificationTypes.js (server) /
+  // config.ts NOTIFICATION_TYPES (client), same CHANGE-11 duplication
+  // convention as every other closed vocabulary in this app.
+  type        String
+  title       String
+  message     String
+  // Relative in-app path the client navigates to on click (e.g.
+  // "/library/<id>"), or null for a notification with nothing to open.
+  // Never an absolute URL.
+  link        String?
+  read        Boolean   @default(false)
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+  // Soft reference to the sending admin, or null for a system/AI-generated
+  // notification. NOT a FK — mirrors SystemSetting.updatedById: the durable
+  // record is this row itself, and an admin's account is never blocked from
+  // deletion by rows they sent. Denormalized alongside the name/role so a
+  // broadcast to hundreds of recipients never needs a join just to render
+  // "Sent by <name> (<role>)".
+  senderId    String?
+  senderName  String?
+  senderRole  String?
+  // Optional extra context as a JSON string, same convention as
+  // Query.context / SupportTicket.context.
+  metadata    String?
+
+  @@index([recipientId, read])
+  @@index([recipientId, createdAt])
+  @@index([type])
 }
 
 // An admin's internal note on a SupportTicket (Phase 2: the admin inbox).

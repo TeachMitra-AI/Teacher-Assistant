@@ -383,6 +383,35 @@ function readClassroomModeFlags(env, { warn = console.warn } = {}) {
   };
 }
 
+// ---- Notifications ----------------------------------------------------------
+//
+// Same shape and same "default OFF" reasoning as every flag above.
+// NOTIFICATIONS_ENABLED is the ONE reliable kill switch — it gates both the
+// REST routes (routes/notifications.js) and the Socket.IO handshake
+// (lib/socketServer.js), same PWA-caching reasoning as every other feature's
+// server-side gate (G28): the client's VITE_NOTIFICATIONS_ENABLED only
+// decides whether the bell renders on an already-loaded client.
+
+const NOTIFICATIONS_FLAG_DEFAULTS = Object.freeze({
+  enabled: false,
+});
+
+/**
+ * Read the Notifications feature's global flags from an environment object.
+ * @param {Record<string, string|undefined>} env
+ * @param {{warn?: (msg: string) => void}} [opts]
+ * @returns {{enabled: boolean}}
+ */
+function readNotificationsFlags(env, { warn = console.warn } = {}) {
+  return {
+    enabled: parseBoolEnv(env.NOTIFICATIONS_ENABLED, {
+      name: 'NOTIFICATIONS_ENABLED',
+      defaultValue: NOTIFICATIONS_FLAG_DEFAULTS.enabled,
+      warn,
+    }),
+  };
+}
+
 module.exports = {
   parseBoolEnv,
   parseListEnv,
@@ -397,4 +426,6 @@ module.exports = {
   LEARNING_REPRESENTATION_FLAG_DEFAULTS,
   readClassroomModeFlags,
   CLASSROOM_MODE_FLAG_DEFAULTS,
+  readNotificationsFlags,
+  NOTIFICATIONS_FLAG_DEFAULTS,
 };

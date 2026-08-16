@@ -47,6 +47,11 @@ const supportRouter = require('./routes/support');
 // for why access is modeled differently here).
 const adminSupportRouter = require('./routes/adminSupport');
 const adminSettingsRouter = require('./routes/adminSettings');
+// Notification System — a sibling feature, same "fail at boot on a malformed
+// module" reasoning as every router above. See docs/notification-system-plan.md.
+const notificationsRouter = require('./routes/notifications');
+const { initSocketServer } = require('./lib/socketServer');
+const { readNotificationsFlags } = require('./lib/flags');
 // AI Learning Representation System (ADR Phase D). A sibling feature, same
 // "fail at boot on a malformed module" reasoning as assistantRouter/
 // attachmentsRouter/supportRouter above. Requiring it here also validates
@@ -480,6 +485,22 @@ const attachmentLimiter = rateLimit({
 // mashes "Report a Bug" repeatedly.
 const SUPPORT_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.SUPPORT_RATE_LIMIT_MAX_REQUESTS, {
   name: 'SUPPORT_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 20 : 300, min: 1, max: 100000,
+});
+
+// Separate bucket for POST /api/notifications (send/broadcast) — the only
+// mutating-for-OTHERS notification route; GET/PATCH on the caller's own
+// notifications stay under the general limiter, matching every other
+// "cheap, frequent, self-scoped" endpoint in this app.
+const NOTIFICATIONS_SEND_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.NOTIFICATIONS_SEND_RATE_LIMIT_MAX_REQUESTS, {
+  name: 'NOTIFICATIONS_SEND_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 20 : 300, min: 1, max: 100000,
+});
+
+const notificationsSendLimiter = rateLimit({
+  windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
+  max: NOTIFICATIONS_SEND_RATE_LIMIT_MAX_REQUESTS,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please wait a few minutes and try again.' },
 });
 
 const supportLimiter = rateLimit({
@@ -951,6 +972,22 @@ app.use('/api', supportRouter);
 app.use('/api/coach/learning-representation', learningRepresentationLimiter);
 app.use('/api', learningRepresentationRouter);
 
+// Notification System. Unlike every other limiter-then-router pair above,
+// GET (list, unread-count) and POST (send) share the exact same
+// /api/notifications path — app.use() matches by path only, not method, so
+// a plain prefix-mount would put the frequent, cheap, self-scoped GETs
+// behind the same tight bucket meant for the rare, mutating-for-OTHERS send
+// route. This scopes the limiter to POST only. With NOTIFICATIONS_ENABLED
+// unset (the default) every route still 503s and the application otherwise
+// behaves exactly as it did before this line. req.app.locals.socketServer
+// (set near app.listen below) is what routes/notifications.js reaches for
+// to emit realtime events.
+app.use('/api/notifications', (req, res, next) => {
+  if (req.method !== 'POST') return next();
+  return notificationsSendLimiter(req, res, next);
+});
+app.use('/api', notificationsRouter);
+
 // Global error handler — last line of defense. Routes wrapped in
 // asyncHandler (see lib/asyncHandler.js) forward a rejected promise here via
 // next(err) instead of letting it become an unhandled rejection, which on
@@ -1004,6 +1041,25 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ error: 'Something went wrong. Please try again.' });
 });
 
+// ---- Notification System: Socket.IO --------------------------------------
+//
+// Wired unconditionally (not just under require.main === module below) so
+// req.app.locals.socketServer is always populated for anything that holds
+// this `app` — including a test file that wraps it in its own
+// http.createServer for a realtime test. It requires an http.Server to
+// attach to either way, so this alone does not open a listening port; only
+// httpServer.listen(...) below does that, and only when this file is run
+// directly.
+const http = require('http');
+const httpServer = http.createServer(app);
+app.locals.socketServer = initSocketServer(httpServer, {
+  isOriginAllowed,
+  // Read live on every handshake, not captured once here — same "the env
+  // var is the real, immediately-effective kill switch" contract every
+  // other feature flag in this app has (see lib/flags.js).
+  isEnabled: () => readNotificationsFlags(process.env).enabled,
+});
+
 // ---- Start -----------------------------------------------------------------
 
 // Only bind a real port when this file is run directly (`node src/index.js`,
@@ -1012,7 +1068,10 @@ app.use((err, req, res, _next) => {
 // socket — Supertest drives the app in-process instead.
 /* istanbul ignore next -- exercised via `npm start`, not the test suite */
 if (require.main === module) {
-  app.listen(PORT, () => {
+  // httpServer (not app.listen) — the Socket.IO instance above is already
+  // attached to it, so this one listen() call brings up both the REST API
+  // and realtime notifications on the same port.
+  httpServer.listen(PORT, () => {
     console.log(`Teacher Assistant backend listening on port ${PORT}`);
     // Note: if NODE_ENV=production and CORS_ORIGINS were empty, the process
     // would already have exited above — reaching here means either we're in

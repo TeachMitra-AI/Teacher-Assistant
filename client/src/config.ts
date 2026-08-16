@@ -3,8 +3,9 @@ import {
   NotebookPen, Target, Lightbulb, ClipboardCheck,
   LayoutDashboard, ShieldCheck, FileText, LifeBuoy,
   MessageCircle, Library, PencilRuler, Sparkles,
+  Megaphone, BookOpenCheck, ClipboardList, FileBarChart, Settings2, BellRing,
 } from 'lucide-react';
-import type { Role, ResponseStyle, ResourceType } from './types';
+import type { Role, ResponseStyle, ResourceType, NotificationType } from './types';
 
 // Languages supported for AI responses (UI itself stays in English).
 //
@@ -281,6 +282,12 @@ export const AVATAR_TARGET_DIMENSION_PX = 512;
 
 export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000/api';
 
+// Socket.IO connects to the API's ORIGIN, not through /api — same server,
+// same port, just a sibling path (see server/src/lib/socketServer.js's
+// `path: '/socket.io'`). Stripping a trailing "/api" from API_BASE derives
+// it without a second env var to keep in sync.
+export const SOCKET_BASE = API_BASE.replace(/\/api\/?$/, '');
+
 // Google OAuth Web-application client ID. Must be the SAME value the server
 // has as GOOGLE_CLIENT_ID — that's what it verifies each ID token's audience
 // against. Left unset, the Google buttons are simply not rendered and email +
@@ -352,6 +359,35 @@ export const SUPPORT_WHATSAPP_NUMBER = import.meta.env.VITE_SUPPORT_WHATSAPP_NUM
 // flag, which is what makes a response possible against already-loaded PWA
 // clients that still have this value baked in.
 export const CLASSROOM_MODE_ENABLED = import.meta.env.VITE_CLASSROOM_MODE_ENABLED === 'true';
+
+// ---- Notification System ----------------------------------------------------
+//
+// Client-side gate, same shape and same "not the real kill switch" caveat as
+// the flags above. When false (the default), neither the bell in the top bar
+// nor the admin compose screen is rendered — the server's
+// NOTIFICATIONS_ENABLED is the immediately-effective kill switch (every
+// /api/notifications route returns 503 and the Socket.IO handshake rejects
+// every connection regardless of this flag).
+export const NOTIFICATIONS_ENABLED = import.meta.env.VITE_NOTIFICATIONS_ENABLED === 'true';
+
+// Closed vocabulary — SERVER COUNTERPART: server/src/lib/notificationTypes.js
+// NOTIFICATION_TYPES holds the same keys. Same CHANGE-11 duplication
+// convention as LANGUAGES/GRADES/SUBJECTS above. CHANGE BOTH IN THE SAME
+// COMMIT. `sendable: true` marks the subset an admin's compose form may pick
+// (mirrors the server's ADMIN_SENDABLE_TYPES) — the rest are system/AI-only.
+export const NOTIFICATION_TYPE_META: Record<NotificationType, { label: string; icon: LucideIcon; sendable: boolean }> = {
+  announcement: { label: 'Announcement', icon: Megaphone, sendable: true },
+  lesson_generated: { label: 'Lesson ready', icon: BookOpenCheck, sendable: false },
+  assessment_ready: { label: 'Assessment ready', icon: ClipboardList, sendable: false },
+  report_ready: { label: 'Report ready', icon: FileBarChart, sendable: false },
+  system_update: { label: 'System update', icon: Settings2, sendable: true },
+  reminder: { label: 'Reminder', icon: BellRing, sendable: true },
+};
+
+export const NOTIFICATION_TYPES = Object.keys(NOTIFICATION_TYPE_META) as NotificationType[];
+export const ADMIN_SENDABLE_NOTIFICATION_TYPES = NOTIFICATION_TYPES.filter(
+  (t) => NOTIFICATION_TYPE_META[t].sendable
+);
 
 // Short build identifier auto-attached to bug reports so a report can be
 // matched to the deploy it came from (see docs/help-support-architecture.md).

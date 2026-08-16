@@ -44,8 +44,27 @@ const { generateAssessmentSetSchema } = require('../actions/schemas/generateAsse
 // has metadata" assertion runs at boot (see lib/assessmentFormats.js) rather
 // than a missing entry silently rendering a new format as a quiz.
 const { formatMeta } = require('../lib/assessmentFormats');
+// Notification System system-hook (docs/notification-system-plan.md §0/§6):
+// a saved resource is the clearest, lowest-risk "lesson generated"/
+// "assessment ready" system event this app has today — it fires from the
+// SAVE endpoint below, not from the generation contract itself, so this
+// never touches POST /resources/generate.
+const { createNotification } = require('../lib/notificationService');
+const { readNotificationsFlags } = require('../lib/flags');
 
 const router = express.Router();
+
+// Friendly title per Resource.type, for the system notification only —
+// deliberately not the same list as client/src/config.ts's
+// RESOURCE_TYPE_META labels (kept server-local, since this is the only
+// server-side place that needs a human label for a resource type).
+const RESOURCE_TYPE_NOTIFICATION_LABEL = {
+  lesson_plan: 'lesson plan',
+  classroom_activity: 'classroom activity',
+  assessment: 'assessment',
+  explanation: 'explanation',
+  general: 'resource',
+};
 
 // NOTE: request bodies are parsed by the app-level JSON middleware in index.js,
 // which applies a larger 64kb limit to /api/resources paths (a full lesson plan
@@ -811,6 +830,30 @@ router.post('/resources', authRequired, async (req, res) => {
   } catch {
     // Unparseable `structured` or a failed write — neither is the teacher's
     // problem, and neither changes that the resource was created.
+  }
+
+  // System-generated notification: "Your <type> is ready", linking back to
+  // the resource just saved. Best-effort and non-blocking, same pattern as
+  // the telemetry write above — a failure here must never cost the teacher
+  // the save they just made, and it never fires at all while the feature is
+  // disabled (no DB row, no realtime emit).
+  try {
+    if (readNotificationsFlags(process.env).enabled) {
+      const label = RESOURCE_TYPE_NOTIFICATION_LABEL[data.type] || 'resource';
+      await createNotification(
+        {
+          recipientId: req.user.id,
+          type: data.type === 'assessment' ? 'assessment_ready' : 'lesson_generated',
+          title: `Your ${label} is ready`,
+          message: `"${created.title}" has been saved to your library.`,
+          link: `/library/${created.id}`,
+          metadata: { resourceId: created.id, resourceType: data.type },
+        },
+        req.app.locals.socketServer
+      );
+    }
+  } catch (notifyError) {
+    console.error('[notifications] resource_saved_notify_failed', { message: notifyError.message });
   }
 
   res.status(201).json({ resource: toDto(created) });
