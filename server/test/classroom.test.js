@@ -51,6 +51,25 @@ describe('Classroom Management — classes & students', () => {
       const listRes = await as(teacherAToken)(request(app).get('/api/classroom/classes'));
       expect(listRes.status).toBe(503);
     });
+
+    // Regression test: this router is mounted at the bare `/api` (its own
+    // routes self-prefix with `/classroom/...`, see index.js), so the
+    // disabled-feature gate MUST be applied per-route (see
+    // routes/classroom.js's `gate` array), never as a router-wide
+    // `router.use()`. A router-wide gate with no path filter would run for
+    // ANY path Express hands to this router — including ones that don't
+    // match any route here — and, since the gate 503s without calling
+    // next(), would swallow unrelated unmatched paths that fall through to
+    // this router (e.g. `/api/assistant/not-a-real-endpoint`, which is
+    // mounted earlier but still cascades here when nothing matches),
+    // returning 503 instead of letting Express's normal 404 apply. Caught in
+    // CI: assistant.catalog.test.js's "unknown assistant path" assertions
+    // failed with 503 whenever CLASSROOM_MANAGEMENT_ENABLED was unset.
+    test('a disabled Classroom does not swallow an unrelated, nonexistent API path', async () => {
+      const res = await as(teacherAToken)(request(app).get('/api/definitely-not-a-real-endpoint'));
+      expect(res.status).toBe(404);
+      expect(res.body.code).not.toBe('CLASSROOM_MANAGEMENT_DISABLED');
+    });
   });
 
   describe('POST /api/classroom/classes', () => {

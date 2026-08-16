@@ -75,8 +75,18 @@ async function isWithinClassroomRollout(user, flags) {
  * Gate middleware — same shape as routes/notifications.js's
  * requireNotificationsEnabled: flags are read LIVE (process.env), not cached
  * at boot, so the server's kill switch takes effect immediately and a test
- * suite can toggle it per-file. Runs before any work, so a disabled or
- * out-of-rollout request never touches a Classroom table.
+ * suite can toggle it per-file. Applied per-route (below), NOT as a
+ * router-wide `router.use()` — this router is mounted at the bare `/api`
+ * (its own routes self-prefix with `/classroom/...`, see index.js's comment
+ * on the mount), so a router-wide `.use()` with no path filter would run for
+ * ANY path Express hands to this router, including ones that don't match any
+ * route here. A disabled/out-of-rollout gate returning 503 without calling
+ * next() would then swallow those unmatched paths — e.g.
+ * `/api/assistant/not-a-real-endpoint`, which falls through every earlier
+ * `/api`-mounted router before reaching this one — turning them into a 503
+ * instead of letting Express's normal 404 fallback run. Every other flagged
+ * router in this codebase (`notifications.js` included) applies its gate
+ * per-route for exactly this reason; this router now matches that pattern.
  */
 function requireClassroomManagementEnabled() {
   return asyncHandler(async (req, res, next) => {
@@ -88,7 +98,7 @@ function requireClassroomManagementEnabled() {
   });
 }
 
-router.use(authRequired, requireClassroomManagementEnabled());
+const gate = [authRequired, requireClassroomManagementEnabled()];
 
 // ---- Ownership helpers -----------------------------------------------------
 // Mirrors resources.js's findOwned(): returns null for "does not exist" AND
@@ -167,7 +177,7 @@ const updateClassSchema = z
 // GET /api/classroom/classes — the caller's own classes. Archived classes are
 // excluded by default (they're done, not deleted); ?includeArchived=true
 // includes them, e.g. to review a past term's history.
-router.get('/classroom/classes', asyncHandler(async (req, res) => {
+router.get('/classroom/classes', ...gate, asyncHandler(async (req, res) => {
   const includeArchived = req.query.includeArchived === 'true';
   const where = { teacherId: req.user.id };
   if (!includeArchived) where.archived = false;
@@ -175,7 +185,7 @@ router.get('/classroom/classes', asyncHandler(async (req, res) => {
   res.json({ classes: classes.map(classToDto) });
 }));
 
-router.post('/classroom/classes', asyncHandler(async (req, res) => {
+router.post('/classroom/classes', ...gate, asyncHandler(async (req, res) => {
   const parsed = createClassSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid class.' });
@@ -189,13 +199,13 @@ router.post('/classroom/classes', asyncHandler(async (req, res) => {
   res.status(201).json({ class: classToDto(created) });
 }));
 
-router.get('/classroom/classes/:classId', asyncHandler(async (req, res) => {
+router.get('/classroom/classes/:classId', ...gate, asyncHandler(async (req, res) => {
   const cls = await findOwnedClass(req.params.classId, req.user.id);
   if (!cls) return res.status(404).json({ error: 'Class not found.' });
   res.json({ class: classToDto(cls) });
 }));
 
-router.patch('/classroom/classes/:classId', asyncHandler(async (req, res) => {
+router.patch('/classroom/classes/:classId', ...gate, asyncHandler(async (req, res) => {
   const parsed = updateClassSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid update.' });
@@ -210,7 +220,7 @@ router.patch('/classroom/classes/:classId', asyncHandler(async (req, res) => {
 // history is never hard-deleted (schema.prisma's own doc comment on
 // SchoolClass.archived). Idempotent: archiving an already-archived class is
 // still a 200, not an error.
-router.delete('/classroom/classes/:classId', asyncHandler(async (req, res) => {
+router.delete('/classroom/classes/:classId', ...gate, asyncHandler(async (req, res) => {
   const existing = await findOwnedClass(req.params.classId, req.user.id);
   if (!existing) return res.status(404).json({ error: 'Class not found.' });
   const updated = await prisma.schoolClass.update({ where: { id: existing.id }, data: { archived: true } });
@@ -235,7 +245,7 @@ const updateStudentSchema = z
   .strict()
   .refine((data) => Object.keys(data).length > 0, { message: 'No fields to update.' });
 
-router.get('/classroom/classes/:classId/students', asyncHandler(async (req, res) => {
+router.get('/classroom/classes/:classId/students', ...gate, asyncHandler(async (req, res) => {
   const cls = await findOwnedClass(req.params.classId, req.user.id);
   if (!cls) return res.status(404).json({ error: 'Class not found.' });
   const includeInactive = req.query.includeInactive === 'true';
@@ -245,7 +255,7 @@ router.get('/classroom/classes/:classId/students', asyncHandler(async (req, res)
   res.json({ students: students.map(studentToDto) });
 }));
 
-router.post('/classroom/classes/:classId/students', asyncHandler(async (req, res) => {
+router.post('/classroom/classes/:classId/students', ...gate, asyncHandler(async (req, res) => {
   const parsed = createStudentSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid student.' });
@@ -261,7 +271,7 @@ router.post('/classroom/classes/:classId/students', asyncHandler(async (req, res
   res.status(201).json({ student: studentToDto(created) });
 }));
 
-router.patch('/classroom/students/:studentId', asyncHandler(async (req, res) => {
+router.patch('/classroom/students/:studentId', ...gate, asyncHandler(async (req, res) => {
   const parsed = updateStudentSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid update.' });
@@ -274,7 +284,7 @@ router.patch('/classroom/students/:studentId', asyncHandler(async (req, res) => 
 
 // Soft-delete (active: false) — preserves attendance/fee history exactly
 // like archiving a class does. Idempotent.
-router.delete('/classroom/students/:studentId', asyncHandler(async (req, res) => {
+router.delete('/classroom/students/:studentId', ...gate, asyncHandler(async (req, res) => {
   const existing = await findOwnedStudent(req.params.studentId, req.user.id);
   if (!existing) return res.status(404).json({ error: 'Student not found.' });
   const updated = await prisma.student.update({ where: { id: existing.id }, data: { active: false } });
@@ -304,7 +314,7 @@ const markAttendanceSchema = z
   .strict();
 
 // GET one day's roster + marks (three-state: present/absent/unmarked).
-router.get('/classroom/classes/:classId/attendance', asyncHandler(async (req, res) => {
+router.get('/classroom/classes/:classId/attendance', ...gate, asyncHandler(async (req, res) => {
   const cls = await findOwnedClass(req.params.classId, req.user.id);
   if (!cls) return res.status(404).json({ error: 'Class not found.' });
   const date = parseDateParam(req.query.date);
@@ -339,7 +349,7 @@ router.get('/classroom/classes/:classId/attendance', asyncHandler(async (req, re
 // POST bulk upsert for one date — see §7/§14: any student in the batch that
 // doesn't belong to this teacher's class rejects the WHOLE batch (400), never
 // a partial save.
-router.post('/classroom/classes/:classId/attendance', asyncHandler(async (req, res) => {
+router.post('/classroom/classes/:classId/attendance', ...gate, asyncHandler(async (req, res) => {
   const parsed = markAttendanceSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid attendance payload.' });
@@ -376,7 +386,7 @@ router.post('/classroom/classes/:classId/attendance', asyncHandler(async (req, r
   res.json({ date: parsed.data.date, saved: marks.length });
 }));
 
-router.get('/classroom/classes/:classId/attendance/summary', asyncHandler(async (req, res) => {
+router.get('/classroom/classes/:classId/attendance/summary', ...gate, asyncHandler(async (req, res) => {
   const cls = await findOwnedClass(req.params.classId, req.user.id);
   if (!cls) return res.status(404).json({ error: 'Class not found.' });
   if (!isValidMonth(req.query.month)) {
@@ -390,7 +400,7 @@ router.get('/classroom/classes/:classId/attendance/summary', asyncHandler(async 
   res.json(summary);
 }));
 
-router.get('/classroom/classes/:classId/attendance/history', asyncHandler(async (req, res) => {
+router.get('/classroom/classes/:classId/attendance/history', ...gate, asyncHandler(async (req, res) => {
   const cls = await findOwnedClass(req.params.classId, req.user.id);
   if (!cls) return res.status(404).json({ error: 'Class not found.' });
   if (!isValidMonth(req.query.month)) {
@@ -408,7 +418,7 @@ router.get('/classroom/classes/:classId/attendance/history', asyncHandler(async 
 // month, matching the "no unscoped export" requirement. Computed by the same
 // helper attendance/summary uses, so the CSV can never disagree with the
 // on-screen numbers.
-router.get('/classroom/classes/:classId/attendance/export', asyncHandler(async (req, res) => {
+router.get('/classroom/classes/:classId/attendance/export', ...gate, asyncHandler(async (req, res) => {
   const cls = await findOwnedClass(req.params.classId, req.user.id);
   if (!cls) return res.status(404).json({ error: 'Class not found.' });
   if (!isValidMonth(req.query.month)) {
@@ -451,7 +461,7 @@ router.get('/classroom/classes/:classId/attendance/export', asyncHandler(async (
 // math. `daysMarked` (the denominator for "unmarked") is the class's own
 // count of marked days, also class-wide and not active-filtered, so it lines
 // up with the summary/export views for the same class + month.
-router.get('/classroom/students/:studentId/attendance/history', asyncHandler(async (req, res) => {
+router.get('/classroom/students/:studentId/attendance/history', ...gate, asyncHandler(async (req, res) => {
   const student = await findOwnedStudent(req.params.studentId, req.user.id);
   if (!student) return res.status(404).json({ error: 'Student not found.' });
   if (!isValidMonth(req.query.month)) {
@@ -486,7 +496,7 @@ router.get('/classroom/students/:studentId/attendance/history', asyncHandler(asy
 // "V1 UI/API is Paid/Pending only" into an enforced contract.
 const updateFeeSchema = z.object({ status: z.enum(FEE_STATUSES) }).strict();
 
-router.get('/classroom/classes/:classId/fees', asyncHandler(async (req, res) => {
+router.get('/classroom/classes/:classId/fees', ...gate, asyncHandler(async (req, res) => {
   const cls = await findOwnedClass(req.params.classId, req.user.id);
   if (!cls) return res.status(404).json({ error: 'Class not found.' });
   if (!isValidMonth(req.query.period)) {
@@ -496,7 +506,7 @@ router.get('/classroom/classes/:classId/fees', asyncHandler(async (req, res) => 
   res.json(status);
 }));
 
-router.patch('/classroom/students/:studentId/fees/:period', asyncHandler(async (req, res) => {
+router.patch('/classroom/students/:studentId/fees/:period', ...gate, asyncHandler(async (req, res) => {
   if (!isValidMonth(req.params.period)) {
     return res.status(400).json({ error: 'Invalid period.' });
   }
@@ -523,7 +533,7 @@ router.patch('/classroom/students/:studentId/fees/:period', asyncHandler(async (
 
 // GET .../fees/export?period= — CSV download (§13). Status only, matching
 // the V1 fee UI's own scope.
-router.get('/classroom/classes/:classId/fees/export', asyncHandler(async (req, res) => {
+router.get('/classroom/classes/:classId/fees/export', ...gate, asyncHandler(async (req, res) => {
   const cls = await findOwnedClass(req.params.classId, req.user.id);
   if (!cls) return res.status(404).json({ error: 'Class not found.' });
   if (!isValidMonth(req.query.period)) {
@@ -545,7 +555,7 @@ router.get('/classroom/classes/:classId/fees/export', asyncHandler(async (req, r
 
 // ---- Analytics --------------------------------------------------------------
 
-router.get('/classroom/analytics/overview', asyncHandler(async (req, res) => {
+router.get('/classroom/analytics/overview', ...gate, asyncHandler(async (req, res) => {
   const teacherId = req.user.id;
   const today = todayUtcDateOnly();
   const month = utcMonthString(today);
@@ -560,7 +570,7 @@ router.get('/classroom/analytics/overview', asyncHandler(async (req, res) => {
   res.json({ totalStudents, today: todayAttendance, month: monthAttendance, fees });
 }));
 
-router.get('/classroom/analytics/classes/:classId', asyncHandler(async (req, res) => {
+router.get('/classroom/analytics/classes/:classId', ...gate, asyncHandler(async (req, res) => {
   const cls = await findOwnedClass(req.params.classId, req.user.id);
   if (!cls) return res.status(404).json({ error: 'Class not found.' });
   const today = todayUtcDateOnly();
