@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { PanelLeft, Search, Sun, Moon } from 'lucide-react';
+import { PanelLeft, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../auth';
 import { usePreferences } from '../hooks/usePreferences';
 import { ADMIN_ROLES } from '../config';
@@ -8,14 +8,18 @@ import ProfileMenu from './ProfileMenu';
 
 interface TopBarProps {
   preferences: ReturnType<typeof usePreferences>;
+  // Present only on the Coach page. Branding, search, and the sidebar
+  // collapse control now live in Sidebar's own header (see Sidebar.tsx) —
+  // this callback remains here for exactly one case: opening the mobile
+  // drawer, which is off-canvas while closed and so cannot hold its own
+  // reopen button. See the isMobile/sidebarOpen guard below.
   onSidebarToggle?: () => void;
   sidebarOpen?: boolean;
-  // Toggles ChatSearchOverlay, an overlay in the main content column (NOT
-  // inside Sidebar — see CoachPage.tsx/ChatSearchOverlay.tsx). Only present
-  // where onSidebarToggle is, since search has nothing to search without a
-  // history sidebar's data to search within.
-  onSearchToggle?: () => void;
-  searchOpen?: boolean;
+  // Whether the viewport is at the mobile breakpoint — needed alongside
+  // sidebarOpen to decide if the mobile "open drawer" button belongs here
+  // (closed drawer only; an open drawer already has its own close button,
+  // and desktop's collapsed rail has its own reopen button — see Sidebar.tsx).
+  isMobile?: boolean;
   // False only on the Coach page, where the account menu now lives at the
   // bottom of the history Sidebar instead — see Sidebar.tsx. Every other page
   // has no such sidebar, so this stays true (the default) there.
@@ -27,46 +31,43 @@ interface TopBarProps {
 }
 
 export default function TopBar({
-  preferences, onSidebarToggle, sidebarOpen, onSearchToggle, searchOpen, showProfileMenu = true, extraControl,
+  preferences, onSidebarToggle, sidebarOpen, isMobile, showProfileMenu = true, extraControl,
 }: TopBarProps) {
   const { user } = useAuth();
   const location = useLocation();
   const { theme, toggleTheme } = preferences;
   const isAdmin = user && ADMIN_ROLES.includes(user.role);
+  // Only the Coach page's mobile-closed state needs a control here — every
+  // other combination (desktop, or mobile with the drawer open) has its
+  // reopen/close control inside the Sidebar itself.
+  const showMobileSidebarOpen = Boolean(onSidebarToggle) && isMobile && !sidebarOpen;
 
   return (
     <header className="topbar">
       <div className="topbar-inner">
         <div className="topbar-left">
-          <Link to="/" className="brand" aria-label="Teacher Assistant — home">
-            <span className="brand-logo" aria-hidden="true">👨‍🏫</span>
-            <span className="brand-text">
-              <strong className="brand-title">शिक्षक सहायक</strong>
-              <span className="brand-sub">Teacher Assistant</span>
-            </span>
-          </Link>
-          {onSidebarToggle && (
-            <>
-              <button
-                type="button"
-                className="icon-btn"
-                onClick={onSearchToggle}
-                title="Search chats"
-                aria-label="Search chats"
-                aria-pressed={searchOpen}
-              >
-                <Search size={18} aria-hidden="true" />
-              </button>
-              <button
-                className="icon-btn sidebar-toggle"
-                onClick={onSidebarToggle}
-                title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-                aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-                aria-pressed={sidebarOpen}
-              >
-                <PanelLeft size={18} aria-hidden="true" />
-              </button>
-            </>
+          {/* Hidden on the Coach page (onSidebarToggle set): branding lives in
+              Sidebar's header there instead — see Sidebar.tsx. */}
+          {!onSidebarToggle && (
+            <Link to="/" className="brand" aria-label="Teacher Assistant — home">
+              <span className="brand-logo" aria-hidden="true">👨‍🏫</span>
+              <span className="brand-text">
+                <strong className="brand-title">शिक्षक सहायक</strong>
+                <span className="brand-sub">Teacher Assistant</span>
+              </span>
+            </Link>
+          )}
+          {showMobileSidebarOpen && (
+            <button
+              type="button"
+              className="icon-btn sidebar-toggle"
+              onClick={onSidebarToggle}
+              title="Open sidebar"
+              aria-label="Open sidebar"
+              aria-pressed={sidebarOpen}
+            >
+              <PanelLeft size={18} aria-hidden="true" />
+            </button>
           )}
         </div>
 

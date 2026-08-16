@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, X, MessageSquareText, Pin } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Plus, X, PanelLeft, Search, MessageSquareText, Pin } from 'lucide-react';
 import type { HistoryItem } from '../types';
 import ProfileMenu from './ProfileMenu';
 import HistoryItemMenu from './HistoryItemMenu';
@@ -23,18 +24,31 @@ interface SidebarProps {
   togglePin: (id: string) => void;
   rename: (id: string, title: string) => void;
   forget: (id: string) => void;
+  // Collapses the sidebar (mobile: closes the drawer; desktop: shrinks to the
+  // icon-only rail — see .sidebar-rail-toggle below).
   onClose: () => void;
+  // Re-expands the sidebar from its collapsed desktop rail. Mobile has no use
+  // for this — a closed drawer is off-canvas, and the button that reopens it
+  // lives in TopBar instead (see CoachPage.tsx), since a control inside an
+  // off-canvas element can't be reached.
+  onOpen: () => void;
   onNewChat: () => void;
   onSelect: (item: HistoryItem) => void;
   onDelete: (item: HistoryItem) => void;
   onClearAll: () => void;
+  // Toggles ChatSearchOverlay — brand/search/collapse now live together in
+  // this component's header (see .sidebar-brand-row) instead of TopBar, so
+  // this reuses the exact same handler CoachPage always owned rather than a
+  // second search implementation.
+  onSearchToggle: () => void;
+  searchOpen: boolean;
 }
 
 const MAX_TITLE_LENGTH = 200;
 
 export default function Sidebar({
   open, items, loading, activeId, isMobile, isPinned, titleFor, pinnedIds, togglePin, rename: renameHistoryItem, forget,
-  onClose, onNewChat, onSelect, onDelete, onClearAll,
+  onClose, onOpen, onNewChat, onSelect, onDelete, onClearAll, onSearchToggle, searchOpen,
 }: SidebarProps) {
   const { show } = useToast();
 
@@ -106,13 +120,58 @@ export default function Sidebar({
   return (
     <>
       <div className={`sidebar-backdrop${open ? ' show' : ''}`} onClick={onClose} hidden={!open} />
-      <aside ref={asideRef} className={`sidebar${open ? ' sidebar-open' : ''}`} aria-hidden={!open}>
+      {/* aria-hidden only when truly imperceptible: a closed MOBILE drawer is
+          translated fully off-canvas, but a collapsed DESKTOP rail is still
+          on screen and its one button (below) is the only way to re-expand
+          it — hiding that from assistive tech would strand it. */}
+      <aside ref={asideRef} className={`sidebar${open ? ' sidebar-open' : ''}`} aria-hidden={!open && isMobile}>
+        {/* Collapsed desktop rail — hidden via CSS whenever the sidebar is
+            open (see .sidebar-rail-toggle in index.css). On mobile the whole
+            aside is off-canvas while closed, so this is inert there; the
+            drawer's own open control lives in TopBar instead (see
+            CoachPage.tsx). */}
+        <button
+          type="button"
+          className="icon-btn sidebar-rail-toggle"
+          onClick={onOpen}
+          aria-label="Expand sidebar"
+        >
+          <PanelLeft size={18} aria-hidden="true" />
+        </button>
+
+        <div className="sidebar-brand-row">
+          <Link to="/" className="brand" aria-label="Teacher Assistant — home">
+            <span className="brand-logo" aria-hidden="true">👨‍🏫</span>
+            <span className="brand-text">
+              <strong className="brand-title">शिक्षक सहायक</strong>
+              <span className="brand-sub">Teacher Assistant</span>
+            </span>
+          </Link>
+          <div className="sidebar-brand-actions">
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={onSearchToggle}
+              title="Search chats"
+              aria-label="Search chats"
+              aria-pressed={searchOpen}
+            >
+              <Search size={18} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="icon-btn sidebar-close"
+              onClick={onClose}
+              aria-label={isMobile ? 'Close sidebar' : 'Collapse sidebar'}
+            >
+              {isMobile ? <X size={18} aria-hidden="true" /> : <PanelLeft size={18} aria-hidden="true" />}
+            </button>
+          </div>
+        </div>
+
         <div className="sidebar-header">
           <button type="button" className="new-chat-btn" onClick={onNewChat}>
             <Plus size={18} strokeWidth={2.4} aria-hidden="true" /> New chat
-          </button>
-          <button type="button" className="icon-btn sidebar-close" onClick={onClose} aria-label="Close sidebar">
-            <X size={18} aria-hidden="true" />
           </button>
         </div>
 

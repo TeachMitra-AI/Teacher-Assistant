@@ -587,23 +587,6 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
 
   return (
     <div className={`page coach-shell${isEmpty ? ' coach-empty' : ''}`}>
-      {/* showProfileMenu=false: this page's account menu lives at the bottom of
-          the Sidebar below instead (see Sidebar.tsx). extraControl fills the
-          slot that freed up with the teaching-context icon — same context/
-          language state this page has always owned, now behind one icon
-          instead of a permanently-visible row of pills. */}
-      <TopBar
-        preferences={preferences}
-        onSidebarToggle={() => setSidebarOpen((o) => !o)}
-        sidebarOpen={sidebarOpen}
-        onSearchToggle={toggleHistorySearch}
-        searchOpen={historySearchOpen}
-        showProfileMenu={false}
-        extraControl={(
-          <TeachingContextMenu language={language} onLanguageChange={setLanguage} context={context} onContextChange={setCtx} />
-        )}
-      />
-
       <div className="coach-body">
         <Sidebar
           open={sidebarOpen}
@@ -618,13 +601,39 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
           rename={renameHistoryItem}
           forget={forgetHistoryItem}
           onClose={() => setSidebarOpen(false)}
+          onOpen={() => setSidebarOpen(true)}
           onNewChat={handleNewChat}
           onSelect={selectHistory}
           onDelete={handleDeleteHistory}
           onClearAll={handleClearHistory}
+          onSearchToggle={toggleHistorySearch}
+          searchOpen={historySearchOpen}
         />
 
         <main className="coach-main-chat">
+          {/* Scoped to THIS column, not the whole viewport — see the
+              .coach-shell/.coach-body comment in index.css for why TopBar
+              lives here instead of as a page-wide header above the sidebar.
+              showProfileMenu=false: this page's account menu lives at the
+              bottom of the Sidebar instead (see Sidebar.tsx). Brand/search/
+              collapse also now live in the Sidebar's own header — this bar
+              keeps only page nav, theme, and the teaching-context icon
+              (extraControl). The one exception is onSidebarToggle: while the
+              drawer is CLOSED on mobile it's off-canvas, so the button that
+              reopens it can't live inside it — TopBar renders that single
+              control itself in that case only (see TopBar.tsx), never at the
+              same time as the Sidebar's own close/collapse button. */}
+          <TopBar
+            preferences={preferences}
+            onSidebarToggle={() => setSidebarOpen(true)}
+            sidebarOpen={sidebarOpen}
+            isMobile={isMobile}
+            showProfileMenu={false}
+            extraControl={(
+              <TeachingContextMenu language={language} onLanguageChange={setLanguage} context={context} onContextChange={setCtx} />
+            )}
+          />
+
           {/* Wraps the scroller ONLY, so the scroll-to-latest button below can
               be positioned against the answer area rather than against the
               whole column — pinned to the column it would sit on top of the
