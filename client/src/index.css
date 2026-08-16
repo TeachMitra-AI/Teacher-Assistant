@@ -3456,9 +3456,11 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
    Bell lives in .icon-btn (already position: relative — see L95), the badge
    is an absolutely-positioned pill on top of it. The panel is an ANCHORED
    dropdown under the bell on desktop (same visual language as
-   .profile-dropdown) and becomes a bottom sheet with a dimming backdrop on
-   mobile (same technique as .help-overlay/.help-sheet above) — one markup,
-   chrome flips at the same 640px breakpoint the rest of the app uses. */
+   .profile-dropdown). On mobile it stays anchored near the TOP of the
+   screen (below the sticky .topbar, which is 62px tall — see L127) rather
+   than becoming a bottom sheet, so it never lands near/behind the fixed
+   .bottom-nav — one markup, chrome flips at the same 640px breakpoint the
+   rest of the app uses. */
 .notif-bell-wrap { position: relative; }
 .notif-badge {
   position: absolute;
@@ -3594,21 +3596,23 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
     inset: 0;
     background: rgba(0, 0, 0, 0.4);
     z-index: 1800;
-    align-items: flex-end;
+    align-items: flex-start;
     justify-content: center;
+    /* Push the panel below the sticky 62px .topbar (see L127) instead of
+       letting it fall to the bottom of the viewport near .bottom-nav. */
+    padding: calc(62px + env(safe-area-inset-top) + 0.6rem) 0.75rem 0.75rem;
   }
   .notif-panel {
     position: static;
     width: 100%;
     max-width: 460px;
-    max-height: 88vh;
-    border-radius: var(--radius) var(--radius) 0 0;
-    padding: 0.9rem 1.1rem calc(1.1rem + env(safe-area-inset-bottom));
-    animation: notif-sheet-in 0.2s ease;
-  }
-  @keyframes notif-sheet-in {
-    from { transform: translateY(100%); }
-    to { transform: translateY(0); }
+    /* Bounded by the space left below the header padding above, so the
+       panel itself never extends past the bottom of the viewport —
+       overflow scrolls inside via the base .notif-panel overflow-y rule. */
+    max-height: calc(100dvh - 62px - env(safe-area-inset-top) - 1.35rem);
+    border-radius: var(--radius);
+    padding: 0.9rem 1.1rem;
+    animation: notif-panel-in 0.16s ease;
   }
 }
 
