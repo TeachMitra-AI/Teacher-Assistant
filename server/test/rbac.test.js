@@ -7,6 +7,7 @@ const { loginAs } = require('./helpers/auth');
 describe('RBAC', () => {
   let fx;
   let tokens;
+  let savedClassroomEnv;
 
   beforeAll(async () => {
     fx = await createFixtures(prisma, 'rbac');
@@ -16,6 +17,16 @@ describe('RBAC', () => {
       resource_person: await loginAs(app, fx.schoolA, fx.resourcePersonA, PASSWORD),
       super_admin: await loginAs(app, fx.schoolA, fx.superAdmin, PASSWORD),
     };
+    // Classroom Management routes below need the flag on to assert real 200s
+    // rather than the flag's own 503 — restored in afterAll so it doesn't
+    // leak into any test file that runs after this one.
+    savedClassroomEnv = process.env.CLASSROOM_MANAGEMENT_ENABLED;
+    process.env.CLASSROOM_MANAGEMENT_ENABLED = 'true';
+  });
+
+  afterAll(() => {
+    if (savedClassroomEnv === undefined) delete process.env.CLASSROOM_MANAGEMENT_ENABLED;
+    else process.env.CLASSROOM_MANAGEMENT_ENABLED = savedClassroomEnv;
   });
 
   function as(role) {
@@ -304,6 +315,37 @@ describe('RBAC', () => {
     }
   });
 
+  // Classroom Management (docs/classroom-feature-plan.md) is not role-gated
+  // beyond authRequired — every role manages its OWN classroom data, same as
+  // GET /api/queries above. Cross-teacher denial (no role, including admin
+  // roles, can reach another teacher's data) is covered separately and more
+  // thoroughly in classroom-tenant-isolation.test.js; this block only proves
+  // every role can reach ITS OWN, empty, classroom workspace.
+  describe('Classroom Management — every role can use its own workspace', () => {
+    test.each(['teacher', 'school_admin', 'resource_person', 'super_admin'])(
+      '%s can list, create, and read back their own class',
+      async (role) => {
+        const list = await as(role)(request(app).get('/api/classroom/classes'));
+        expect(list.status).toBe(200);
+
+        const created = await as(role)(request(app).post('/api/classroom/classes').send({ name: `${role} class` }));
+        expect(created.status).toBe(201);
+
+        const fetched = await as(role)(request(app).get(`/api/classroom/classes/${created.body.class.id}`));
+        expect(fetched.status).toBe(200);
+        expect(fetched.body.class.name).toBe(`${role} class`);
+      }
+    );
+
+    test.each(['teacher', 'school_admin', 'resource_person', 'super_admin'])(
+      '%s can reach their own analytics overview',
+      async (role) => {
+        const res = await as(role)(request(app).get('/api/classroom/analytics/overview'));
+        expect(res.status).toBe(200);
+      }
+    );
+  });
+
   test('every protected route rejects a missing token with 401', async () => {
     const routes = [
       '/api/admin/analytics',
@@ -311,6 +353,8 @@ describe('RBAC', () => {
       '/api/admin/users',
       '/api/admin/users/pending',
       '/api/queries',
+      '/api/classroom/classes',
+      '/api/classroom/analytics/overview',
     ];
     for (const route of routes) {
       const res = await request(app).get(route);

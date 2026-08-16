@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { PanelLeft, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../auth';
 import { usePreferences } from '../hooks/usePreferences';
-import { ADMIN_ROLES, NOTIFICATIONS_ENABLED } from '../config';
+import { ADMIN_ROLES, NOTIFICATIONS_ENABLED, CLASSROOM_MANAGEMENT_ENABLED } from '../config';
 import ProfileMenu from './ProfileMenu';
 import NotificationBell from './Notifications';
 
@@ -88,6 +88,20 @@ export default function TopBar({
             >
               Library
             </Link>
+            {/* Classroom Management (docs/classroom-feature-plan.md) — NOT
+                the unrelated "Classroom Mode" AI chat feature, which has no
+                top-bar entry at all. Client-side cosmetic gate only (§14);
+                the server's CLASSROOM_MANAGEMENT_ENABLED is the real kill
+                switch. */}
+            {CLASSROOM_MANAGEMENT_ENABLED && (
+              <Link
+                to="/classroom"
+                className={`nav-link${location.pathname.startsWith('/classroom') ? ' active' : ''}`}
+                aria-current={location.pathname.startsWith('/classroom') ? 'page' : undefined}
+              >
+                Classroom
+              </Link>
+            )}
             <Link
               to="/generator"
               className={`nav-link${location.pathname.startsWith('/generator') ? ' active' : ''}`}

@@ -470,6 +470,99 @@ export interface SendNotificationInput {
   target: NotificationTarget;
 }
 
+// ---- Classroom Management (docs/classroom-feature-plan.md) ----------------
+//
+// A teacher-first class/student/attendance/fee workspace — NOT the same
+// feature as ClassroomPlan/ClassroomArtifact above, which belong to the
+// unrelated "Classroom Mode" AI chat feature. `SchoolClass` (not `Class` —
+// a reserved word, and to avoid the naming collision) mirrors the server DTO
+// (server/src/routes/classroom.js's classToDto) exactly.
+export interface SchoolClass {
+  id: string;
+  name: string;
+  grade?: string | null;
+  section?: string | null;
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Mirrors the server DTO (studentToDto). Phase 2 scope only — attendance and
+// fee shapes are added alongside the phases that use them.
+export interface Student {
+  id: string;
+  classId: string;
+  name: string;
+  rollNumber?: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---- Classroom Management — Attendance (Phase 3) ---------------------------
+//
+// Mirrors routes/classroom.js's attendance responses exactly. "unmarked" is
+// a legal STATUS value here (roster/day-view entries, and the marks a save
+// request sends) even though the server never stores it as a row — see
+// schema.prisma's AttendanceRecord doc comment.
+export type AttendanceStatus = 'present' | 'absent' | 'unmarked';
+
+export interface AttendanceRosterEntry {
+  studentId: string;
+  name: string;
+  rollNumber?: string | null;
+  status: AttendanceStatus;
+}
+
+export interface AttendanceDaySummary {
+  present: number;
+  absent: number;
+  unmarked: number;
+  percentage: number | null;
+}
+
+// GET .../attendance?date=
+export interface DailyAttendance {
+  date: string;
+  roster: AttendanceRosterEntry[];
+  summary: AttendanceDaySummary;
+}
+
+export interface AttendanceStudentMonthStats {
+  studentId: string;
+  name: string;
+  rollNumber?: string | null;
+  present: number;
+  absent: number;
+  unmarked: number;
+  percentage: number | null;
+}
+
+// GET .../attendance/summary?month=
+export interface ClassAttendanceMonthSummary {
+  month: string;
+  totalStudents: number;
+  daysMarked: number;
+  present: number;
+  absent: number;
+  unmarked: number;
+  percentage: number | null;
+  perStudent: AttendanceStudentMonthStats[];
+}
+
+// GET /classroom/students/:studentId/attendance/history?month=
+export interface StudentAttendanceHistory {
+  studentId: string;
+  name: string;
+  rollNumber?: string | null;
+  month: string;
+  present: number;
+  absent: number;
+  unmarked: number;
+  percentage: number | null;
+  days: { date: string; status: 'present' | 'absent' }[];
+}
+
 // A saved item in the teacher's personal library. Mirrors the server DTO
 // (see server/src/routes/resources.js) — no ownership/internal fields.
 export interface LibraryResource {

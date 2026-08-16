@@ -26,6 +26,11 @@ model School {
   events         Event[]
   resources      Resource[]
   supportTickets SupportTicket[]
+  // Classroom Management (docs/classroom-feature-plan.md) — denormalized
+  // alongside SchoolClass.teacherId, NEVER used for row-level access (every
+  // Classroom query filters on teacherId only). Reserved for a possible
+  // future school-admin rollup view; unused by any V1 route.
+  schoolClasses  SchoolClass[]
 }
 
 // Roles: teacher | school_admin | resource_person | super_admin
@@ -72,6 +77,12 @@ model User {
   supportNotes        SupportNote[]
   profilePicture      ProfilePicture?
   notifications       Notification[]
+  // Classroom Management (docs/classroom-feature-plan.md) — a teacher's own
+  // classes. Every class/student/attendance/fee row is scoped to teacherId,
+  // never schoolId (see SchoolClass's own doc comment) — teacher A never
+  // sees teacher B's classes/students/attendance/fees, even within the same
+  // school.
+  schoolClasses       SchoolClass[]
 
   // A teacher's email is unique within a school. The same email may hold
   // accounts at more than one school, which is why sign-in looks up by email
@@ -362,4 +373,130 @@ model SupportNote {
   createdAt DateTime @default(now())
 
   @@index([ticketId])
+}
+
+// ---------------------------------------------------------------------------
+// Classroom Management — see docs/classroom-feature-plan.md.
+//
+// A teacher-first workspace: My Classes / Students / Attendance / Fees /
+// Reports. Isolation is PER TEACHER (teacherId), not per school — two
+// teachers at the same school are as isolated from each other as two
+// teachers at different schools. Every route filters strictly on
+// `teacherId: req.user.id`; there is no cross-teacher visibility in V1 (see
+// routes/classroom.js and test/classroom-tenant-isolation.test.js).
+//
+// NOT to be confused with the unrelated "Classroom Mode" AI chat feature
+// (Query.classroomPlan/classroomArtifacts, CLASSROOM_MODE_ENABLED above,
+// docs/classroom-mode.md) — that feature plans/generates lesson artifacts
+// inside a chat turn and has no classes, students, attendance, or fees.
+// ---------------------------------------------------------------------------
+
+// A teacher's own class (e.g. "Class 5-A"). Owned by exactly one teacher —
+// mirrors Resource's ownership model, not School's shared-tenant model: two
+// teachers at the same school each create and see only their own
+// SchoolClass rows, there is no shared "the school's 5-A" entity.
+model SchoolClass {
+  id        String   @id @default(cuid())
+  teacher   User     @relation(fields: [teacherId], references: [id])
+  teacherId String
+  // Denormalized alongside teacherId, same convention as Resource.schoolId —
+  // never used for row-level access (ownership is always teacherId), only
+  // reserved for a possible later school-admin rollup (not built in V1).
+  school    School?  @relation(fields: [schoolId], references: [id])
+  schoolId  String?
+  name      String // "Class 5-A"
+  grade     String? // reuses the GRADES vocabulary where useful, free text otherwise
+  section   String? // "A", "B" — split out since Attendance/Reports may filter by it later
+  archived  Boolean  @default(false) // soft-delete: a class with attendance history is never hard-deleted
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  students Student[]
+
+  @@index([teacherId])
+  @@index([teacherId, archived])
+}
+
+// A student belongs to exactly one class (and transitively one teacher).
+// Deliberately minimal today (name only) per the spec, but shaped for
+// growth: `details` is an open JSON string (same convention as
+// User.preferences/Query.context) for roll number, parent contact, DOB, etc.
+// WITHOUT a migration when that's needed — the same reasoning that already
+// justifies Resource.structured.
+model Student {
+  id          String      @id @default(cuid())
+  schoolClass SchoolClass @relation(fields: [classId], references: [id])
+  classId     String
+  // Denormalized for the same reason SchoolClass.teacherId is — every
+  // ownership check filters on this directly rather than joining through
+  // SchoolClass, exactly like Resource.userId does today.
+  teacherId   String
+  name        String
+  rollNumber  String? // optional now; first concrete field beyond `details`
+  active      Boolean  @default(true) // soft-delete: preserves attendance/fee history
+  details     String? // JSON string — future fields (contact, DOB, guardian) land here first
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  attendance AttendanceRecord[]
+  feeRecords FeeRecord[]
+
+  @@index([classId])
+  @@index([teacherId])
+}
+
+// One row per student per calendar day — mirrors Event/Notification's
+// "fan-out on write, never mutate a summary" convention. A student with NO
+// row for a given date is UNMARKED for that date — "unmarked" is never
+// itself a stored status value (see routes/classroom.js). Month-wise views
+// and the percentage summary are computed by aggregation queries, not
+// stored, so the source of truth never drifts from a stale rollup.
+model AttendanceRecord {
+  id        String   @id @default(cuid())
+  student   Student  @relation(fields: [studentId], references: [id])
+  studentId String
+  // Denormalized, same reasoning as Student.teacherId — every list/summary
+  // query is teacher-scoped and this avoids a join through Student→SchoolClass.
+  teacherId String
+  classId   String
+  date      DateTime // stored at UTC midnight for the calendar date
+  status    String // "present" | "absent" — closed vocabulary, see routes file
+  markedAt  DateTime @default(now())
+
+  // One attendance mark per student per day — the DB enforces the invariant
+  // the UI relies on ("today's attendance" is unambiguous), and a re-mark is
+  // an update, not a duplicate insert.
+  @@unique([studentId, date])
+  @@index([classId, date])
+  @@index([teacherId, date])
+}
+
+// One row per student per month — a payment STATUS, not a ledger (V1 fee UI
+// is Paid/Pending only). Modeled as one-row-per-period (like
+// AttendanceRecord) rather than a single mutable field on Student, so
+// "review previous months" falls out of the schema for free.
+model FeeRecord {
+  id        String   @id @default(cuid())
+  student   Student  @relation(fields: [studentId], references: [id])
+  studentId String
+  teacherId String
+  classId   String
+  // "2026-08" — a plain string, not a DateTime, since a fee period is always
+  // a whole calendar month with no day/time component; avoids timezone
+  // ambiguity a DateTime would introduce for something that's really just a
+  // label.
+  period    String
+  status    String    @default("pending") // "paid" | "pending" — closed vocabulary
+  // Reserved for future fee-ledger expansion (docs/classroom-feature-plan.md
+  // §11/§19) — NOT exposed by any V1 route or UI. V1's PATCH accepts only
+  // `status`; these three columns exist purely so that wiring real amounts,
+  // due dates, and notes in later needs zero migration.
+  amount    Int? // paise/cents-as-integer if/when real amounts are tracked; null today
+  paidAt    DateTime?
+  note      String?
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, period])
+  @@index([classId, period])
+  @@index([teacherId, period])
 }

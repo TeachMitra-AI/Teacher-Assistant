@@ -50,6 +50,12 @@ const adminSettingsRouter = require('./routes/adminSettings');
 // Notification System — a sibling feature, same "fail at boot on a malformed
 // module" reasoning as every router above. See docs/notification-system-plan.md.
 const notificationsRouter = require('./routes/notifications');
+// Classroom Management (docs/classroom-feature-plan.md) — a teacher-first
+// class/student/attendance/fee workspace. A sibling feature, same "fail at
+// boot on a malformed module" reasoning as every router above. NOT the same
+// feature as "Classroom Mode" below (planClassroom/CLASSROOM_MODE_ENABLED) —
+// that is an unrelated AI chat feature; this router never touches it.
+const classroomRouter = require('./routes/classroom');
 const { initSocketServer } = require('./lib/socketServer');
 const { readNotificationsFlags } = require('./lib/flags');
 // AI Learning Representation System (ADR Phase D). A sibling feature, same
@@ -498,6 +504,24 @@ const NOTIFICATIONS_SEND_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.NOTIF
 const notificationsSendLimiter = rateLimit({
   windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
   max: NOTIFICATIONS_SEND_RATE_LIMIT_MAX_REQUESTS,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please wait a few minutes and try again.' },
+});
+
+// Classroom Management — own bucket, matching the resourcesRouter/
+// supportRouter precedent (docs/classroom-feature-plan.md §7). Classroom
+// writes (create a class, add a student, mark a day's attendance, set a fee
+// status) are frequent-but-cheap, closer to /resources CRUD than to an AI
+// call, so this gets a generous ceiling like the general `limiter` rather
+// than a generateLimiter-style tight one.
+const CLASSROOM_MANAGEMENT_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.CLASSROOM_MANAGEMENT_RATE_LIMIT_MAX_REQUESTS, {
+  name: 'CLASSROOM_MANAGEMENT_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 300 : 1200, min: 1, max: 100000,
+});
+
+const classroomLimiter = rateLimit({
+  windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
+  max: CLASSROOM_MANAGEMENT_RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Please wait a few minutes and try again.' },
@@ -987,6 +1011,18 @@ app.use('/api/notifications', (req, res, next) => {
   return notificationsSendLimiter(req, res, next);
 });
 app.use('/api', notificationsRouter);
+
+// Classroom Management. Its own routes already start with "/classroom/..."
+// (see routes/classroom.js), so — same mounting shape as
+// generateLimiter/attachmentLimiter/supportLimiter above — the limiter binds
+// to that exact path prefix ahead of the router, and the router itself
+// mounts at the general "/api" (mounting it at "/api/classroom" would double
+// the prefix to "/api/classroom/classroom/..."). With
+// CLASSROOM_MANAGEMENT_ENABLED unset (the default) every /api/classroom/*
+// route returns 503 and the application otherwise behaves exactly as it did
+// before this line.
+app.use('/api/classroom', classroomLimiter);
+app.use('/api', classroomRouter);
 
 // Global error handler — last line of defense. Routes wrapped in
 // asyncHandler (see lib/asyncHandler.js) forward a rejected promise here via
