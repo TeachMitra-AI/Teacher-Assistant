@@ -191,6 +191,9 @@ button { font-family: inherit; cursor: pointer; }
 .nav-link.active { background: var(--surface-2); color: var(--orange); }
 
 .topbar-left { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+/* Only ever rendered on Coach/mobile with the drawer closed (see
+   showMobileSidebarOpen in TopBar.tsx) — every other case's open/close
+   control lives inside Sidebar itself. */
 .sidebar-toggle { flex-shrink: 0; }
 
 /* ---- Mobile bottom navigation (shown only <=640px; see media query) ------ */
@@ -295,22 +298,31 @@ button { font-family: inherit; cursor: pointer; }
 /* ---- Layout --------------------------------------------------------------- */
 .page { min-height: 100vh; }
 
-/* Coach shell: fixed-viewport chat app layout (sidebar + main column) */
-.coach-shell { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-.coach-body { flex: 1; display: flex; min-height: 0; }
+/* Coach shell: fixed-viewport chat app layout. TopBar is NOT a sibling here
+   — it lives inside .coach-main-chat (see CoachPage.tsx), so the sidebar
+   below is the only thing sharing this row and reaches the full shell
+   height, top to bottom, with nothing sitting above it. */
+.coach-shell { height: 100vh; overflow: hidden; }
+.coach-body { height: 100%; display: flex; min-height: 0; }
 
 /* ---- Sidebar ---------------------------------------------------------- */
+/* Desktop default: a collapsed, icon-only rail (not width:0) — its one
+   button (.sidebar-rail-toggle) is how the sidebar re-expands, so it must
+   stay on screen and in flow rather than disappearing with the rest of the
+   sidebar's content. The mobile media query below replaces this with the
+   existing fixed-drawer sizing, where a closed sidebar is off-canvas instead
+   (that state's reopen control lives in TopBar — see CoachPage.tsx). */
 .sidebar {
-  width: 0;
-  opacity: 0;
+  width: 60px;
   flex-shrink: 0;
   overflow: hidden;
   background: var(--surface);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  transition: width 0.2s ease, opacity 0.15s ease;
+  transition: width 0.2s ease;
 }
-.sidebar.sidebar-open { width: 280px; opacity: 1; border-right: 1px solid var(--border); }
+.sidebar.sidebar-open { width: 280px; }
 .sidebar-backdrop {
   display: none;
   position: fixed;
@@ -321,7 +333,35 @@ button { font-family: inherit; cursor: pointer; }
   pointer-events: none;
   transition: opacity 0.2s ease;
 }
-.sidebar-header { display: flex; align-items: center; gap: 0.5rem; padding: 0.9rem 0.9rem 0.6rem; }
+
+/* Collapsed-rail toggle: visible only while the sidebar is NOT open, and
+   only meaningfully so on desktop — on mobile the same closed state is
+   off-canvas (see .sidebar media query below), so this sits there unseen and
+   unreachable, same as the rest of the sidebar's content. */
+.sidebar-rail-toggle { display: none; margin: 0.9rem auto 0; }
+.sidebar:not(.sidebar-open) .sidebar-rail-toggle { display: inline-flex; }
+/* Everything else is only meaningful at full width; hidden while collapsed
+   so it doesn't wrap/clip inside the 60px rail. */
+.sidebar:not(.sidebar-open) .sidebar-brand-row,
+.sidebar:not(.sidebar-open) .sidebar-header,
+.sidebar:not(.sidebar-open) .sidebar-section,
+.sidebar:not(.sidebar-open) .history-list,
+.sidebar:not(.sidebar-open) .sidebar-footer {
+  display: none;
+}
+
+/* Brand/search/collapse — the sidebar's own header, replacing the controls
+   that used to live in TopBar (see TopBar.tsx). */
+.sidebar-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.9rem 0.9rem 0.7rem;
+}
+.sidebar-brand-actions { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
+
+.sidebar-header { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.9rem 0.6rem; }
 .new-chat-btn {
   flex: 1;
   display: inline-flex;
@@ -606,7 +646,7 @@ button { font-family: inherit; cursor: pointer; }
   .topbar-nav { display: none; }
   .bottom-nav { display: flex; }
 
-  /* The coach screen is a fixed-height flex column; on mobile subtract the
+  /* The coach screen is a fixed-height shell; on mobile subtract the
      bottom nav (and safe-area) and use dynamic viewport height so the composer
      sits just above the bottom nav instead of behind the browser chrome.
      min-height:0 defeats the base `.page { min-height: 100vh }`. */
@@ -710,10 +750,11 @@ button { font-family: inherit; cursor: pointer; }
   .attachment-tray--preview .attachment-preview-remove { width: 24px; height: 24px; top: 3px; right: 3px; }
 
   /* --- Coach EMPTY / WELCOME state (mobile): natural page scroll ----------
-     The default coach shell is a fixed-viewport flex column where `.chat-scroll`
-     is a nested scroll area that only gets the space left after the top bar and
-     the always-present context+composer dock — on a phone that traps the
-     quick-action cards in a tiny ~2-card scroll window. In the empty state we
+     The default coach shell is fixed-viewport, and `.chat-scroll` (nested
+     inside .coach-main-chat, below its own TopBar) is a scroll area that only
+     gets the space left after the top bar and the always-present
+     context+composer dock — on a phone that traps the quick-action cards in a
+     tiny ~2-card scroll window. In the empty state we
      drop the fixed-height/overflow chain so the whole page scrolls naturally
      (greeting → cards → context → composer), and the composer flows after the
      welcome content instead of permanently reserving viewport height. The
