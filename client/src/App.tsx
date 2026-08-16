@@ -26,6 +26,7 @@ import SettingsPage from './pages/SettingsPage';
 import LibraryPage from './pages/LibraryPage';
 import ResourceView from './pages/ResourceView';
 import ResourceWorkspace from './pages/ResourceWorkspace';
+import ClassroomPage from './pages/ClassroomPage';
 import GeneratorPage from './pages/GeneratorPage';
 import BottomNav from './components/BottomNav';
 
@@ -68,6 +69,12 @@ function AppRoutes() {
       <Route path="/library" element={<LibraryPage preferences={preferences} />} />
       <Route path="/library/:id" element={<ResourceView preferences={preferences} />} />
       <Route path="/library/:id/edit" element={<ResourceWorkspace preferences={preferences} />} />
+      {/* Classroom Management (docs/classroom-feature-plan.md) — every role
+          manages its OWN classroom data, no role gate needed (matches
+          Coach/Library/Generator's unrestricted pattern). NOT the unrelated
+          "Classroom Mode" AI chat feature, which has no page/route of its
+          own. */}
+      <Route path="/classroom" element={<ClassroomPage preferences={preferences} />} />
       <Route path="/generator" element={<GeneratorPage preferences={preferences} />} />
       <Route path="/settings" element={<SettingsPage preferences={preferences} />} />
       <Route

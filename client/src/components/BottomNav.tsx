@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Sparkles, Library as LibraryIcon, FileQuestion, type LucideIcon } from 'lucide-react';
+import { Sparkles, Library as LibraryIcon, GraduationCap, FileQuestion, type LucideIcon } from 'lucide-react';
+import { CLASSROOM_MANAGEMENT_ENABLED } from '../config';
 
 // Mobile-only primary navigation. On desktop this is hidden (the top bar keeps
 // the nav links); at <=640px the top-bar links are hidden and these take over,
@@ -12,17 +13,25 @@ interface NavItem {
   isActive: (path: string) => boolean;
 }
 
-const ITEMS: NavItem[] = [
+const BASE_ITEMS: NavItem[] = [
   { to: '/', label: 'Coach', icon: Sparkles, isActive: (p) => p === '/' },
   { to: '/library', label: 'Library', icon: LibraryIcon, isActive: (p) => p.startsWith('/library') },
+  // Classroom Management (docs/classroom-feature-plan.md) — NOT the unrelated
+  // "Classroom Mode" AI chat feature, which has no bottom-nav entry at all.
+  { to: '/classroom', label: 'Classroom', icon: GraduationCap, isActive: (p) => p.startsWith('/classroom') },
   { to: '/generator', label: 'Generator', icon: FileQuestion, isActive: (p) => p.startsWith('/generator') },
 ];
 
 export default function BottomNav() {
   const { pathname } = useLocation();
+  // Client-side cosmetic gate only (§14 of the plan) — the server's
+  // CLASSROOM_MANAGEMENT_ENABLED is the real kill switch. When off, this item
+  // is never rendered at all, same "zero new UI" default as every other
+  // flagged feature in this app.
+  const items = CLASSROOM_MANAGEMENT_ENABLED ? BASE_ITEMS : BASE_ITEMS.filter((item) => item.to !== '/classroom');
   return (
     <nav className="bottom-nav" aria-label="Primary">
-      {ITEMS.map((item) => {
+      {items.map((item) => {
         const Icon = item.icon;
         const active = item.isActive(pathname);
         return (

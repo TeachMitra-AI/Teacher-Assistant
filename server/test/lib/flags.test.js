@@ -21,6 +21,8 @@ const {
   LEARNING_REPRESENTATION_FLAG_DEFAULTS,
   readClassroomModeFlags,
   CLASSROOM_MODE_FLAG_DEFAULTS,
+  readClassroomManagementFlags,
+  CLASSROOM_MANAGEMENT_FLAG_DEFAULTS,
 } = require('../../src/lib/flags');
 
 function withWarn() {
@@ -363,5 +365,55 @@ describe('flags.readClassroomModeFlags', () => {
     flags.allowedSchoolCodes.push('KV002');
     expect(CLASSROOM_MODE_FLAG_DEFAULTS.allowedSchoolCodes).toEqual([]);
     expect(Object.isFrozen(CLASSROOM_MODE_FLAG_DEFAULTS)).toBe(true);
+  });
+});
+
+describe('flags.readClassroomManagementFlags', () => {
+  test('an empty environment produces a completely inert feature', () => {
+    const { warn, warnings } = withWarn();
+    const flags = readClassroomManagementFlags({}, { warn });
+
+    expect(flags.enabled).toBe(false);
+    expect(flags.allowedSchoolCodes).toEqual([]);
+    expect(warnings).toHaveLength(0);
+  });
+
+  test('the documented defaults match what is actually returned', () => {
+    const flags = readClassroomManagementFlags({});
+    expect(flags.enabled).toBe(CLASSROOM_MANAGEMENT_FLAG_DEFAULTS.enabled);
+    expect(flags.allowedSchoolCodes).toEqual([...CLASSROOM_MANAGEMENT_FLAG_DEFAULTS.allowedSchoolCodes]);
+  });
+
+  test('an explicitly configured environment is read through', () => {
+    const { warn, warnings } = withWarn();
+    const flags = readClassroomManagementFlags(
+      { CLASSROOM_MANAGEMENT_ENABLED: 'true', CLASSROOM_MANAGEMENT_ALLOWED_SCHOOL_CODES: 'DPS001, KV002' },
+      { warn }
+    );
+    expect(flags.enabled).toBe(true);
+    expect(flags.allowedSchoolCodes).toEqual(['DPS001', 'KV002']);
+    expect(warnings).toHaveLength(0);
+  });
+
+  test('an empty school allow-list means "all schools", not "no schools"', () => {
+    expect(readClassroomManagementFlags({}).allowedSchoolCodes).toEqual([]);
+    expect(
+      readClassroomManagementFlags({ CLASSROOM_MANAGEMENT_ALLOWED_SCHOOL_CODES: '' }).allowedSchoolCodes
+    ).toEqual([]);
+  });
+
+  test('a nonsense enable value leaves the feature OFF and warns', () => {
+    const { warn, warnings } = withWarn();
+    const flags = readClassroomManagementFlags({ CLASSROOM_MANAGEMENT_ENABLED: 'probably' }, { warn });
+    expect(flags.enabled).toBe(false);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/CLASSROOM_MANAGEMENT_ENABLED/);
+  });
+
+  test('reading flags never mutates the frozen defaults', () => {
+    const flags = readClassroomManagementFlags({ CLASSROOM_MANAGEMENT_ALLOWED_SCHOOL_CODES: 'DPS001' });
+    flags.allowedSchoolCodes.push('KV002');
+    expect(CLASSROOM_MANAGEMENT_FLAG_DEFAULTS.allowedSchoolCodes).toEqual([]);
+    expect(Object.isFrozen(CLASSROOM_MANAGEMENT_FLAG_DEFAULTS)).toBe(true);
   });
 });

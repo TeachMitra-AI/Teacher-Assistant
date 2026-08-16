@@ -41,6 +41,9 @@ const TEST_ENV = {
   // enough generate() calls can otherwise exhaust .env's production-sized
   // default (30) well before the file finishes.
   RESOURCE_GENERATE_RATE_LIMIT_MAX: '1000',
+  // Same reasoning: classroom.attendance.test.js exercises bulk-mark and
+  // export endpoints many times through the shared app.
+  CLASSROOM_MANAGEMENT_RATE_LIMIT_MAX_REQUESTS: '5000',
   // The AI Action Router's OWN budgets, which are separate from the LLM_*
   // values below and were previously left at their production defaults
   // (3.5s per call, 5s overall — see index.js ASSISTANT_LLM_TIMEOUT_MS).

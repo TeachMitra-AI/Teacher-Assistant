@@ -370,6 +370,20 @@ export const CLASSROOM_MODE_ENABLED = import.meta.env.VITE_CLASSROOM_MODE_ENABLE
 // every connection regardless of this flag).
 export const NOTIFICATIONS_ENABLED = import.meta.env.VITE_NOTIFICATIONS_ENABLED === 'true';
 
+// ---- Classroom Management ---------------------------------------------------
+//
+// See docs/classroom-feature-plan.md. Client-side gate, same deliberately
+// opt-in shape and same "not the real kill switch" caveat as the flags above.
+// When false (the default), neither BottomNav nor TopBar renders the
+// Classroom link — same "zero new UI" default as every other flagged
+// feature. NOT the same feature as CLASSROOM_MODE_ENABLED above — that is an
+// unrelated AI chat feature with no classes, students, attendance, or fees.
+// The server's CLASSROOM_MANAGEMENT_ENABLED is the immediately-effective
+// kill switch (every /api/classroom/* route returns 503 regardless of this
+// flag) — a teacher who reaches /classroom directly on a stale cached client
+// still just sees that feature's own "not available" message, not broken UI.
+export const CLASSROOM_MANAGEMENT_ENABLED = import.meta.env.VITE_CLASSROOM_MANAGEMENT_ENABLED === 'true';
+
 // Closed vocabulary — SERVER COUNTERPART: server/src/lib/notificationTypes.js
 // NOTIFICATION_TYPES holds the same keys. Same CHANGE-11 duplication
 // convention as LANGUAGES/GRADES/SUBJECTS above. CHANGE BOTH IN THE SAME

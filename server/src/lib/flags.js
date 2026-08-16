@@ -412,6 +412,50 @@ function readNotificationsFlags(env, { warn = console.warn } = {}) {
   };
 }
 
+// ---- Classroom Management ---------------------------------------------------
+//
+// See docs/classroom-feature-plan.md. Same shape and same "default OFF"
+// reasoning as every flag above. NOT the same feature as "Classroom Mode"
+// above (CLASSROOM_MODE_ENABLED) — that is an unrelated AI chat feature; this
+// is the class/student/attendance/fee management workspace. Deliberately
+// distinct env var names so the two can never be confused or accidentally
+// toggled together.
+//
+// MASTER KILL SWITCH. When false, every /api/classroom/* route returns 503
+// and touches no table. The client's VITE_CLASSROOM_MANAGEMENT_ENABLED only
+// hides the nav entry on an already-cached PWA build — same "not the real
+// kill switch" caveat as every other VITE_*_ENABLED constant (G28).
+//
+// No daily-budget-per-user tunable: this feature makes no LLM call, so
+// CLASSROOM_MANAGEMENT_ALLOWED_SCHOOL_CODES (a rollout filter, not a gate —
+// empty means all schools) plus the shared classroomLimiter (index.js) are
+// what bound it, matching Help & Support's reasoning above.
+
+const CLASSROOM_MANAGEMENT_FLAG_DEFAULTS = Object.freeze({
+  enabled: false,
+  allowedSchoolCodes: Object.freeze([]),
+});
+
+/**
+ * Read Classroom Management's global flags from an environment object.
+ * @param {Record<string, string|undefined>} env
+ * @param {{warn?: (msg: string) => void}} [opts]
+ * @returns {{enabled: boolean, allowedSchoolCodes: string[]}}
+ */
+function readClassroomManagementFlags(env, { warn = console.warn } = {}) {
+  return {
+    enabled: parseBoolEnv(env.CLASSROOM_MANAGEMENT_ENABLED, {
+      name: 'CLASSROOM_MANAGEMENT_ENABLED',
+      defaultValue: CLASSROOM_MANAGEMENT_FLAG_DEFAULTS.enabled,
+      warn,
+    }),
+    allowedSchoolCodes: parseListEnv(env.CLASSROOM_MANAGEMENT_ALLOWED_SCHOOL_CODES, {
+      name: 'CLASSROOM_MANAGEMENT_ALLOWED_SCHOOL_CODES',
+      defaultValue: CLASSROOM_MANAGEMENT_FLAG_DEFAULTS.allowedSchoolCodes,
+    }),
+  };
+}
+
 module.exports = {
   parseBoolEnv,
   parseListEnv,
@@ -428,4 +472,6 @@ module.exports = {
   CLASSROOM_MODE_FLAG_DEFAULTS,
   readNotificationsFlags,
   NOTIFICATIONS_FLAG_DEFAULTS,
+  readClassroomManagementFlags,
+  CLASSROOM_MANAGEMENT_FLAG_DEFAULTS,
 };

@@ -3151,6 +3151,167 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 [data-theme='dark'] .status-pill.status-triaged { color: #fcd34d; border-color: #78350f; background: rgba(120, 53, 15, 0.35); }
 [data-theme='dark'] .status-pill.status-resolved { color: #6ee7a8; border-color: #14532d; background: rgba(20, 83, 45, 0.35); }
 
+/* ---- Classroom Management (docs/classroom-feature-plan.md) --------------
+   NOT the unrelated "Classroom Mode" AI chat feature — that has its own
+   composer-scoped styles elsewhere in this file. This block covers the
+   /classroom page shell, tab bar, and My Classes / Students panels. */
+.classroom-main { max-width: 1080px; margin: 0 auto; padding: 1.75rem 1.25rem 3rem; }
+
+.classroom-tabs {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 1.4rem;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.classroom-tabs::-webkit-scrollbar { display: none; }
+.classroom-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.classroom-tabs button:hover { color: var(--text); }
+.classroom-tabs button.active { color: var(--orange); border-bottom-color: var(--orange); }
+.classroom-tabs button:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; border-radius: var(--radius-sm); }
+
+/* Desktop: a persistent class list beside whichever tab is active (§5) —
+   picking a different class never requires leaving the current tab. Mobile
+   (see the 640px media query below) stacks these and shows only one at a
+   time, driven by the active tab. */
+.classroom-layout { display: grid; grid-template-columns: 280px 1fr; gap: 1.25rem; align-items: start; }
+
+.classroom-sidebar,
+.classroom-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.1rem;
+}
+
+.classroom-show-archived {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0.2rem 0 0.9rem;
+}
+
+.classroom-hint { color: var(--text-muted); font-size: 0.9rem; }
+
+.classroom-panel-title { font-size: 1rem; font-weight: 700; margin: 0 0 1rem; }
+
+/* My Classes list */
+.classroom-class-list { display: flex; flex-direction: column; gap: 0.5rem; list-style: none; margin: 0; padding: 0; }
+.classroom-class-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  transition: border-color 0.12s ease;
+}
+.classroom-class-item.active { border-color: var(--orange); }
+.classroom-class-item.archived { opacity: 0.7; }
+.classroom-class-item-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+}
+.classroom-class-item-main:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; border-radius: var(--radius-sm); }
+.classroom-class-name { font-weight: 600; font-size: 0.92rem; color: var(--text); }
+.classroom-class-meta { font-size: 0.78rem; color: var(--text-muted); }
+.classroom-class-actions { display: flex; gap: 0.25rem; padding-right: 0.5rem; flex-shrink: 0; }
+.classroom-class-actions .icon-btn,
+.classroom-class-edit-actions .icon-btn { min-width: 32px; min-height: 32px; padding: 0; }
+
+.classroom-class-edit { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.5rem; align-items: center; }
+.classroom-class-edit input {
+  flex: 1 1 100px;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.5rem;
+}
+.classroom-class-edit-actions { display: flex; gap: 0.25rem; }
+
+.classroom-badge-archived {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  color: #b45309;
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  margin-left: 0.4rem;
+}
+[data-theme='dark'] .classroom-badge-archived { color: #fcd34d; border-color: #78350f; background: rgba(120, 53, 15, 0.35); }
+
+/* Students roster */
+.classroom-roster .school-form { margin-bottom: 0.9rem; }
+.classroom-row-inactive { opacity: 0.6; }
+
+/* Empty / placeholder states (My Classes empty, "select a class", "coming
+   soon" panels) — mirrors .library-empty's visual language. */
+.classroom-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.3rem;
+  padding: 2.5rem 1rem;
+  color: var(--text-muted);
+}
+.classroom-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--orange);
+  margin-bottom: 0.4rem;
+}
+
+@media (max-width: 640px) {
+  .classroom-main { padding: 1.25rem 0.9rem 2rem; }
+  .classroom-layout { display: block; }
+  /* Only one of the sidebar (My Classes) or the active tab's content is
+     shown at a time on a phone — see ClassroomPage.tsx, which toggles this
+     class based on the active tab (§4: "Students/Attendance/Fees/Reports
+     are always scoped to one class at a time on small screens"). */
+  .classroom-sidebar.mobile-hidden,
+  .classroom-content.mobile-hidden { display: none; }
+}
+
 .type-tag {
   display: inline-block;
   font-size: 0.72rem;
