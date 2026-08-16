@@ -116,6 +116,54 @@ describe('My Library — /api/resources', () => {
     });
   });
 
+  // Notification System system-hook (docs/notification-system-plan.md §6):
+  // saving a resource is the "lesson generated"/"assessment ready" system
+  // event. A sibling describe block, not folded into 'create' above — it
+  // exercises a different subsystem (Notification, not Resource) as a
+  // side-effect of the same endpoint.
+  describe('notification hook on save', () => {
+    let savedEnv;
+    beforeAll(() => { savedEnv = process.env.NOTIFICATIONS_ENABLED; process.env.NOTIFICATIONS_ENABLED = 'true'; });
+    afterAll(() => {
+      if (savedEnv === undefined) delete process.env.NOTIFICATIONS_ENABLED;
+      else process.env.NOTIFICATIONS_ENABLED = savedEnv;
+    });
+    afterEach(async () => {
+      await prisma.notification.deleteMany({ where: { recipientId: { in: [fx.teacherA.id, fx.teacherB.id] } } });
+    });
+
+    test('creates exactly one lesson_generated notification for the owner, linking to the saved resource', async () => {
+      const res = await createFor(teacherAToken, { type: 'lesson_plan', title: 'Fractions intro' });
+      expect(res.status).toBe(201);
+
+      const rows = await prisma.notification.findMany({ where: { recipientId: fx.teacherA.id } });
+      expect(rows).toHaveLength(1);
+      expect(rows[0].type).toBe('lesson_generated');
+      expect(rows[0].link).toBe(`/library/${res.body.resource.id}`);
+    });
+
+    test('creates an assessment_ready notification for an assessment-type resource', async () => {
+      const res = await createFor(teacherAToken, { type: 'assessment', title: 'Unit 3 quiz' });
+      expect(res.status).toBe(201);
+
+      const rows = await prisma.notification.findMany({ where: { recipientId: fx.teacherA.id } });
+      expect(rows).toHaveLength(1);
+      expect(rows[0].type).toBe('assessment_ready');
+    });
+
+    test('creates no row while NOTIFICATIONS_ENABLED is off', async () => {
+      process.env.NOTIFICATIONS_ENABLED = 'false';
+      try {
+        const res = await createFor(teacherAToken, { title: 'Should not notify' });
+        expect(res.status).toBe(201);
+        const rows = await prisma.notification.findMany({ where: { recipientId: fx.teacherA.id } });
+        expect(rows).toHaveLength(0);
+      } finally {
+        process.env.NOTIFICATIONS_ENABLED = 'true';
+      }
+    });
+  });
+
   describe('list, filter, search', () => {
     beforeEach(async () => {
       await createFor(teacherAToken, { type: 'lesson_plan', title: 'Algebra basics', content: 'equations' });

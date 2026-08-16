@@ -3,8 +3,9 @@ import { Link, useLocation } from 'react-router-dom';
 import { PanelLeft, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../auth';
 import { usePreferences } from '../hooks/usePreferences';
-import { ADMIN_ROLES } from '../config';
+import { ADMIN_ROLES, NOTIFICATIONS_ENABLED } from '../config';
 import ProfileMenu from './ProfileMenu';
+import NotificationBell from './Notifications';
 
 interface TopBarProps {
   preferences: ReturnType<typeof usePreferences>;
@@ -116,6 +117,7 @@ export default function TopBar({
             {theme === 'dark' ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
           </button>
 
+          {NOTIFICATIONS_ENABLED && <NotificationBell />}
           {extraControl}
           {showProfileMenu && <ProfileMenu variant="topbar" />}
         </div>

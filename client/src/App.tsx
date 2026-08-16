@@ -3,6 +3,7 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider, useAuth } from './auth';
 import { OnboardingProvider } from './onboarding';
 import { ToastProvider } from './components/Toast';
+import { NotificationProvider } from './components/Notifications';
 import { HelpSupportProvider } from './components/HelpSupport';
 import { ErrorBoundary } from './components/ErrorBoundary';
 // The AI Action Router's provider, not react-router's. Mounted innermost, so
@@ -20,6 +21,7 @@ import ManagePage from './pages/ManagePage';
 import AdminSupportPage from './pages/AdminSupportPage';
 import AdminSupportTicketPage from './pages/AdminSupportTicketPage';
 import AdminSettingsPage from './pages/AdminSettingsPage';
+import AdminNotificationsPage from './pages/AdminNotificationsPage';
 import SettingsPage from './pages/SettingsPage';
 import LibraryPage from './pages/LibraryPage';
 import ResourceView from './pages/ResourceView';
@@ -88,6 +90,16 @@ function AppRoutes() {
         path="/admin/settings"
         element={isSuperAdmin ? <AdminSettingsPage preferences={preferences} /> : <Navigate to="/" replace />}
       />
+      {/* Notification System send/broadcast — every ADMIN_ROLES member can
+          reach this, unlike Support/Settings above (super_admin only): a
+          school_admin/resource_person can send within their own scope
+          (see docs/notification-system-plan.md §2). The backend
+          independently re-derives and clamps that scope regardless of what
+          this route lets through. */}
+      <Route
+        path="/admin/notifications"
+        element={isAdmin ? <AdminNotificationsPage preferences={preferences} /> : <Navigate to="/" replace />}
+      />
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <BottomNav />
@@ -111,19 +123,27 @@ export default function App() {
   // OnboardingProvider → RouterProvider relative order is otherwise untouched;
   // these two are spliced in between Toast and Onboarding, not reordered
   // around them.
+  //
+  // NotificationProvider sits inside Auth+Toast too (it needs useAuth().user
+  // to open/close its socket, and useToast() to surface a realtime arrival)
+  // and outside ErrorBoundary for the same "survives a crash below it"
+  // reasoning as HelpSupportProvider — spliced in right next to it rather
+  // than nested inside, since neither depends on the other.
   const tree = (
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
-          <HelpSupportProvider>
-            <ErrorBoundary>
-              <OnboardingProvider>
-                <RouterProvider>
-                  <AppRoutes />
-                </RouterProvider>
-              </OnboardingProvider>
-            </ErrorBoundary>
-          </HelpSupportProvider>
+          <NotificationProvider>
+            <HelpSupportProvider>
+              <ErrorBoundary>
+                <OnboardingProvider>
+                  <RouterProvider>
+                    <AppRoutes />
+                  </RouterProvider>
+                </OnboardingProvider>
+              </ErrorBoundary>
+            </HelpSupportProvider>
+          </NotificationProvider>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

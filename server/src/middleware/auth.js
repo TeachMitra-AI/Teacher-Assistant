@@ -96,6 +96,7 @@ function refreshTokenExpiry() {
 
 module.exports = {
   signAccessToken,
+  decode,
   authRequired,
   optionalAuth,
   requireRole,

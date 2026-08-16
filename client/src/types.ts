@@ -423,6 +423,53 @@ export interface SupportTicketStats {
   feedback: number;
 }
 
+// Notification System — mirrors server/src/lib/notificationTypes.js's
+// NOTIFICATION_TYPES exactly (see config.ts's CHANGE-11 comment on
+// NOTIFICATION_TYPE_META).
+export type NotificationType =
+  | 'announcement'
+  | 'lesson_generated'
+  | 'assessment_ready'
+  | 'report_ready'
+  | 'system_update'
+  | 'reminder';
+
+// One row from GET /api/notifications — mirrors the server DTO
+// (server/src/lib/notificationService.js's toDto).
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  link: string | null;
+  read: boolean;
+  createdAt: string;
+  senderName: string | null;
+  senderRole: Role | null;
+  metadata: Record<string, unknown> | null;
+}
+
+// Who a send targets — mirrors routes/notifications.js's targetSchema. Which
+// of schoolIds/roles/userIds is populated depends on `scope`; the compose UI
+// only ever offers the scopes the caller's own role can reach (the server
+// re-derives and clamps this independently — see
+// docs/notification-system-plan.md §7, the frontend hiding options is a
+// courtesy, not the boundary).
+export interface NotificationTarget {
+  scope: 'all' | 'school' | 'role' | 'users';
+  schoolIds?: string[];
+  roles?: Role[];
+  userIds?: string[];
+}
+
+export interface SendNotificationInput {
+  title: string;
+  message: string;
+  type: NotificationType;
+  link?: string;
+  target: NotificationTarget;
+}
+
 // A saved item in the teacher's personal library. Mirrors the server DTO
 // (see server/src/routes/resources.js) — no ownership/internal fields.
 export interface LibraryResource {

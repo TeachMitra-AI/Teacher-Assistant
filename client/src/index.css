@@ -2995,6 +2995,28 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   margin-bottom: -1px;
 }
 .admin-tabs a.active { color: var(--orange); border-bottom-color: var(--orange); }
+.admin-tabs a:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; border-radius: var(--radius-sm); }
+
+/* Mobile: the tab list (Overview/Manage/Support/Notifications/Settings, and
+   whatever else lands here later — PYQ, Reports, Users) no longer fits one
+   line. `.admin-tabs` becomes its own scroll container instead of wrapping
+   or shrinking tabs — `overflow-x: auto` clips the overflowing links to
+   this element's own box, which is what keeps the rest of the Admin page
+   (and the page-level scroll width) from being pushed wide by them. Desktop
+   is untouched; this whole block is gated to the same 640px breakpoint the
+   rest of the app's mobile layout uses. */
+@media (max-width: 640px) {
+  .admin-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .admin-tabs::-webkit-scrollbar { display: none; }
+  .admin-tabs a { flex-shrink: 0; white-space: nowrap; }
+}
 
 .manage-section {
   background: var(--surface);
@@ -3429,6 +3451,166 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .help-submit { width: 100%; margin-top: 1rem; display: flex; align-items: center; justify-content: center; }
 .help-success { text-align: center; padding: 0.6rem 0 0.4rem; }
 .help-success-ref { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; color: var(--text-muted); font-size: 0.85rem; }
+
+/* ---- Notification System (components/Notifications.tsx) -----------------
+   Bell lives in .icon-btn (already position: relative — see L95), the badge
+   is an absolutely-positioned pill on top of it. The panel is an ANCHORED
+   dropdown under the bell on desktop (same visual language as
+   .profile-dropdown) and becomes a bottom sheet with a dimming backdrop on
+   mobile (same technique as .help-overlay/.help-sheet above) — one markup,
+   chrome flips at the same 640px breakpoint the rest of the app uses. */
+.notif-bell-wrap { position: relative; }
+.notif-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--orange);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.notif-overlay { display: contents; }
+.notif-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 360px;
+  max-width: calc(100vw - 2rem);
+  max-height: 480px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 0.6rem;
+  z-index: 500;
+  animation: notif-panel-in 0.14s ease;
+}
+@keyframes notif-panel-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.notif-panel-head { display: flex; align-items: center; justify-content: space-between; padding: 0.2rem 0.4rem 0.6rem; }
+.notif-panel-title { font-size: 1rem; margin: 0; }
+.notif-mark-all {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  color: var(--orange);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.2rem 0.3rem;
+}
+.notif-mark-all:hover { text-decoration: underline; }
+
+.notif-loading { display: flex; flex-direction: column; gap: 0.6rem; padding: 0.6rem 0.4rem; }
+.notif-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  padding: 2rem 1rem;
+  text-align: center;
+}
+.notif-empty svg { color: var(--border); }
+
+.notif-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.notif-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.5rem;
+  cursor: pointer;
+  color: var(--text);
+}
+.notif-row:hover, .notif-row:focus-visible { background: var(--surface-2); outline: none; }
+.notif-row-unread { background: var(--orange-soft); }
+.notif-row-unread:hover { background: var(--orange-soft); filter: brightness(0.97); }
+.notif-row-icon {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--orange);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.05rem;
+}
+.notif-row-body { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; flex: 1; }
+.notif-row-title { font-weight: 600; font-size: 0.86rem; }
+.notif-row-message {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.notif-row-time { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.1rem; }
+.notif-row-dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 999px; background: var(--orange); margin-top: 0.4rem; }
+
+.notif-load-more {
+  margin: 0.4rem auto 0.2rem;
+  background: none;
+  border: none;
+  color: var(--orange);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.notif-load-more:hover { text-decoration: underline; }
+.notif-load-more:disabled { opacity: 0.6; cursor: not-allowed; }
+
+@media (max-width: 640px) {
+  .notif-overlay {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1800;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .notif-panel {
+    position: static;
+    width: 100%;
+    max-width: 460px;
+    max-height: 88vh;
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: 0.9rem 1.1rem calc(1.1rem + env(safe-area-inset-bottom));
+    animation: notif-sheet-in 0.2s ease;
+  }
+  @keyframes notif-sheet-in {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+}
 
 /* ---- Resource detail actions (Edit + Delete) ----------------------------- */
 .resource-doc-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
