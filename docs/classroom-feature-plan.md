@@ -1,7 +1,7 @@
 # Classroom Feature — Plan & Implementation Status
 
-Status: Phases 1–3 implemented (backend foundation, Classes/Students UI,
-Attendance UI). Phases 4–5 (Fees UI, Reports/Analytics UI) NOT yet
+Status: Phases 1–4 implemented (backend foundation, Classes/Students UI,
+Attendance UI, Fees UI). Phase 5 (Reports/Analytics UI) NOT yet
 implemented — see "Implementation status" immediately below. Everything
 after that section (§1 onward) is the original design document, kept as-is
 for its architecture rationale; it describes what was *planned*, not always
@@ -11,7 +11,7 @@ Branch: `feature/classroom-management` (cut from `main` @ `89856c9`, 2026-08-16)
 
 ## Implementation status (read this first)
 
-Last updated: 2026-08-16, after Phase 3 (Attendance).
+Last updated: 2026-08-20, after Phase 4 (Fees).
 
 ### COMPLETED
 
@@ -122,22 +122,52 @@ Last updated: 2026-08-16, after Phase 3 (Attendance).
   session, silently serving old code; killed it and restarted the dev server
   cleanly before verification.
 
-### NOT YET IMPLEMENTED
+**Phase 4 — Fees**
+- Fee status board (`client/src/components/classroom/FeeStatusBoard.tsx`):
+  pick a class + month, see every active student with a single Paid/Pending
+  toggle. No backend changes were needed — Phase 1's `GET .../fees?period=`,
+  `PATCH .../students/:studentId/fees/:period`, and `classroomFees.js` were
+  already a complete, tested V1 API; this phase is frontend-only, same shape
+  as Phase 3.
+- API wrappers added: `getFeeStatus`, `setFeeStatus`
+  (`client/src/lib/classroomApi.ts`); DTO types added: `FeeStatus`,
+  `StudentFeeStatus`, `ClassFeeStatus`, `FeeRecordDto` (`client/src/types.ts`),
+  mirroring `routes/classroom.js`'s fee responses exactly.
+- V1 is deliberately Paid/Pending only, per the plan: no amount, due-date, or
+  notes UI. `amount`/`paidAt`/`note` remain reserved-unused on `FeeRecord`;
+  the PATCH schema's `.strict()` already rejects them if sent, and no client
+  code sends them.
+- Month navigation: Previous/Next month, reusing the existing
+  `addMonths`/`currentMonthString`/`formatMonthLabel` helpers from
+  `classroomDate.ts` (no new date helpers needed). Unlike Attendance's date
+  nav, there is no "cap at current month" restriction — pre-marking a future
+  month's fee status (e.g. marking September paid in August) is intentionally
+  allowed.
+- Status toggle persists via one `PATCH` per tap, applied optimistically
+  (summary tiles and the row both flip instantly) and reverted on failure —
+  there is no bulk fee-upsert endpoint (unlike Attendance's bulk day-save),
+  so each tap is already exactly one intentional change, not a batchable
+  series of taps against a save button.
+- Ownership/tenant isolation: inherited unchanged from Phase 1 — every fee
+  route already scoped to `teacherId`, 404s on cross-teacher access; no new
+  isolation surface was introduced by this phase.
+- Test coverage: `server/test/classroom.fees.test.js` gained a case
+  verifying a deactivated student drops out of the fee status list while
+  their `FeeRecord` history is preserved (soft-delete, not hard-delete) —
+  consistent with how Students already handles deactivation elsewhere in
+  this feature.
+- Test results: server 2120/2121 passing (`npm test`, vitest — the actual
+  runner; the same 1 pre-existing, unrelated failure in `resources.test.js`
+  noted in Phase 3, still reproducing on code untouched by this feature).
+  Client 482/482 passing. Lint (`client`: 0 errors, 1 pre-existing unrelated
+  warning in `useClassroomQueue.ts`; `server`: 0 errors/warnings), `tsc
+  --noEmit`, and `vite build` all clean.
+- CSV download button for fees: still not wired into this tab's UI — the
+  backend export route (`GET .../fees/export?period=`) already exists and
+  works, but no button calls it. Tracked under Phase 5 below, same as
+  Attendance's own CSV button.
 
-**Phase 4 — Fees / Payment Management**
-- Backend foundation already exists (`FeeRecord` model, GET/PATCH/export
-  routes, `classroomFees.js` helper) — but there is **no teacher-facing Fees
-  UI**. The Fees tab still shows the Phase 2 "coming soon" placeholder.
-- Monthly payment tracking UI: not built.
-- Paid/Pending status toggle UI: not built.
-- Student-wise payment status view: not built.
-- Payment notes: out of V1 scope by design — `amount`/`paidAt`/`note`
-  columns exist on `FeeRecord` but are reserved-unused; no route accepts
-  them from the client (`.strict()` schema rejects them), matching the
-  original plan's "Paid/Pending only" V1 scope.
-- Monthly fee view: not built.
-- CSV download button for fees: backend route exists and works
-  (curl-verified), no UI trigger yet.
+### NOT YET IMPLEMENTED
 
 **Phase 5 — Reports & Analytics**
 - Backend foundation already exists (`analytics/overview`,
@@ -165,11 +195,12 @@ Last updated: 2026-08-16, after Phase 3 (Attendance).
 - Branch: `feature/classroom-management`.
 - Phase 1 + Phase 2 committed (`a8af6a4`) and pushed to
   `origin/feature/classroom-management`.
-- Phase 3 (Attendance) implemented, tested, and browser-verified this
-  session — committed and pushed alongside this document update.
+- Phase 3 (Attendance) committed (`bdebc97`) and pushed.
+- Phase 4 (Fees) implemented and tested this session — committed and pushed
+  alongside this document update.
 - `main` has **not** been modified directly; no PR has been opened.
-- Next planned work: **Phase 4 — Fees/Payment Management UI** (backend
-  already exists; this is a frontend-only phase, same shape as Phase 3).
+- Next planned work: **Phase 5 — Reports & Analytics UI** (backend
+  already exists; this is a frontend-only phase, same shape as Phases 3–4).
 
 ## Naming note (read first)
 

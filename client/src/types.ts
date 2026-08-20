@@ -563,6 +563,39 @@ export interface StudentAttendanceHistory {
   days: { date: string; status: 'present' | 'absent' }[];
 }
 
+// ---- Classroom Management — Fees (Phase 4) ---------------------------------
+//
+// Mirrors routes/classroom.js's fee responses exactly (§11). V1 is
+// deliberately Paid/Pending only — amount/paidAt/note are reserved-but-unused
+// on FeeRecord and never appear in these DTOs.
+export type FeeStatus = 'paid' | 'pending';
+
+export interface StudentFeeStatus {
+  studentId: string;
+  name: string;
+  rollNumber?: string | null;
+  status: FeeStatus;
+}
+
+// GET .../classes/:classId/fees?period=
+export interface ClassFeeStatus {
+  period: string;
+  totalStudents: number;
+  paid: number;
+  pending: number;
+  perStudent: StudentFeeStatus[];
+}
+
+// PATCH .../students/:studentId/fees/:period
+export interface FeeRecordDto {
+  id: string;
+  studentId: string;
+  classId: string;
+  period: string;
+  status: FeeStatus;
+  updatedAt: string;
+}
+
 // A saved item in the teacher's personal library. Mirrors the server DTO
 // (see server/src/routes/resources.js) — no ownership/internal fields.
 export interface LibraryResource {
