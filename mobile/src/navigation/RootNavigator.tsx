@@ -1,14 +1,19 @@
 import React from 'react';
 import { NavigationContainer, DefaultTheme, DarkTheme, type Theme } from '@react-navigation/native';
 import { MainTabs } from './MainTabs';
+import { AuthNavigator } from './AuthNavigator';
+import { AuthLoadingScreen } from '../screens/auth/AuthScreen';
+import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 
-// No auth-gated pre-auth stack yet — that's Phase 3 (§10: "Login/Register/
-// Forgot-Password/Reset-Password ... entirely separate root navigator,
-// mirrors App.tsx:48-56's signed-out route tree"). Phase 2 wires the
-// authenticated-app tree only.
+// §10/§26 Phase 3: an entirely separate root navigator for signed-out vs
+// signed-in, mirroring App.tsx's own signed-out route tree on web. Switching
+// `user` from null to a User (or back) swaps the whole tree — React
+// Navigation unmounts the old one, so there is no stale authenticated screen
+// left reachable after logout/session expiry.
 export function RootNavigator() {
   const { mode, colors } = useTheme();
+  const { user, loading } = useAuth();
 
   const navTheme: Theme = {
     ...(mode === 'dark' ? DarkTheme : DefaultTheme),
@@ -24,7 +29,7 @@ export function RootNavigator() {
 
   return (
     <NavigationContainer theme={navTheme}>
-      <MainTabs />
+      {loading ? <AuthLoadingScreen /> : user ? <MainTabs /> : <AuthNavigator />}
     </NavigationContainer>
   );
 }

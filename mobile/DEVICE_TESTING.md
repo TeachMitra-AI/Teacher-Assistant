@@ -116,3 +116,38 @@ longer run the project past that point (per `docs/mobile-app-plan.md`
 `npx expo run:android` (needs a full local Android SDK + Gradle + JDK —
 not installed yet) or a cloud EAS Build. That's out of scope for this
 setup; revisit it when Phase 3 starts.
+
+**Update, Phase 3 implementation session**: `adb` was not found anywhere on
+this machine/session (`adb devices` fails with "command not found", and none
+of the install paths this doc lists above exist) — a different environment
+than whatever session installed it earlier, or it was removed since. Every
+password-based auth flow (login/register/session-restore/refresh/logout —
+everything except Google sign-in) is plain JS/React Native with no new
+native module, so it *could* still run under Expo Go once `adb`/USB
+debugging is set up again — but that setup was not repeated this session, so
+**none of Phase 3 was verified on a physical device or emulator this
+session**. Google sign-in additionally needs the custom dev client this
+section already flags, which also was not built (no local Android
+SDK/Gradle/JDK on this machine, no EAS account interaction attempted). Both
+remain open for whichever session next has real device/adb access.
+
+**Update, follow-up session (same day)**: the phone was reconnected and
+`adb` turned out to already be installed at the winget path above — the
+*shells in that session* had just started before the persistent PATH write
+took effect, so `adb version`/`adb devices` worked once invoked by full
+path (or with that directory prepended to `PATH` per command); nothing was
+reinstalled. `adb devices` showed `RZCY619LM4T  device`. The whole
+password-auth path (login, session restore across a force-stop, logout +
+secure-clear, invalid credentials, role-based nav for three real roles,
+register→pending→approve→sign-in, register→pending→reject→rejected-screen)
+was verified working against the real backend — see
+`docs/mobile-app-plan.md`'s "Physical-device verification — Phase 3"
+section for the full account, including a real render-crash bug this pass
+found and fixed in the Google Sign-In wiring.
+
+**USB reliability, observed again**: the connection dropped and
+reconnected five separate times in that session (each within 5–15s),
+`adb reverse` tunnels needing to be re-added every time since they don't
+survive a replug — consistent with the troubleshooting table above and
+worth expecting on future sessions with this cable/port, not a sign
+something is newly broken.

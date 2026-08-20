@@ -24,7 +24,7 @@ this section.
 | 0 — Architecture & Environment Setup | ✅ DONE (2026-08-20) |
 | 1 — Ported Core (types, api client, secure storage) | ✅ DONE (2026-08-20) |
 | 2 — Navigation Shell + Design System | ✅ DONE (2026-08-20) |
-| 3 — Authentication | ⬜ NOT STARTED |
+| 3 — Authentication | ✅ DONE (2026-08-20) — password-auth path verified on-device; Google Sign-In deferred (no OAuth credentials) |
 | 4 — Coach | ⬜ NOT STARTED |
 | 5 — Library | ⬜ NOT STARTED |
 | 6 — Generator | ⬜ NOT STARTED |
@@ -402,6 +402,294 @@ pass yet (both deferred to Phase 13 per §23, not a Phase 2 blocker); the
 convenience, explicitly commented for Phase 8 to replace.
 
 **Remaining work**: Phase 3 onward, per §26.
+
+### Phase 3 — Authentication — ✅ DONE (password-auth path verified on-device; Google Sign-In deferred)
+
+**What was done**: replaced Phase 2's `MockRoleContext` stub entirely with a
+real auth state machine talking to the existing backend (§4.1, §16) —
+password login/register, the multi-school picker, pending/rejected account
+states, forgot-password (request-email only, per §16's recommendation to
+leave the reset itself web-only for V1), session restore on launch, logout,
+and an entirely separate signed-out root navigator that RootNavigator swaps
+in for `MainTabs` based on real auth state. Native Google Sign-In is wired
+end-to-end in code but **not verified** — see the dedicated note below.
+
+**Files created**:
+- `mobile/src/auth/AuthContext.tsx` — ported from `client/src/auth.tsx`'s
+  state machine (login/register/loginWithGoogle/forgotPassword/logout/
+  reconcile-on-mount), talking to the mobile `api()`/SecureStore layer Phase
+  1 already built. Deliberately dropped versus web: the cross-tab `storage`
+  event listener (auth.tsx:117-136) — there are no browser tabs on a phone.
+  `logout()` is `async` here (web's is sync) because SecureStore's clear is
+  async (`expo-secure-store` has no synchronous delete — Phase 1 already
+  hit this same constraint in `session.ts`).
+- `mobile/src/auth/useGoogleIdToken.ts` — native Google Sign-In via
+  `expo-auth-session`'s Google provider (`useIdTokenAuthRequest`), producing
+  an ID token POSTed to the same `POST /api/auth/google` the web client
+  already uses. Gated behind `GOOGLE_SIGN_IN_AVAILABLE` (true only if at
+  least one of three new env vars is set) so an unconfigured build hides the
+  button entirely — the same "zero new UI" contract
+  `client/src/pages/LoginPage.tsx:459`'s `{GOOGLE_CLIENT_ID && ...}` guard
+  uses on web.
+- `mobile/src/screens/auth/AuthScreen.tsx` — native login/register screen.
+  Ports `LoginPage.tsx`'s mode/view state machine and outcome handling (not
+  its desktop split-panel JSX): tabbed Sign in/Register, inline
+  pending/rejected/school-picker views, touched-field validation, a
+  `KeyboardAvoidingView`+`ScrollView` for keyboard-friendly behavior, and
+  `AuthLoadingScreen` (spinner shown by `RootNavigator` while the launch
+  session-restore is in flight).
+- `mobile/src/screens/auth/ForgotPasswordScreen.tsx` — request-only reset
+  flow (§16 option (a)): submits the email, shows a static "check your
+  email" confirmation (byte-identical response either way, per the server's
+  own no-enumeration contract), no in-app token-redemption screen.
+- `mobile/src/components/TextField.tsx` — native form input primitive
+  (label, inline error/help text, password show/hide toggle via lucide's
+  Eye/EyeOff — §26's mobile-UI checklist item).
+- `mobile/src/navigation/AuthNavigator.tsx` — the signed-out stack (Login,
+  ForgotPassword), mirroring App.tsx's own signed-out route set on web.
+- `mobile/src/auth/__tests__/AuthContext.test.tsx` — 9 tests: session
+  restore with no stored token, session restore with a valid token (calls
+  `/auth/me`), session restore clearing an expired/revoked stored session,
+  successful login, invalid-credentials rejection, network-failure
+  rejection, the `needs_school` outcome, the `pending` outcome, and logout
+  clearing the secure session + best-effort calling `/auth/logout`.
+  Concurrent-refresh dedup and refresh-on-401 are **not** duplicated here —
+  they're already covered at the `api()` layer in Phase 1's
+  `client.test.ts`, which `AuthContext` calls into unchanged.
+- `mobile/.env.example` — documents `EXPO_PUBLIC_API_BASE` (existed
+  implicitly before, now written down) and the three new
+  `EXPO_PUBLIC_GOOGLE_{ANDROID,IOS,WEB}_CLIENT_ID` vars, matching
+  `client/.env.example`'s own documentation style.
+
+**Files modified**:
+- `mobile/src/navigation/RootNavigator.tsx` — now reads `useAuth()` and
+  renders `AuthLoadingScreen` / `AuthNavigator` / `MainTabs` based on
+  `loading`/`user`, instead of always rendering `MainTabs`. Because React
+  Navigation unmounts the previous tree on that swap, there is no stale
+  authenticated screen reachable after logout or a failed session restore —
+  this is what satisfies the "authenticated routes cannot be accessed after
+  logout/session expiry" requirement structurally, not via a per-screen
+  guard.
+- `mobile/src/navigation/types.ts` — added `AuthStackParamList` (Login,
+  ForgotPassword — no ResetPassword route, per the §16 decision above).
+- `mobile/src/screens/MoreMenuScreen.tsx` — role-gating now reads the real
+  `user.role` from `useAuth()` instead of `MockRoleContext`; added a signed-in
+  identity card (name/email/school) and a real "Sign out" button calling
+  `logout()`. Removed the Phase 2 dev-only role-switcher UI entirely.
+- `mobile/App.tsx` — `MockRoleProvider` replaced with `AuthProvider`.
+- `mobile/src/components/Button.tsx` — added a passthrough `testID` prop
+  (needed to disambiguate the auth screen's "Sign in" submit button from the
+  "Sign in" tab button in tests — both render the same visible text).
+- `mobile/src/navigation/__tests__/RootNavigator.test.tsx` — rewritten
+  against the real `AuthProvider` (mocked `expo-secure-store` + `fetch`)
+  instead of `MockRoleProvider`: unauthenticated launch shows the sign-in
+  screen (not the tab bar); a stored valid session restores straight to the
+  5-tab bar; Admin is hidden/shown for teacher vs. `school_admin` off the
+  real user role; signing out from More returns to the sign-in screen; the
+  Phase 2 Classroom nested-stack navigation case now runs against a signed-in
+  session (unreachable without one).
+- `mobile/jest.setup.ts` — added mocks for `expo-web-browser` and
+  `expo-auth-session/providers/google` (native-module-backed; every test
+  runs with no Google client ID env vars set, so the real hook would never
+  fire anyway — the mock exists only so importing the module doesn't throw
+  under the Jest test renderer).
+- `mobile/app.json` — added `"scheme": "teacherassistant"`, needed for
+  `expo-auth-session`'s OAuth redirect once a custom dev client exists (see
+  the Google sign-in note below); also auto-registered the
+  `expo-web-browser` config plugin (`npx expo install` did this).
+- `mobile/package.json`/`package-lock.json` — added `expo-auth-session`,
+  `expo-web-browser` via `npx expo install` (SDK-57-pinned, same pattern
+  Phase 0/1 used for every other native dependency).
+
+**Files removed**: `mobile/src/auth/MockRoleContext.tsx` — its own file
+comment said Phase 3 would replace it entirely; nothing else referenced it
+after `MoreMenuScreen.tsx` and `App.tsx` were updated.
+
+**Existing code reused**: `client/src/auth.tsx`'s state machine shape
+(login/register/loginWithGoogle/logout/reconcile, the `outcomeForError`
+status-code mapping), `LoginPage.tsx`'s mode/view/attempt flow logic and
+field-validation rules — per §26 Phase 3's own file list. Every server route
+called is unchanged from §4.1's table (`/auth/register`, `/login`,
+`/google`, `/refresh`, `/logout`, `/forgot-password`, `/me`) — **zero**
+backend changes, matching §17.
+
+**Backend changes**: none, as designed (§17).
+
+**Native Google Sign-In — code-complete but UNVERIFIED, flagging explicitly
+rather than claiming otherwise**: `expo-auth-session`'s
+`useIdTokenAuthRequest` (the API `mobile/src/auth/useGoogleIdToken.ts` uses)
+is marked `@deprecated` in the installed package's own type definitions
+(`node_modules/expo-auth-session/build/providers/Google.d.ts:7-9`, pointing
+at Expo's current "Google authentication" guide) in favor of
+`@react-native-google-signin/google-signin`'s native SDK integration. It was
+used anyway for this pass because it needs no native module linking or
+`google-services.json`/`GoogleService-Info.plist` to *type-check, lint, and
+bundle* — it still requires real Android/iOS/Web OAuth client IDs from
+Google Cloud Console (§16, §29's open question) to actually authenticate,
+and **none exist in this environment**, so end-to-end Google sign-in has
+literally never run. The button stays hidden by default
+(`GOOGLE_SIGN_IN_AVAILABLE` false with no env vars set) so this doesn't
+block or risk the password-auth path, which is the fully-tested one.
+Recommend evaluating `@react-native-google-signin/google-signin` against
+this deprecated-but-functional approach once real client IDs exist, rather
+than assuming the current wiring is final. **Update**: the physical-device
+session below found this wiring actually crashed the app on launch when no
+client ID was configured — see "Physical-device verification — Phase 3"
+for the bug and fix.
+
+**Tests added**: 9 new `AuthContext` tests + 6 new/rewritten
+`RootNavigator` tests (replacing Phase 2's 4 `MockRoleContext`-based ones) =
+15 new/changed. Full mobile suite: **31 tests across 6 files, 0 failures**
+(up from Phase 2's 20/5).
+
+**Verification performed**:
+- `npm test` — 31/31 passing.
+- `npm run typecheck` (`tsc --noEmit`) — clean.
+- `npm run lint` (`expo lint`) — clean. One new ESLint rule fired during this
+  phase (`react-hooks/set-state-in-effect`, from the installed
+  `eslint-config-expo`'s current react-hooks plugin version) on
+  `AuthContext.tsx`'s mount-restore effect — a standard "fetch on mount,
+  setState in the async callback after its own `await`s" pattern the rule's
+  static analysis can't distinguish from the synchronous-setState
+  anti-pattern it targets; silenced with a scoped, commented
+  `eslint-disable-next-line` rather than restructured.
+- `npx expo export --platform android` — succeeded, 2805 modules (up from
+  Phase 2's 2753), valid Hermes bundle. Scratch export, deleted afterward.
+- Client/server regression check: `git status` confirms no `client/` or
+  `server/` files were touched this session — nothing to regress, consistent
+  with §17's "zero backend changes" design.
+
+### Physical-device verification — Phase 3 (2026-08-20, follow-up session)
+
+The code-complete implementation above shipped with no on-device
+verification at all (no `adb` in that session's environment); a follow-up
+session on the same day closed that gap once the Samsung Galaxy M36 was
+reconnected. **`adb` was already installed**
+(the earlier session's `winget install --id Google.PlatformTools` — see
+`mobile/DEVICE_TESTING.md`) and the persistent **User** PATH already
+contained `...platform-tools` (confirmed via
+`[Environment]::GetEnvironmentVariable("Path","User")`, exactly one clean
+entry, no duplicate added) — the *session's shells* just predated that PATH
+write, so `adb` was invoked by full path / a per-command `PATH` export
+rather than reinstalling anything, per explicit instruction. `adb devices`
+showed `RZCY619LM4T  device` (authorized).
+
+Setup: server (`npm run dev` in `server/`, `npm run seed` first for known
+demo accounts — `teacher@example.com`/`admin.rampur01@example.com`/
+`superadmin@example.com`, all `demo1234`, from `server/src/seed.js`),
+`adb reverse tcp:3000 tcp:3000` (API) + `tcp:8081 tcp:8081` (Metro, usually
+automatic but re-added by hand after every USB replug — reverse tunnels
+don't survive one, as `DEVICE_TESTING.md` already documented), then
+`npx expo start --android`.
+
+**A real bug was found and fixed by this device pass, not by any earlier
+static check**: on first launch, the app hit a **red-box render crash** —
+"Client Id property `androidClientId` must be defined to use Google auth on
+this platform." `expo-auth-session`'s `useIdTokenAuthRequest` throws
+synchronously on Android whenever `androidClientId` is `undefined`, even
+though nothing ever calls `promptAsync()` while `GOOGLE_SIGN_IN_AVAILABLE`
+is false — the hook's own internal validation (`invariantClientId` in
+`node_modules/expo-auth-session/build/providers/ProviderUtils.js`) only
+checks for `undefined`, not falsy/empty. **Fix**: default each of the three
+client-ID props to `''` instead of leaving them `undefined`
+(`mobile/src/auth/useGoogleIdToken.ts`) — an empty string satisfies the
+check without ever producing a usable request. Verified clean afterward on
+two independent fresh launches (fresh JS bundle both times, not a
+hot-reload artifact) — see below.
+
+**Verified genuinely working, against the real backend, on the physical
+device** (not mocked, not assumed):
+- **Login** — `teacher@example.com`/`demo1234` (RAMPUR01) signed in for
+  real; landed on the real 5-tab authenticated app.
+- **Session restoration** — `adb shell am force-stop host.exp.exponent`
+  (a harder kill than backgrounding) then relaunch restored straight to the
+  authenticated tabs with no re-login, twice, confirming SecureStore
+  persistence survives full process death.
+- **Logout + secure session clearing** — signing out returned to the login
+  screen; a subsequent force-stop + relaunch **stayed** on the login
+  screen (did not restore) — proof the SecureStore keys were actually
+  deleted, not just the in-memory `user` state.
+- **Invalid credentials** — a wrong password produced the real server's
+  "Incorrect email or password." inline, form stayed usable, no crash.
+- **Role-based navigation, three real roles** — Admin correctly **hidden**
+  in More for `teacher@example.com` (role `teacher`); correctly **visible**
+  for `admin.rampur01@example.com` (`school_admin`) and
+  `superadmin@example.com` (`super_admin`); tapping Admin opened the real
+  (Phase-11-deferred) placeholder screen in both cases.
+- **Registration → pending** — filled the native Register form for a new
+  account (`phase3.pending@example.com`, school RAMPUR01) and submitted;
+  confirmed via `GET /api/admin/users/pending` (real super_admin JWT, real
+  API) that the row was genuinely created server-side, matching what the
+  form submitted.
+- **Admin approval → sign-in unblocked** — approved that account via the
+  real `PATCH /api/admin/users/:id/approve` endpoint (same one the web
+  admin UI calls; the web client itself wasn't booted this session, so this
+  was driven directly rather than by clicking through that UI — noted as a
+  deliberate scope call, not a shortcut around real backend logic). Signed
+  in afterward on-device and reached the authenticated app, More screen
+  correctly showing "Phase3 Pending Teacher".
+- **Rejected account** — registered a second account
+  (`phase3.rejected@example.com`), rejected it via the real
+  `PATCH /api/admin/users/:id/reject` endpoint, then signed in on-device:
+  the real "This account was not approved. / A school administrator did
+  not approve this account…" screen rendered, matching the server's
+  `registration_rejected` code.
+- **Multi-school picker — backend contract confirmed live, UI flow
+  completed but not cleanly screenshotted**: registered
+  `teacher@example.com` a second time under `RAMPUR02` via the real
+  register endpoint, giving that email two real accounts. A direct
+  `curl` against `/api/auth/login` confirmed the server genuinely returns
+  `{"needsSchoolSelection":true,"schools":[RAMPUR01, RAMPUR02]}` for that
+  email/password. On-device, a mistimed second automation tap landed on
+  the picker's first school button before a screenshot could be taken,
+  auto-completing the flow — the app correctly finished signed in at
+  RAMPUR01 (confirmed via the More screen's identity card), so the
+  **picker → resubmit-with-schoolId → sign-in round trip did execute
+  successfully end-to-end**, just without an isolated screenshot of the
+  picker screen itself. Re-attempting the clean screenshot was next on the
+  list when the session ended (see below) — worth 5 minutes at the start of
+  whichever session picks this up next, not a re-verification of the logic
+  itself.
+- **Regression, incidental**: Classroom's Phase-2 nested-stack mock-data
+  navigation (Class List → Class Home → Attendance placeholder) still
+  works. Both light and dark theme were each seen rendering correctly
+  across different launches in this session (the phone's system theme
+  changed on its own between them) — this **resolves Phase 2's own
+  "light mode not independently verified" known limitation**, incidentally.
+
+**Google Sign-In: still NOT verified end-to-end** — the render crash above
+is fixed and confirmed not to regress, but no real Android/iOS/Web OAuth
+client ID exists in this environment, so the button was never tapped
+against a real Google identity. This remains exactly the gap the original
+implementation section flagged; only the crash is new information from
+this pass.
+
+**adb/USB reliability note**: the connection dropped and had to be
+re-established **five separate times** during this session (each time:
+`adb devices` empty, then present again after 5–15s; `adb reverse` tunnels
+had to be re-added every time, since they don't survive a replug). This
+matches `DEVICE_TESTING.md`'s own troubleshooting table and the disconnect
+already logged during Phase 2's device verification — treat it as a known
+property of this USB setup, not a regression to chase. The session ended
+when the background server and Metro processes were stopped by the
+environment (not a user action, not a code issue) while the device was
+mid-disconnect; nothing was left broken, but the picker screenshot above
+was the one item still open at that point.
+
+**Known limitations carried forward, explicitly not claimed as verified**:
+the multi-school picker's *screen itself* has no clean on-device
+screenshot, even though the flow it drives (picker → resubmit with
+`schoolId` → sign-in) is confirmed executing correctly end-to-end against
+the real backend, per above — treat the picker as **flow-verified,
+visually-unverified**, not fully verified. Google Sign-In remains
+**entirely unverified end-to-end** — code-complete and crash-free, but
+never authenticated against a real Google identity, blocked on real
+Android/iOS/Web OAuth client IDs that don't exist in this environment (not
+on anything in this codebase). Both are worth closing before Google
+Sign-In specifically is relied upon in product decisions; neither blocks
+Phase 4, whose own features don't depend on either.
+
+**Remaining work**: Phase 4 onward, per §26.
 
 ---
 

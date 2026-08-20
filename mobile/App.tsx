@@ -2,7 +2,7 @@ import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
-import { MockRoleProvider } from './src/auth/MockRoleContext';
+import { AuthProvider } from './src/auth/AuthContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 
 function ThemedStatusBar() {
@@ -14,10 +14,10 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <MockRoleProvider>
+        <AuthProvider>
           <RootNavigator />
           <ThemedStatusBar />
-        </MockRoleProvider>
+        </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

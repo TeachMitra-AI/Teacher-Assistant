@@ -7,6 +7,16 @@
 // field all eventually target routes by these names).
 import type { NavigatorScreenParams } from '@react-navigation/native';
 
+// Signed-out route tree (§26 Phase 3), mirrors App.tsx's own signed-out
+// route set on web ('/login', '/forgot-password'). No 'reset-password'
+// route: §16 recommends leaving password reset as a web-only flow for V1 —
+// the email link opens the web app, and the teacher signs back into mobile
+// with the new password.
+export type AuthStackParamList = {
+  Login: undefined;
+  ForgotPassword: undefined;
+};
+
 export type CoachStackParamList = {
   Chat: undefined;
 };

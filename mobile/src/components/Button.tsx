@@ -14,19 +14,20 @@ interface ButtonProps {
   disabled?: boolean;
   loading?: boolean;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
 }
 
 // Native port of .btn-primary's orange→amber 135° gradient (index.css:71-82)
 // — the product's most-repeated interactive element, called out in §22 as
 // the one visual signature most worth preserving exactly (Save Attendance,
 // Mark Present, Generate, Send all use this).
-export function Button({ title, onPress, variant = 'primary', disabled, loading, style }: ButtonProps) {
+export function Button({ title, onPress, variant = 'primary', disabled, loading, style, testID }: ButtonProps) {
   const { colors } = useTheme();
   const isDisabled = disabled || loading;
 
   if (variant === 'primary') {
     return (
-      <Pressable onPress={onPress} disabled={isDisabled} style={[styles.pressable, style]}>
+      <Pressable onPress={onPress} disabled={isDisabled} style={[styles.pressable, style]} testID={testID}>
         {({ pressed }) => (
           <LinearGradient
             colors={[colors.orange, colors.amber]}
@@ -46,6 +47,7 @@ export function Button({ title, onPress, variant = 'primary', disabled, loading,
     <Pressable
       onPress={onPress}
       disabled={isDisabled}
+      testID={testID}
       style={({ pressed }) => [
         styles.base,
         isText
