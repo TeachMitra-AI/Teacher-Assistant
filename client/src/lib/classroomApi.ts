@@ -14,6 +14,9 @@ import type {
   AttendanceStatus,
   ClassAttendanceMonthSummary,
   StudentAttendanceHistory,
+  ClassFeeStatus,
+  FeeStatus,
+  FeeRecordDto,
 } from '../types';
 
 export interface CreateClassInput {
@@ -109,4 +112,21 @@ export async function getAttendanceMonthSummary(classId: string, month: string):
 
 export async function getStudentAttendanceHistory(studentId: string, month: string): Promise<StudentAttendanceHistory> {
   return api<StudentAttendanceHistory>(`/classroom/students/${studentId}/attendance/history?month=${month}`);
+}
+
+// ---- Fees (Phase 4) ---------------------------------------------------------
+
+export async function getFeeStatus(classId: string, period: string): Promise<ClassFeeStatus> {
+  return api<ClassFeeStatus>(`/classroom/classes/${classId}/fees?period=${period}`);
+}
+
+// One PATCH per status change — there is no bulk fee-upsert endpoint (unlike
+// attendance's day-at-a-time bulk save), so each tap is already exactly one
+// intentional change, not a batchable series of taps against one save button.
+export async function setFeeStatus(studentId: string, period: string, status: FeeStatus): Promise<FeeRecordDto> {
+  const data = await api<{ fee: FeeRecordDto }>(`/classroom/students/${studentId}/fees/${period}`, {
+    method: 'PATCH',
+    body: { status },
+  });
+  return data.fee;
 }

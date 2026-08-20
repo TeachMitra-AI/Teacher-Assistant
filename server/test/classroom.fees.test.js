@@ -140,4 +140,22 @@ describe('Classroom Management — fees', () => {
       expect(res.body.fee.note).toBeUndefined();
     });
   });
+
+  describe('deactivated students', () => {
+    test('a deactivated student drops out of the fee status list, but their FeeRecord history is preserved (not hard-deleted)', async () => {
+      const st = await as(teacherAToken)(request(app).post(`/api/classroom/classes/${classId}/students`).send({ name: 'Hema' }));
+      const studentId = st.body.student.id;
+      await as(teacherAToken)(request(app).patch(`/api/classroom/students/${studentId}/fees/2026-09`).send({ status: 'paid' }));
+
+      await as(teacherAToken)(request(app).delete(`/api/classroom/students/${studentId}`));
+
+      const res = await as(teacherAToken)(request(app).get(`/api/classroom/classes/${classId}/fees?period=2026-09`));
+      expect(res.status).toBe(200);
+      expect(res.body.perStudent.find((s) => s.studentId === studentId)).toBeUndefined();
+
+      const row = await prisma.feeRecord.findUnique({ where: { studentId_period: { studentId, period: '2026-09' } } });
+      expect(row).not.toBeNull();
+      expect(row.status).toBe('paid');
+    });
+  });
 });

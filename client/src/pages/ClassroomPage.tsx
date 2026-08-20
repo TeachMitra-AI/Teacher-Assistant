@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { GraduationCap, Wallet, FileBarChart, type LucideIcon } from 'lucide-react';
+import { GraduationCap, FileBarChart, type LucideIcon } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import ClassroomTabs, { type ClassroomTabKey } from '../components/classroom/ClassroomTabs';
 import ClassList from '../components/classroom/ClassList';
 import StudentRoster from '../components/classroom/StudentRoster';
 import AttendancePanel from '../components/classroom/AttendancePanel';
+import FeeStatusBoard from '../components/classroom/FeeStatusBoard';
 import { useToast } from '../components/Toast';
 import { usePreferences } from '../hooks/usePreferences';
 import { ApiError } from '../api';
@@ -183,7 +184,7 @@ export default function ClassroomPage({ preferences }: { preferences: ReturnType
             )}
             {tab === 'fees' && (
               selectedClass
-                ? <ComingSoonPanel icon={Wallet} title="Fees" selectedClassName={selectedClass.name} />
+                ? <FeeStatusBoard classId={selectedClass.id} className={selectedClass.name} />
                 : <SelectClassPrompt />
             )}
             {tab === 'reports' && <ComingSoonPanel icon={FileBarChart} title="Reports & Analytics" selectedClassName={selectedClass?.name} />}
