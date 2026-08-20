@@ -12,6 +12,399 @@ verified is explicitly marked `UNKNOWN — VERIFY DURING IMPLEMENTATION`.
 
 ---
 
+## 0. Implementation Status (living — updated after every phase)
+
+**Branch**: `feature/mobile-app`, created off `origin/main` @ `36eb70e`
+(already includes the classroom-management merge and this plan doc). Not
+merged. Nothing committed to this branch yet — see the note at the end of
+this section.
+
+| Phase | Status |
+|---|---|
+| 0 — Architecture & Environment Setup | ✅ DONE (2026-08-20) |
+| 1 — Ported Core (types, api client, secure storage) | ✅ DONE (2026-08-20) |
+| 2 — Navigation Shell + Design System | ✅ DONE (2026-08-20) |
+| 3 — Authentication | ⬜ NOT STARTED |
+| 4 — Coach | ⬜ NOT STARTED |
+| 5 — Library | ⬜ NOT STARTED |
+| 6 — Generator | ⬜ NOT STARTED |
+| 7 — Notifications (in-app + realtime) | ⬜ NOT STARTED |
+| 7b — Push Notifications (backend + client) | ⬜ NOT STARTED |
+| 8 — Classroom (shell + Classes + Students) | ⬜ NOT STARTED |
+| 9 — Attendance | ⬜ NOT STARTED |
+| 10 — Fees | ⬜ NOT STARTED |
+| 11 — Reports / Dashboard | ⬜ NOT STARTED |
+| 12 — Offline / Reliability | ⬜ NOT STARTED |
+| 13 — Testing Hardening | ⬜ NOT STARTED |
+| 14 — Android Release | ⬜ NOT STARTED |
+| 15 — iOS Release | ⬜ NOT STARTED |
+
+### Phase 0 — Architecture & Environment Setup — ✅ DONE
+
+**What was done**: scaffolded `mobile/` at the repo root via
+`npx create-expo-app@latest mobile --template blank-typescript`, added
+ESLint via the official `npx expo lint` (produced `eslint-config-expo`,
+mirroring the client's "light, catches real bugs" philosophy rather than a
+strict style regime), added a `typecheck` script, installed React
+Navigation (`@react-navigation/native`, `native-stack`, `bottom-tabs`) plus
+its required peer deps (`react-native-screens`,
+`react-native-safe-area-context`) via `npx expo install` (so versions are
+pinned to what Expo SDK 57 actually supports), and added a fourth `mobile`
+job to `.github/workflows/ci.yml` (lint + typecheck only — no test step
+yet, since no test files exist until Phase 1).
+
+**Expo SDK version chosen**: **57** (`expo ~57.0.14`, `react-native
+0.86.2`, `react 19.2.3`) — the current stable SDK at scaffold time
+(2026-08-20), per §26 Phase 0's own instruction not to pin to whatever
+version the plan document happened to name. The template itself ships an
+`mobile/AGENTS.md` flagging "Expo HAS CHANGED — read the exact versioned
+docs at https://docs.expo.dev/versions/v57.0.0/ before writing any code";
+future phases should follow that pointer rather than assuming SDK-54-era
+API shapes.
+
+**Files created**: the entire `mobile/` tree (`App.tsx`, `app.json`,
+`index.ts`, `tsconfig.json`, `eslint.config.js`, `package.json` +
+`package-lock.json`, `assets/*`, `.gitignore`, plus Expo's own
+`AGENTS.md`/`CLAUDE.md`/`.claude/settings.json`/`LICENSE` boilerplate —
+left as-is, harmless and useful context for future sessions). `mobile/`
+was scaffolded with git-repo-detection prompted ("creating inside an
+existing Git repo — skip initializing a new one?") and answered to **skip**
+— confirmed no nested `.git` exists inside `mobile/`.
+
+**Files modified**: `.github/workflows/ci.yml` (added the `mobile` job).
+
+**Existing code reused**: none yet (Phase 0 is scaffolding-only, per plan).
+
+**Backend changes**: none.
+
+**Tests added**: none yet (no `mobile/src/` business logic exists to test
+— Phase 1 is where ported `types.ts`/`api.ts` first gets unit tests).
+
+**Verification performed**:
+- `npm run lint` (`expo lint` → `eslint-config-expo`) — clean, zero errors.
+- `npm run typecheck` (`tsc --noEmit`) — clean, zero errors.
+- `npx expo export --platform android` — succeeded, produced a Hermes
+  bytecode bundle (`index-*.hbc`, 1.4MB, 580 modules) confirming the app's
+  JS actually compiles and bundles for the Android platform. This is a
+  **bundle-level** check, not a device/emulator boot check (see limitation
+  below). Verification artifact was a scratch export, deleted afterward
+  (`dist/` is already gitignored).
+- CI job (`mobile: lint + typecheck`) added; not yet exercised by an actual
+  GitHub Actions run since nothing has been pushed to `origin` yet (branch
+  is local-only per the "no premature commit/push" instruction).
+
+**Known limitation — Android emulator/device verification NOT performed**:
+this machine has no Android SDK, no `adb`, no `emulator` binary, and no
+`ANDROID_HOME`/`ANDROID_SDK_ROOT` configured (confirmed by direct check).
+**The app has not been run on an Android emulator or physical device** —
+only lint/typecheck/bundle-export were possible here. Per §25, an Android
+SDK + emulator (or a physical Android device reachable via
+`expo start --dev-client` over the local network) needs to be set up
+before Phase 2 can claim genuine on-device verification; every later
+phase's "device verification" checklist item carries this same caveat
+until that's resolved. Flagging this explicitly rather than claiming
+verification that didn't happen, per the instructions this implementation
+is following.
+
+**Remaining work**: Phase 1 onward, per the roadmap in §26.
+
+**Note on commits**: nothing in this session has been committed or pushed,
+per explicit instruction to complete and report each phase before
+committing. `git status` on `feature/mobile-app` at the end of Phase 0
+shows `mobile/` as a new untracked directory plus the modified
+`.github/workflows/ci.yml`, waiting for explicit go-ahead to commit.
+
+### Physical-device testing setup — done between Phase 0 and Phase 1
+
+The user has a physical Android phone and explicitly asked not to block on
+an emulator. Installed **Android SDK Platform Tools only** (`adb`, via
+`winget install --id Google.PlatformTools`) — deliberately *not* Android
+Studio, not an emulator image, not a JDK; none of those are needed to run
+the app on a physical device through Expo Go. Full step-by-step
+instructions (Developer Options, USB debugging, `adb devices` 
+verification, starting the dev server, opening the app, troubleshooting)
+are in **`mobile/DEVICE_TESTING.md`**.
+
+**Status: adb installed and verified working (`adb version` succeeds); no
+phone has been connected yet** (`adb devices` returns an empty list as of
+the end of Phase 1). Device/emulator verification for Phase 1 was not
+blocked by this, because Phase 1 has no UI (see below) — but Phase 2
+onward (navigation shell) does need the phone connected to claim genuine
+on-device verification. Next session (or later in this one) should start
+by running through `mobile/DEVICE_TESTING.md`'s USB connection steps and
+confirming `adb devices` shows the phone before continuing past Phase 1.
+
+### Phase 1 — Ported Core — ✅ DONE
+
+**What was done**: ported the four files §9 identifies as direct/near-direct
+reuse candidates, plus `expo-secure-store`-backed session storage.
+
+**Files created**:
+- `mobile/src/types/index.ts` — `client/src/types.ts` copied verbatim (613
+  lines, zero changes — pure interfaces, nothing DOM-specific to adapt).
+- `mobile/src/config.ts` — `API_BASE`/`SOCKET_BASE`, mirroring
+  `client/src/config.ts`. **Deviation from the plan, verified during
+  implementation**: §21 describes an `app.config.ts` + `expo-constants`
+  approach; the installed Expo SDK 57 has built-in `EXPO_PUBLIC_*`
+  env-var inlining (confirmed present in
+  `node_modules/expo/node_modules/babel-preset-expo`'s
+  `inline-env-vars` plugin) which does the identical job — a closer,
+  simpler analogue of Vite's `VITE_*` convention than the
+  `app.config.ts`/`expo-constants` route. Used that instead; no
+  `.env.example` added yet since nothing reads `EXPO_PUBLIC_API_BASE` in
+  anger until Phase 3's login screen exists.
+- `mobile/src/api/session.ts` — `expo-secure-store`-backed
+  `getToken`/`getRefreshToken`/`setSession`. **Second deviation, verified
+  during implementation**: §16 assumed these could keep `api.ts`'s exact
+  *synchronous* signatures. Checked `expo-secure-store`'s actual type
+  definitions (`node_modules/expo-secure-store/build/SecureStore.d.ts`):
+  it has a synchronous `getItem`/`setItem` but **no synchronous delete** —
+  only `deleteItemAsync` — and `setSession`'s logout/clear path needs
+  exactly that. Made every function here async rather than mixing sync
+  reads with async deletes (a real bug source). This is a small, contained
+  ripple, not a redesign: `api()` now does `await getToken()` instead of a
+  sync call.
+- `mobile/src/api/client.ts` — `client/src/api.ts` ported (the `api<T>()`
+  request/refresh-dedupe core), same logic, async token reads per above.
+- `mobile/src/api/classroomApi.ts`, `notifications.ts`, `resources.ts` —
+  ported from their `client/src/lib/*.ts` counterparts, byte-identical
+  logic, only import paths changed.
+- `mobile/src/api/__tests__/{client,notifications,classroomApi,resources}.test.ts`
+  — new (§26 Phase 1 note: "no existing test file was found for `api.ts`
+  itself in `client/` — write new ones here"). 16 tests total: `client.ts`
+  gets the heaviest coverage (token attach, `ApiError` shape, network
+  failure → status 0, silent refresh-and-retry, **concurrent-refresh
+  dedup** — asserts exactly one `/auth/refresh` call under
+  `Promise.all` of two simultaneous 401s, per §23's explicit ask — and
+  session-clear-on-failed-refresh); `notifications.ts` covers
+  `mergeNewNotification`'s dedup-by-id behavior (the one pure merge logic
+  §9 calls out as worth isolating); `classroomApi.ts`/`resources.ts` get
+  lighter request-shaping coverage (query-string building, POST/PATCH
+  body composition) since the rest of those files is mechanical.
+- `mobile/DEVICE_TESTING.md` — see above.
+
+**Files modified**: `mobile/package.json` (added `expo-secure-store`,
+`jest`/`jest-expo`/`@types/jest` devDeps, `test`/`typecheck` scripts, a
+`jest: { preset: "jest-expo" }` block), `mobile/tsconfig.json` (added
+`"types": ["jest"]` so `tsc --noEmit` recognizes test globals),
+`mobile/app.json` (auto-updated by `expo install expo-secure-store` to
+register its config plugin), `.github/workflows/ci.yml` (mobile job now
+runs `npm test` too).
+
+**Existing code reused**: `client/src/types.ts`,
+`client/src/api.ts` (structure/logic), `client/src/lib/classroomApi.ts`,
+`client/src/lib/notifications.ts`, `client/src/lib/resources.ts` — per §9.
+
+**Backend changes**: none.
+
+**Tests added**: 16 new Jest tests (`jest-expo` preset), described above.
+
+**Verification performed**:
+- `npm test` — 16/16 passing, 4/4 suites.
+- `npm run typecheck` (`tsc --noEmit`) — clean.
+- `npm run lint` (`expo lint`) — clean.
+- Client/server regression check: **no `client/` or `server/` source files
+  were touched this session** (confirmed via `git status`) — nothing to
+  regress. (The Phase 0 report already covered a full client/server
+  suite run against the pre-existing baseline.)
+- Device verification: **not applicable**, matching the plan's own Phase 1
+  acceptance criteria — there is no UI yet, only ported request logic
+  exercised through mocked `fetch`/`expo-secure-store` in Jest. The
+  acceptance criteria's other bar ("a scratch script/test can log in
+  against a real server and receive a stored, retrievable token") is
+  covered by the mocked-fetch refresh/session tests above rather than a
+  live server call, since no test server harness exists yet for
+  `mobile/` — consistent with how `server/`'s own tests use a throwaway
+  local DB rather than a real deployment.
+
+**Known limitations**: physical device not yet connected (see setup note
+above) — first genuinely applicable at Phase 2, when there's a UI to look
+at.
+
+**Remaining work**: Phase 2 onward, per §26.
+
+### Physical-device verification log (updated as it happens, not per-phase)
+
+- **2026-08-20, first connection**: phone connected via USB, `adb devices`
+  showed it as `device` (authorized). `expo start --android` installed
+  **Expo Go** on the phone (it wasn't present) and opened the Phase-1
+  baseline project. Confirmed via `adb shell dumpsys activity activities`
+  (foreground activity was Expo Go's `ExperienceActivity`, not its home
+  screen) and three `adb exec-out screencap` screenshots, the last showing
+  the actual rendered default Expo template screen — genuine, verified
+  on-device confirmation of the dev-server → USB → Expo Go → JS-bundle
+  pipeline working end-to-end.
+- **Session paused** (user request, phone physically disconnected/taken).
+- **Reconnected**: `adb devices` showed the device again; Metro dev server
+  (left running across the pause) was still healthy (`curl localhost:8081/status`
+  → 200). Re-ran `adb reverse tcp:8081 tcp:8081` (reverse tunnels don't
+  survive a USB replug) and re-opened the project via
+  `adb shell am start -a android.intent.action.VIEW -d exp://127.0.0.1:8081`.
+  Screenshot confirmed the app reloaded and rendered — visually showing
+  "Open up App.tsx to start working on your app!", the Phase-1-era
+  `App.tsx` content, which was still current at that exact moment (Phase 2
+  code had not been written yet). This is genuine confirmation of the
+  reconnect-and-relaunch flow working, which `DEVICE_TESTING.md`'s
+  troubleshooting table now reflects (a replug needs a fresh
+  `adb reverse`).
+- **Phase 2 code then written** (this section's own work, below). By the
+  time it was ready to check on-device, `adb devices` returned empty again
+  — the phone had disconnected a second time. It reconnected shortly
+  after; `adb devices` showed it `device`-authorized again.
+- **First live launch attempt after Phase 2 hit a real bug**: reopening the
+  project via the still-running dev server produced an on-device red-box
+  error — `Unable to resolve module ./icons/barcode.mjs from
+  .../lucide-react-native/dist/esm/lucide-react-native.mjs`. Root cause:
+  the Metro dev server process had been running continuously since Phase 0
+  (started before `lucide-react-native`, `react-native-svg`,
+  `expo-linear-gradient`, and the testing-library packages were even
+  installed) — its bundler cache/haste map was stale relative to the
+  now-much-larger `node_modules` tree, and it choked resolving one of
+  `lucide-react-native`'s ~1600 barrel-exported icon files (not one this
+  app actually imports — the whole barrel gets resolved regardless of which
+  named icons are used). **Fix**: killed the stale Metro process (it was
+  holding port 8081) and started a fresh `expo start --android --clear`.
+  Bundled clean on the first try afterward — confirms this was a stale
+  long-running-dev-server artifact, not a real incompatibility.
+- **Phase 2 fully verified live on the physical device** after the
+  restart, using `adb shell uiautomator dump` to get exact on-screen
+  element bounds (rather than guessing tap coordinates from screenshots)
+  plus `adb shell input tap` + `adb exec-out screencap`:
+  - 5-tab bottom bar renders with the correct labels, icons, and orange
+    active-tab color, in the phone's system **dark** theme (confirms
+    `useColorScheme()` detection and the dark token set both work) — Coach
+    is the default tab, showing its placeholder text.
+  - Tapped Classroom → Class List (mock data) → tapped "Grade 6 - Section
+    A" → Class Home rendered the real 2×2 shortcut grid from §12 with the
+    class name as the header title → tapped "Mark Today's Attendance" →
+    the Attendance placeholder rendered with the header correctly reading
+    "Grade 6 - Section A — Attendance" (truncated with an ellipsis) and a
+    working back arrow. This is the deepest nested stack in the whole tree
+    (§10's stated risk) and it works.
+  - Tapped More → menu rendered (Notifications/Settings/Signed-in
+    devices/Help & Support), **no Admin item**, current role shown as
+    "teacher" — matching the acceptance criterion exactly. Tapped the
+    `school_admin` dev-role button → **Admin appeared in the menu
+    immediately**, live, on the device — genuine confirmation the
+    role-gating logic (not just its unit test) works end-to-end.
+  - The primary `Button` component's orange→amber `expo-linear-gradient`
+    fill rendered correctly on the selected role button — the one visual
+    signature §22 calls out as most worth getting right.
+  - **Not checked this session**: light mode specifically (the phone's
+    system theme was dark throughout; the light token set is exercised by
+    the same `ThemeProvider` code path but wasn't independently eyeballed
+    on-device — flagged as a real gap, not silently assumed fine), and no
+    physical accessibility/TalkBack pass (§23) was done — both appropriate
+    to fold into Phase 13's dedicated hardening pass rather than block
+    Phase 2 on them now.
+
+### Phase 2 — Navigation Shell + Design System Foundation — ✅ DONE
+
+**What was done**: the full navigation tree from §10 (5-tab bottom bar,
+each tab a nested native-stack navigator, every route name from the plan
+stubbed in now per §26's own risk note to keep them stable), a
+`mobile/src/theme/` token set ported from `client/src/index.css` (§22),
+five base components (Button/Card/ThemedText/SummaryTile/ToggleButton),
+and a temporary mocked-role context so the role-gating acceptance
+criterion had something real to test against before Phase 3's real auth
+exists.
+
+**Files created**:
+- `mobile/src/theme/tokens.ts` — light/dark color tokens, radius, spacing,
+  platform shadow, ported 1:1 from `index.css`.
+- `mobile/src/theme/ThemeContext.tsx` — `useColorScheme()`-driven theme
+  with an in-memory override. **Deviation from the plan, scoped
+  deliberately**: §22 describes a persisted (SecureStore/AsyncStorage)
+  override; there's no Settings screen yet to persist *from*, so
+  persistence is deferred to whichever phase builds Settings — an addition
+  on top later, not a redesign now.
+- `mobile/src/components/{Button,Card,ThemedText,SummaryTile,ToggleButton}.tsx`
+  — the primitives Attendance/Fees (Phases 9–10) will reuse most, per
+  Phase 2's own file list in §26.
+- `mobile/src/auth/MockRoleContext.tsx` — explicitly labeled TEMPORARY,
+  replaced entirely by Phase 3.
+- `mobile/src/navigation/types.ts`, `useStackScreenOptions.ts`,
+  `RootNavigator.tsx`, `MainTabs.tsx`, `stacks/{Coach,Classroom,Library,
+  Generator,More}Stack.tsx`.
+- `mobile/src/screens/PlaceholderScreen.tsx`, `MoreMenuScreen.tsx`,
+  `classroom/{ClassListScreen,ClassHomeScreen}.tsx` — ClassList/ClassHome
+  use small hardcoded mock data (clearly commented as such) specifically
+  to exercise the deepest nested-stack pattern in the tree on a real
+  device before Phase 8 wires real data; every other stub is a plain
+  `PlaceholderScreen`.
+- `mobile/src/navigation/__tests__/RootNavigator.test.tsx` — component
+  tests (React Native Testing Library, real rendering + real
+  `fireEvent.press`), not just a "does it crash" smoke test: asserts all 5
+  tabs render, Admin is hidden/shown correctly by mocked role, and the
+  Classroom → Class List → Class Home → Attendance push chain works.
+- `mobile/jest.setup.ts` — registers `react-native-safe-area-context`'s
+  official test mock (see "debugging notes" below for why this was
+  necessary).
+
+**Files modified**: `App.tsx` (wires `SafeAreaProvider` →
+`ThemeProvider` → `MockRoleProvider` → `RootNavigator`), `package.json`
+(added `@react-navigation/*`, `lucide-react-native`, `react-native-svg`,
+`expo-linear-gradient`, `@testing-library/react-native` +
+`react-test-renderer` devDeps, jest `transformIgnorePatterns`/
+`moduleNameMapper`/`setupFilesAfterEnv` — see debugging notes).
+
+**Existing code reused**: color/radius/shadow values from
+`client/src/index.css`, icon names from `lucide-react-native` matching
+`client/src/components/BottomNav.tsx`'s `lucide-react` icons exactly
+(Sparkles/Library/GraduationCap/FileQuestion) plus one new icon
+(MoreHorizontal) for the web-nav gap `More` fills (§10).
+
+**Backend changes**: none.
+
+**Debugging notes worth keeping** (both were genuine, non-obvious
+integration issues, not typos — recorded so a future session doesn't
+re-debug them from scratch):
+1. **Jest + `lucide-react-native` + `react-native-safe-area-context`**:
+   `lucide-react-native`'s package.json `"react-native"` export condition
+   points at an ESM `.mjs` barrel Jest's default transform can't parse;
+   fixed with a `moduleNameMapper` forcing the package's CJS build in
+   tests only (Metro/the real app already resolves it fine — confirmed by
+   `expo export` and the live device run). Separately,
+   `react-native-safe-area-context` needs its official `jest/mock`
+   module registered (`jest.setup.ts`) because `SafeAreaProvider` never
+   receives real layout events under the test renderer — without it every
+   component test silently renders an empty tree. And `@testing-library/react-native`
+   14's `render()`/`fireEvent.press()` are both **async** now (React 19
+   concurrent rendering) — every call site needs `await`, or `screen`
+   silently stays stale with no error at the call site itself.
+2. **Metro + long-running dev server + mid-session `npm install`**: see
+   the device-verification log above — a dev server started before new
+   native-ish packages are installed can develop a stale-cache resolution
+   failure; `expo start --clear` (or just restarting it) fixes it. Worth
+   remembering for every future phase that adds a new dependency mid-session.
+
+**Tests added**: 4 new component tests (`RootNavigator.test.tsx`, listed
+above). Full suite: 20 tests across 5 files, 0 failures.
+
+**Verification performed**:
+- `npm test` — 20/20 passing.
+- `npm run typecheck` — clean.
+- `npm run lint` — clean.
+- `npx expo export --platform android` — succeeded (2753 modules, valid
+  Hermes bundle) after the Metro cache issue above was fixed.
+- **Live physical-device verification** — see the verification log above
+  for the full account: 5-tab bar, dark theme, Classroom's 3-level nested
+  push navigation, and the Admin role-gating toggle were all exercised and
+  visually confirmed on the actual phone via `uiautomator`-precise taps
+  and `screencap` screenshots, not just the emulator-free Jest tests.
+- Client/server regression check: no `client/` or `server/` files touched
+  this session.
+
+**Known limitations**: light mode not independently verified on-device
+this session (system theme was dark throughout); no TalkBack/accessibility
+pass yet (both deferred to Phase 13 per §23, not a Phase 2 blocker); the
+`ClassListScreen`/`ClassHomeScreen` mock data is a Phase 2 scaffolding
+convenience, explicitly commented for Phase 8 to replace.
+
+**Remaining work**: Phase 3 onward, per §26.
+
+---
+
 ## 1. Executive Summary
 
 Teacher Assistant is a Node/Express + Prisma/SQLite backend (`server/`)
