@@ -16,3 +16,24 @@ jest.mock('expo-web-browser', () => ({ maybeCompleteAuthSession: jest.fn() }));
 jest.mock('expo-auth-session/providers/google', () => ({
   useIdTokenAuthRequest: () => [null, null, jest.fn()],
 }));
+
+// expo-print/expo-sharing back the Library export/share flow (Phase 5,
+// §19 — the window.print() replacement) — both reach for native modules
+// that don't exist under the Jest test renderer. Screen tests mock these
+// per-test to assert the request shape; this default keeps any test that
+// doesn't care about export from crashing on import.
+jest.mock('expo-print', () => ({
+  printToFileAsync: jest.fn().mockResolvedValue({ uri: 'file:///mock.pdf', base64: 'bW9jay1wZGY=' }),
+}));
+jest.mock('expo-sharing', () => ({
+  isAvailableAsync: jest.fn().mockResolvedValue(true),
+  shareAsync: jest.fn().mockResolvedValue(undefined),
+}));
+
+// expo-file-system/legacy backs lib/exportPdf.ts's write-base64-to-cache
+// step (a real, on-device bug fix — see that file's own comment for why
+// this writes fresh bytes rather than reading printToFileAsync's own file).
+jest.mock('expo-file-system/legacy', () => ({
+  cacheDirectory: 'file:///mock-cache/',
+  writeAsStringAsync: jest.fn().mockResolvedValue(undefined),
+}));

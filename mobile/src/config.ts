@@ -1,3 +1,6 @@
+import { NotebookPen, Target, ClipboardCheck, Lightbulb, FileText, type LucideIcon } from 'lucide-react-native';
+import type { ResourceType } from './types';
+
 // Mirrors client/src/config.ts's API_BASE/SOCKET_BASE (docs/mobile-app-plan.md
 // §21). The plan document describes an app.config.ts + expo-constants
 // approach; verified during implementation that Expo's built-in
@@ -24,3 +27,41 @@ export const SOCKET_BASE = API_BASE.replace(/\/api\/?$/, '');
 // (server/src/index.js's MAX_QUERY_LENGTH check); mirrored here so the
 // composer can stop a teacher before that round trip, not after it.
 export const MAX_QUERY_LENGTH = 500;
+
+// --- Phase 5 (Library) ---
+// Ported from client/src/config.ts. Same closed vocabularies, same server
+// counterpart (server/src/routes/resources.js's RESOURCE_TYPES) — kept in
+// step per that file's own "CHANGE BOTH IN THE SAME COMMIT" convention.
+export const RESOURCE_TYPE_META: Record<ResourceType, { label: string; icon: LucideIcon }> = {
+  lesson_plan: { label: 'Lesson Plan', icon: NotebookPen },
+  classroom_activity: { label: 'Classroom Activity', icon: Target },
+  assessment: { label: 'Assessment', icon: ClipboardCheck },
+  explanation: { label: 'Explanation', icon: Lightbulb },
+  general: { label: 'General Resource', icon: FileText },
+};
+
+export const RESOURCE_TYPES: ResourceType[] = [
+  'lesson_plan',
+  'classroom_activity',
+  'assessment',
+  'explanation',
+  'general',
+];
+
+// client/src/config.ts's GRADES/SUBJECTS/LANGUAGES — same values, same
+// server-side vocabulary drift-guard note applies (server/src/actions/vocab/*).
+export const GRADES = ['Pre-Primary', 'Class 1-2', 'Class 3-5', 'Class 6-8', 'Class 9-10', 'Class 11-12'];
+export const SUBJECTS = ['Mathematics', 'Science', 'English', 'Hindi', 'Social Studies', 'Languages', 'General'];
+
+export const LANGUAGES: { value: string; label: string }[] = [
+  { value: 'en', label: 'English' },
+  { value: 'hi', label: 'हिंदी' },
+  { value: 'bn', label: 'বাংলা' },
+  { value: 'te', label: 'తెలుగు' },
+  { value: 'mr', label: 'मराठी' },
+  { value: 'ta', label: 'தமிழ்' },
+  { value: 'gu', label: 'ગુજરાતી' },
+  { value: 'kn', label: 'ಕನ್ನಡ' },
+  { value: 'or', label: 'ଓଡ଼ିଆ' },
+  { value: 'hinglish', label: 'Hinglish' },
+];

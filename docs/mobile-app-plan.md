@@ -26,7 +26,7 @@ this section.
 | 2 — Navigation Shell + Design System | ✅ DONE (2026-08-20) |
 | 3 — Authentication | ✅ DONE (2026-08-20) — password-auth path verified on-device; Google Sign-In deferred (no OAuth credentials) |
 | 4 — Coach | ✅ DONE (2026-08-21) — core question→answer loop verified on-device; LaTeX math, attachments, voice, Classroom Mode, and chat history deferred (see status note) |
-| 5 — Library | ⬜ NOT STARTED |
+| 5 — Library | ✅ DONE (2026-08-21) — List/View/Edit/AI-Assist/export-share verified on-device; 3 real export bugs found and fixed |
 | 6 — Generator | ⬜ NOT STARTED |
 | 7 — Notifications (in-app + realtime) | ⬜ NOT STARTED |
 | 7b — Push Notifications (backend + client) | ⬜ NOT STARTED |
@@ -953,6 +953,193 @@ mobile implementation, but the flakiness itself is unexplained and outside
 this phase's scope.
 
 **Remaining work**: Phase 5 onward, per §26.
+
+### Phase 5 — Library — ✅ DONE (2026-08-21)
+
+**What was done**: List → View → Edit over the existing `GET/POST/PATCH/DELETE
+/api/resources` and `POST /api/resources/:id/ai-action` contracts (already
+ported in Phase 1, §9) — search/filter/delete, a read screen with the
+exam-paper letterhead, a full edit workspace (fields, exam-letterhead editor,
+AI Assist preview/apply, Edit/Preview tabs), and the `window.print()`
+replacement (§19): render a resource to PDF and hand it to the native share
+sheet via `expo-print` + `expo-sharing`.
+
+**Files created**: `mobile/src/lib/{assessment,examMeta,formatHtml,
+buildResourcePdfHtml,exportPdf}.ts` (assessment.ts/examMeta.ts are verbatim
+ports of `client/src/lib/{assessment,examMeta}.ts`; formatHtml.ts is a port of
+`client/src/lib/format.ts`'s Markdown→HTML transform, math rendering
+deliberately dropped — same Phase 4 precedent — used only to build the PDF
+export document; buildResourcePdfHtml.ts and exportPdf.ts are new, no web
+equivalent since the web prints via the browser's own dialog);
+`mobile/src/components/{ChipPicker,SuggestionChips}.tsx` (new native form
+primitives — single-select chip row and tap-to-fill suggestion chips, the
+native analogues of a `<select>`/`<datalist>`); `mobile/src/screens/library/
+{ResourceListScreen,ResourceViewScreen,ResourceEditScreen,ExamHeaderView,
+ExamHeaderEditor,AiAssistSection,SuggestionModal}.tsx` (ExamHeaderView/
+ExamHeaderEditor port `client/src/components/ExamHeader{,Editor}.tsx`;
+AiAssistSection/SuggestionModal are new, no direct web equivalent — the web
+inlines this UI into `ResourceWorkspace.tsx`); nine new test files under
+`mobile/src/lib/__tests__/` and `mobile/src/screens/library/__tests__/`.
+
+**Files modified**: `mobile/src/config.ts` (added `RESOURCE_TYPE_META`/
+`RESOURCE_TYPES`/`GRADES`/`SUBJECTS`/`LANGUAGES`, ported from
+`client/src/config.ts`); `mobile/src/navigation/stacks/LibraryStack.tsx`
+(wired the three real screens in place of Phase 2's `PlaceholderScreen`
+stubs); `mobile/jest.setup.ts` (mocks for `expo-print`/`expo-sharing`/
+`expo-file-system/legacy`); `mobile/package.json`/`package-lock.json`/
+`app.json` (added `expo-print`, `expo-sharing`, `expo-file-system` via
+`npx expo install`, SDK-57-pinned).
+
+**Existing code reused**: `mobile/src/api/resources.ts` (Phase 1 — every
+CRUD/AI-action call, unchanged); `client/src/lib/{assessment,examMeta}.ts`
+(ported verbatim); `client/src/components/ExamHeader{,Editor}.tsx` (ported as
+native components); `RESOURCE_TYPE_META`/`GRADES`/`SUBJECTS`/`LANGUAGES` from
+`client/src/config.ts`; the mobile `MarkdownText`/`formatMarkdown.ts` renderer
+from Phase 4 (reused for on-screen viewing/preview — a separate `formatHtml.ts`
+exists only for the PDF export document, matching the split Phase 4
+established for Coach).
+
+**Backend changes**: none — confirmed via `git status`, no `client/` or
+`server/` file touched this session. Every endpoint used
+(`GET/POST/PATCH/DELETE /resources`, `POST /resources/:id/ai-action`) was
+already reusable as-is per §9/§17.
+
+**Deliberately scoped/not built this phase**: the Quiz/Worksheet **Generator**
+form itself (`POST /resources/generate[-set|-lesson-plan]`) — that is Phase
+6's own screen per §26; Library only consumes an already-saved resource.
+CSV export (Attendance/Fees, §19) is out of scope here — it belongs to
+Phases 9/10.
+
+**Tests added**: 45 new tests across 9 files (mobile suite: **112 tests
+across 18 files, 0 failures**, up from Phase 4's 58/10):
+`lib/__tests__/{assessment,examMeta,formatHtml,buildResourcePdfHtml,
+exportPdf}.test.ts` (pure-logic coverage — answer-key splitting/preamble
+stripping, exam-meta prefill/parse/merge round trips, the Markdown→HTML
+transform's headings/tables/MCQ-options/lists, the full PDF-HTML build for
+both plain and exam-paper documents in all three print modes, and the
+export/share helper including its filename sanitizer and the
+`SharingUnavailableError` path); `screens/library/__tests__/
+{ResourceListScreen,ResourceViewScreen,ResourceEditScreen}.test.tsx`
+(React Native Testing Library, real rendering + `fireEvent`) — list
+loading/empty-state/filter/search-debounce/delete-with-rollback; view
+loading/404/edit-navigation/delete/export (both the direct and the
+assessment student-teacher-choice paths); edit loading, the header
+Save button's disabled→enabled transition on a real field change, a PATCH
+sending only the changed field, an AI Assist round trip through preview to
+apply (and confirming the applied suggestion is *not* persisted until Save),
+export via the header button, and the unsaved-changes `beforeRemove` guard.
+
+**Verification performed**:
+- `npm test` — 112/112 passing, 18/18 suites.
+- `npm run typecheck` (`tsc --noEmit`) — clean.
+- `npm run lint` (`expo lint`) — clean. Two instances of the
+  `react-hooks/set-state-in-effect` false positive (same pattern
+  Phase 3's `AuthContext.tsx` already hit and documented) were silenced with
+  the same scoped `eslint-disable-next-line` convention, not restructured.
+- `npx expo export --platform android` — succeeded, 2834 modules (up from
+  Phase 4's 2814), valid Hermes bundle. Scratch export, deleted afterward.
+
+### Physical-device verification — Phase 5 (2026-08-21, Samsung Galaxy M36)
+
+`adb devices` showed the phone `device`-authorized; `adb reverse` tunnels for
+`tcp:3000`/`tcp:8081` were re-added (per the now-familiar "don't survive a
+replug" property, `mobile/DEVICE_TESTING.md`); the Metro dev server backing
+this device session had been running since before this phase's `npm install`
+calls (expo-print/expo-sharing/expo-file-system), so — per Phase 2/4's own
+documented stale-cache failure mode — it was killed and restarted fresh with
+`expo start --android --clear` before any device testing began, rather than
+risking the same class of bug.
+
+**Three real, reproducible export/share bugs were found and fixed by this
+device pass alone** — none were caught by any static check, and each only
+surfaced against the real native module stack, not the mocked Jest
+environment:
+1. Sharing `expo-print`'s own output URI directly via `expo-sharing`
+   crashed with *"Not allowed to read file under given URL"* — expo-print's
+   temp output isn't in a location expo-sharing's Android FileProvider
+   config covers under Expo Go.
+2. The fix attempt using expo-file-system's SDK 54+ object-oriented API
+   (`File`/`Paths`) to copy that file into the cache directory first instead
+   failed with *"Missing 'READ' permission for accessing the file"*.
+3. Retrying with expo-file-system's `/legacy` functional API (`copyAsync`) —
+   the same API Expo's own official print-and-share examples use — still
+   failed, with a clearer native `IOException`: *"...isn't readable"*, even
+   though the source path was inside the app's own private cache directory.
+
+   All three are the same underlying problem (reading `printToFileAsync`'s
+   own output file back, from anywhere other than expo-print's own internal
+   code, doesn't work under Expo Go on this device/SDK combination) —
+   confirmed by trying three independent APIs, not a single guessed fix.
+   **The fix that actually works, verified end-to-end on-device**:
+   `mobile/src/lib/exportPdf.ts` asks `printToFileAsync` for `base64: true`
+   instead of reading its file back at all, and writes those bytes directly
+   into the cache directory with `expo-file-system/legacy`'s
+   `writeAsStringAsync` — this never touches print's own output file a
+   second time, so none of the three read-back failures above can recur.
+   Confirmed genuinely working: tapping Share/Export on the real saved
+   "Unit 4 quiz" assessment, choosing "Teacher version", opened Android's
+   real native share sheet showing a valid `Unit_4_quiz.pdf` (Adobe Acrobat
+   icon, real share targets — WhatsApp/Gmail/Drive/Messages), confirmed
+   twice independently (once immediately after the fix, once after a full
+   force-stop/cold-relaunch to rule out a stale-bundle fluke).
+
+**Verified genuinely working, against the real backend, on the physical
+device** (not mocked, not assumed):
+- **Library list** — loaded the teacher's real saved library via
+  `GET /resources` (one real assessment, "Unit 4 quiz," created in an
+  earlier session) — search bar, the "All" + per-type filter chip row, and
+  the card (type icon/label, title, snippet, date) all rendered correctly in
+  both the phone's dark theme and, later in the session when the phone's
+  system theme changed on its own, light theme.
+- **Resource view** — opened "Unit 4 quiz": the real exam-paper letterhead
+  (`ExamHeaderView`) rendered above the content, correctly reading the
+  resource's actual saved `grade`/`subject`/type, with Share/Export, Delete,
+  and Edit actions all present and correctly enabled.
+- **Export/Share** — see the three-bug account above; confirmed end-to-end
+  with the real native Android share sheet.
+- **Edit ("workspace") screen** — opened via the real Edit button (not a
+  mock): Title/Type/Grade/Subject/Language fields all populated from the
+  real resource; the Type `ChipPicker` correctly highlighted "Assessment";
+  Grade/Subject suggestion chips rendered; the collapsible "Paper details"
+  (`ExamHeaderEditor`) toggled open/closed correctly; the Edit/Preview tab
+  toggle worked, with Preview correctly rendering the real exam letterhead
+  **prefilled from the signed-in teacher's actual school/name**
+  ("Govt Primary School, Rampur" / "Demo Teacher") via `buildInitialExamMeta`
+  — genuine confirmation that prefill logic runs correctly against a real
+  session, not just its unit test; the header Save icon changed from
+  muted/disabled to orange/enabled the moment the title field was edited,
+  confirming the dirty-check re-renders the header correctly on a real
+  device (this exact transition is also covered by
+  `ResourceEditScreen.test.tsx`, so both checks agree); the AI Assist section
+  rendered all eight actions correctly for an assessment (four generic +
+  four assessment-only).
+- **Regression** — Coach tab (Phase 4) still reachable and rendering its
+  authenticated chat UI correctly after navigating through Library.
+
+**Known limitations, explicitly not claimed as verified**: the header
+**Save** button's on-device tap could not be cleanly exercised this session
+— Expo Go's own floating dev-menu bubble (a development-only overlay, absent
+from any production/store build) sits directly on top of the header's
+Save/Export icon cluster and intercepted the synthetic tap every time it was
+attempted at that exact screen position; the *disabled→enabled* transition
+that gates Save was confirmed live (above), and the PATCH request itself
+(exact changed-fields-only payload) is covered by
+`ResourceEditScreen.test.tsx`'s "saves only the changed fields as a PATCH"
+test, so this is a live-tap gap on one specific button, not an unverified
+code path. The device's USB connection also dropped (a known property of
+this setup, `mobile/DEVICE_TESTING.md`) during this final check and did not
+reconnect before the session needed to wrap up, which is why this specific
+gap wasn't closed rather than being left open by choice — worth 2–3 minutes
+at the start of whichever session picks this up next (reconnect, open Edit,
+change a field, tap Save away from the dev-menu bubble's corner, e.g. by
+first dismissing/relocating it, and confirm the list reflects the new
+title). AI Assist was verified to render correctly but an actual AI-action
+round trip against the real Gemini-backed endpoint was not exercised
+on-device this session (covered by mocked-API component tests only). No
+TalkBack/accessibility pass (deferred to Phase 13 per §23, consistent with
+every prior phase).
+
+**Remaining work**: Phase 6 onward, per §26.
 
 ---
 
