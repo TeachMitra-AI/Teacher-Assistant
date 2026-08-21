@@ -456,6 +456,40 @@ function readClassroomManagementFlags(env, { warn = console.warn } = {}) {
   };
 }
 
+// ---- Structured Question Model (Generator v2) ------------------------------
+//
+// Same shape and same "default OFF" reasoning as NOTIFICATIONS_ENABLED above —
+// a single master kill switch, no allow-list yet (add one later if a staged
+// school-by-school rollout turns out to be needed; NOT required to ship this
+// gate). STRUCTURED_QUESTIONS_ENABLED gates only the THREE NEW question types
+// (descriptive/fill_blank/match) and the PATCH/POST structured-questions
+// re-render rule in routes/resources.js — the existing mcq/true_false/
+// short_answer/mixed generator behavior is never gated by this flag. The
+// client's VITE_STRUCTURED_QUESTIONS_ENABLED only hides the new picker options
+// on an already-cached PWA build — same "not the real kill switch" caveat as
+// every other VITE_*_ENABLED constant (G28).
+
+const STRUCTURED_QUESTIONS_FLAG_DEFAULTS = Object.freeze({
+  enabled: false,
+});
+
+/**
+ * Read the Structured Question Model feature's global flags from an
+ * environment object.
+ * @param {Record<string, string|undefined>} env
+ * @param {{warn?: (msg: string) => void}} [opts]
+ * @returns {{enabled: boolean}}
+ */
+function readStructuredQuestionsFlags(env, { warn = console.warn } = {}) {
+  return {
+    enabled: parseBoolEnv(env.STRUCTURED_QUESTIONS_ENABLED, {
+      name: 'STRUCTURED_QUESTIONS_ENABLED',
+      defaultValue: STRUCTURED_QUESTIONS_FLAG_DEFAULTS.enabled,
+      warn,
+    }),
+  };
+}
+
 module.exports = {
   parseBoolEnv,
   parseListEnv,
@@ -474,4 +508,6 @@ module.exports = {
   NOTIFICATIONS_FLAG_DEFAULTS,
   readClassroomManagementFlags,
   CLASSROOM_MANAGEMENT_FLAG_DEFAULTS,
+  readStructuredQuestionsFlags,
+  STRUCTURED_QUESTIONS_FLAG_DEFAULTS,
 };

@@ -351,6 +351,30 @@ function sanitizeAssessmentDocument(doc) {
         if (!r.ok) errors.push(...r.errors.map((e) => `questions[${i}].correctAnswer: ${e}`));
       }
 
+      if (typeof nq.modelAnswer === 'string') {
+        const r = sanitizeLatex(nq.modelAnswer);
+        nq.modelAnswer = r.text;
+        if (!r.ok) errors.push(...r.errors.map((e) => `questions[${i}].modelAnswer: ${e}`));
+      }
+
+      if (Array.isArray(nq.pairs)) {
+        nq.pairs = nq.pairs.map((p, j) => {
+          if (!p || typeof p !== 'object' || Array.isArray(p)) return p;
+          const np = { ...p };
+          if (typeof np.left === 'string') {
+            const r = sanitizeLatex(np.left);
+            np.left = r.text;
+            if (!r.ok) errors.push(...r.errors.map((e) => `questions[${i}].pairs[${j}].left: ${e}`));
+          }
+          if (typeof np.right === 'string') {
+            const r = sanitizeLatex(np.right);
+            np.right = r.text;
+            if (!r.ok) errors.push(...r.errors.map((e) => `questions[${i}].pairs[${j}].right: ${e}`));
+          }
+          return np;
+        });
+      }
+
       return nq;
     });
   }

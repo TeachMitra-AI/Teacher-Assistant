@@ -1141,6 +1141,29 @@ every prior phase).
 
 **Remaining work**: Phase 6 onward, per §26.
 
+### Phase 6 — Generator — ⬜ NOT STARTED, but scope changed (2026-08-21)
+
+Before starting Phase 6 implementation, the user asked for a full architecture
+review of turning the Generator's question content into a real structured
+per-question model (MCQ/Descriptive/True-False/Fill-Blank/Match/SAQ,
+individually editable/reorderable/deletable) instead of one markdown blob —
+see **`docs/generator-v2-plan.md`** for the complete design and its
+Implementation Log. That review is approved; **Stage 1 (backend)** and
+**Stage 2 (web Generator + Library Workspace)** are both done (2026-08-21):
+the server supports 3 new question types end-to-end behind
+`STRUCTURED_QUESTIONS_ENABLED` (default off), and the web app now has a full
+native per-question card editor (add/delete/reorder/edit, all 6 types,
+Preview, Save, legacy-resource fallback) on both the Generator page and the
+Library edit workspace — 90 new client tests, 572/572 client + 2144/2145
+server (1 pre-existing unrelated flake) passing. **No mobile code was
+written — Phase 6 itself has still not started.** `docs/generator-v2-plan.md`'s
+own sequencing note stays true: Phase 6 can still build against the original
+4-type API first if that's preferred, and the structured-question upgrade
+layers on top later with no rework, or it can build directly against the new
+structured contract (Stage 3 of that document, now with a proven web
+reference implementation to port patterns from) — that choice is still open
+and should be made before Phase 6 starts.
+
 ---
 
 ## 1. Executive Summary

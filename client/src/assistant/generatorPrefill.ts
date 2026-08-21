@@ -31,7 +31,7 @@ import {
   notePrefillUndone,
 } from './telemetryTransport';
 import type { ProvenanceSource } from './types';
-import type { AssessmentFormat } from '../lib/resources';
+import type { AssessmentFormat, QuestionType } from '../lib/resources';
 
 /** The only action that prefills this page. A draft for anything else is ignored rather than guessed at. */
 const ACTION_ID = 'generate_assessment';
@@ -49,7 +49,10 @@ export interface PrefillValues {
   subject?: string;
   topic?: string;
   difficulty?: 'easy' | 'medium' | 'hard';
-  questionType?: 'mcq' | 'true_false' | 'short_answer' | 'mixed';
+  // QuestionType, not a hand-written union, for the same reason `format` above
+  // uses AssessmentFormat: coercePrefillValues validates against QUESTION_TYPES
+  // (the client picker), so this type must be whatever that picker offers.
+  questionType?: QuestionType;
   questionCount?: number;
   language?: string;
 }

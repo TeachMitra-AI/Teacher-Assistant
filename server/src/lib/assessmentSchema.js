@@ -15,8 +15,23 @@ const { z } = require('zod');
 
 const { convertMathSegments } = require('./mathNotation');
 
-const QUESTION_TYPES = ['mcq', 'true_false', 'short_answer'];
+// Structured Question Model (Generator v2) — see docs/generator-v2-plan.md.
+// `descriptive`/`fill_blank`/`match` are the three genuinely new response
+// types; `mixed` (actions/schemas/generateAssessment.js) is a REQUEST-only
+// modifier meaning "draw from any of these", never a value stored on a
+// question itself.
+const QUESTION_TYPES = ['mcq', 'true_false', 'short_answer', 'descriptive', 'fill_blank', 'match'];
 const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
+
+// fill_blank's blank marker — three or more underscores, the same convention
+// already used for a blank field placeholder elsewhere in this app
+// (client's ExamHeaderView.tsx uses '____________' for an unset field).
+const BLANK_MARKER_RE = /_{3,}/;
+
+const MAX_MODEL_ANSWER = 2000; // descriptive's open-ended suggested answer
+const MAX_PAIR_TEXT = 200; // match's per-side text
+const MIN_MATCH_PAIRS = 3;
+const MAX_MATCH_PAIRS = 8;
 
 // --- LaTeX-in-JSON repair -----------------------------------------------------
 // Gemini is told to write LaTeX between $...$ delimiters, but inside a JSON
@@ -200,6 +215,19 @@ function normalizeAssessmentMath(raw) {
       if (typeof nq.correctAnswer === 'string') {
         nq.correctAnswer = stripLeadingQuestionNumber(normalizeMathText(nq.correctAnswer));
       }
+      if (typeof nq.modelAnswer === 'string') {
+        nq.modelAnswer = normalizeMathText(nq.modelAnswer);
+      }
+      if (Array.isArray(nq.pairs)) {
+        nq.pairs = nq.pairs.map((p) => {
+          if (!p || typeof p !== 'object' || Array.isArray(p)) return p;
+          return {
+            ...p,
+            left: typeof p.left === 'string' ? normalizeMathText(p.left) : p.left,
+            right: typeof p.right === 'string' ? normalizeMathText(p.right) : p.right,
+          };
+        });
+      }
       return nq;
     });
   }
@@ -216,8 +244,26 @@ const questionSchema = z
     // Only meaningful for "mcq" — validated below. -1 for other types.
     correctOptionIndex: z.number().int(),
     // "True"/"False" for true_false, a model answer for short_answer,
-    // unused (ignored) for mcq since correctOptionIndex is authoritative.
+    // the fill-in word/phrase for fill_blank, unused (ignored) for mcq since
+    // correctOptionIndex is authoritative, unused for descriptive/match.
     correctAnswer: z.string().trim().max(500),
+    // Only meaningful for "descriptive" — an open-ended suggested answer.
+    // Optional/defaulted (not required) so objects built without it — e.g. by
+    // the legacy content->doc parser below, which never produces this type —
+    // still validate.
+    modelAnswer: z.string().trim().max(MAX_MODEL_ANSWER).optional().default(''),
+    // Only meaningful for "match" — the correct left/right pairing itself
+    // (position IS the answer key; no separate correctAnswer needed).
+    pairs: z
+      .array(
+        z.object({
+          left: z.string().trim().min(1).max(MAX_PAIR_TEXT),
+          right: z.string().trim().min(1).max(MAX_PAIR_TEXT),
+        })
+      )
+      .max(MAX_MATCH_PAIRS)
+      .optional()
+      .default([]),
   })
   .superRefine((q, ctx) => {
     if (q.type === 'mcq') {
@@ -252,6 +298,45 @@ const questionSchema = z
           message: 'short_answer requires a non-empty correctAnswer.',
         });
       }
+    } else if (q.type === 'descriptive') {
+      if (q.modelAnswer.trim().length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['modelAnswer'],
+          message: 'descriptive requires a non-empty modelAnswer.',
+        });
+      }
+    } else if (q.type === 'fill_blank') {
+      if (!BLANK_MARKER_RE.test(q.text)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['text'],
+          message: 'fill_blank text must contain a blank, written as three or more underscores (___).',
+        });
+      }
+      if (q.correctAnswer.trim().length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['correctAnswer'],
+          message: 'fill_blank requires a non-empty correctAnswer.',
+        });
+      }
+    } else if (q.type === 'match') {
+      if (q.pairs.length < MIN_MATCH_PAIRS || q.pairs.length > MAX_MATCH_PAIRS) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['pairs'],
+          message: `match requires between ${MIN_MATCH_PAIRS} and ${MAX_MATCH_PAIRS} pairs.`,
+        });
+      }
+      const leftValues = q.pairs.map((p) => p.left.trim().toLowerCase());
+      if (new Set(leftValues).size !== leftValues.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['pairs'],
+          message: 'match pairs must have unique left-hand values.',
+        });
+      }
     }
   });
 
@@ -282,11 +367,15 @@ function checkAgainstRequest(doc, { questionCount, questionType }) {
 
 module.exports = {
   assessmentDocumentSchema,
+  questionSchema,
   checkAgainstRequest,
   normalizeAssessmentMath,
   normalizeMathText,
   QUESTION_TYPES,
   OPTION_LETTERS,
+  BLANK_MARKER_RE,
+  MIN_MATCH_PAIRS,
+  MAX_MATCH_PAIRS,
   // Exported for latexGuard's backstop check and for unit testing.
   BARE_COMMANDS,
   restoreBareCommands,
