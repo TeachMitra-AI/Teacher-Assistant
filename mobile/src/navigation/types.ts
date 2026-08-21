@@ -6,6 +6,7 @@
 // password-reset open question, and Phase 7b's push-notification `link`
 // field all eventually target routes by these names).
 import type { NavigatorScreenParams } from '@react-navigation/native';
+import type { AssessmentFormat, Difficulty, QuestionType } from '../api/resources';
 
 // Signed-out route tree (§26 Phase 3), mirrors App.tsx's own signed-out
 // route set on web ('/login', '/forgot-password'). No 'reset-password'
@@ -36,9 +37,28 @@ export type LibraryStackParamList = {
   ResourceEdit: { resourceId: string };
 };
 
+// GeneratorResult's params are the generate response plus the request
+// snapshot needed to build the save payload (docs/generator-v2-plan.md) —
+// passed as route params rather than shared state, since the Form and Result
+// screens are separate pushed screens (this repo's native-navigation idiom;
+// see GeneratorFormScreen.tsx's header comment for why this isn't a port of
+// the web page's single-page tab switch). `structured` mirrors
+// GenerateAssessmentResult.structured (api/resources.ts) exactly — absent
+// when the flag is off or the response had no parseable structured document.
 export type GeneratorStackParamList = {
   GeneratorForm: undefined;
-  GeneratorResult: undefined;
+  GeneratorResult: {
+    format: AssessmentFormat;
+    grade: string;
+    subject: string;
+    topic: string;
+    difficulty: Difficulty;
+    questionType: QuestionType;
+    questionCount: number;
+    language: string;
+    content: string;
+    structured?: string;
+  };
 };
 
 export type MoreStackParamList = {

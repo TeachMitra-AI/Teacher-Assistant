@@ -1,5 +1,9 @@
-import { NotebookPen, Target, ClipboardCheck, Lightbulb, FileText, type LucideIcon } from 'lucide-react-native';
+import {
+  NotebookPen, Target, ClipboardCheck, Lightbulb, FileText,
+  FileQuestion, ClipboardList, Ticket, House, type LucideIcon,
+} from 'lucide-react-native';
 import type { ResourceType } from './types';
+import type { AssessmentFormat, Difficulty, QuestionType } from './api/resources';
 
 // Mirrors client/src/config.ts's API_BASE/SOCKET_BASE (docs/mobile-app-plan.md
 // §21). The plan document describes an app.config.ts + expo-constants
@@ -65,3 +69,59 @@ export const LANGUAGES: { value: string; label: string }[] = [
   { value: 'or', label: 'ଓଡ଼ିଆ' },
   { value: 'hinglish', label: 'Hinglish' },
 ];
+
+// --- Phase 6 (Generator) ---
+// Ported from client/src/config.ts. Same closed vocabularies, same server
+// counterpart (server/src/actions/schemas/generateAssessment.js) — kept in
+// step per that file's own "CHANGE BOTH IN THE SAME COMMIT" convention.
+export const ASSESSMENT_FORMATS: { value: AssessmentFormat; label: string; hint: string; icon: LucideIcon }[] = [
+  { value: 'quiz', label: 'Quiz', hint: 'Questions with a separate answer key', icon: FileQuestion },
+  { value: 'worksheet', label: 'Worksheet', hint: 'Printable sheet with name/date and teacher answer key', icon: ClipboardList },
+  { value: 'exit_ticket', label: 'Exit Ticket', hint: 'A 3-question check for the last minutes of a lesson', icon: Ticket },
+  { value: 'homework', label: 'Homework', hint: 'Practice to do at home, with a note for parents', icon: House },
+];
+
+export const DIFFICULTIES: { value: Difficulty; label: string }[] = [
+  { value: 'easy', label: 'Easy' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'hard', label: 'Hard' },
+];
+
+// 'descriptive'/'fill_blank'/'match' are the Structured Question Model's three
+// new types (docs/generator-v2-plan.md); 'mixed' stays a request-only
+// modifier, never a value a question itself has. Gated server-side by
+// STRUCTURED_QUESTIONS_ENABLED — see STRUCTURED_QUESTIONS_ENABLED below for
+// the matching client-side picker gate.
+export const QUESTION_TYPES: { value: QuestionType; label: string }[] = [
+  { value: 'mcq', label: 'Multiple Choice' },
+  { value: 'true_false', label: 'True / False' },
+  { value: 'short_answer', label: 'Short Answer (SAQ)' },
+  { value: 'descriptive', label: 'Descriptive' },
+  { value: 'fill_blank', label: 'Fill in the Blank' },
+  { value: 'match', label: 'Match the Following' },
+  { value: 'mixed', label: 'Mixed' },
+];
+
+export const QUESTION_COUNT_MIN = 3;
+export const QUESTION_COUNT_MAX = 30;
+export const QUESTION_COUNT_DEFAULT = 10;
+
+// ---- Structured Question Model (Generator v2) -------------------------------
+//
+// See docs/generator-v2-plan.md. Client-side gate, same deliberately opt-in
+// shape and same "not the real kill switch" caveat as the web client's own
+// VITE_STRUCTURED_QUESTIONS_ENABLED. This flag does NOT filter the
+// question-type picker above — QUESTION_TYPES always offers all 7 values,
+// mirroring the web Generator's actual runtime behavior exactly (its own
+// picker has no such filter either, despite an inaccurate comment there —
+// see docs/generator-v2-plan.md's Stage 3 log). What this flag DOES gate:
+// whether GeneratorResultScreen/ResourceEditScreen parse and render an
+// already-structured document via the native QuestionCard/QuestionListEditor
+// editor, vs. treating `structured` as absent and falling back to the flat
+// Markdown editor ("zero new UI" when false, the default). The server's
+// STRUCTURED_QUESTIONS_ENABLED is the immediately-effective kill switch for
+// actually *requesting* one of the 3 new types (they 503 with
+// STRUCTURED_QUESTIONS_DISABLED regardless of this flag) — a stale
+// already-installed build offering a type the server will reject still just
+// gets that clear error, not a silently-broken generation.
+export const STRUCTURED_QUESTIONS_ENABLED = process.env.EXPO_PUBLIC_STRUCTURED_QUESTIONS_ENABLED === 'true';

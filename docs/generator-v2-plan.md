@@ -7,10 +7,264 @@
 | Architecture review | ✅ APPROVED (2026-08-21) |
 | Stage 1 — Backend | ✅ DONE (2026-08-21) — see Implementation Log below |
 | Stage 2 — Web Generator + Workspace | ✅ DONE + **manually verified end-to-end** (2026-08-21) |
-| Stage 3 — Mobile Generator + Library (the original Phase 6 ask) | ⬜ NOT STARTED |
+| Stage 3 — Mobile Generator + Library (the original Phase 6 ask) | ✅ DONE + **manually verified end-to-end on a physical device** (2026-08-21) |
 | Flags flipped on in a real environment | ⬜ NOT STARTED (dev-only manual verification so far) |
 
-Committed to `feature/mobile-app` — see the end of the Stage 2 Implementation Log for the exact commit.
+Committed to `feature/mobile-app` — see the end of the Stage 3 Implementation
+Log below for the exact commit (Stage 1 + Stage 2's own commit is noted at
+the end of the Stage 2 log, further down this file).
+
+---
+
+## Implementation Log — Stage 3 (Mobile Generator + Library), 2026-08-21
+
+Built directly on Stage 1's backend contract and Stage 2's web implementation
+(explicitly the source of truth per this stage's own instructions) — no
+backend changes, no new APIs, no separate mobile-only question model. Reused
+`mobile/src/api/resources.ts`'s existing `Question`/`StructuredAssessmentDocument`
+types and `mobile/src/lib/structuredQuestions.ts` (ported earlier in this same
+session, before this log entry — see the file-level comments there), and
+built native RN screens/components on top.
+
+### What was built
+
+- **`mobile/src/components/QuestionCard.tsx`** (new) + **`QuestionListEditor.tsx`**
+  (new) — native RN port of the web components. Same behavior (editable vs.
+  read-only mode, per-type fields, Move Up/Down/Delete, Add pair/Add question),
+  RN primitives instead of DOM (`ChipPicker` for type/correct-answer pickers,
+  custom radio circles for MCQ, a View-based 2-column table for read-only
+  Match). 21 new component tests (`QuestionCard.test.tsx`, `QuestionListEditor.test.tsx`).
+- **`mobile/src/screens/generator/GeneratorFormScreen.tsx`** (new) — the
+  request form (format/topic/grade/subject/difficulty/questionType/count/
+  language/instructions), native idioms throughout: `ChipPicker` for closed
+  vocabularies (including the full, un-gated `QUESTION_TYPES` list — mirrors
+  web's actual runtime behavior exactly, see the discrepancy note below), a
+  native +/- stepper for question count (no on-device number keyboard), inline
+  error banner on generation failure. 7 tests.
+- **`mobile/src/screens/generator/GeneratorResultScreen.tsx`** (new) — receives
+  the generate response via route params (not shared component state — see
+  `navigation/types.ts`'s own comment on why a pushed screen uses params
+  instead of a single-page tab switch like web's `GeneratorPage.tsx`).
+  Structured vs. legacy branch exactly like web: `structuredQuestions !== null`
+  renders `QuestionListEditor`, **never** falls back to the markdown textarea
+  when a structured document is present. Save validates, builds the
+  `structured` payload via `buildStructuredPayload`, omits `content` in
+  structured mode (server re-renders it), and on success cross-tab-navigates
+  to `LibraryTab`'s `ResourceEdit` screen for the new resource (`Reopen saved
+  resource` requirement) via `navigation.getParent()?.navigate(...)`. Guards
+  every back-navigation attempt with a "Discard this result?" confirmation
+  until a save actually succeeds (`savedRef`, not a dirty-diff — a generated
+  result took a real AI call, so it's guarded even before any hand edit). 12 tests.
+- **`mobile/src/navigation/types.ts`** — `GeneratorStackParamList.GeneratorResult`
+  gained real params (was `undefined`); **`mobile/src/navigation/stacks/GeneratorStack.tsx`**
+  wired both real screens in place of the two `PlaceholderScreen`s.
+- **`mobile/src/screens/library/ResourceEditScreen.tsx`** — extended for the
+  "reopen saved resource / continue editing" requirement, mirroring
+  `ResourceWorkspace.tsx`'s Stage 2 changes: on load, `resource.type ===
+  'assessment' ? parseStructuredDocument(r.structured) : null` (schemaVersion
+  gate, **not** the `STRUCTURED_QUESTIONS_ENABLED` flag — that flag only gates
+  creating new structured content in the Generator, not viewing/editing a
+  resource that already has it, exactly like web); extended `dirty`/`handleSave`
+  to validate and rebuild the structured payload; extended `runAction`/
+  `applySuggestion` to apply an AI-assist suggestion's `structured` field
+  alongside `content`. One deliberate, narrow improvement over web: this
+  screen's `structuredConfig` also carries `questionType`/`questionCount` —
+  web's `ResourceWorkspace.tsx` does not, which would silently drop those two
+  fields from `structured` on the next Library save (a real, if low-impact,
+  pre-existing gap in the already-shipped web code, not something this stage
+  was asked to fix there — flagging it here rather than silently diverging or
+  silently copying a data-loss footgun). 5 new tests added to the existing
+  `ResourceEditScreen.test.tsx` (legacy fallback unchanged — verified by the
+  pre-existing tests in that file still passing byte-for-byte, no edits to
+  their assertions were needed).
+- **`mobile/.env.example`** — documented `EXPO_PUBLIC_STRUCTURED_QUESTIONS_ENABLED`
+  (default `false`), matching the established `EXPO_PUBLIC_*` and web
+  `VITE_STRUCTURED_QUESTIONS_ENABLED` documentation convention.
+
+### A real discrepancy found between web's code and its own comment (not fixed — out of scope)
+
+Web's `client/.env.example` and `config.ts` both comment that
+`VITE_STRUCTURED_QUESTIONS_ENABLED=false` makes the question-type **picker**
+"offer only the original 4 values" — but `GeneratorPage.tsx`'s actual picker
+(`{QUESTION_TYPES.map(...)}`) does **no such filtering**; it always renders
+all 7 values regardless of the flag, both in the currently-committed Stage 2
+code and (per this document's own §2a) in `QUESTION_TYPES` itself, which is a
+static array with no flag-based subset. The flag actually only gates whether
+`GeneratorPage`/`ResourceWorkspace` **parse and render** an already-structured
+document — never whether the new types can be *requested*, which the server's
+own `STRUCTURED_QUESTIONS_ENABLED` 503s on regardless. Mobile's
+`GeneratorFormScreen` deliberately mirrors the **actual runtime behavior**
+(all 7 types always offered) rather than the stale comment, per "web is the
+source of truth" — but this is a real, pre-existing doc/code mismatch on the
+web side worth a follow-up correction there, out of scope for this mobile stage.
+
+### A misdiagnosed "bug" during device testing, corrected on review (documented for the record)
+
+Mid-session, real-device testing of `GeneratorResultScreen`'s back-guard
+appeared to show the "Discard this result?" alert not firing on a genuine
+Android hardware back-button press. On review (re-reading the exact sequence
+of screenshots against the code, once the device session had ended), this was
+**not a bug**: the screen instance in question had already been saved earlier
+in the same test pass (`savedRef.current` was `true`), so the guard correctly
+let the back-press through without a confirmation — there was nothing to
+discard. A second, earlier no-alert case (leaving a *dirty* `ResourceEditScreen`
+reached via cross-tab navigation) is also not a bug: with only one entry in
+`LibraryStack`'s history, Android's hardware back has nothing to pop *within
+that stack*, so React Navigation's bottom-tabs delegates to the tab
+navigator's own `backBehavior: 'history'`, switching tabs without unmounting
+or removing the screen — the edit is not lost (the screen stays mounted with
+its state intact), it just isn't a "leave" in the `beforeRemove` sense. Both
+are standard, already-existing React Navigation framework behavior, not
+something this stage's code caused or could reasonably prevent without a
+bespoke pattern nothing else in this app uses. No code change was made for
+this; noted here transparently since the mid-session read (reported at the
+time as a probable real bug) was wrong and is corrected on the record rather
+than quietly dropped.
+
+### Testing
+
+- `npx tsc --noEmit` (mobile): clean throughout, after every file added.
+- `npx jest` (mobile): **200/200**, 23 suites — zero regressions against the
+  176 tests that existed before this stage.
+- `npm run lint` (mobile, `expo lint`): 0 errors, 0 warnings.
+- `npx expo export --platform android`: succeeds (2845 modules bundled, no errors).
+
+### Physical-device verification — Stage 3 (2026-08-21, Samsung Galaxy M36)
+
+Performed genuinely, against the real backend (already running) and real
+Gemini API (`STRUCTURED_QUESTIONS_ENABLED=true` in `server/.env`,
+`EXPO_PUBLIC_STRUCTURED_QUESTIONS_ENABLED=true` in a newly-created, gitignored
+`mobile/.env`), via `adb`/`uiautomator` (tap/type/screenshot — no touch-screen
+automation tool was available, so the device was driven entirely from the
+shell) after the user connected the phone mid-session (it was not connected
+at the start; confirmed via `adb devices` before proceeding).
+
+- **A real, genuine bug was found and fixed during this pass**: the very
+  first generation attempt showed the **legacy Markdown textarea** instead of
+  the structured `QuestionListEditor`, even with both flags on. Root cause:
+  Metro was started (via a background-tool `&`-backgrounding mistake) in a way
+  that left a stale bundle running from before `mobile/.env` was fully in
+  effect — the exact "Expo bakes `EXPO_PUBLIC_*` in at bundle time, not
+  hot-reloaded" gotcha already documented elsewhere in this project. Fixed by
+  killing the stray Metro process and restarting cleanly (`expo start
+  --android --clear`), confirmed via the CLI's own `env: load .env` / `env:
+  export EXPO_PUBLIC_STRUCTURED_QUESTIONS_ENABLED` log lines this time. A
+  second, fresh generation (topic "Solar System", format Quiz, "Match the
+  Following", 4 questions) then correctly rendered the real structured editor.
+- **Verified genuinely working, end-to-end, against real Gemini output**:
+  - **Generate** — real AI-generated Match-the-Following questions (e.g.
+    "Match the planets with their most notable characteristics" with real
+    Mars/Jupiter/Saturn/Venus pairs) rendered correctly in both Preview
+    (read-only 2-column table, real exam-letterhead prefilled from the signed-
+    in teacher's actual school/name) and Edit (editable pair rows).
+  - **Edit** — live-edited a pair's text ("Saturn" → "Saturn edited"),
+    confirmed the change reflected immediately.
+  - **Delete** — removed a pair via its trash icon (4 pairs → 3, the
+    type's minimum).
+  - **Add** — added a new empty pair via "Add pair"; separately, on the
+    Library copy, added a whole new question via the add-type picker (from
+    the earlier "Fractions"/Mixed generation pass, before the clean-restart).
+  - **Validation** — attempting to Save with an incomplete pair correctly
+    blocked with a native `Alert` ("Fix questions" / "Fix the highlighted
+    questions before saving.") **and** the `QuestionCard`'s own inline red
+    error banner + red border, both driven by the same `validateQuestions`
+    call already covered by Jest — confirmed identical behavior on real
+    hardware.
+  - **Save** — after fixing the validation error, Save succeeded: `createResource`
+    was called, and the app correctly **cross-tab-navigated from the Generator
+    tab to the Library tab's `ResourceEdit` screen** for the newly-created
+    resource — genuine confirmation the `navigation.getParent()?.navigate(...)`
+    cross-tab call (untestable by Jest's mocked-navigation-prop convention in
+    this codebase) actually works on a real navigator tree.
+  - **Reopen / continue editing** — the reopened `ResourceEditScreen` showed
+    the structured `QuestionListEditor` (not the flat textarea) with the
+    exact edited state persisted (the deleted pair stayed deleted, "Saturn
+    edited" stayed edited) — genuine confirmation of the full round trip.
+  - **Reorder** — Move Up on Q2 correctly swapped it with Q1 on the reopened
+    resource; the header Save icon turned from muted to orange the instant
+    the reorder happened, confirming the dirty-check re-renders correctly on
+    real hardware (matching `ResourceEditScreen.test.tsx`'s equivalent
+    assertion).
+  - **Keyboard/touch targets** — the on-screen keyboard opened/dismissed
+    correctly for every text field exercised (topic, match-pair text,
+    instructions); every tappable control (chips, Move Up/Down/Delete icons,
+    Add pair/Add question, header Save) was large enough to hit reliably via
+    `adb`'s coordinate-based taps once the correct bounds were read from a
+    `uiautomator` dump — no control required pixel-perfect precision beyond
+    the deliberate exception below.
+  - **Dark theme** — the whole session ran under the phone's dark theme;
+    correct contrast/legibility throughout. **Light theme was not
+    additionally toggled and re-checked this pass** — not claimed as verified.
+- **Known limitation, explicitly not worked around**: the header Save
+  button's synthetic tap was twice intercepted by Expo Go's own floating
+  dev-menu bubble (a development-only overlay absent from any production/store
+  build) sitting on the exact same header position — the identical limitation
+  already documented for Phase 5's own device-verification log. Worked
+  around by dragging the bubble aside first; not a product defect.
+- **Reconnection handling**: the USB connection dropped once mid-session
+  (the same known flaky-cable behavior already documented in
+  `DEVICE_TESTING.md`). Per instruction, verification was **not** assumed to
+  have continued correctly across the drop — `adb devices` was polled until
+  the phone reappeared, `adb reverse` tunnels (which do not survive a replug)
+  were re-added, and the screens already open were re-screenshotted and
+  re-confirmed before any further interaction counted as verified.
+- **Not verified this pass** (explicitly, not silently assumed): light
+  theme; safe-area insets on a notch/cutout device (this phone doesn't have
+  one prominent enough to distinguish visually from a screenshot); the
+  `mixed` question-type end-to-end render (only exercised in the earlier,
+  stale-bundle pass before the restart — the clean pass used a single
+  concrete type, `match`, to make the structured-vs-legacy distinction
+  unambiguous); Fill in the Blank/Descriptive/True-False/Short-Answer/MCQ
+  types' on-device rendering specifically (MCQ was seen in the Preview tab of
+  the pre-restart generation only) — all of these are covered by the 200
+  passing Jest tests but not independently re-confirmed on hardware this pass.
+
+### Files changed (Stage 3)
+
+- `mobile/src/api/resources.ts` — `Question` union, `StructuredAssessmentDocument`,
+  extended `QuestionType`/`GenerateAssessmentResult`/`GenerateSetResult`,
+  `AiActionResult.structured` (ported from web, earlier in this session).
+- `mobile/src/config.ts` — `ASSESSMENT_FORMATS`/`DIFFICULTIES`/`QUESTION_TYPES`
+  (extended)/`QUESTION_COUNT_*`/`STRUCTURED_QUESTIONS_ENABLED` (ported earlier).
+- `mobile/src/lib/structuredQuestions.ts` (new) + `.test.ts` (new) — ported earlier.
+- `mobile/src/components/QuestionCard.tsx` (new) + `__tests__/QuestionCard.test.tsx` (new).
+- `mobile/src/components/QuestionListEditor.tsx` (new) + `__tests__/QuestionListEditor.test.tsx` (new).
+- `mobile/src/screens/generator/GeneratorFormScreen.tsx` (new).
+- `mobile/src/screens/generator/GeneratorResultScreen.tsx` (new).
+- `mobile/src/screens/generator/__tests__/GeneratorFormScreen.test.tsx` (new).
+- `mobile/src/screens/generator/__tests__/GeneratorResultScreen.test.tsx` (new).
+- `mobile/src/navigation/types.ts` — `GeneratorStackParamList.GeneratorResult` params.
+- `mobile/src/navigation/stacks/GeneratorStack.tsx` — real screens wired in.
+- `mobile/src/screens/library/ResourceEditScreen.tsx` — structured-resource support.
+- `mobile/src/screens/library/__tests__/ResourceEditScreen.test.tsx` — 5 new tests added.
+- `mobile/.env.example` — `EXPO_PUBLIC_STRUCTURED_QUESTIONS_ENABLED` documented.
+- `mobile/.env` (new, gitignored, not committed) — created for this session's
+  device testing (`EXPO_PUBLIC_STRUCTURED_QUESTIONS_ENABLED=true`); left in
+  place for continued manual testing.
+- `docs/generator-v2-plan.md` — this section, and the status table above.
+
+No `server/` files, no Prisma schema/migration files, and no `client/` (web)
+files were touched this stage — pure mobile + docs.
+
+### Git status at the end of this session
+
+Reviewed and committed to `feature/mobile-app` (this commit — see the
+repository's own `git log` for the hash) and pushed to
+`origin/feature/mobile-app`. Not merged to `main`, no force-push.
+
+### Remaining work
+
+- Light-theme device re-verification (dark theme only was exercised this pass).
+- The web-side `QUESTION_TYPES`-picker doc/comment discrepancy noted above
+  (a one-line comment fix on the web side, or an actual filtering
+  implementation if the original intent is wanted — a decision for the web
+  owner, not assumed here).
+- Flipping either `STRUCTURED_QUESTIONS_ENABLED` flag on anywhere beyond this
+  dev session remains explicitly out of scope until the §7 live-Gemini
+  token-truncation check (flagged since Stage 1) is done for a large,
+  token-heavy `mixed` request.
+- Phase 7 (whatever mobile phase follows the Generator) has not been started,
+  per this stage's own explicit instruction not to start it automatically.
 
 ---
 

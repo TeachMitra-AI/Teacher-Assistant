@@ -76,6 +76,14 @@ export type AiActionId =
 
 export interface AiActionResult {
   suggestion: string;
+  // Structured Question Model (Generator v2, docs/generator-v2-plan.md §2f) —
+  // present only for the 4 assessment-only actions above on a resource whose
+  // structured.questions is already native (schemaVersion 2). Ported verbatim
+  // from client/src/lib/resources.ts — applying a suggestion for such a
+  // resource updates BOTH `suggestion` (display) and this field (the
+  // editor's source of truth) together, so structured.questions can never go
+  // stale relative to what's shown.
+  structured?: string;
   requestId: string;
 }
 
@@ -103,7 +111,13 @@ export async function deleteResource(id: string): Promise<void> {
 // server/test/assistant/contractDrift.test.js via ASSESSMENT_FORMATS.
 export type AssessmentFormat = 'quiz' | 'worksheet' | 'exit_ticket' | 'homework';
 export type Difficulty = 'easy' | 'medium' | 'hard';
-export type QuestionType = 'mcq' | 'true_false' | 'short_answer' | 'mixed';
+// 'descriptive'/'fill_blank'/'match' are the Structured Question Model's
+// three new types (docs/generator-v2-plan.md), gated server-side by
+// STRUCTURED_QUESTIONS_ENABLED; 'mixed' stays a request-only modifier, never
+// a value a question itself has. Mirrors client/src/lib/resources.ts exactly
+// — same wire contract, same server validation.
+export type QuestionType =
+  | 'mcq' | 'true_false' | 'short_answer' | 'descriptive' | 'fill_blank' | 'match' | 'mixed';
 
 export interface GenerateAssessmentInput {
   format: AssessmentFormat;
@@ -119,7 +133,87 @@ export interface GenerateAssessmentInput {
 
 export interface GenerateAssessmentResult {
   content: string;
+  // Structured Question Model (Generator v2) — present only when the request
+  // resolved to a document Zod could validate as {instructions, questions[]},
+  // as a JSON string ready to pass straight into createResource's/
+  // updateResource's own `structured` field. Absent/undefined for any caller
+  // that predates this feature — a pure additive field, never required.
+  structured?: string;
   requestId: string;
+}
+
+// --- Structured Question Model (Generator v2) --------------------------------
+// One typed union per question, mirroring server/src/lib/assessmentSchema.js's
+// questionSchema exactly (a single flat shape with always-present-but-empty-
+// when-N/A fields) and client/src/lib/resources.ts's own Question union
+// byte-for-byte — see docs/generator-v2-plan.md. `id` is client-only: never
+// sent to Gemini, never validated server-side beyond "the structured JSON
+// round-trips" — it exists purely so the editor can key a reorderable/
+// deletable list without relying on array index. See
+// mobile/src/lib/structuredQuestions.ts for the (de)serialization/validation
+// logic built on these types.
+export interface QuestionBase {
+  id: string;
+  text: string;
+}
+export interface McqQuestion extends QuestionBase {
+  type: 'mcq';
+  options: string[];
+  correctOptionIndex: number;
+}
+export interface TrueFalseQuestion extends QuestionBase {
+  type: 'true_false';
+  correctAnswer: 'True' | 'False';
+}
+export interface ShortAnswerQuestion extends QuestionBase {
+  type: 'short_answer';
+  correctAnswer: string;
+}
+export interface DescriptiveQuestion extends QuestionBase {
+  type: 'descriptive';
+  modelAnswer: string;
+}
+export interface FillBlankQuestion extends QuestionBase {
+  type: 'fill_blank';
+  correctAnswer: string;
+}
+export interface MatchPair {
+  left: string;
+  right: string;
+}
+export interface MatchQuestion extends QuestionBase {
+  type: 'match';
+  pairs: MatchPair[];
+}
+export type Question =
+  | McqQuestion
+  | TrueFalseQuestion
+  | ShortAnswerQuestion
+  | DescriptiveQuestion
+  | FillBlankQuestion
+  | MatchQuestion;
+
+// The shape stored in Resource.structured once a resource has native
+// structured questions — additive keys alongside the flat generator config
+// this column already carried (format/difficulty/questionType/questionCount/
+// topic/examMeta). `schemaVersion: 2`'s presence is the ONLY thing that marks
+// a resource as "structured" anywhere in the app, mobile/web/server alike —
+// its absence means "legacy, markdown-only", permanently (no backfill, no
+// migration path — see docs/generator-v2-plan.md §6).
+export interface StructuredAssessmentDocument {
+  schemaVersion: 2;
+  instructions: string;
+  questions: Question[];
+  format?: AssessmentFormat;
+  topic?: string;
+  grade?: string;
+  subject?: string;
+  difficulty?: Difficulty;
+  questionType?: QuestionType;
+  questionCount?: number;
+  // Opaque here — screens own the real ExamPaperMeta type and merge it back
+  // in; this module only needs to round-trip it.
+  examMeta?: unknown;
 }
 
 // Ask the server to generate a quiz/worksheet. The Gemini key stays server-side
@@ -155,6 +249,9 @@ export interface GenerateSetInput {
 export interface GenerateSetResult {
   format: AssessmentFormat;
   content: string | null;
+  // Structured Question Model (Generator v2) — same shape/meaning as
+  // GenerateAssessmentResult.structured, per succeeded artifact.
+  structured: string | null;
   error: string | null;
 }
 

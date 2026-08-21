@@ -27,7 +27,7 @@ this section.
 | 3 — Authentication | ✅ DONE (2026-08-20) — password-auth path verified on-device; Google Sign-In deferred (no OAuth credentials) |
 | 4 — Coach | ✅ DONE (2026-08-21) — core question→answer loop verified on-device; LaTeX math, attachments, voice, Classroom Mode, and chat history deferred (see status note) |
 | 5 — Library | ✅ DONE (2026-08-21) — List/View/Edit/AI-Assist/export-share verified on-device; 3 real export bugs found and fixed |
-| 6 — Generator | ⬜ NOT STARTED |
+| 6 — Generator | ✅ DONE (2026-08-21) — built directly against the structured contract (Generator v2 Stage 3); verified on-device, one real stale-bundle bug found and fixed |
 | 7 — Notifications (in-app + realtime) | ⬜ NOT STARTED |
 | 7b — Push Notifications (backend + client) | ⬜ NOT STARTED |
 | 8 — Classroom (shell + Classes + Students) | ⬜ NOT STARTED |
@@ -1141,28 +1141,61 @@ every prior phase).
 
 **Remaining work**: Phase 6 onward, per §26.
 
-### Phase 6 — Generator — ⬜ NOT STARTED, but scope changed (2026-08-21)
+### Phase 6 — Generator — ✅ DONE (2026-08-21), built directly against the structured contract
 
 Before starting Phase 6 implementation, the user asked for a full architecture
 review of turning the Generator's question content into a real structured
 per-question model (MCQ/Descriptive/True-False/Fill-Blank/Match/SAQ,
 individually editable/reorderable/deletable) instead of one markdown blob —
 see **`docs/generator-v2-plan.md`** for the complete design and its
-Implementation Log. That review is approved; **Stage 1 (backend)** and
-**Stage 2 (web Generator + Library Workspace)** are both done (2026-08-21):
+Implementation Log. That review was approved; **Stage 1 (backend)** and
+**Stage 2 (web Generator + Library Workspace)** shipped first (2026-08-21):
 the server supports 3 new question types end-to-end behind
-`STRUCTURED_QUESTIONS_ENABLED` (default off), and the web app now has a full
+`STRUCTURED_QUESTIONS_ENABLED` (default off), and the web app has a full
 native per-question card editor (add/delete/reorder/edit, all 6 types,
 Preview, Save, legacy-resource fallback) on both the Generator page and the
-Library edit workspace — 90 new client tests, 572/572 client + 2144/2145
-server (1 pre-existing unrelated flake) passing. **No mobile code was
-written — Phase 6 itself has still not started.** `docs/generator-v2-plan.md`'s
-own sequencing note stays true: Phase 6 can still build against the original
-4-type API first if that's preferred, and the structured-question upgrade
-layers on top later with no rework, or it can build directly against the new
-structured contract (Stage 3 of that document, now with a proven web
-reference implementation to port patterns from) — that choice is still open
-and should be made before Phase 6 starts.
+Library edit workspace.
+
+**Phase 6 itself (this entry) then built directly against that same
+structured contract** — the sequencing choice flagged above was resolved in
+favor of "build directly against the new contract, with a proven web
+reference to port patterns from" rather than shipping the plain 4-type API
+first. See **`docs/generator-v2-plan.md`'s "Implementation Log — Stage 3
+(Mobile Generator + Library)"** for the complete account; summarized here:
+
+- New native screens `GeneratorFormScreen`/`GeneratorResultScreen`
+  (`mobile/src/screens/generator/`), wired into `GeneratorStack` in place of
+  the two `PlaceholderScreen`s from Phase 2.
+- New native components `QuestionCard`/`QuestionListEditor`
+  (`mobile/src/components/`), reused by both the Generator's result screen
+  and the extended `ResourceEditScreen` (Library reopen/continue-editing).
+- Full flow implemented and tested: generate (all question types the server
+  supports, reusing the existing `POST /resources/generate` — no new
+  backend/API code), view/edit/add/delete/reorder individual questions,
+  preview the complete paper with the exam-paper letterhead, edit
+  student-facing instructions, save (validated, structured payload built
+  client-side, `content` omitted so the server re-renders it), reopen a saved
+  resource via the Library edit screen and continue editing, save changes
+  back. Legacy (pre-structured) resources render exactly as they did in
+  Phase 5 — unchanged, no silent conversion.
+- 24 new mobile tests (`QuestionCard`, `QuestionListEditor`,
+  `GeneratorFormScreen`, `GeneratorResultScreen`, plus 5 added to
+  `ResourceEditScreen.test.tsx`) — mobile suite grew from 176 to 200,
+  zero regressions. `npx tsc --noEmit`, `npm run lint`, and
+  `npx expo export --platform android` all clean.
+- **Verified genuinely on the physical Samsung Galaxy M36** against the real
+  backend and real Gemini API — see `docs/generator-v2-plan.md`'s Stage 3 log
+  for the full account, including a real stale-bundle bug found and fixed
+  (Metro was serving a build from before `EXPO_PUBLIC_STRUCTURED_QUESTIONS_ENABLED`
+  took effect; fixed by a clean `expo start --android --clear` restart), and
+  a mid-session back-navigation observation that was initially reported as a
+  probable bug but, on review, was standard React Navigation
+  tab/stack behavior working as designed (corrected on the record there
+  rather than silently dropped).
+- **Not verified this pass**: light theme (dark theme only), and on-device
+  rendering of every individual question type beyond `match` (MCQ was seen
+  once, pre-restart) — all covered by the 200 passing Jest tests but not
+  independently re-confirmed on hardware.
 
 ---
 
