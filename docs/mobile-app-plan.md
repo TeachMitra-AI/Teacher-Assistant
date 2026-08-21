@@ -25,7 +25,7 @@ this section.
 | 1 — Ported Core (types, api client, secure storage) | ✅ DONE (2026-08-20) |
 | 2 — Navigation Shell + Design System | ✅ DONE (2026-08-20) |
 | 3 — Authentication | ✅ DONE (2026-08-20) — password-auth path verified on-device; Google Sign-In deferred (no OAuth credentials) |
-| 4 — Coach | ⬜ NOT STARTED |
+| 4 — Coach | ✅ DONE (2026-08-21) — core question→answer loop verified on-device; LaTeX math, attachments, voice, Classroom Mode, and chat history deferred (see status note) |
 | 5 — Library | ⬜ NOT STARTED |
 | 6 — Generator | ⬜ NOT STARTED |
 | 7 — Notifications (in-app + realtime) | ⬜ NOT STARTED |
@@ -690,6 +690,269 @@ Sign-In specifically is relied upon in product decisions; neither blocks
 Phase 4, whose own features don't depend on either.
 
 **Remaining work**: Phase 4 onward, per §26.
+
+### Phase 4 — Coach — ✅ DONE (core loop verified on-device; several features explicitly deferred)
+
+**What was done**: a native Coach chat screen replacing Phase 2/3's
+`PlaceholderScreen` stub, over the exact `POST /api/coach` and
+`POST /api/feedback` contracts (§4.2) — full rewrite per §9 (no salvageable
+web JSX), matching the plan's own Phase 4 goal ("chat UI over POST
+/api/coach, matching the web's core question→answer loop") rather than
+porting `CoachPage.tsx`'s much larger feature surface (sidebar/history
+search, attachments, voice, Classroom Mode, learning representation — see
+"Known limitations" below for why each was left out and where it's tracked).
+
+**Files created**:
+- `mobile/src/screens/coach/CoachScreen.tsx` — the screen itself: turn
+  state (`Turn[]`), submit/retry/feedback handlers, `KeyboardAvoidingView` +
+  `FlatList`/`ScrollView` layout, safe-area-aware composer docking
+  (`useSafeAreaInsets`).
+- `mobile/src/screens/coach/Composer.tsx` — multiline `TextInput` + send
+  button, `MAX_QUERY_LENGTH` (500, mirrored from `client/src/config.ts:149`)
+  enforced client-side with a char-count warning, 44×44dp touch target.
+- `mobile/src/screens/coach/MessageBubble.tsx` — user bubble (right-aligned,
+  orange) + assistant states: pending (`RunStatus`), error (message + Try
+  again, mirroring `MessageBubble.tsx`'s error card), done (`MarkdownText` +
+  thumbs-up/down feedback, disabled once rated).
+- `mobile/src/screens/coach/RunStatus.tsx` — native port of
+  `client/src/components/RunStatus.tsx`'s three-pulsing-line skeleton +
+  elapsed timer + staged waiting copy, driven by the ported pure logic below.
+- `mobile/src/screens/coach/EmptyState.tsx` — welcome state: personalized
+  greeting + the same four `QUICK_ACTIONS` prompts/copy as
+  `client/src/config.ts`, without the web's date-based
+  greeting-of-the-day/`DailyHighlight`/first-run-onboarding-intro machinery
+  (none of that exists on mobile yet).
+- `mobile/src/screens/coach/MarkdownText.tsx` — renders Coach answers as
+  native `Text`/`View` (headings, **bold**, numbered/bulleted lists,
+  paragraphs) — the RN analogue of `client/src/lib/format.ts`'s HTML-string
+  approach, since React Native has no HTML renderer.
+- `mobile/src/lib/formatMarkdown.ts` — the pure parser `MarkdownText`
+  renders: text → block structure (`heading`/`paragraph`/`list` with inline
+  bold segments). Deliberately does **not** port `format.ts`'s pipe-table or
+  MCQ-option-layout transforms (print/exam-paper-specific, not a Coach-chat
+  concern) or LaTeX math rendering (§28's flagged open risk — see below).
+- `mobile/src/lib/runStatus.ts` — `formatElapsed`/`waitingMessage` ported
+  verbatim from `client/src/lib/runStatus.ts` (byte-identical logic; only
+  the import path differs).
+- `mobile/src/api/coach.ts` — `askCoach()`/`sendCoachFeedback()`, thin
+  wrappers over the existing mobile `api()` client (Phase 1), calling
+  `/coach` and `/feedback` exactly as `CoachPage.tsx`'s `runTurn()`/
+  `handleFeedback()` do.
+- `mobile/src/lib/__tests__/formatMarkdown.test.ts`,
+  `mobile/src/lib/__tests__/runStatus.test.ts` (ported from
+  `client/src/lib/runStatus.test.ts`, Vitest → Jest syntax only),
+  `mobile/src/api/__tests__/coach.test.ts`,
+  `mobile/src/screens/coach/__tests__/CoachScreen.test.tsx` — see Tests
+  below.
+
+**Files modified**:
+- `mobile/src/navigation/stacks/CoachStack.tsx` — renders `CoachScreen`
+  instead of the Phase 2 `PlaceholderScreen`.
+- `mobile/src/config.ts` — added `MAX_QUERY_LENGTH = 500`.
+- `mobile/src/navigation/__tests__/RootNavigator.test.tsx` — extended the
+  existing "restores an authenticated session" test with an assertion that
+  Coach's *actual* chat UI (greeting + composer) renders immediately after
+  auth, not just the tab bar — confirms Coach is reachable end-to-end
+  through the real `AuthProvider`, not only in `CoachScreen`'s own isolated
+  tests.
+
+**Existing code reused**: the `POST /api/coach` and `POST /api/feedback`
+request/response contract (`server/src/index.js:638-939`,
+`server/src/routes/queries.js:66-`) unchanged; `lib/runStatus.ts`'s staged
+waiting-message logic (byte-identical port, per §23's explicit instruction);
+`QUICK_ACTIONS`' four prompts/copy from `client/src/config.ts`; the mobile
+`api()`/`ApiError` client from Phase 1 (token attach, refresh-on-401,
+concurrent-refresh dedup — all inherited for free, not re-implemented).
+
+**Backend changes**: none, as designed (§17, the architecture rule for this
+phase) — confirmed via `git status`: no `server/` or `client/` file was
+touched this session.
+
+**Coach functionality implemented** (matching what §3/§4.2 confirm the
+existing codebase actually supports): send a question, receive an AI
+answer with basic Markdown formatting (headings, bold, lists), a patient
+staged loading state for the realistic several-seconds-to-~60s wait
+(`LLM_TOTAL_TIMEOUT_MS`), thumbs-up/down feedback tied to the real
+`queryId`, and retry on a failed turn (network or server error).
+
+**Deliberately NOT implemented this phase, documented as limitations rather
+than faked** (each is either a later phase's own screen, an explicit
+plan-level deferral, or a genuine open technical risk — not an oversight):
+- **Chat history sidebar/search** (`GET /queries`, `Sidebar.tsx`/
+  `ChatSearchOverlay.tsx` on web) — §10's navigation tree scopes Coach to
+  `Stack: Chat → [message actions, share sheet]`, no history screen; a turn
+  list is session-local (component state), matching the acceptance
+  criterion's own bar ("ask a question and see a … answer"), not the web's
+  full persistent-history product.
+- **File/photo attachments** (`POST /coach/attachment`) and **voice input**
+  — §9/§26 Phase 4 explicitly allow deferring voice past V1 if not core to
+  the daily workflow; attachments are reusable as-is per §4.2 but were not
+  in this phase's own file list (`mobile/src/screens/coach/*` scoped to the
+  core loop) and are a reasonable, self-contained follow-up.
+- **Classroom Mode** (`classroomMode` request flag, `ClassroomSet`/
+  `ClassroomModeMenu` on web) — a whole additional planner call + UI surface
+  layered on top of the core loop; out of scope for "matching the web's
+  core question→answer loop."
+- **AI Learning Representation panel** (`LEARNING_REPRESENTATION_ENABLED`) —
+  same reasoning: a separate feature surface, not the core loop.
+- **LaTeX math rendering** ($...$/$$...$$ via KaTeX on web) — §28's own
+  flagged open risk ("resolve empirically during Phase 4, don't guess now").
+  Resolved empirically: no LaTeX renderer was added this phase. A Coach
+  answer containing LaTeX will render as literal `$...$` text rather than
+  typeset math. Per §26 Phase 4's own risk note ("ship without math
+  rendering first if necessary, add it after"), this is the explicit
+  decision made — `react-native-katex`/a WebView-based KaTeX render should
+  be evaluated in a follow-up pass rather than blocking this phase further.
+- **Grade/subject/language context picker** (`TeachingContextMenu` on web) —
+  every mobile request sends `language: 'en'` and an empty `context`. A
+  teacher cannot yet set grade/subject tags or a non-English response
+  language from the mobile app.
+- **Edit-in-place, copy-to-clipboard, read-aloud, share, and
+  save-to-library** on a sent message/response (`MessageBubble.tsx`/
+  `ResponseCard.tsx` web actions) — none exist in the mobile bubble; only
+  retry and feedback do.
+
+**Tests added**: 27 new tests across 4 files (mobile suite: **58 tests
+across 10 files, 0 failures**, up from Phase 3's 31/6):
+- `lib/__tests__/runStatus.test.ts` — 9 tests, ported from the web's own
+  `runStatus.test.ts` (elapsed-time formatting edge cases, staged-message
+  thresholds, live-region-noise bound).
+- `lib/__tests__/formatMarkdown.test.ts` — 10 tests covering the block
+  parser (plain/blank-line paragraphs, embedded-newline joining, inline
+  bold, headings 1–6, ordered/unordered list grouping and marker-switch
+  boundaries, a realistic multi-block answer, empty input).
+- `api/__tests__/coach.test.ts` — 3 tests (request shaping for
+  `askCoach`/`sendCoachFeedback`, error propagation), same
+  mocked-`api()`-module pattern as `classroomApi.test.ts`.
+- `screens/coach/__tests__/CoachScreen.test.tsx` — 6 component tests
+  (React Native Testing Library, real rendering + `fireEvent`): empty state
+  with personalized greeting and quick-action prompts; tapping a prompt
+  prefills without sending; send button disabled until non-whitespace text;
+  full pending→success round trip (asserts the sent bubble, the staged
+  loading message, the composer clearing, then the rendered Markdown
+  answer); network-error card with a working retry that succeeds on the
+  second attempt; thumbs-up feedback calling `sendCoachFeedback` with the
+  real `queryId`.
+- `navigation/__tests__/RootNavigator.test.tsx` — 1 new assertion (existing
+  test extended, not a new test file) confirming Coach's real chat UI (not
+  a placeholder) renders through the authenticated navigator.
+
+**Verification performed**:
+- `npm test` — 58/58 passing, 10/10 suites.
+- `npm run typecheck` (`tsc --noEmit`) — clean.
+- `npm run lint` (`expo lint`) — clean. One issue fixed during
+  implementation: the current `eslint-config-expo`'s `react-hooks/refs` rule
+  flags the common `useRef(x).current` lazy-singleton pattern as "cannot
+  access ref value during render" — `RunStatus.tsx`'s `Animated.Value`
+  singleton was switched to `useState(() => new Animated.Value(...))`
+  instead (same stable-identity guarantee, no ref read during render).
+- `npx expo export --platform android` — succeeded, 2814 modules (up from
+  Phase 3's 2805), valid Hermes bundle. Scratch export, deleted afterward.
+- Client/server regression check: `git status` confirms no `client/` or
+  `server/` files were touched this session.
+
+### Physical-device verification — Phase 4 (2026-08-20/21, Samsung Galaxy M36)
+
+`adb devices` showed `RZCY619LM4T` `device` (authorized) via the same
+full-path invocation Phase 3 documented (persistent PATH write predates the
+session's shells). Server (`npm run dev`, already running from an earlier
+session) and Metro were reachable; `adb reverse tcp:3000 tcp:3000` +
+`tcp:8081 tcp:8081` set up USB tunnels for the API and dev server.
+
+**A real, reproducible bug was found and fixed by this device pass**: the
+Coach feedback thumbs (`MessageBubble.tsx`) rendered the "Helpful" button
+already selected and disabled on a *brand-new* turn, before any tap —
+confirmed via `uiautomator dump` (`selected="true"`, `enabled="false"` on
+first paint) and by tapping "Not helpful," which had no effect (proof both
+buttons were genuinely disabled, not just visually similar). Root cause:
+the Metro dev server process backing this device session had been running
+continuously since **2026-08-20 21:14**, i.e. across this entire multi-hour
+implementation session and several rounds of new-file creation — the exact
+"long-running dev server + mid-session changes → stale bundler cache"
+failure mode Phase 2's own device log already documented once (there, it
+manifested as an unresolvable-module crash; here, as stale component
+state/props surviving an incomplete Fast Refresh). **Fix**: killed the
+stale Metro process (`taskkill`) and started a fresh
+`expo start --android --clear`; re-tested the exact same flow on the new
+bundle and the feedback buttons rendered correctly unselected/enabled on a
+new turn, and correctly flipped to selected/disabled only after an actual
+tap. Not a code defect — recorded here so a future session recognizes the
+symptom immediately rather than re-debugging component logic that is
+already correct.
+
+**Verified genuinely working, against the real backend, on the physical
+device** (not mocked, not assumed):
+- **Auth/session regression** — app relaunches (including after a
+  ~15-minute idle gap and a full Expo Go force-stop) restored straight to
+  the authenticated Coach screen with no re-login, confirming Phase 3's
+  SecureStore persistence still holds; the **More** menu still showed the
+  correct identity card (Demo Teacher / `teacher@example.com` / Govt
+  Primary School, Rampur), no Admin item for the `teacher` role, and a
+  working Sign out button — Phase 3 unaffected by this phase's changes.
+- **Coach empty state** — personalized greeting ("Hi Demo Teacher 👋") and
+  all four quick-action cards (Lesson Plan / Classroom Activity / Explain a
+  Concept / Assessment) rendered with correct icons and orange accent in
+  dark theme.
+- **Composer** — send button genuinely disabled (`enabled="false"` in the
+  accessibility tree) with empty/whitespace-only input, enabled once real
+  text is present; multiline growth and the keyboard-avoiding dock worked
+  (confirmed via `KeyboardAvoidingView` pushing the composer above the
+  on-screen keyboard in screenshots).
+- **Successful round trip** — asked "How do I explain fractions to grade 5
+  students" and, separately, "What is photosynthesis" against the real
+  Gemini-backed `/api/coach`; both returned real answers rendered with
+  working numbered lists, bold labels, and bulleted sub-items via
+  `MarkdownText` — confirmed via `uiautomator dump` text nodes, not just a
+  screenshot.
+- **Feedback** — tapped "Helpful" on a real answered turn; the icon filled
+  orange and both thumb buttons became disabled (`selected="true"`/
+  `enabled="false"` for Helpful, `enabled="false"` for Not helpful),
+  confirming a real `POST /api/feedback` round trip with the actual
+  `queryId`, not a local-only toggle.
+- **Network-error state** — removed the `adb reverse tcp:3000` tunnel
+  (rather than toggling WiFi, which doesn't affect USB-tunneled traffic)
+  and sent a question: the error card rendered "⚠️ Network error. Please
+  check your connection." with a working "Try again" link, exactly matching
+  `MessageBubble.tsx`'s design.
+- **Retry** — restored the tunnel and tapped "Try again": the retry
+  genuinely re-hit the real server (the displayed message changed from the
+  client-side "Network error…" to the server's own
+  `Failed to generate a response. Please try again.` — a **502
+  UPSTREAM_UNAVAILABLE** response from `server/src/index.js:937`, an
+  existing generic Gemini-upstream-failure handler, unrelated to and
+  unmodified by this phase). This is a real, observed backend/AI-provider
+  flakiness in this dev environment, not a mobile-client defect — the
+  mobile error/retry UI correctly surfaced whatever the server actually
+  returned each time, which is the behavior being verified.
+- **Regression, incidental** — Classroom tab (Phase 2/8 stub) still
+  rendered its mock class list correctly after switching away from and
+  back to Coach.
+
+**adb/USB reliability note (consistent with Phase 2/3's own logs)**: the
+connection dropped multiple times during this session, including one gap
+long enough for Expo Go to lose its dev-server WebSocket and show its own
+"Something went wrong" error screen (Expo Go's client-side error boundary,
+not a Coach/app crash) — resolved each time by re-adding both `adb reverse`
+tunnels (they do not survive a replug/idle drop) and relaunching via
+`am start -a android.intent.action.VIEW -d exp://127.0.0.1:8081`. Treated
+as the same known USB-setup property already documented in
+`mobile/DEVICE_TESTING.md`'s troubleshooting table, not a regression.
+
+**Known limitations, explicitly not claimed as verified**: light-mode
+Coach screens were not independently checked this session (phone stayed in
+dark theme throughout, same gap Phase 2 originally flagged and Phase 3
+incidentally closed for its own screens — Coach's own light-mode rendering
+is untested); no TalkBack/accessibility pass (deferred to Phase 13 per
+§23, consistent with every prior phase); the "Failed to generate a
+response" server error observed during retry testing means the *second*
+real Gemini call in that specific sequence was not independently confirmed
+successful on this device pass — the round-trip mechanics (request sent,
+real distinct response received and rendered) were fully confirmed by the
+two earlier successful questions, so this is not treated as a gap in the
+mobile implementation, but the flakiness itself is unexplained and outside
+this phase's scope.
+
+**Remaining work**: Phase 5 onward, per §26.
 
 ---
 

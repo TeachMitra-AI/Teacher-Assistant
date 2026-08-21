@@ -19,3 +19,8 @@ export const API_BASE = process.env.EXPO_PUBLIC_API_BASE || 'http://localhost:30
 // Socket.IO connects to the API's origin, not through /api — same derivation
 // as client/src/config.ts's SOCKET_BASE.
 export const SOCKET_BASE = API_BASE.replace(/\/api\/?$/, '');
+
+// client/src/config.ts:149 — POST /coach rejects a longer query server-side
+// (server/src/index.js's MAX_QUERY_LENGTH check); mirrored here so the
+// composer can stop a teacher before that round trip, not after it.
+export const MAX_QUERY_LENGTH = 500;

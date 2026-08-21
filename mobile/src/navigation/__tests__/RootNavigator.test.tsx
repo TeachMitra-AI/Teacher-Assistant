@@ -89,6 +89,12 @@ describe('RootNavigator', () => {
     expect(tabButton('Library')).toBeTruthy();
     expect(tabButton('Generator')).toBeTruthy();
     expect(tabButton('More')).toBeTruthy();
+    // Coach is the default/first tab (§10) — its own chat screen (Phase 4)
+    // renders immediately, not a placeholder, confirming the authenticated
+    // session flows all the way through to the actual Coach UI rather than
+    // just an empty tab bar.
+    expect(screen.getByText('Hi Asha Verma 👋')).toBeTruthy();
+    expect(screen.getByTestId('coach-composer-input')).toBeTruthy();
   });
 
   it('hides Admin from the More menu for a teacher', async () => {
