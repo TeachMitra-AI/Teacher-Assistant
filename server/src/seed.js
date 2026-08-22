@@ -29,6 +29,11 @@ async function upsertUser({ schoolId, name, email, role, password }) {
 }
 
 async function main() {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('FATAL: refusing to seed demo accounts (password "demo1234") against a production database.');
+    process.exit(1);
+  }
+
   const rampur1 = await upsertSchool({
     name: 'Govt Primary School, Rampur',
     code: 'RAMPUR01',

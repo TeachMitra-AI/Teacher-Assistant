@@ -17,6 +17,12 @@ if (!JWT_SECRET) {
   console.error('FATAL: JWT_SECRET is not set. Add it to .env (see .env.example).');
   process.exit(1);
 }
+if (JWT_SECRET.length < 32 || JWT_SECRET === 'change-me-to-a-long-random-secret') {
+  console.error('FATAL: JWT_SECRET is too short or is still the .env.example placeholder. Set a long, random value.');
+  process.exit(1);
+}
+
+const JWT_ALGORITHM = 'HS256';
 
 // ---- Access token (short-lived JWT) ----------------------------------------
 
@@ -24,7 +30,7 @@ function signAccessToken(user) {
   return jwt.sign(
     { sub: user.id, role: user.role, schoolId: user.schoolId, name: user.name },
     JWT_SECRET,
-    { expiresIn: ACCESS_TOKEN_TTL }
+    { expiresIn: ACCESS_TOKEN_TTL, algorithm: JWT_ALGORITHM }
   );
 }
 
@@ -35,7 +41,7 @@ function getBearerToken(req) {
 }
 
 function decode(token) {
-  const payload = jwt.verify(token, JWT_SECRET);
+  const payload = jwt.verify(token, JWT_SECRET, { algorithms: [JWT_ALGORITHM] });
   return {
     id: payload.sub,
     role: payload.role,
