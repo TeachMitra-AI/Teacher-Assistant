@@ -333,3 +333,130 @@ describe('duplicate numbering from the model', () => {
     expect(doc.questions[0].options).toEqual(['A', 'B', 'C', 'D']);
   });
 });
+
+// Structured Question Model (Generator v2) — the 3 new question types.
+describe('assessmentDocumentSchema — new question types (Generator v2)', () => {
+  function validDescriptive(overrides = {}) {
+    return {
+      type: 'descriptive',
+      text: 'Explain why the sky appears blue.',
+      options: [],
+      correctOptionIndex: -1,
+      correctAnswer: '',
+      modelAnswer: 'Because of Rayleigh scattering of shorter wavelengths by the atmosphere.',
+      ...overrides,
+    };
+  }
+
+  function validFillBlank(overrides = {}) {
+    return {
+      type: 'fill_blank',
+      text: 'The capital of France is ___.',
+      options: [],
+      correctOptionIndex: -1,
+      correctAnswer: 'Paris',
+      ...overrides,
+    };
+  }
+
+  function validMatch(overrides = {}) {
+    return {
+      type: 'match',
+      text: 'Match each planet to its position from the sun.',
+      options: [],
+      correctOptionIndex: -1,
+      correctAnswer: '',
+      pairs: [
+        { left: 'Mercury', right: '1st' },
+        { left: 'Venus', right: '2nd' },
+        { left: 'Earth', right: '3rd' },
+      ],
+      ...overrides,
+    };
+  }
+
+  test('accepts a well-formed document containing all 6 question types', () => {
+    const result = assessmentDocumentSchema.safeParse({
+      instructions: 'Answer all questions.',
+      questions: [
+        validMcq(), validTrueFalse(), validShortAnswer(), validDescriptive(), validFillBlank(), validMatch(),
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test('rejects a descriptive question with an empty modelAnswer', () => {
+    const result = assessmentDocumentSchema.safeParse({
+      instructions: 'Go.',
+      questions: [validDescriptive({ modelAnswer: '' })],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test('rejects a fill_blank question whose text has no blank marker', () => {
+    const result = assessmentDocumentSchema.safeParse({
+      instructions: 'Go.',
+      questions: [validFillBlank({ text: 'The capital of France is Paris.' })],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test('accepts a fill_blank blank written with more than 3 underscores', () => {
+    const result = assessmentDocumentSchema.safeParse({
+      instructions: 'Go.',
+      questions: [validFillBlank({ text: 'The capital of France is ______.' })],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test('rejects a fill_blank question with an empty correctAnswer', () => {
+    const result = assessmentDocumentSchema.safeParse({
+      instructions: 'Go.',
+      questions: [validFillBlank({ correctAnswer: '' })],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test('rejects a match question with fewer than 3 pairs', () => {
+    const result = assessmentDocumentSchema.safeParse({
+      instructions: 'Go.',
+      questions: [validMatch({ pairs: [{ left: 'A', right: '1' }, { left: 'B', right: '2' }] })],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test('rejects a match question with more than 8 pairs', () => {
+    const pairs = Array.from({ length: 9 }, (_, i) => ({ left: `L${i}`, right: `R${i}` }));
+    const result = assessmentDocumentSchema.safeParse({
+      instructions: 'Go.',
+      questions: [validMatch({ pairs })],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test('rejects a match question with duplicate left-hand values', () => {
+    const result = assessmentDocumentSchema.safeParse({
+      instructions: 'Go.',
+      questions: [validMatch({
+        pairs: [
+          { left: 'Mercury', right: '1st' },
+          { left: 'mercury', right: '2nd' },
+          { left: 'Earth', right: '3rd' },
+        ],
+      })],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test('a question object built without modelAnswer/pairs (legacy shape) still validates', () => {
+    // Mirrors what routes/resources.js's legacy parseAssessmentBody path
+    // constructs — it never sets these two new fields at all.
+    const result = assessmentDocumentSchema.safeParse({
+      instructions: 'Go.',
+      questions: [{ type: 'mcq', text: 'Q?', options: ['A', 'B', 'C', 'D'], correctOptionIndex: 0, correctAnswer: '' }],
+    });
+    expect(result.success).toBe(true);
+    expect(result.data.questions[0].modelAnswer).toBe('');
+    expect(result.data.questions[0].pairs).toEqual([]);
+  });
+});

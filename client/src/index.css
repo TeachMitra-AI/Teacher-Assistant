@@ -4463,6 +4463,127 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   .generator-title { font-size: 1.25rem; }
 }
 
+/* ---- Structured Question Model (Generator v2) --------------------------- */
+/* One question card, shared by GeneratorPage's Edit/Preview tabs and
+   ResourceWorkspace's structured editor — see docs/generator-v2-plan.md.
+   Deliberately reuses .ws-field/.btn-text/.icon-btn rather than a parallel
+   visual language. */
+.question-list-instructions { margin-bottom: 0.9rem; }
+.question-list-instructions input { width: 100%; }
+.question-list-instructions-display { font-style: italic; color: var(--text-muted); margin: 0 0 1rem; }
+.question-list-editor { display: flex; flex-direction: column; gap: 0.9rem; }
+.question-list-empty { font-size: 0.88rem; color: var(--text-muted); margin: 0; }
+.question-list-add {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding-top: 0.4rem;
+}
+.question-list-add select {
+  padding: 0.5rem 0.6rem;
+  font-size: 0.88rem;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.question-list-add-btn { display: inline-flex; align-items: center; gap: 0.35rem; }
+
+.question-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.9rem 1rem;
+}
+.question-card.has-error { border-color: #e5484d; }
+.question-card-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.6rem; }
+.question-card-number { font-weight: 700; font-size: 0.85rem; color: var(--text-muted); }
+.question-card-type-select {
+  padding: 0.35rem 0.55rem;
+  font-size: 0.82rem;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.question-card-type-badge {
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--orange);
+  background: var(--orange-soft);
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+}
+.question-card-actions { display: flex; align-items: center; gap: 0.25rem; margin-left: auto; }
+.question-card-actions .icon-btn { min-width: 32px; min-height: 32px; padding: 0; }
+.question-card-delete:hover:not(:disabled) { color: #e5484d; }
+
+.question-card-text {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  font-family: inherit;
+  font-size: 0.94rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+  margin-bottom: 0.6rem;
+}
+.question-card-text-display { font-size: 0.94rem; color: var(--text); margin: 0 0 0.6rem; }
+.question-card-field { margin-top: 0.2rem; }
+.question-card-answer { font-size: 0.86rem; color: var(--text-muted); margin: 0.3rem 0 0; }
+.question-card-error { font-size: 0.8rem; color: #e5484d; margin: 0.5rem 0 0; }
+
+.question-card-options { display: flex; flex-direction: column; gap: 0.4rem; }
+.question-card-option-row { display: flex; align-items: center; gap: 0.5rem; }
+.question-card-option-radio { display: inline-flex; align-items: center; gap: 0.35rem; }
+.question-card-option-letter { font-weight: 700; font-size: 0.82rem; color: var(--text-muted); min-width: 1em; }
+.question-card-option-input {
+  flex: 1;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.88rem;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.question-card-option-text { font-size: 0.9rem; color: var(--text); }
+.question-card-option-text.correct { font-weight: 700; color: var(--orange); }
+
+.question-card-match-editor { display: flex; flex-direction: column; gap: 0.45rem; }
+.question-card-match-row { display: flex; align-items: center; gap: 0.5rem; }
+.question-card-match-row input {
+  flex: 1;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.88rem;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.question-card-match-arrow { color: var(--text-muted); }
+.question-card-match-remove { min-width: 30px; min-height: 30px; padding: 0; }
+.question-card-match-add { display: inline-flex; align-items: center; gap: 0.3rem; align-self: flex-start; margin-top: 0.2rem; }
+.question-card-match-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.question-card-match-table th, .question-card-match-table td {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+}
+.question-card-match-table th { color: var(--text-muted); font-weight: 700; font-size: 0.78rem; text-transform: uppercase; }
+
+@media (max-width: 640px) {
+  .question-card-head { flex-wrap: wrap; }
+  .question-card-actions { margin-left: 0; }
+}
+
 /* ---- AI prefill banner + provenance markers (AI Action Router, M3) -------- */
 /* Shown when the router has pre-filled the Generator. Sits in normal flow above
    the form — never an overlay — for the same reason the onboarding tip does: it

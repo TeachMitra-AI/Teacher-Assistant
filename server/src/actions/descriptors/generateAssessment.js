@@ -12,7 +12,7 @@ const {
   generateAssessmentSchema,
   ROUTABLE_FORMATS,
   DIFFICULTIES,
-  QUESTION_TYPES,
+  ROUTABLE_QUESTION_TYPES,
   MIN_QUESTIONS,
   MAX_QUESTIONS,
 } = require('../schemas/generateAssessment');
@@ -114,7 +114,10 @@ const generateAssessment = {
     {
       name: 'questionType',
       type: 'enum',
-      values: QUESTION_TYPES,
+      // ROUTABLE_QUESTION_TYPES, not the full QUESTION_TYPES — the router
+      // advertises a deliberate, frozen subset (see the schema module for
+      // why), same reasoning as `format` using ROUTABLE_FORMATS above.
+      values: ROUTABLE_QUESTION_TYPES,
       required: false,
       defaultFrom: 'const:mcq',
     },

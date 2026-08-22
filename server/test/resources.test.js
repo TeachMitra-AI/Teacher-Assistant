@@ -655,6 +655,71 @@ describe('My Library — /api/resources', () => {
       expect(res.status).toBe(200);
       expect(res.body.suggestion).toBe('# Simplified\nEasy words.');
     });
+
+    // Structured Question Model (Generator v2, plan §2f): a resource with
+    // native structured questions reads/writes `structured` directly and
+    // skips parseAssessmentBody's regex round-trip entirely.
+    describe('structured resources (schemaVersion 2) skip the regex round-trip', () => {
+      async function createStructuredQuiz(token) {
+        const res = await request(app).post('/api/resources').set('Authorization', `Bearer ${token}`).send({
+          type: 'assessment',
+          title: 'Fractions Quiz',
+          grade: 'Class 5',
+          subject: 'Maths',
+          structured: JSON.stringify({
+            schemaVersion: 2,
+            format: 'quiz', topic: 'Fractions', grade: 'Class 5', subject: 'Maths', difficulty: 'medium',
+            instructions: 'Answer all questions carefully.',
+            questions: [mcq('What is 1/2 + 1/2?', 0), trueFalse('1/2 > 1/4.', 'True'), shortAnswer('Define a fraction.', 'A part of a whole.')],
+          }),
+        });
+        return res.body.resource;
+      }
+
+      test('make_harder succeeds even when `content` has been corrupted beyond regex-parsing', async () => {
+        const resource = await createStructuredQuiz(teacherAToken);
+
+        // Corrupt content directly (bypassing the API) so parseAssessmentBody
+        // would fail — proving the ai-action below reads structured.questions
+        // instead, never falling back to (or needing) a parseable `content`.
+        await prisma.resource.update({ where: { id: resource.id }, data: { content: 'not parseable at all, no headings' } });
+
+        mockGeminiFetch([geminiSuccess(JSON.stringify({
+          instructions: 'Answer all questions carefully, showing your reasoning.',
+          questions: [mcq('Harder Q1?', 1), trueFalse('Harder Q2.', 'False'), shortAnswer('Harder Q3?', 'A ratio of two integers.')],
+        }))]);
+
+        const res = await runAction(teacherAToken, resource.id, { action: 'make_harder' });
+        expect(res.status).toBe(200);
+        expect(res.body.suggestion).toContain('# Maths Quiz: Fractions');
+        expect(res.body.suggestion).toMatch(/1\. Harder Q1\?/);
+
+        const structured = JSON.parse(res.body.structured);
+        expect(structured.schemaVersion).toBe(2);
+        expect(structured.questions).toHaveLength(3);
+        expect(structured.questions[0].text).toBe('Harder Q1?');
+        // Generator-config keys (format/topic/grade/subject/difficulty) survive
+        // the round trip untouched — only instructions/questions changed.
+        expect(structured.topic).toBe('Fractions');
+
+        // Never persisted by ai-action itself — same "preview only" contract
+        // as the legacy path; the teacher must Save (PATCH) to apply it.
+        const row = await prisma.resource.findUnique({ where: { id: resource.id } });
+        expect(row.content).toBe('not parseable at all, no headings');
+      });
+
+      test('more_questions appends to the existing structured questions and updates the count', async () => {
+        const resource = await createStructuredQuiz(teacherAToken);
+        const newOnes = Array.from({ length: 5 }, (_, i) => shortAnswer(`New Q${i + 1}?`, `A${i + 1}`));
+        mockGeminiFetch([geminiSuccess(JSON.stringify({ instructions: 'x', questions: newOnes }))]);
+
+        const res = await runAction(teacherAToken, resource.id, { action: 'more_questions' });
+        expect(res.status).toBe(200);
+        const structured = JSON.parse(res.body.structured);
+        expect(structured.questions).toHaveLength(8); // 3 original + 5 new
+        expect(structured.questions[7].text).toBe('New Q5?');
+      });
+    });
   });
 
   // Quiz / Worksheet Generator. Builds a trusted prompt from a validated
@@ -1041,6 +1106,208 @@ describe('My Library — /api/resources', () => {
         // calls — never fewer (teacher must never see unsafe content) and
         // never more (bounded cost/latency).
         expect(mock).toHaveBeenCalledTimes(3);
+      });
+    });
+
+    // Structured Question Model (Generator v2, docs/generator-v2-plan.md).
+    describe('Structured Question Model — new question types', () => {
+      function mockDescriptiveQuestion(i) {
+        return {
+          type: 'descriptive', text: `Explain concept ${i}.`, options: [], correctOptionIndex: -1,
+          correctAnswer: '', modelAnswer: `A model answer for concept ${i}.`,
+        };
+      }
+      function mockFillBlankQuestion(i) {
+        return {
+          type: 'fill_blank', text: `Blank ${i}: the answer is ___.`, options: [], correctOptionIndex: -1,
+          correctAnswer: `answer${i}`, modelAnswer: '',
+        };
+      }
+      function mockMatchQuestion(i) {
+        return {
+          type: 'match', text: `Match set ${i}.`, options: [], correctOptionIndex: -1, correctAnswer: '', modelAnswer: '',
+          pairs: [{ left: 'A', right: '1' }, { left: 'B', right: '2' }, { left: 'C', right: '3' }],
+        };
+      }
+
+      test('rejects a new question type with 503 STRUCTURED_QUESTIONS_DISABLED when the flag is off', async () => {
+        let saved;
+        try {
+          saved = process.env.STRUCTURED_QUESTIONS_ENABLED;
+          delete process.env.STRUCTURED_QUESTIONS_ENABLED;
+          const { mock } = mockGeminiFetch([geminiSuccess('should never be called')]);
+          const res = await generate(teacherAToken, { ...validConfig, questionType: 'descriptive' });
+          expect(res.status).toBe(503);
+          expect(res.body.code).toBe('STRUCTURED_QUESTIONS_DISABLED');
+          expect(mock).not.toHaveBeenCalled();
+        } finally {
+          if (saved === undefined) delete process.env.STRUCTURED_QUESTIONS_ENABLED;
+          else process.env.STRUCTURED_QUESTIONS_ENABLED = saved;
+        }
+      });
+
+      test.each(['mcq', 'true_false', 'short_answer', 'mixed'])(
+        'the original question type "%s" still works with the flag off',
+        async (questionType) => {
+          let saved;
+          try {
+            saved = process.env.STRUCTURED_QUESTIONS_ENABLED;
+            delete process.env.STRUCTURED_QUESTIONS_ENABLED;
+            mockGeminiFetch([mockAssessmentJsonResponse({ count: 3, type: questionType === 'mixed' ? 'mcq' : questionType })]);
+            const res = await generate(teacherAToken, { ...validConfig, questionType, questionCount: 3 });
+            expect(res.status).toBe(200);
+          } finally {
+            if (saved === undefined) delete process.env.STRUCTURED_QUESTIONS_ENABLED;
+            else process.env.STRUCTURED_QUESTIONS_ENABLED = saved;
+          }
+        }
+      );
+
+      describe('with the flag on', () => {
+        let saved;
+        beforeAll(() => { saved = process.env.STRUCTURED_QUESTIONS_ENABLED; process.env.STRUCTURED_QUESTIONS_ENABLED = 'true'; });
+        afterAll(() => {
+          if (saved === undefined) delete process.env.STRUCTURED_QUESTIONS_ENABLED;
+          else process.env.STRUCTURED_QUESTIONS_ENABLED = saved;
+        });
+
+        test('accepts "descriptive" and returns a structured field (schemaVersion 2) alongside content', async () => {
+          mockGeminiFetch([geminiSuccess(JSON.stringify({
+            instructions: 'Answer fully.',
+            questions: [mockDescriptiveQuestion(1), mockDescriptiveQuestion(2), mockDescriptiveQuestion(3)],
+          }))]);
+          const res = await generate(teacherAToken, { ...validConfig, questionType: 'descriptive', questionCount: 3 });
+          expect(res.status).toBe(200);
+          expect(res.body.content).toContain('Explain concept 1.');
+          expect(res.body.content).toContain('_(Write your answer in 2-4 sentences.)_');
+          expect(res.body.content).toMatch(/## Answer Key[\s\S]*1\. Suggested answer: A model answer for concept 1\./);
+
+          const structured = JSON.parse(res.body.structured);
+          expect(structured.schemaVersion).toBe(2);
+          expect(structured.questions).toHaveLength(3);
+          expect(structured.questions[0].type).toBe('descriptive');
+        });
+
+        test('accepts "fill_blank" and renders the blank + answer key', async () => {
+          mockGeminiFetch([geminiSuccess(JSON.stringify({
+            instructions: 'Fill in each blank.',
+            questions: [mockFillBlankQuestion(1), mockFillBlankQuestion(2), mockFillBlankQuestion(3)],
+          }))]);
+          const res = await generate(teacherAToken, { ...validConfig, questionType: 'fill_blank', questionCount: 3 });
+          expect(res.status).toBe(200);
+          expect(res.body.content).toContain('Blank 1: the answer is ___.');
+          expect(res.body.content).toMatch(/## Answer Key[\s\S]*1\. answer1/);
+        });
+
+        test('accepts "match" and renders a two-column table plus the pairing in the answer key', async () => {
+          mockGeminiFetch([geminiSuccess(JSON.stringify({
+            instructions: 'Match the columns.',
+            questions: [mockMatchQuestion(1), mockMatchQuestion(2), mockMatchQuestion(3)],
+          }))]);
+          const res = await generate(teacherAToken, { ...validConfig, questionType: 'match', questionCount: 3 });
+          expect(res.status).toBe(200);
+          expect(res.body.content).toContain('| Column A | Column B |');
+          expect(res.body.content).toContain('| A | 1 |');
+          expect(res.body.content).toMatch(/## Answer Key[\s\S]*1\. A — 1; B — 2; C — 3/);
+        });
+      });
+    });
+
+    // Structured Question Model (Generator v2) — the server-side
+    // content-re-renders-from-structured-questions rule (plan §2c), exercised
+    // through the same public create/update endpoints 'create'/'update'
+    // describe blocks above already cover for the legacy (no schemaVersion)
+    // path.
+    describe('Structured Question Model — save/edit re-render rule', () => {
+      function structuredPayload(overrides = {}) {
+        return JSON.stringify({
+          schemaVersion: 2,
+          format: 'quiz',
+          topic: 'Fractions',
+          grade: 'Class 5',
+          subject: 'Maths',
+          difficulty: 'medium',
+          instructions: 'Answer all questions.',
+          questions: [
+            { type: 'mcq', text: 'What is 1/2 + 1/2?', options: ['1', '2', '0', '1/4'], correctOptionIndex: 0, correctAnswer: '' },
+            { type: 'true_false', text: '1/2 is bigger than 1/4.', options: [], correctOptionIndex: -1, correctAnswer: 'True' },
+            { type: 'fill_blank', text: 'A fraction with a numerator of 0 equals ___.', options: [], correctOptionIndex: -1, correctAnswer: '0' },
+          ],
+          ...overrides,
+        });
+      }
+
+      test('POST /resources with structured.questions renders content server-side, ignoring any client-sent content', async () => {
+        const res = await request(app).post('/api/resources').set('Authorization', `Bearer ${teacherAToken}`).send({
+          type: 'assessment',
+          title: 'Fractions quiz',
+          content: 'this string must be ignored',
+          structured: structuredPayload(),
+        });
+        expect(res.status).toBe(201);
+        expect(res.body.resource.content).not.toContain('this string must be ignored');
+        expect(res.body.resource.content).toContain('What is 1/2 + 1/2?');
+        expect(res.body.resource.content).toContain('A fraction with a numerator of 0 equals ___.');
+        expect(res.body.resource.content).toContain('## Answer Key');
+      });
+
+      test('POST /resources rejects invalid structured.questions with 400', async () => {
+        const res = await request(app).post('/api/resources').set('Authorization', `Bearer ${teacherAToken}`).send({
+          type: 'assessment',
+          title: 'Broken quiz',
+          structured: structuredPayload({ questions: [] }), // fails min(1)
+        });
+        expect(res.status).toBe(400);
+        const rows = await prisma.resource.findMany({ where: { title: 'Broken quiz' } });
+        expect(rows).toHaveLength(0);
+      });
+
+      test('a legacy structured payload (no schemaVersion) leaves content exactly as sent', async () => {
+        const res = await request(app).post('/api/resources').set('Authorization', `Bearer ${teacherAToken}`).send({
+          type: 'lesson_plan',
+          title: 'Legacy plan',
+          content: '## Objectives\nTeach fractions.',
+          structured: JSON.stringify({ duration: '40 min' }),
+        });
+        expect(res.status).toBe(201);
+        expect(res.body.resource.content).toBe('## Objectives\nTeach fractions.');
+      });
+
+      test('PATCH /resources/:id with edited structured.questions re-renders content, dropping a deleted question', async () => {
+        const created = await request(app).post('/api/resources').set('Authorization', `Bearer ${teacherAToken}`).send({
+          type: 'assessment',
+          title: 'Fractions quiz',
+          structured: structuredPayload(),
+        });
+        expect(created.status).toBe(201);
+
+        // Simulate the teacher deleting the fill_blank question in the new
+        // question-list editor — client sends the array with 2 items instead of 3.
+        const edited = JSON.parse(structuredPayload());
+        edited.questions = edited.questions.slice(0, 2);
+
+        const patched = await request(app)
+          .patch(`/api/resources/${created.body.resource.id}`)
+          .set('Authorization', `Bearer ${teacherAToken}`)
+          .send({ structured: JSON.stringify(edited), content: 'ignored on this path too' });
+        expect(patched.status).toBe(200);
+        expect(patched.body.resource.content).not.toContain('ignored on this path too');
+        expect(patched.body.resource.content).not.toContain('numerator of 0');
+        expect(patched.body.resource.content).toContain('What is 1/2 + 1/2?');
+      });
+
+      test('PATCH /resources/:id with a legacy resource (plain content edit) is unaffected', async () => {
+        const created = await request(app).post('/api/resources').set('Authorization', `Bearer ${teacherAToken}`).send({
+          type: 'lesson_plan',
+          title: 'Legacy plan',
+          content: 'original body',
+        });
+        const patched = await request(app)
+          .patch(`/api/resources/${created.body.resource.id}`)
+          .set('Authorization', `Bearer ${teacherAToken}`)
+          .send({ content: 'edited body' });
+        expect(patched.status).toBe(200);
+        expect(patched.body.resource.content).toBe('edited body');
       });
     });
   });

@@ -18,6 +18,12 @@ import { stripAssessmentPreamble } from '../lib/assessment';
 import { buildInitialExamMeta } from '../lib/examMeta';
 import { generateAssessment, createResource, type GenerateAssessmentInput } from '../lib/resources';
 import {
+  buildStructuredPayload,
+  parseStructuredDocument,
+  validateQuestions,
+} from '../lib/structuredQuestions';
+import QuestionListEditor from '../components/QuestionListEditor';
+import {
   discardPrefill,
   loadPrefill,
   notePrefillEdit,
@@ -27,9 +33,10 @@ import type { ProvenanceSource } from '../assistant/types';
 import {
   ASSESSMENT_FORMATS, DIFFICULTIES, QUESTION_TYPES, LANGUAGES, GRADES, SUBJECTS,
   QUESTION_COUNT_MIN, QUESTION_COUNT_MAX, QUESTION_COUNT_DEFAULT, ASSISTANT_ENABLED,
+  STRUCTURED_QUESTIONS_ENABLED,
 } from '../config';
 import { ApiError } from '../api';
-import type { AssessmentFormat, Difficulty, QuestionType } from '../lib/resources';
+import type { AssessmentFormat, Difficulty, Question, QuestionType } from '../lib/resources';
 import type { ExamPaperMeta } from '../types';
 
 // Display label per format. A map rather than a ternary: with three formats a
@@ -138,6 +145,18 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
   const [tab, setTab] = useState<'preview' | 'edit'>('preview');
   const [contentDirty, setContentDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Structured Question Model (Generator v2, docs/generator-v2-plan.md).
+  // `structuredQuestions === null` means "this result has no native structured
+  // questions" — either STRUCTURED_QUESTIONS_ENABLED is off, or the server
+  // didn't return a parseable `structured` field — and the page falls back to
+  // exactly the legacy content/textarea flow below, unchanged. `docInstructions`
+  // is the document's own "Answer all questions…" line — NOT the same as the
+  // `instructions` state above, which is the free-text prompt sent TO the AI.
+  const [structuredQuestions, setStructuredQuestions] = useState<Question[] | null>(null);
+  const [docInstructions, setDocInstructions] = useState('');
+  const [structuredDirty, setStructuredDirty] = useState(false);
+  const [questionErrors, setQuestionErrors] = useState<Record<string, string>>({});
 
   // Exam-paper letterhead (Phase 3) — deterministic teacher input, never sent
   // to Gemini. Initialized fresh on each successful generation, prefilled
@@ -291,7 +310,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
       show('Please enter a topic', 'error');
       return;
     }
-    if (content !== null && contentDirty) {
+    if (content !== null && (contentDirty || structuredDirty)) {
       const ok = window.confirm('Regenerating will replace your edited preview. Continue?');
       if (!ok) return;
     }
@@ -317,6 +336,18 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
       setContentDirty(false);
       setTab('preview');
       if (user) setExamMeta(buildInitialExamMeta(user, user.preferences.examPaperDefaults));
+
+      // Structured Question Model (Generator v2) — only enters structured
+      // mode behind the flag, matching docs/generator-v2-plan.md's own
+      // staged rollout ("web Generator behind the client flag, turned on
+      // only in dev"). With the flag off, `result.structured` is simply
+      // never looked at, and the page behaves byte-for-byte as it did
+      // before this feature existed.
+      const parsedDoc = STRUCTURED_QUESTIONS_ENABLED ? parseStructuredDocument(result.structured) : null;
+      setStructuredQuestions(parsedDoc ? parsedDoc.questions : null);
+      setDocInstructions(parsedDoc ? parsedDoc.instructions : '');
+      setStructuredDirty(false);
+      setQuestionErrors({});
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not generate. Please try again.');
     } finally {
@@ -332,16 +363,45 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
       show('Please enter a title', 'error');
       return;
     }
+
+    // Structured Question Model (Generator v2): validate every question
+    // before saving — a UX nicety only, the server's own schema is always
+    // the final authority (docs/generator-v2-plan.md §8).
+    if (structuredQuestions !== null) {
+      if (structuredQuestions.length === 0) {
+        show('Add at least one question before saving', 'error');
+        return;
+      }
+      const errors = validateQuestions(structuredQuestions);
+      if (Object.keys(errors).length > 0) {
+        setQuestionErrors(errors);
+        show('Fix the highlighted questions before saving', 'error');
+        return;
+      }
+    }
+
     setSaving(true);
     try {
+      const structuredPayload = structuredQuestions !== null
+        ? buildStructuredPayload({
+            instructions: docInstructions,
+            questions: structuredQuestions,
+            format, difficulty, questionType, questionCount, topic: topic.trim(), examMeta,
+          })
+        : JSON.stringify({ format, difficulty, questionType, questionCount, topic: topic.trim(), examMeta });
+
       const saved = await createResource({
         type: 'assessment',
         title: cleanTitle.slice(0, 200),
         grade: grade.trim() || undefined,
         subject: subject.trim() || undefined,
         language,
-        content,
-        structured: JSON.stringify({ format, difficulty, questionType, questionCount, topic: topic.trim(), examMeta }),
+        // In structured mode the server re-renders `content` itself from
+        // `structured.questions` (docs/generator-v2-plan.md §2c) — the
+        // client never computes the printable Markdown, so `content` is
+        // simply omitted rather than sent stale.
+        ...(structuredQuestions !== null ? {} : { content }),
+        structured: structuredPayload,
       });
       show('Saved to your library', 'success');
       // Continue into the full Workspace (edit / AI assist / student & teacher print).
@@ -554,7 +614,38 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
                 <span className="workspace-content-hint">Markdown supported</span>
               </div>
 
-              {tab === 'edit' ? (
+              {structuredQuestions !== null ? (
+                tab === 'edit' ? (
+                  <>
+                    <label className="ws-field question-list-instructions">
+                      <span className="ws-label">Instructions for students</span>
+                      <input
+                        type="text"
+                        value={docInstructions}
+                        maxLength={500}
+                        onChange={(e) => { setDocInstructions(e.target.value); setStructuredDirty(true); }}
+                        placeholder="e.g. Answer all questions carefully."
+                      />
+                    </label>
+                    <QuestionListEditor
+                      questions={structuredQuestions}
+                      editable
+                      errors={questionErrors}
+                      onChange={(next) => {
+                        setStructuredQuestions(next);
+                        setStructuredDirty(true);
+                        setQuestionErrors({});
+                      }}
+                    />
+                  </>
+                ) : (
+                  <div className="response-body workspace-preview exam-paper">
+                    <ExamHeader meta={examMeta} fallbackTitle={title} subject={subject} grade={grade} />
+                    {docInstructions && <p className="question-list-instructions-display">{docInstructions}</p>}
+                    <QuestionListEditor questions={structuredQuestions} editable={false} />
+                  </div>
+                )
+              ) : tab === 'edit' ? (
                 <textarea
                   className="workspace-editor"
                   value={content}

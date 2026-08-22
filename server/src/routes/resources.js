@@ -38,8 +38,14 @@ const { MAX_META, MAX_LANGUAGE } = require('../lib/resourceFields');
 // contract this endpoint actually enforces.
 // MAX_QUESTIONS comes along because the `more_questions` AI-assist action below
 // enforces the same ceiling the original generation request was held to.
-const { generateAssessmentSchema, MAX_QUESTIONS } = require('../actions/schemas/generateAssessment');
+const {
+  generateAssessmentSchema, QUESTION_TYPES: REQUEST_QUESTION_TYPES, NEW_QUESTION_TYPES, MAX_QUESTIONS,
+} = require('../actions/schemas/generateAssessment');
 const { generateAssessmentSetSchema } = require('../actions/schemas/generateAssessmentSet');
+// Structured Question Model (Generator v2) — see docs/generator-v2-plan.md.
+// Gates ONLY the 3 new question types + the structured-edit re-render rule
+// below; existing mcq/true_false/short_answer/mixed behavior is never gated.
+const { readStructuredQuestionsFlags } = require('../lib/flags');
 // Per-format wording, headings and purpose. Its own module so the "every format
 // has metadata" assertion runs at boot (see lib/assessmentFormats.js) rather
 // than a missing entry silently rendering a new format as a quiz.
@@ -223,8 +229,24 @@ const QUESTION_TYPE_CONTENT_RULES = {
   mcq: 'Every question is multiple-choice with exactly four plausible options; exactly one is correct.',
   true_false: 'Every question is a clear statement the student judges true or false.',
   short_answer: 'Every question is a short-answer question a student can answer in a sentence or two.',
-  mixed: 'Use a sensible mix of multiple-choice, true/false, and short-answer questions.',
+  // Structured Question Model (Generator v2) — three new types.
+  descriptive: 'Every question is an open-ended descriptive question expecting a written answer of several sentences.',
+  fill_blank: 'Every question is a sentence with exactly one blank (written as three or more underscores) for the student to fill in.',
+  match: 'Every question asks students to match items in a left-hand column to items in a right-hand column.',
+  mixed: 'Use a sensible mix of question types (multiple-choice, true/false, short-answer, descriptive, fill-in-the-blank, and matching) appropriate to the topic.',
 };
+
+// Boot-time assertion, same discipline as lib/assessmentFormats.js's own
+// FORMAT_META check: a question type with no content rule would silently
+// fall through to `undefined` in the prompt rather than failing loudly.
+{
+  const missingRule = REQUEST_QUESTION_TYPES.filter((t) => !QUESTION_TYPE_CONTENT_RULES[t]);
+  if (missingRule.length > 0) {
+    throw new Error(
+      `[resources] QUESTION_TYPE_CONTENT_RULES is missing an entry for: ${missingRule.join(', ')}.`
+    );
+  }
+}
 
 // Gemini's structured-output schema (OpenAPI subset) — see
 // server/src/lib/assessmentSchema.js for the matching Zod validation applied
@@ -234,6 +256,19 @@ const QUESTION_TYPE_CONTENT_RULES = {
 // 2026-08-07 the model writes plain notation — "5/9", not "\\frac{5}{9}" —
 // because a backslash inside a JSON string is what every LaTeX repair layer
 // in lib/assessmentSchema.js exists to undo. lib/mathNotation.js converts it.
+// Per-question-type field-filling instructions, stated ONCE and shared by
+// every prompt that asks the model to produce/revise questions (generation,
+// the batched set, and the 4 assessment AI-assist actions) — previously these
+// bullets were duplicated verbatim in three places; adding 3 new types to
+// each copy independently is exactly the kind of drift a single shared
+// constant avoids.
+const QUESTION_TYPE_FIELD_RULES = `- For "mcq" questions: "options" must contain EXACTLY 4 answer choices as plain text (no "A."/"B." labels), and "correctOptionIndex" must be the 0-based index (0, 1, 2, or 3) of the correct option. Set "correctAnswer" to an empty string, "modelAnswer" to an empty string, and "pairs" to an empty array.
+- For "true_false" questions: set "options" to an empty array and "correctOptionIndex" to -1. Set "correctAnswer" to exactly "True" or "False". Set "modelAnswer" to an empty string and "pairs" to an empty array.
+- For "short_answer" questions: set "options" to an empty array and "correctOptionIndex" to -1. Set "correctAnswer" to a brief model answer a teacher could grade against. Set "modelAnswer" to an empty string and "pairs" to an empty array.
+- For "descriptive" questions: set "options" to an empty array, "correctOptionIndex" to -1, and "correctAnswer" to an empty string. Set "modelAnswer" to a model answer of 2-4 sentences a teacher could grade against. Set "pairs" to an empty array.
+- For "fill_blank" questions: "text" MUST contain exactly one blank, written as three or more underscores (e.g. "The capital of France is ___."). Set "options" to an empty array, "correctOptionIndex" to -1, and "modelAnswer" to an empty string. Set "correctAnswer" to the exact word or short phrase that fills the blank. Set "pairs" to an empty array.
+- For "match" questions: set "options" to an empty array, "correctOptionIndex" to -1, and "correctAnswer" and "modelAnswer" to empty strings. Set "pairs" to an array of 3 to 8 {"left", "right"} items to be matched (e.g. a term and its definition) — the pairs you provide ARE the correct matching, in order.`;
+
 const MATH_NOTATION_RULES = `- MATH NOTATION: write ALL mathematics in PLAIN NOTATION between $...$ delimiters — NEVER LaTeX, NEVER a backslash, NEVER Unicode symbols. The application converts your notation to properly typeset maths itself. Use exactly this notation:
   fractions "$5/9$", "$(a+b)/(c+d)$" · powers "$x^2$", "$x^(n+1)$" · roots "$sqrt(16)$", "$cbrt(8)$"
   multiply "$2 times 3$" · divide "$10 div 2$" · degrees "$45 deg$" · percent "$25%$"
@@ -251,13 +286,24 @@ const ASSESSMENT_RESPONSE_SCHEMA = {
       items: {
         type: 'OBJECT',
         properties: {
-          type: { type: 'STRING', enum: ['mcq', 'true_false', 'short_answer'] },
+          type: { type: 'STRING', enum: ['mcq', 'true_false', 'short_answer', 'descriptive', 'fill_blank', 'match'] },
           text: { type: 'STRING' },
           options: { type: 'ARRAY', items: { type: 'STRING' } },
           correctOptionIndex: { type: 'INTEGER' },
           correctAnswer: { type: 'STRING' },
+          // Structured Question Model (Generator v2) — always present, empty
+          // when not applicable, same convention as the 5 fields above.
+          modelAnswer: { type: 'STRING' },
+          pairs: {
+            type: 'ARRAY',
+            items: {
+              type: 'OBJECT',
+              properties: { left: { type: 'STRING' }, right: { type: 'STRING' } },
+              required: ['left', 'right'],
+            },
+          },
         },
-        required: ['type', 'text', 'options', 'correctOptionIndex', 'correctAnswer'],
+        required: ['type', 'text', 'options', 'correctOptionIndex', 'correctAnswer', 'modelAnswer', 'pairs'],
       },
     },
   },
@@ -289,9 +335,7 @@ Return ONLY the question content as structured data. Do NOT return a title, a do
 
 - ${QUESTION_TYPE_CONTENT_RULES[questionType]}
 - "text" is the question text only — never include a question number or option letters inside it.
-- For "mcq" questions: "options" must contain EXACTLY 4 answer choices as plain text (no "A."/"B." labels), and "correctOptionIndex" must be the 0-based index (0, 1, 2, or 3) of the correct option. Set "correctAnswer" to an empty string.
-- For "true_false" questions: set "options" to an empty array and "correctOptionIndex" to -1. Set "correctAnswer" to exactly "True" or "False".
-- For "short_answer" questions: set "options" to an empty array and "correctOptionIndex" to -1. Set "correctAnswer" to a brief model answer a teacher could grade against.
+${QUESTION_TYPE_FIELD_RULES}
 - Do NOT let any question's "text" or "options" reveal or hint at its own answer.
 - Also return one "instructions" string: 1–2 short sentences telling students how to answer these questions.
 ${MATH_NOTATION_RULES}
@@ -354,9 +398,7 @@ THESE MATERIALS MUST NOT BE INTERCHANGEABLE. They are for the same class on the 
 
 RULES FOR EVERY MATERIAL:
 - "text" is the question text only — never include a question number or option letters inside it.
-- For "mcq" questions: "options" must contain EXACTLY 4 answer choices as plain text (no "A."/"B." labels), and "correctOptionIndex" must be the 0-based index (0, 1, 2, or 3) of the correct option. Set "correctAnswer" to an empty string.
-- For "true_false" questions: set "options" to an empty array and "correctOptionIndex" to -1. Set "correctAnswer" to exactly "True" or "False".
-- For "short_answer" questions: set "options" to an empty array and "correctOptionIndex" to -1. Set "correctAnswer" to a brief model answer a teacher could grade against.
+${QUESTION_TYPE_FIELD_RULES}
 - Do NOT let any question's "text" or "options" reveal or hint at its own answer.
 - Each material also needs its own "instructions" string: 1-2 short sentences telling students how to answer that material's questions.
 ${MATH_NOTATION_RULES}
@@ -438,7 +480,15 @@ function renderAssessmentBody(doc, answerKeyHeading) {
       lines.push('');
     } else if (q.type === 'true_false') {
       lines.push(`${n}. ${q.text} — (True / False)`, '');
+    } else if (q.type === 'descriptive') {
+      lines.push(`${n}. ${q.text}`, '_(Write your answer in 2-4 sentences.)_', '');
+    } else if (q.type === 'match') {
+      lines.push(`${n}. ${q.text}`, '');
+      lines.push('| Column A | Column B |', '|---|---|');
+      (q.pairs || []).forEach((p) => lines.push(`| ${p.left} | ${p.right} |`));
+      lines.push('');
     } else {
+      // short_answer, fill_blank — the blank itself is already in the text.
       lines.push(`${n}. ${q.text}`, '');
     }
   });
@@ -451,6 +501,11 @@ function renderAssessmentBody(doc, answerKeyHeading) {
     } else if (q.type === 'true_false') {
       const norm = q.correctAnswer.trim().toLowerCase();
       lines.push(`${n}. ${norm === 'true' ? 'True' : 'False'}`);
+    } else if (q.type === 'descriptive') {
+      lines.push(`${n}. Suggested answer: ${q.modelAnswer}`);
+    } else if (q.type === 'match') {
+      const mapping = (q.pairs || []).map((p) => `${p.left} — ${p.right}`).join('; ');
+      lines.push(`${n}. ${mapping}`);
     } else {
       lines.push(`${n}. ${q.correctAnswer}`);
     }
@@ -647,7 +702,8 @@ YOUR TASK: ${ASSESSMENT_ACTION_INSTRUCTIONS[action]}
 
 Return ONLY the question content as structured data — the same JSON shape used for generating a new quiz/worksheet: "instructions" (string) and "questions" (array). Do NOT return a title, headings, or Markdown — the application builds the printed page itself.
 
-- Every question needs: "type" ("mcq" | "true_false" | "short_answer"), "text", "options" (exactly 4 plain-text choices for mcq, empty array otherwise), "correctOptionIndex" (0-3 for mcq, -1 otherwise), and "correctAnswer" (empty string for mcq, exactly "True" or "False" for true_false, a brief model answer for short_answer).
+- Every question needs: "type" ("mcq" | "true_false" | "short_answer" | "descriptive" | "fill_blank" | "match"), "text", "options", "correctOptionIndex", "correctAnswer", "modelAnswer", and "pairs" — see the field rules below for what each holds per type.
+${QUESTION_TYPE_FIELD_RULES}
 ${countRule}
 - Do NOT let any question's "text" or "options" reveal or hint at its own answer.
 - Represent any math (equations, fractions, powers, roots, trigonometric expressions, symbols) as LaTeX delimited with $...$ (inline) or $$...$$ (display) — never Unicode math symbols or plain-text approximations. Use standard commands (\\\\sin, \\\\frac{a}{b}, \\\\sqrt{x}, ^{\\\\circ} for degrees), and since your response is JSON, EVERY LaTeX backslash MUST be written as a DOUBLE backslash in the JSON string (correct: "$\\\\tan\\\\theta$"; "\\tan" would be corrupted by JSON escaping).
@@ -696,7 +752,10 @@ function checkAssessmentActionResult(action, existingQuestions, responseQuestion
       const answerChanged =
         (before.type === 'mcq' && after.correctOptionIndex !== before.correctOptionIndex) ||
         (before.type === 'true_false' && before.correctAnswer.trim().toLowerCase() !== after.correctAnswer.trim().toLowerCase()) ||
-        (before.type === 'short_answer' && before.correctAnswer.trim() !== after.correctAnswer.trim());
+        (before.type === 'short_answer' && before.correctAnswer.trim() !== after.correctAnswer.trim()) ||
+        (before.type === 'descriptive' && before.modelAnswer.trim() !== after.modelAnswer.trim()) ||
+        (before.type === 'fill_blank' && before.correctAnswer.trim() !== after.correctAnswer.trim()) ||
+        (before.type === 'match' && JSON.stringify(before.pairs) !== JSON.stringify(after.pairs));
       if (answerChanged) return `Question ${i + 1}'s correct answer changed, but "simplify_wording" must not change answers.`;
     }
   }
@@ -716,6 +775,63 @@ function sendAiError(res, error, requestId) {
     return res.status(429).json({ error: 'The service is busy. Please try again shortly.', code: 'RATE_LIMITED', requestId });
   }
   return res.status(502).json({ error: 'Failed to generate content. Please try again.', code: 'UPSTREAM_UNAVAILABLE', requestId });
+}
+
+// --- Structured Question Model (Generator v2) -------------------------------
+// See docs/generator-v2-plan.md. `Resource.structured` already holds a flat
+// JSON-as-string generator config (`{format, difficulty, questionType,
+// questionCount, topic, examMeta}` — GeneratorPage.tsx today); this adds two
+// more keys to that SAME object rather than a new column: `schemaVersion: 2`
+// (the version marker) and `questions`/`instructions` (the structured
+// document). Every resource saved before this shipped has no `schemaVersion`
+// key and is untouched by any of this — see §6 of the plan for why that is
+// permanent, not a migration step.
+
+/**
+ * Reads a validated Structured Question Model payload out of a client-
+ * supplied `structured` JSON string. Returns null for anything that isn't
+ * schemaVersion 2 with a questions array — a missing/legacy/malformed
+ * `structured` all resolve to null, which is exactly "leave this resource
+ * alone" for every call site below.
+ * @returns {{schemaVersion: 2, questions: object[], instructions?: string, format?: string, grade?: string, subject?: string, topic?: string, difficulty?: string}|null}
+ */
+function tryReadStructuredQuestions(structuredStr) {
+  if (typeof structuredStr !== 'string' || !structuredStr) return null;
+  let raw;
+  try {
+    raw = JSON.parse(structuredStr);
+  } catch {
+    return null;
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  if (raw.schemaVersion !== 2 || !Array.isArray(raw.questions)) return null;
+  return raw;
+}
+
+/**
+ * Validates a structured-questions payload and, if valid, deterministically
+ * renders it to the same Markdown shape generation produces — the one real
+ * behavioral change this feature adds (plan §2c): whenever a client submits
+ * `structured.questions`, the server (not the client) computes `content`, so
+ * the two can never drift. Returns null on ANY validation failure — the
+ * caller treats that as a 400, never a silent skip.
+ * @returns {string|null}
+ */
+function tryRenderFromStructured(raw) {
+  const docParsed = assessmentDocumentSchema.safeParse({
+    instructions: typeof raw.instructions === 'string' ? raw.instructions : '',
+    questions: raw.questions,
+  });
+  if (!docParsed.success) return null;
+
+  const config = {
+    format: typeof raw.format === 'string' ? raw.format : 'quiz',
+    grade: typeof raw.grade === 'string' ? raw.grade : '',
+    subject: typeof raw.subject === 'string' ? raw.subject : '',
+    topic: typeof raw.topic === 'string' ? raw.topic : (docParsed.data.instructions || 'Untitled'),
+    difficulty: typeof raw.difficulty === 'string' ? raw.difficulty : 'medium',
+  };
+  return renderAssessmentMarkdown(config, docParsed.data);
 }
 
 // Shape a DB row into the client DTO — only fields the client needs, nothing
@@ -787,6 +903,20 @@ router.post('/resources', authRequired, async (req, res) => {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid resource.' });
   }
   const data = parsed.data;
+
+  // Structured Question Model (Generator v2, plan §2c/§8): a `structured`
+  // payload carrying native questions always wins over whatever `content` the
+  // client sent — the server is the only thing that renders Markdown from
+  // question data, so the two can never drift. Anything without a valid
+  // `schemaVersion: 2` + `questions` is untouched (every existing caller).
+  const structuredQuestions = tryReadStructuredQuestions(data.structured);
+  if (structuredQuestions) {
+    const rendered = tryRenderFromStructured(structuredQuestions);
+    if (!rendered) {
+      return res.status(400).json({ error: 'structured.questions did not match the expected question format.' });
+    }
+    data.content = rendered;
+  }
 
   const created = await prisma.resource.create({
     data: {
@@ -876,9 +1006,20 @@ router.patch('/resources/:id', authRequired, async (req, res) => {
   const existing = await findOwned(req.params.id, req.user.id);
   if (!existing) return res.status(404).json({ error: 'Resource not found.' });
 
+  const data = { ...parsed.data };
+  // Same re-render rule as create (plan §2c) — see tryReadStructuredQuestions.
+  const structuredQuestions = tryReadStructuredQuestions(data.structured);
+  if (structuredQuestions) {
+    const rendered = tryRenderFromStructured(structuredQuestions);
+    if (!rendered) {
+      return res.status(400).json({ error: 'structured.questions did not match the expected question format.' });
+    }
+    data.content = rendered;
+  }
+
   const updated = await prisma.resource.update({
     where: { id: existing.id },
-    data: parsed.data,
+    data,
   });
 
   res.json({ resource: toDto(updated) });
@@ -889,30 +1030,78 @@ router.patch('/resources/:id', authRequired, async (req, res) => {
  * the block comment above ASSESSMENT_ACTIONS for why this exists as a
  * separate structured pipeline rather than reusing buildWorkspacePrompt's
  * Markdown passthrough. Ownership was already checked by the caller.
- * Resource.structured (Phase 3's examMeta) is never read or written here.
+ * Resource.structured's examMeta sub-key (Phase 3's letterhead) is never read
+ * or written here, on a legacy resource or a structured one — only the
+ * `questions`/`instructions`/generator-config keys are (Generator v2, plan §2f).
  */
 async function handleAssessmentAction(gemini, resource, action, requestId) {
   if (resource.type !== 'assessment') {
     return { status: 400, body: { error: 'This action is only available for quizzes and worksheets.', requestId } };
   }
 
-  const parsedBody = parseAssessmentBody(resource.content || '');
-  if (!parsedBody) {
-    return {
-      status: 422,
-      body: {
-        error: "This document has been edited in a way AI Assist can no longer safely apply changes to. Try editing it directly, or use Generate to create a fresh one.",
-        code: 'UNPARSEABLE_CONTENT',
-        requestId,
-      },
+  // Structured Question Model (Generator v2, plan §2f): a resource with
+  // native structured questions reads/writes `structured` directly and skips
+  // parseAssessmentBody's regex round-trip entirely — a legacy resource (no
+  // `schemaVersion: 2`) keeps using exactly that round-trip, unchanged. This
+  // branches ONCE, here; every check and every Gemini call below is IDENTICAL
+  // for both paths, differing only in how `doc` was obtained and how `finish`
+  // turns the revised doc back into a response body.
+  const structuredQuestions = tryReadStructuredQuestions(resource.structured);
+
+  let doc;
+  let finish; // (newDoc) => { suggestion, structured? }
+  if (structuredQuestions) {
+    const docParsed = assessmentDocumentSchema.safeParse({
+      instructions: typeof structuredQuestions.instructions === 'string' ? structuredQuestions.instructions : '',
+      questions: structuredQuestions.questions,
+    });
+    if (!docParsed.success) {
+      return {
+        status: 422,
+        body: {
+          error: "This document's saved question data no longer matches the expected format. Try editing it directly, or use Generate to create a fresh one.",
+          code: 'UNPARSEABLE_CONTENT',
+          requestId,
+        },
+      };
+    }
+    doc = docParsed.data;
+    const config = {
+      format: typeof structuredQuestions.format === 'string' ? structuredQuestions.format : 'quiz',
+      grade: typeof structuredQuestions.grade === 'string' ? structuredQuestions.grade : '',
+      subject: typeof structuredQuestions.subject === 'string' ? structuredQuestions.subject : '',
+      topic: typeof structuredQuestions.topic === 'string' ? structuredQuestions.topic : '',
+      difficulty: typeof structuredQuestions.difficulty === 'string' ? structuredQuestions.difficulty : 'medium',
     };
+    finish = (newDoc) => ({
+      suggestion: renderAssessmentMarkdown(config, newDoc),
+      // The client applies both fields together (never just `suggestion`) so
+      // structured.questions can never go stale relative to the applied
+      // content — see plan §2f.
+      structured: JSON.stringify({ ...structuredQuestions, instructions: newDoc.instructions, questions: newDoc.questions }),
+    });
+  } else {
+    const parsedBody = parseAssessmentBody(resource.content || '');
+    if (!parsedBody) {
+      return {
+        status: 422,
+        body: {
+          error: "This document has been edited in a way AI Assist can no longer safely apply changes to. Try editing it directly, or use Generate to create a fresh one.",
+          code: 'UNPARSEABLE_CONTENT',
+          requestId,
+        },
+      };
+    }
+    const { preamble, answerKeyHeading } = parsedBody;
+    doc = parsedBody.doc;
+    finish = (newDoc) => ({ suggestion: `${preamble}\n\n${renderAssessmentBody(newDoc, answerKeyHeading)}` });
   }
-  const { preamble, answerKeyHeading } = parsedBody;
+
   // Normalize the EXISTING questions too: content saved before the LaTeX
   // repair existed may still carry JSON-mangled math, and the action contract
   // (e.g. simplify_wording's byte-identical answers) compares the model's
   // (normalized) response against these — both sides must be in repaired form.
-  const normalizedDoc = normalizeAssessmentMath(parsedBody.doc);
+  const normalizedDoc = normalizeAssessmentMath(doc);
 
   // The EXISTING saved doc is spliced straight into the outgoing suggestion
   // below (more_questions keeps its old questions; every action keeps the
@@ -935,7 +1124,7 @@ async function handleAssessmentAction(gemini, resource, action, requestId) {
       },
     };
   }
-  const doc = docSanitized.doc;
+  doc = docSanitized.doc;
 
   if (action === 'more_questions' && doc.questions.length + MORE_QUESTIONS_COUNT > MAX_QUESTIONS) {
     return {
@@ -1003,8 +1192,7 @@ async function handleAssessmentAction(gemini, resource, action, requestId) {
     ? { instructions: doc.instructions, questions: [...doc.questions, ...responseParsed.data.questions] }
     : { instructions: responseParsed.data.instructions, questions: responseParsed.data.questions };
 
-  const suggestion = `${preamble}\n\n${renderAssessmentBody(newDoc, answerKeyHeading)}`;
-  return { status: 200, body: { suggestion, requestId } };
+  return { status: 200, body: { ...finish(newDoc), requestId } };
 }
 
 // POST /api/resources/:id/ai-action — generate a suggested revision of an
@@ -1077,6 +1265,18 @@ router.post('/resources/generate', authRequired, async (req, res) => {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid generation request.', requestId });
   }
   const config = parsed.data;
+
+  // Structured Question Model (Generator v2, plan §2g): the 3 new question
+  // types are gated independently of the existing 4 — an old/cached client
+  // requesting one while the flag is off gets a clear 503, never a silent
+  // accept. mcq/true_false/short_answer/mixed work unconditionally.
+  if (NEW_QUESTION_TYPES.includes(config.questionType) && !readStructuredQuestionsFlags(process.env).enabled) {
+    return res.status(503).json({
+      error: 'This question type is not available yet.',
+      code: 'STRUCTURED_QUESTIONS_DISABLED',
+      requestId,
+    });
+  }
 
   const { systemInstruction, userText, responseSchema } = buildGeneratorPrompt(config);
   const language = config.language && LANGUAGE_NAMES[config.language] ? config.language : 'en';
@@ -1151,7 +1351,12 @@ router.post('/resources/generate', authRequired, async (req, res) => {
   }
 
   const content = renderAssessmentMarkdown(config, docParsed.data);
-  return res.json({ content, requestId });
+  // Structured Question Model (Generator v2, plan §2e): additive field — a
+  // caller that only reads `.content` (every caller before this shipped) is
+  // unaffected. `instructions`/`questions` are exactly what a client would
+  // send back inside `structured` on save/edit (see tryReadStructuredQuestions).
+  const structured = JSON.stringify({ instructions: docParsed.data.instructions, questions: docParsed.data.questions, schemaVersion: 2 });
+  return res.json({ content, structured, requestId });
 });
 
 // POST /api/resources/generate-set — the four question-shaped artifacts in ONE
@@ -1180,10 +1385,27 @@ router.post('/resources/generate-set', authRequired, async (req, res) => {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid generation request.', requestId });
   }
   const config = parsed.data;
+
+  // Structured Question Model (Generator v2, plan §2g) — same gate as
+  // /resources/generate, checked per item since each item has its own type.
+  if (
+    config.items.some((item) => NEW_QUESTION_TYPES.includes(item.questionType))
+    && !readStructuredQuestionsFlags(process.env).enabled
+  ) {
+    return res.status(503).json({
+      error: 'This question type is not available yet.',
+      code: 'STRUCTURED_QUESTIONS_DISABLED',
+      requestId,
+    });
+  }
+
   const language = config.language && LANGUAGE_NAMES[config.language] ? config.language : 'en';
 
   // format -> rendered Markdown, filled in as artifacts pass every check.
   const done = new Map();
+  // format -> the structured {instructions, questions} JSON string, same shape
+  // as /resources/generate's `structured` field (plan §2e).
+  const doneStructured = new Map();
   // format -> the last reason it failed, for the per-artifact error the client
   // shows on that one card.
   const failures = new Map();
@@ -1248,6 +1470,9 @@ router.post('/resources/generate-set', authRequired, async (req, res) => {
       }
 
       done.set(item.format, renderAssessmentMarkdown(itemConfig, docParsed.data));
+      doneStructured.set(item.format, JSON.stringify({
+        instructions: docParsed.data.instructions, questions: docParsed.data.questions, schemaVersion: 2,
+      }));
       failures.delete(item.format);
     }
 
@@ -1274,6 +1499,7 @@ router.post('/resources/generate-set', authRequired, async (req, res) => {
     results: config.items.map((item) => ({
       format: item.format,
       content: done.get(item.format) || null,
+      structured: doneStructured.get(item.format) || null,
       error: done.has(item.format) ? null : (failures.get(item.format) || 'Could not generate.'),
     })),
     requestId,

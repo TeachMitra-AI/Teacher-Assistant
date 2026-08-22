@@ -231,10 +231,21 @@ export const DIFFICULTIES: { value: 'easy' | 'medium' | 'hard'; label: string }[
   { value: 'hard', label: 'Hard' },
 ];
 
-export const QUESTION_TYPES: { value: 'mcq' | 'true_false' | 'short_answer' | 'mixed'; label: string }[] = [
+// 'descriptive'/'fill_blank'/'match' are the Structured Question Model's three
+// new types (docs/generator-v2-plan.md); 'mixed' stays a request-only
+// modifier, never a value a question itself has. Gated server-side by
+// STRUCTURED_QUESTIONS_ENABLED — see STRUCTURED_QUESTIONS_ENABLED below for
+// the matching client-side picker gate.
+export const QUESTION_TYPES: {
+  value: 'mcq' | 'true_false' | 'short_answer' | 'descriptive' | 'fill_blank' | 'match' | 'mixed';
+  label: string;
+}[] = [
   { value: 'mcq', label: 'Multiple Choice' },
   { value: 'true_false', label: 'True / False' },
-  { value: 'short_answer', label: 'Short Answer' },
+  { value: 'short_answer', label: 'Short Answer (SAQ)' },
+  { value: 'descriptive', label: 'Descriptive' },
+  { value: 'fill_blank', label: 'Fill in the Blank' },
+  { value: 'match', label: 'Match the Following' },
   { value: 'mixed', label: 'Mixed' },
 ];
 
@@ -383,6 +394,19 @@ export const NOTIFICATIONS_ENABLED = import.meta.env.VITE_NOTIFICATIONS_ENABLED 
 // flag) — a teacher who reaches /classroom directly on a stale cached client
 // still just sees that feature's own "not available" message, not broken UI.
 export const CLASSROOM_MANAGEMENT_ENABLED = import.meta.env.VITE_CLASSROOM_MANAGEMENT_ENABLED === 'true';
+
+// ---- Structured Question Model (Generator v2) -------------------------------
+//
+// See docs/generator-v2-plan.md. Client-side gate, same deliberately opt-in
+// shape and same "not the real kill switch" caveat as the flags above. When
+// false (the default), the Generator's question-type picker offers only the
+// 4 original values (mcq/true_false/short_answer/mixed) — descriptive/
+// fill_blank/match stay hidden, "zero new UI" default. The server's
+// STRUCTURED_QUESTIONS_ENABLED is the immediately-effective kill switch (the
+// 3 new types 503 with STRUCTURED_QUESTIONS_DISABLED regardless of this flag)
+// — a stale cached client offering a hidden-by-mistake option still just gets
+// that clear error, not a silently-broken generation.
+export const STRUCTURED_QUESTIONS_ENABLED = import.meta.env.VITE_STRUCTURED_QUESTIONS_ENABLED === 'true';
 
 // Closed vocabulary — SERVER COUNTERPART: server/src/lib/notificationTypes.js
 // NOTIFICATION_TYPES holds the same keys. Same CHANGE-11 duplication

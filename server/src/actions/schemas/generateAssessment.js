@@ -70,7 +70,30 @@ const FORMATS = ['quiz', 'worksheet', 'exit_ticket', 'homework'];
 // FROZEN_PROMPT_SHA16 in the same commit, saying why.
 const ROUTABLE_FORMATS = ['quiz', 'worksheet'];
 const DIFFICULTIES = ['easy', 'medium', 'hard'];
-const QUESTION_TYPES = ['mcq', 'true_false', 'short_answer', 'mixed'];
+// Structured Question Model (Generator v2): 'descriptive'/'fill_blank'/'match'
+// are new response-level types (server/src/lib/assessmentSchema.js's own
+// QUESTION_TYPES must match these 5 real types); 'mixed' stays a REQUEST-only
+// modifier ("draw from any of these"), never a value a question itself has.
+// Gated behind STRUCTURED_QUESTIONS_ENABLED for the 3 new values — see
+// routes/resources.js's flag check — so an old/cached client requesting one
+// while the flag is off gets a clear 503, never a silent accept.
+const QUESTION_TYPES = ['mcq', 'true_false', 'short_answer', 'descriptive', 'fill_blank', 'match', 'mixed'];
+// The 3 values gated by STRUCTURED_QUESTIONS_ENABLED (routes/resources.js).
+const NEW_QUESTION_TYPES = ['descriptive', 'fill_blank', 'match'];
+// What the AI ACTION ROUTER advertises — deliberately the ORIGINAL 4 values,
+// same "frozen subset" pattern as ROUTABLE_FORMATS above and for the identical
+// reason: descriptors/generateAssessment.js's `questionType` slot values are
+// baked into the classifier prompt, which test/assistant/recoveryIsolation.js
+// pins byte-for-byte against a live-eval baseline (FROZEN_PROMPT_SHA16) —
+// confirmed empirically while implementing the Structured Question Model
+// (docs/generator-v2-plan.md §2h): widening QUESTION_TYPES alone changes that
+// hash. A teacher can still request any of the 3 new types through the
+// Generator form directly (validated by generateAssessmentSchema below,
+// unaffected by this constant) — they are simply not yet routable by name
+// through the assistant, exactly like `exit_ticket`/`homework` formats aren't.
+// Widening this later needs the same "budget a live eval pass" treatment
+// ROUTABLE_FORMATS already documents, not a plain constant edit.
+const ROUTABLE_QUESTION_TYPES = ['mcq', 'true_false', 'short_answer', 'mixed'];
 
 // Question-count bounds. MAX_QUESTIONS is also enforced outside this schema, by
 // the `more_questions` AI-assist action in routes/resources.js, so that adding
@@ -107,6 +130,8 @@ module.exports = {
   ROUTABLE_FORMATS,
   DIFFICULTIES,
   QUESTION_TYPES,
+  NEW_QUESTION_TYPES,
+  ROUTABLE_QUESTION_TYPES,
   MIN_QUESTIONS,
   MAX_QUESTIONS,
   MAX_TOPIC,

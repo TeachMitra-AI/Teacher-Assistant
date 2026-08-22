@@ -16,8 +16,14 @@ import { usePreferences } from '../hooks/usePreferences';
 import { useOnboardingTip } from '../hooks/useOnboardingTip';
 import { formatResponse } from '../lib/format';
 import { buildInitialExamMeta, mergeExamMeta, parseExamMeta } from '../lib/examMeta';
-import { getResource, updateResource, runAiAction, type AiActionId } from '../lib/resources';
+import { getResource, updateResource, runAiAction, type AiActionId, type Question } from '../lib/resources';
 import { splitAnswerKey, stripAssessmentPreamble } from '../lib/assessment';
+import {
+  buildStructuredPayload,
+  parseStructuredDocument,
+  validateQuestions,
+} from '../lib/structuredQuestions';
+import QuestionListEditor from '../components/QuestionListEditor';
 import { RESOURCE_TYPES, RESOURCE_TYPE_META, LANGUAGES, GRADES, SUBJECTS } from '../config';
 import { ApiError } from '../api';
 import type { ExamPaperMeta, LibraryResource, ResourceType } from '../types';
@@ -101,6 +107,22 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
   const [examMeta, setExamMeta] = useState<ExamPaperMeta>({});
   const [examMetaBaseline, setExamMetaBaseline] = useState<ExamPaperMeta>({});
 
+  // Structured Question Model (Generator v2, docs/generator-v2-plan.md).
+  // `structuredQuestions === null` means this resource has no native
+  // structured questions (legacy — created before this feature, or a
+  // non-assessment type) — the page falls back to exactly the flat
+  // content/textarea flow below, unchanged. `structuredDoc` keeps the rest
+  // of the parsed document (format/topic/grade/subject/difficulty/
+  // questionType/questionCount) so a save can round-trip it unchanged.
+  const [structuredQuestions, setStructuredQuestions] = useState<Question[] | null>(null);
+  const [structuredBaseline, setStructuredBaseline] = useState<Question[] | null>(null);
+  const [docInstructions, setDocInstructions] = useState('');
+  const [docInstructionsBaseline, setDocInstructionsBaseline] = useState('');
+  const [structuredConfig, setStructuredConfig] = useState<{
+    format?: string; topic?: string; grade?: string; subject?: string; difficulty?: string;
+  }>({});
+  const [questionErrors, setQuestionErrors] = useState<Record<string, string>>({});
+
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<'edit' | 'preview'>('edit');
 
@@ -109,6 +131,7 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
   const [adaptOpen, setAdaptOpen] = useState(false);
   const [adaptGrade, setAdaptGrade] = useState('');
   const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [suggestionStructured, setSuggestionStructured] = useState<string | null>(null);
 
   // Print state. `printReq` bumps a counter to trigger window.print() after the
   // print document has re-rendered in the chosen mode (student omits the key).
@@ -121,8 +144,10 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
   const dirty = useMemo(
     () =>
       (!!form && !!baseline && (Object.keys(form) as (keyof FormState)[]).some((k) => form[k] !== baseline[k])) ||
-      JSON.stringify(examMeta) !== JSON.stringify(examMetaBaseline),
-    [form, baseline, examMeta, examMetaBaseline]
+      JSON.stringify(examMeta) !== JSON.stringify(examMetaBaseline) ||
+      JSON.stringify(structuredQuestions) !== JSON.stringify(structuredBaseline) ||
+      docInstructions !== docInstructionsBaseline,
+    [form, baseline, examMeta, examMetaBaseline, structuredQuestions, structuredBaseline, docInstructions, docInstructionsBaseline]
   );
 
   // Load the resource. 404 (missing OR not owned) gets a dedicated state so we
@@ -154,6 +179,21 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
             : {};
         setExamMeta(initialExamMeta);
         setExamMetaBaseline(initialExamMeta);
+
+        // Structured Question Model (Generator v2) — only assessments ever
+        // carry structured.questions (Stage 1's own design); anything else
+        // (or a legacy assessment with no schemaVersion) leaves
+        // structuredQuestions null, falling back to the flat editor below.
+        const parsedDoc = r.type === 'assessment' ? parseStructuredDocument(r.structured) : null;
+        setStructuredQuestions(parsedDoc ? parsedDoc.questions : null);
+        setStructuredBaseline(parsedDoc ? parsedDoc.questions : null);
+        setDocInstructions(parsedDoc ? parsedDoc.instructions : '');
+        setDocInstructionsBaseline(parsedDoc ? parsedDoc.instructions : '');
+        setStructuredConfig(parsedDoc ? {
+          format: parsedDoc.format, topic: parsedDoc.topic, grade: parsedDoc.grade,
+          subject: parsedDoc.subject, difficulty: parsedDoc.difficulty,
+        } : {});
+        setQuestionErrors({});
       })
       .catch((err) => {
         if (cancelled) return;
@@ -234,6 +274,26 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
       return;
     }
 
+    const examMetaChanged = JSON.stringify(examMeta) !== JSON.stringify(examMetaBaseline);
+    const structuredQuestionsChanged =
+      JSON.stringify(structuredQuestions) !== JSON.stringify(structuredBaseline) || docInstructions !== docInstructionsBaseline;
+
+    // Structured Question Model (Generator v2): validate before saving — a
+    // UX nicety only, the server's own schema is always the final authority
+    // (docs/generator-v2-plan.md §8).
+    if (structuredQuestions !== null && structuredQuestionsChanged) {
+      if (structuredQuestions.length === 0) {
+        show('Add at least one question before saving', 'error');
+        return;
+      }
+      const errors = validateQuestions(structuredQuestions);
+      if (Object.keys(errors).length > 0) {
+        setQuestionErrors(errors);
+        show('Fix the highlighted questions before saving', 'error');
+        return;
+      }
+    }
+
     // Send only changed fields (PATCH requires at least one).
     const patch: Record<string, string> = {};
     if (cleanTitle !== baseline.title) patch.title = cleanTitle;
@@ -241,8 +301,27 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
     if (form.grade !== baseline.grade) patch.grade = form.grade.trim();
     if (form.subject !== baseline.subject) patch.subject = form.subject.trim();
     if (form.language !== baseline.language) patch.language = form.language;
-    if (form.content !== baseline.content) patch.content = form.content;
-    if (JSON.stringify(examMeta) !== JSON.stringify(examMetaBaseline)) {
+    // In structured mode `content` is server-rendered from `structured` on
+    // save (docs/generator-v2-plan.md §2c) — never sent directly, and a
+    // plain textarea edit is impossible in this mode (no textarea renders).
+    if (structuredQuestions === null && form.content !== baseline.content) patch.content = form.content;
+
+    if (structuredQuestions !== null && (structuredQuestionsChanged || examMetaChanged)) {
+      // Always resend the FULL structured document (not just the changed
+      // part) — the server only ever accepts/re-renders from the whole
+      // `questions` array, and examMeta must travel alongside it in the same
+      // JSON blob (both live in the one `structured` column).
+      patch.structured = buildStructuredPayload({
+        instructions: docInstructions,
+        questions: structuredQuestions,
+        format: structuredConfig.format as never,
+        topic: structuredConfig.topic,
+        grade: structuredConfig.grade,
+        subject: structuredConfig.subject,
+        difficulty: structuredConfig.difficulty as never,
+        examMeta,
+      });
+    } else if (examMetaChanged) {
       patch.structured = mergeExamMeta(resource.structured, examMeta);
     }
 
@@ -258,7 +337,13 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
       const f = toForm(updated);
       setForm(f);
       setBaseline(f);
-      if ('structured' in patch) setExamMetaBaseline(examMeta);
+      if ('structured' in patch) {
+        setExamMetaBaseline(examMeta);
+        if (structuredQuestions !== null) {
+          setStructuredBaseline(structuredQuestions);
+          setDocInstructionsBaseline(docInstructions);
+        }
+      }
       show('Changes saved', 'success');
     } catch (err) {
       show(err instanceof ApiError ? err.message : 'Could not save changes', 'error');
@@ -277,6 +362,7 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
     try {
       const result = await runAiAction(resource.id, action, { targetGrade: adaptGrade || undefined });
       setSuggestion(result.suggestion);
+      setSuggestionStructured(result.structured ?? null);
     } catch (err) {
       show(err instanceof ApiError ? err.message : 'AI action failed. Please try again.', 'error');
     } finally {
@@ -286,8 +372,23 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
 
   function applySuggestion() {
     if (suggestion == null) return;
+    // Structured Question Model (Generator v2): for a structured resource
+    // the ai-action response also carries an updated `structured` string
+    // (docs/generator-v2-plan.md §2f) — apply BOTH together so
+    // structuredQuestions can never go stale relative to the shown
+    // suggestion. `content` is still set too (display/legacy-safety); the
+    // next Save re-renders it from structured anyway.
+    if (structuredQuestions !== null && suggestionStructured) {
+      const parsedDoc = parseStructuredDocument(suggestionStructured);
+      if (parsedDoc) {
+        setStructuredQuestions(parsedDoc.questions);
+        setDocInstructions(parsedDoc.instructions);
+        setQuestionErrors({});
+      }
+    }
     setField('content', suggestion);
     setSuggestion(null);
+    setSuggestionStructured(null);
     setTab('edit');
     setAdaptOpen(false);
     show('Suggestion applied — review and Save', 'success');
@@ -466,7 +567,34 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
                   <span className="workspace-content-hint">Markdown supported</span>
                 </div>
 
-                {tab === 'edit' ? (
+                {structuredQuestions !== null ? (
+                  tab === 'edit' ? (
+                    <>
+                      <label className="ws-field question-list-instructions">
+                        <span className="ws-label">Instructions for students</span>
+                        <input
+                          type="text"
+                          value={docInstructions}
+                          maxLength={500}
+                          onChange={(e) => setDocInstructions(e.target.value)}
+                          placeholder="e.g. Answer all questions carefully."
+                        />
+                      </label>
+                      <QuestionListEditor
+                        questions={structuredQuestions}
+                        editable
+                        errors={questionErrors}
+                        onChange={(next) => { setStructuredQuestions(next); setQuestionErrors({}); }}
+                      />
+                    </>
+                  ) : (
+                    <div className="response-body workspace-preview exam-paper">
+                      <ExamHeader meta={examMeta} fallbackTitle={form.title} subject={form.subject} grade={form.grade} />
+                      {docInstructions && <p className="question-list-instructions-display">{docInstructions}</p>}
+                      <QuestionListEditor questions={structuredQuestions} editable={false} />
+                    </div>
+                  )
+                ) : tab === 'edit' ? (
                   <textarea
                     className="workspace-editor"
                     value={form.content}
@@ -545,7 +673,7 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
                 <div className="ai-preview">
                   <header className="ai-preview-header">
                     <h2>Suggested revision</h2>
-                    <button type="button" className="icon-btn" onClick={() => setSuggestion(null)} aria-label="Dismiss suggestion">
+                    <button type="button" className="icon-btn" onClick={() => { setSuggestion(null); setSuggestionStructured(null); }} aria-label="Dismiss suggestion">
                       <X size={17} aria-hidden="true" />
                     </button>
                   </header>
@@ -555,7 +683,7 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
                     dangerouslySetInnerHTML={{ __html: formatResponse(suggestion) }}
                   />
                   <footer className="ai-preview-actions">
-                    <button type="button" className="btn-text" onClick={() => setSuggestion(null)}>Cancel</button>
+                    <button type="button" className="btn-text" onClick={() => { setSuggestion(null); setSuggestionStructured(null); }}>Cancel</button>
                     <button type="button" className="btn-primary" onClick={applySuggestion}>Apply to editor</button>
                   </footer>
                 </div>
