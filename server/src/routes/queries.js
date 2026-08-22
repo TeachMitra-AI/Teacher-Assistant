@@ -71,7 +71,7 @@ router.post('/feedback', authRequired, async (req, res) => {
 
   const query = await prisma.query.findUnique({ where: { id: queryId } });
   if (!query) return res.status(404).json({ error: 'Query not found.' });
-  if (query.userId && query.userId !== req.user.id) {
+  if (!query.userId || query.userId !== req.user.id) {
     return res.status(403).json({ error: 'You cannot rate this response.' });
   }
 
@@ -108,8 +108,10 @@ router.get('/queries/:id/classroom-artifacts', authRequired, async (req, res) =>
     select: { userId: true, classroomArtifacts: true },
   });
   // Same 404 for "missing" and "not yours", so one teacher cannot probe for
-  // another's history — the rule routes/resources.js already follows.
-  if (!row || (row.userId && row.userId !== req.user.id)) {
+  // another's history — the rule routes/resources.js already follows. A
+  // null userId (e.g. the owning User row was deleted, which SetNulls this
+  // FK) is treated as "not yours" for everyone, not as "no check needed".
+  if (!row || !row.userId || row.userId !== req.user.id) {
     return res.status(404).json({ error: 'Query not found.' });
   }
 
@@ -129,7 +131,7 @@ router.put('/queries/:id/classroom-artifacts', authRequired, async (req, res) =>
     where: { id: req.params.id },
     select: { userId: true },
   });
-  if (!row || (row.userId && row.userId !== req.user.id)) {
+  if (!row || !row.userId || row.userId !== req.user.id) {
     return res.status(404).json({ error: 'Query not found.' });
   }
 
@@ -164,7 +166,7 @@ router.delete('/queries/:id', authRequired, async (req, res) => {
   const { id } = req.params;
   const query = await prisma.query.findUnique({ where: { id } });
   if (!query) return res.status(404).json({ error: 'Query not found.' });
-  if (query.userId && query.userId !== req.user.id) {
+  if (!query.userId || query.userId !== req.user.id) {
     return res.status(403).json({ error: 'You cannot delete this entry.' });
   }
 
@@ -203,7 +205,7 @@ router.patch('/queries/:id', authRequired, async (req, res) => {
   const { id } = req.params;
   const query = await prisma.query.findUnique({ where: { id } });
   if (!query) return res.status(404).json({ error: 'Query not found.' });
-  if (query.userId && query.userId !== req.user.id) {
+  if (!query.userId || query.userId !== req.user.id) {
     return res.status(403).json({ error: 'You cannot modify this entry.' });
   }
 
