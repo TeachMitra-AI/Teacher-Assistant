@@ -482,6 +482,7 @@ export interface SchoolClass {
   name: string;
   grade?: string | null;
   section?: string | null;
+  feeAmount?: number | null; // expected monthly fee, in whole rupees, for every active student in this class
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -563,18 +564,20 @@ export interface StudentAttendanceHistory {
   days: { date: string; status: 'present' | 'absent' }[];
 }
 
-// ---- Classroom Management — Fees (Phase 4) ---------------------------------
+// ---- Classroom Management — Fees ------------------------------------------
 //
-// Mirrors routes/classroom.js's fee responses exactly (§11). V1 is
-// deliberately Paid/Pending only — amount/paidAt/note are reserved-but-unused
-// on FeeRecord and never appear in these DTOs.
-export type FeeStatus = 'paid' | 'pending';
+// Mirrors routes/classroom.js's fee responses exactly (§11, extended per
+// docs/fee-tracking-amounts-plan.md). `status` is always derived server-side
+// from amount vs expectedAmount — the client sends `amount`, never `status`.
+export type FeeStatus = 'paid' | 'partial' | 'pending';
 
 export interface StudentFeeStatus {
   studentId: string;
   name: string;
   rollNumber?: string | null;
   status: FeeStatus;
+  amount: number; // rupees paid so far this period
+  expectedAmount: number | null; // snapshot of the class's feeAmount when this period was first touched; null if the class had none set yet
 }
 
 // GET .../classes/:classId/fees?period=
@@ -582,7 +585,11 @@ export interface ClassFeeStatus {
   period: string;
   totalStudents: number;
   paid: number;
+  partial: number;
   pending: number;
+  feeAmount: number | null; // the class's CURRENT fee amount (not a snapshot)
+  totalCollected: number;
+  totalExpected: number;
   perStudent: StudentFeeStatus[];
 }
 
@@ -593,6 +600,8 @@ export interface FeeRecordDto {
   classId: string;
   period: string;
   status: FeeStatus;
+  amount: number;
+  expectedAmount: number | null;
   updatedAt: string;
 }
 

@@ -1,19 +1,25 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Check, X as XIcon, Wallet } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, Wallet } from 'lucide-react';
 import { useToast } from '../Toast';
 import { ApiError } from '../../api';
-import { getFeeStatus, setFeeStatus } from '../../lib/classroomApi';
+import { getFeeStatus, setFeeAmount } from '../../lib/classroomApi';
 import { addMonths, currentMonthString, formatMonthLabel } from '../../lib/classroomDate';
 import type { ClassFeeStatus, FeeStatus } from '../../types';
 
 const CURRENT_MONTH = currentMonthString();
 
-// One class's month-wise fee/payment status (docs/classroom-feature-plan.md
-// Phase 4, §11). V1 is deliberately Paid/Pending only — a single toggle per
-// student, no amount/due-date/notes on screen. Unlike Attendance (bulk
-// save), there's no bulk fee-upsert endpoint, so each tap PATCHes
-// immediately — that IS the one intentional change, not a batchable series
-// of taps against a save button.
+function statusLabel(status: FeeStatus): string {
+  if (status === 'paid') return 'Paid';
+  if (status === 'partial') return 'Partial';
+  return 'Pending';
+}
+
+// One class's month-wise fee/payment status
+// (docs/fee-tracking-amounts-plan.md). Each student has an amount-paid
+// input; status (paid/partial/pending) is always derived server-side from
+// that amount vs the class's fee amount, never set directly here. Unlike
+// Attendance (bulk save), there's no bulk fee-upsert endpoint, so each save
+// PATCHes immediately.
 export default function FeeStatusBoard({ classId, className }: { classId: string; className: string }) {
   const { show } = useToast();
 
@@ -22,6 +28,10 @@ export default function FeeStatusBoard({ classId, className }: { classId: string
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
+  // Local text-entry state per student, keyed by studentId — kept separate
+  // from `board` so typing doesn't fight with the loaded/optimistic amount
+  // until the teacher actually saves.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -29,6 +39,7 @@ export default function FeeStatusBoard({ classId, className }: { classId: string
     try {
       const data = await getFeeStatus(classId, period);
       setBoard(data);
+      setDrafts(Object.fromEntries(data.perStudent.map((s) => [s.studentId, String(s.amount || '')])));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not load fee status.');
     } finally {
@@ -40,26 +51,29 @@ export default function FeeStatusBoard({ classId, className }: { classId: string
     load();
   }, [load]);
 
-  async function toggle(studentId: string, current: FeeStatus) {
-    if (!board || savingId) return;
-    const next: FeeStatus = current === 'paid' ? 'pending' : 'paid';
+  async function save(studentId: string, amount: number) {
+    if (!board || savingId || amount < 0 || !Number.isInteger(amount)) return;
     setSavingId(studentId);
-
-    // Optimistic update — the summary tiles and the row both flip instantly;
-    // reverted on failure so the UI never shows a status that didn't persist.
-    const previous = board;
-    setBoard({
-      ...board,
-      paid: board.paid + (next === 'paid' ? 1 : -1),
-      pending: board.pending + (next === 'pending' ? 1 : -1),
-      perStudent: board.perStudent.map((s) => (s.studentId === studentId ? { ...s, status: next } : s)),
-    });
-
     try {
-      await setFeeStatus(studentId, period, next);
+      const fee = await setFeeAmount(studentId, period, amount);
+      setBoard((prev) => {
+        if (!prev) return prev;
+        const perStudent = prev.perStudent.map((s) =>
+          s.studentId === studentId ? { ...s, amount: fee.amount, status: fee.status, expectedAmount: fee.expectedAmount } : s
+        );
+        const paid = perStudent.filter((s) => s.status === 'paid').length;
+        const partial = perStudent.filter((s) => s.status === 'partial').length;
+        return {
+          ...prev,
+          perStudent,
+          paid,
+          partial,
+          pending: perStudent.length - paid - partial,
+          totalCollected: perStudent.reduce((sum, s) => sum + s.amount, 0),
+        };
+      });
     } catch (err) {
-      setBoard(previous);
-      show(err instanceof ApiError ? err.message : 'Could not update payment status', 'error');
+      show(err instanceof ApiError ? err.message : 'Could not save payment.', 'error');
     } finally {
       setSavingId(null);
     }
@@ -68,6 +82,11 @@ export default function FeeStatusBoard({ classId, className }: { classId: string
   return (
     <div className="classroom-attendance">
       <h2 className="classroom-panel-title">Fees — {className}</h2>
+      <p className="classroom-hint">
+        {board?.feeAmount != null
+          ? `Monthly fee: ₹${board.feeAmount} per student. Set on the Classes tab.`
+          : 'No monthly fee amount set for this class yet — set one on the Classes tab to track pending amounts.'}
+      </p>
 
       <div className="classroom-date-nav">
         <button type="button" className="icon-btn" aria-label="Previous month" onClick={() => setPeriod((m) => addMonths(m, -1))}>
@@ -93,11 +112,18 @@ export default function FeeStatusBoard({ classId, className }: { classId: string
               <span className="classroom-summary-value">{board.paid}</span>
               <span className="classroom-summary-label">Paid</span>
             </div>
+            <div className="classroom-summary-tile tile-partial">
+              <span className="classroom-summary-value">{board.partial}</span>
+              <span className="classroom-summary-label">Partial</span>
+            </div>
             <div className="classroom-summary-tile tile-absent">
               <span className="classroom-summary-value">{board.pending}</span>
               <span className="classroom-summary-label">Pending</span>
             </div>
           </div>
+          <p className="classroom-hint">
+            ₹{board.totalCollected} collected{board.totalExpected > 0 ? ` of ₹${board.totalExpected} expected` : ''} this month.
+          </p>
 
           {board.perStudent.length === 0 && (
             <div className="classroom-empty">
@@ -109,26 +135,45 @@ export default function FeeStatusBoard({ classId, className }: { classId: string
 
           {board.perStudent.length > 0 && (
             <ul className="classroom-att-list">
-              {board.perStudent.map((s) => (
-                <li key={s.studentId} className="classroom-att-row">
-                  <div className="classroom-att-info">
-                    <span className="classroom-att-name">{s.name}</span>
-                    {s.rollNumber && <span className="classroom-att-roll">Roll {s.rollNumber}</span>}
-                  </div>
-                  <div className="classroom-att-actions">
-                    <button
-                      type="button"
-                      className={`classroom-att-btn ${s.status === 'paid' ? 'present' : 'absent'} active`}
-                      disabled={savingId === s.studentId}
-                      aria-label={`${s.name}: ${s.status === 'paid' ? 'Paid' : 'Pending'}, tap to mark ${s.status === 'paid' ? 'pending' : 'paid'}`}
-                      onClick={() => toggle(s.studentId, s.status)}
-                    >
-                      {s.status === 'paid' ? <Check size={15} aria-hidden="true" /> : <XIcon size={15} aria-hidden="true" />}
-                      {s.status === 'paid' ? 'Paid' : 'Pending'}
-                    </button>
-                  </div>
-                </li>
-              ))}
+              {board.perStudent.map((s) => {
+                const draft = drafts[s.studentId] ?? '';
+                const draftAmount = draft.trim() === '' ? 0 : Number(draft);
+                const dirty = draftAmount !== (s.amount || 0);
+                return (
+                  <li key={s.studentId} className="classroom-att-row">
+                    <div className="classroom-att-info">
+                      <span className="classroom-att-name">{s.name}</span>
+                      {s.rollNumber && <span className="classroom-att-roll">Roll {s.rollNumber}</span>}
+                    </div>
+                    <div className="classroom-att-actions">
+                      <span className={`classroom-att-btn ${s.status} active`} aria-hidden="true">
+                        {statusLabel(s.status)}
+                        {s.expectedAmount != null && ` (₹${s.expectedAmount})`}
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        className="classroom-fee-amount-input"
+                        value={draft}
+                        disabled={savingId === s.studentId}
+                        aria-label={`Amount paid by ${s.name}`}
+                        onChange={(e) => setDrafts((d) => ({ ...d, [s.studentId]: e.target.value }))}
+                      />
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title="Save amount paid"
+                        aria-label={`Save amount paid for ${s.name}`}
+                        disabled={savingId === s.studentId || !dirty || draftAmount < 0 || !Number.isInteger(draftAmount)}
+                        onClick={() => save(s.studentId, draftAmount)}
+                      >
+                        <Check size={15} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </>

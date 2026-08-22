@@ -31,6 +31,7 @@ model School {
   // Classroom query filters on teacherId only). Reserved for a possible
   // future school-admin rollup view; unused by any V1 route.
   schoolClasses  SchoolClass[]
+  conversations  Conversation[]
 }
 
 // Roles: teacher | school_admin | resource_person | super_admin
@@ -83,6 +84,7 @@ model User {
   // sees teacher B's classes/students/attendance/fees, even within the same
   // school.
   schoolClasses       SchoolClass[]
+  conversations       Conversation[]
 
   // A teacher's email is unique within a school. The same email may hold
   // accounts at more than one school, which is why sign-in looks up by email
@@ -150,17 +152,17 @@ model Session {
 
 // Every coaching request is persisted for history + analytics.
 model Query {
-  id             String   @id @default(cuid())
-  user           User?    @relation(fields: [userId], references: [id])
-  userId         String?
-  school         School?  @relation(fields: [schoolId], references: [id])
-  schoolId       String?
-  queryText      String
-  language       String   @default("en")
-  context        String? // JSON string of { grade, subject, classroomType, issueType }
-  responseText   String
-  responseTimeMs Int?
-  finishReason   String?
+  id                 String   @id @default(cuid())
+  user               User?    @relation(fields: [userId], references: [id])
+  userId             String?
+  school             School?  @relation(fields: [schoolId], references: [id])
+  schoolId           String?
+  queryText          String
+  language           String   @default("en")
+  context            String? // JSON string of { grade, subject, classroomType, issueType }
+  responseText       String
+  responseTimeMs     Int?
+  finishReason       String?
   // Classroom Mode's plan for this turn, as a JSON string, or NULL for every
   // ordinary question (docs/classroom-mode.md D24). Nullable and additive on
   // purpose: a row written before this column existed, and every row written
@@ -170,7 +172,7 @@ model Query {
   // Stores the PLAN (topic, grade, subject, language, which artifacts fit),
   // never the generated artifacts themselves — those are still only saved by
   // an explicit teacher action (D11).
-  classroomPlan  String?
+  classroomPlan      String?
   // The artifacts Classroom Mode generated for this turn, as a JSON object of
   // { artifactKind: markdown } (docs/classroom-mode.md D25). NULL for every
   // ordinary question.
@@ -180,7 +182,7 @@ model Query {
   // a sidebar. routes/queries.js uses an explicit `select` for exactly this
   // reason, and the artifacts are fetched on demand for ONE turn instead.
   classroomArtifacts String?
-  createdAt      DateTime @default(now())
+  createdAt          DateTime @default(now())
   // Teacher-set display label for this history entry (Sidebar's three-dot
   // "Rename chat"). NULL for every row written before this column existed,
   // and for any row the teacher has never renamed — the client falls back to
@@ -188,17 +190,64 @@ model Query {
   // migration-aware branch. Never written to or read from `queryText` itself:
   // that field stays the original question, unedited, since it's also what
   // reopening this entry from history replays as the turn's user message.
-  title          String?
+  title              String?
   // "Pin chat" (Sidebar three-dot menu). Defaulted false, not nullable — a
   // pin is a plain boolean state, not a "was this ever set" question the way
   // `title`'s NULL-vs-empty distinction is, so every existing row backfills
   // to the same unpinned default a freshly created one gets.
-  pinned         Boolean  @default(false)
+  pinned             Boolean  @default(false)
 
   feedback Feedback[]
 
   @@index([userId])
   @@index([schoolId])
+  @@index([createdAt])
+}
+
+// Documenting an existing table, not adding a new feature: this model (and
+// Message below) existed only in the live dev.db's applied-migrations
+// history — the migration that created them (20260720193726) was applied
+// but its file was never committed, so `schema.prisma` never described them
+// either. No route or lib in this codebase reads/writes Conversation or
+// Message (grep confirms zero references) — they appear to be an abandoned
+// prototype. Documented here as-is, matching the live table exactly, so
+// schema.prisma and the database agree and future migrations don't try to
+// drop them. Not part of any current feature; do not build on these without
+// first checking whether they're actually meant to be reused or removed.
+model Conversation {
+  id         String    @id @default(cuid())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  school     School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolId   String
+  title      String?
+  language   String    @default("en")
+  classLevel String?
+  subject    String?
+  topic      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime
+  messages   Message[]
+
+  @@index([userId])
+  @@index([schoolId])
+  @@index([createdAt])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+  role           String
+  content        String
+  language       String?
+  classLevel     String?
+  subject        String?
+  topic          String?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+  @@index([conversationId, role, createdAt])
   @@index([createdAt])
 }
 
@@ -364,13 +413,13 @@ model Notification {
 // exposed yet); a note can be candid ("teacher error, not a bug") without
 // that risking exposure to the person who filed the ticket.
 model SupportNote {
-  id        String   @id @default(cuid())
+  id        String        @id @default(cuid())
   ticket    SupportTicket @relation(fields: [ticketId], references: [id])
   ticketId  String
-  author    User     @relation(fields: [authorId], references: [id])
+  author    User          @relation(fields: [authorId], references: [id])
   authorId  String
   body      String
-  createdAt DateTime @default(now())
+  createdAt DateTime      @default(now())
 
   @@index([ticketId])
 }
@@ -407,6 +456,16 @@ model SchoolClass {
   name      String // "Class 5-A"
   grade     String? // reuses the GRADES vocabulary where useful, free text otherwise
   section   String? // "A", "B" — split out since Attendance/Reports may filter by it later
+  // Expected monthly fee for every (active) student in this class, in whole
+  // rupees (no paise — school fees don't need that precision, and it avoids
+  // conversion logic everywhere). Null until a teacher sets one (existing
+  // classes are unaffected). The first time a teacher records a payment for
+  // a student+period (the first PATCH, which creates that FeeRecord row),
+  // this value is copied into the row's `expectedAmount` — see FeeRecord
+  // below — so editing feeAmount later only affects periods not yet
+  // touched; a period a teacher already recorded a payment for keeps the
+  // amount that was in effect then. See docs/fee-tracking-amounts-plan.md.
+  feeAmount Int?
   archived  Boolean  @default(false) // soft-delete: a class with attendance history is never hard-deleted
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -433,10 +492,10 @@ model Student {
   teacherId   String
   name        String
   rollNumber  String? // optional now; first concrete field beyond `details`
-  active      Boolean  @default(true) // soft-delete: preserves attendance/fee history
+  active      Boolean     @default(true) // soft-delete: preserves attendance/fee history
   details     String? // JSON string — future fields (contact, DOB, guardian) land here first
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
   attendance AttendanceRecord[]
   feeRecords FeeRecord[]
@@ -471,30 +530,33 @@ model AttendanceRecord {
   @@index([teacherId, date])
 }
 
-// One row per student per month — a payment STATUS, not a ledger (V1 fee UI
-// is Paid/Pending only). Modeled as one-row-per-period (like
-// AttendanceRecord) rather than a single mutable field on Student, so
-// "review previous months" falls out of the schema for free.
+// One row per student per month — a payment record, not a full ledger.
+// Modeled as one-row-per-period (like AttendanceRecord) rather than a single
+// mutable field on Student, so "review previous months" falls out of the
+// schema for free.
 model FeeRecord {
-  id        String   @id @default(cuid())
-  student   Student  @relation(fields: [studentId], references: [id])
-  studentId String
-  teacherId String
-  classId   String
+  id             String    @id @default(cuid())
+  student        Student   @relation(fields: [studentId], references: [id])
+  studentId      String
+  teacherId      String
+  classId        String
   // "2026-08" — a plain string, not a DateTime, since a fee period is always
   // a whole calendar month with no day/time component; avoids timezone
   // ambiguity a DateTime would introduce for something that's really just a
   // label.
-  period    String
-  status    String    @default("pending") // "paid" | "pending" — closed vocabulary
-  // Reserved for future fee-ledger expansion (docs/classroom-feature-plan.md
-  // §11/§19) — NOT exposed by any V1 route or UI. V1's PATCH accepts only
-  // `status`; these three columns exist purely so that wiring real amounts,
-  // due dates, and notes in later needs zero migration.
-  amount    Int? // paise/cents-as-integer if/when real amounts are tracked; null today
-  paidAt    DateTime?
-  note      String?
-  updatedAt DateTime @updatedAt
+  period         String
+  status         String    @default("pending") // "paid" | "partial" | "pending" — derived server-side from amount vs expectedAmount, never set directly by the client (see routes/classroom.js)
+  amount         Int? // amount actually paid so far this period, in whole rupees; null/0 = nothing paid yet
+  // Snapshot of SchoolClass.feeAmount taken the first time this period's
+  // record is created (routes/classroom.js's upsert `create` branch) — fixed
+  // after that even if the class's feeAmount is edited later, so a past
+  // month's "amount pending" doesn't silently change. Null if the class had
+  // no feeAmount set yet when this row was created (falls back to a
+  // status-only paid/pending read, same as pre-amount-tracking behavior).
+  expectedAmount Int?
+  paidAt         DateTime? // set to the time of the most recent payment update
+  note           String?
+  updatedAt      DateTime  @updatedAt
 
   @@unique([studentId, period])
   @@index([classId, period])

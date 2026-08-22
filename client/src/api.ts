@@ -108,6 +108,35 @@ async function tryRefresh(): Promise<boolean> {
   return refreshPromise;
 }
 
+// For a binary/CSV response, which api<T>() can't return (it always tries
+// to JSON.parse the body). Mirrors api<T>()'s auth header + one-shot 401
+// refresh-and-retry, but hands back the raw blob and a filename parsed from
+// Content-Disposition, for a caller to trigger a browser download with.
+export async function apiDownload(path: string): Promise<{ blob: Blob; filename: string | null }> {
+  const fetchOnce = () => fetch(`${API_BASE}${path}`, { headers: { Authorization: `Bearer ${getToken() ?? ''}` } });
+
+  let res = await fetchOnce();
+  if (res.status === 401 && getRefreshToken()) {
+    const refreshed = await tryRefresh();
+    if (refreshed) res = await fetchOnce();
+  }
+
+  if (!res.ok) {
+    let message = `Request failed (${res.status}).`;
+    try {
+      const data = await res.json();
+      if (data && typeof data.error === 'string') message = data.error;
+    } catch {
+      // Not a JSON error body — keep the generic message.
+    }
+    throw new ApiError(message, res.status);
+  }
+
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match = /filename="?([^"]+)"?/.exec(disposition);
+  return { blob: await res.blob(), filename: match ? match[1] : null };
+}
+
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { auth = true } = options;
 
