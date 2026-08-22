@@ -126,6 +126,12 @@ describe('ResourceEditScreen', () => {
     (Print.printToFileAsync as jest.Mock).mockClear();
   });
 
+  // Longer timeout: as the first test in this file, it (uniquely, in this
+  // suite) also pays the one-time cost of this worker's first RNTL render
+  // plus expo-print/expo module registration — comfortably under 5s locally,
+  // but observed exceeding Jest's default 5000ms on a loaded CI runner.
+  // Every other test in this file reuses that already-initialized state and
+  // stays well within the default.
   it('loads the resource into the form fields', async () => {
     getResource.mockResolvedValueOnce(RESOURCE);
     await act(async () => {
@@ -133,7 +139,7 @@ describe('ResourceEditScreen', () => {
     });
     await waitFor(() => expect(screen.getByDisplayValue('Photosynthesis Lesson')).toBeTruthy());
     expect(screen.getByDisplayValue('Explain how plants make food.')).toBeTruthy();
-  });
+  }, 15000);
 
   it('the header Save button is disabled until a field is actually changed', async () => {
     getResource.mockResolvedValueOnce(RESOURCE);
