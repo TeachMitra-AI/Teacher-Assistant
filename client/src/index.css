@@ -16,11 +16,17 @@
   --radius: 14px;
   --radius-sm: 10px;
 
-  /* Highlight stops for the answer skeleton's shimmer (see .sk-line). Defined
-     with the palette rather than at the component so the dark theme can
-     restate them alongside every other surface it overrides. */
-  --sk-mid: #f7f8fa;
-  --sk-peak: #fdf8f5;
+  /* Resting color + highlight stops for the answer skeleton's shimmer (see
+     .sk-line). A dedicated token, not --surface-2 — --surface-2 in light
+     mode (#f0f2f5) sits almost exactly on top of --bg (#f5f6f8), so the
+     skeleton was nearly invisible in light mode even though the identical
+     approach reads fine in dark mode (where --surface-2 is meaningfully
+     lighter than --bg). Defined with the palette rather than at the
+     component so the dark theme can restate them alongside every other
+     surface it overrides. */
+  --sk-base: #dde1e8;
+  --sk-mid: #e6e9ef;
+  --sk-peak: #eef1f6;
 
   /* Height of the mobile bottom navigation (excludes the safe-area inset,
      which is added on top). Used to size the mobile coach shell and to pad
@@ -47,6 +53,7 @@
   --text-muted: #a1a8b6;
   --orange-soft: rgba(255, 107, 53, 0.16);
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 8px 22px rgba(0, 0, 0, 0.35);
+  --sk-base: #232833;
   --sk-mid: #2a3040;
   --sk-peak: #333b4c;
 }
@@ -1370,17 +1377,17 @@ button { font-family: inherit; cursor: pointer; }
 .sk-line {
   height: 11px;
   border-radius: 999px;
-  background-color: var(--surface-2);
-  /* The sweep is a moving highlight over the resting surface colour, warmed a
-     touch at its peak so it reads as this app's light rather than a generic
-     grey shimmer. */
+  background-color: var(--sk-base);
+  /* The sweep is a moving highlight over the resting skeleton colour, warmed
+     a touch at its peak so it reads as this app's light rather than a
+     generic grey shimmer. */
   background-image: linear-gradient(
     90deg,
-    var(--surface-2) 0%,
+    var(--sk-base) 0%,
     var(--sk-mid) 38%,
     var(--sk-peak) 50%,
     var(--sk-mid) 62%,
-    var(--surface-2) 100%
+    var(--sk-base) 100%
   );
   background-size: 220% 100%;
   background-repeat: no-repeat;
@@ -3369,8 +3376,10 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .classroom-summary-label { font-size: 0.7rem; color: var(--text-muted); }
 .classroom-summary-tile.tile-present .classroom-summary-value { color: #15803d; }
 .classroom-summary-tile.tile-absent .classroom-summary-value { color: #b91c1c; }
+.classroom-summary-tile.tile-partial .classroom-summary-value { color: #b45309; }
 [data-theme='dark'] .classroom-summary-tile.tile-present .classroom-summary-value { color: #6ee7a8; }
 [data-theme='dark'] .classroom-summary-tile.tile-absent .classroom-summary-value { color: #fca5a5; }
+[data-theme='dark'] .classroom-summary-tile.tile-partial .classroom-summary-value { color: #fcd34d; }
 
 /* Attendance-marking roster and the monthly per-student list — a card-per-
    student list (never a dense table), so it stays one-hand-usable at any
@@ -3405,10 +3414,30 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   min-height: 40px;
 }
 .classroom-att-btn:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
-.classroom-att-btn.present.active { border-color: #86efac; background: #f0fdf4; color: #15803d; }
-.classroom-att-btn.absent.active { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; }
-[data-theme='dark'] .classroom-att-btn.present.active { border-color: #14532d; background: rgba(20, 83, 45, 0.35); color: #6ee7a8; }
-[data-theme='dark'] .classroom-att-btn.absent.active { border-color: #7f1d1d; background: rgba(127, 29, 29, 0.35); color: #fca5a5; }
+.classroom-att-btn.present.active,
+.classroom-att-btn.paid.active { border-color: #86efac; background: #f0fdf4; color: #15803d; }
+.classroom-att-btn.absent.active,
+.classroom-att-btn.pending.active { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; }
+.classroom-att-btn.partial.active { border-color: #fcd34d; background: #fffbeb; color: #b45309; }
+[data-theme='dark'] .classroom-att-btn.present.active,
+[data-theme='dark'] .classroom-att-btn.paid.active { border-color: #14532d; background: rgba(20, 83, 45, 0.35); color: #6ee7a8; }
+[data-theme='dark'] .classroom-att-btn.absent.active,
+[data-theme='dark'] .classroom-att-btn.pending.active { border-color: #7f1d1d; background: rgba(127, 29, 29, 0.35); color: #fca5a5; }
+[data-theme='dark'] .classroom-att-btn.partial.active { border-color: #78350f; background: rgba(120, 53, 15, 0.35); color: #fcd34d; }
+
+/* Per-student amount-paid input on the Fees tab
+   (docs/fee-tracking-amounts-plan.md). */
+.classroom-fee-amount-input {
+  width: 5.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  padding: 0.45rem 0.5rem;
+  min-height: 40px;
+}
+.classroom-fee-amount-input:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
 
 /* Sticky-feeling but in-flow save bar — always the last thing in the
    roster, full-width on mobile so it's reachable without a long reach up. */

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { GraduationCap, FileBarChart, type LucideIcon } from 'lucide-react';
+import { GraduationCap } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import ClassroomTabs, { type ClassroomTabKey } from '../components/classroom/ClassroomTabs';
 import ClassList from '../components/classroom/ClassList';
 import StudentRoster from '../components/classroom/StudentRoster';
 import AttendancePanel from '../components/classroom/AttendancePanel';
 import FeeStatusBoard from '../components/classroom/FeeStatusBoard';
+import ReportsPanel from '../components/classroom/ReportsPanel';
 import { useToast } from '../components/Toast';
 import { usePreferences } from '../hooks/usePreferences';
 import { ApiError } from '../api';
@@ -17,23 +18,6 @@ const TAB_KEYS: ClassroomTabKey[] = ['classes', 'students', 'attendance', 'fees'
 
 function isTabKey(value: string | null): value is ClassroomTabKey {
   return value !== null && (TAB_KEYS as string[]).includes(value);
-}
-
-// A "coming soon" placeholder for the phases not built yet (Attendance,
-// Fees, Reports/Analytics — docs/classroom-feature-plan.md §17 Phases 3-5).
-// Routing/tab structure is final now; only the panel content lands later.
-function ComingSoonPanel({ icon: Icon, title, selectedClassName }: { icon: LucideIcon; title: string; selectedClassName?: string }) {
-  return (
-    <div className="classroom-empty">
-      <span className="classroom-empty-icon" aria-hidden="true"><Icon size={22} strokeWidth={1.8} /></span>
-      <p className="library-empty-title">{title} coming soon</p>
-      <p className="library-empty-hint">
-        {selectedClassName
-          ? `${title} for "${selectedClassName}" will appear here in a future update.`
-          : `${title} will appear here in a future update.`}
-      </p>
-    </div>
-  );
 }
 
 function SelectClassPrompt() {
@@ -187,7 +171,11 @@ export default function ClassroomPage({ preferences }: { preferences: ReturnType
                 ? <FeeStatusBoard classId={selectedClass.id} className={selectedClass.name} />
                 : <SelectClassPrompt />
             )}
-            {tab === 'reports' && <ComingSoonPanel icon={FileBarChart} title="Reports & Analytics" selectedClassName={selectedClass?.name} />}
+            {tab === 'reports' && (
+              selectedClass
+                ? <ReportsPanel classId={selectedClass.id} className={selectedClass.name} />
+                : <SelectClassPrompt />
+            )}
           </section>
         </div>
       </main>

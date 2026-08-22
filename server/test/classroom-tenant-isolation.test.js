@@ -51,7 +51,7 @@ describe('Classroom Management — tenant isolation', () => {
     await as(teacherAToken)(
       request(app).post(`/api/classroom/classes/${classId}/attendance`).send({ date: '2026-10-01', marks: [{ studentId, status: 'present' }] })
     );
-    await as(teacherAToken)(request(app).patch(`/api/classroom/students/${studentId}/fees/2026-10`).send({ status: 'paid' }));
+    await as(teacherAToken)(request(app).patch(`/api/classroom/students/${studentId}/fees/2026-10`).send({ amount: 500 }));
   });
 
   afterAll(() => {
@@ -158,7 +158,7 @@ describe('Classroom Management — tenant isolation', () => {
     });
 
     test('cannot change the fee status', async () => {
-      const res = await as(getToken())(request(app).patch(`/api/classroom/students/${studentId}/fees/2026-10`).send({ status: 'pending' }));
+      const res = await as(getToken())(request(app).patch(`/api/classroom/students/${studentId}/fees/2026-10`).send({ amount: 0 }));
       expect(res.status).toBe(404);
       const row = await prisma.feeRecord.findUnique({ where: { studentId_period: { studentId, period: '2026-10' } } });
       expect(row.status).toBe('paid'); // untouched

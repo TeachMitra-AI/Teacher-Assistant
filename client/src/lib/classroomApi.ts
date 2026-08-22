@@ -6,7 +6,7 @@
 // Phase 2 scope: classes + students. Phase 3 adds attendance below.
 // Fees/analytics/export wrappers land alongside the phases that use them
 // (§17), rather than being stubbed out ahead of use.
-import { api } from '../api';
+import { api, apiDownload } from '../api';
 import type {
   SchoolClass,
   Student,
@@ -15,7 +15,6 @@ import type {
   ClassAttendanceMonthSummary,
   StudentAttendanceHistory,
   ClassFeeStatus,
-  FeeStatus,
   FeeRecordDto,
 } from '../types';
 
@@ -23,12 +22,14 @@ export interface CreateClassInput {
   name: string;
   grade?: string;
   section?: string;
+  feeAmount?: number;
 }
 
 export interface UpdateClassInput {
   name?: string;
   grade?: string;
   section?: string;
+  feeAmount?: number | null; // null clears a previously-set fee amount
   archived?: boolean;
 }
 
@@ -114,19 +115,39 @@ export async function getStudentAttendanceHistory(studentId: string, month: stri
   return api<StudentAttendanceHistory>(`/classroom/students/${studentId}/attendance/history?month=${month}`);
 }
 
-// ---- Fees (Phase 4) ---------------------------------------------------------
+// ---- Fees ---------------------------------------------------------------
 
 export async function getFeeStatus(classId: string, period: string): Promise<ClassFeeStatus> {
   return api<ClassFeeStatus>(`/classroom/classes/${classId}/fees?period=${period}`);
 }
 
-// One PATCH per status change — there is no bulk fee-upsert endpoint (unlike
-// attendance's day-at-a-time bulk save), so each tap is already exactly one
-// intentional change, not a batchable series of taps against one save button.
-export async function setFeeStatus(studentId: string, period: string, status: FeeStatus): Promise<FeeRecordDto> {
+// One PATCH per save — there is no bulk fee-upsert endpoint (unlike
+// attendance's day-at-a-time bulk save). The server derives `status` from
+// this amount vs the class's fee amount (docs/fee-tracking-amounts-plan.md);
+// the client never sends status directly.
+export async function setFeeAmount(studentId: string, period: string, amount: number): Promise<FeeRecordDto> {
   const data = await api<{ fee: FeeRecordDto }>(`/classroom/students/${studentId}/fees/${period}`, {
     method: 'PATCH',
-    body: { status },
+    body: { amount },
   });
   return data.fee;
+}
+
+// Triggers a real browser download of the fee report for one class+month,
+// as an Excel file — not CSV — specifically so the Status column can carry
+// the same green/yellow/red coloring the Fees/Reports tabs show on screen;
+// a plain CSV can't hold color at all (docs/fee-tracking-amounts-plan.md).
+// A Bearer-token GET can't be a plain <a href>, so this fetches the blob
+// (apiDownload) and clicks a throwaway object-URL anchor, same approach any
+// authenticated-download button needs in a token-auth (not cookie-auth) app.
+export async function downloadFeesReport(classId: string, period: string): Promise<void> {
+  const { blob, filename } = await apiDownload(`/classroom/classes/${classId}/fees/export?period=${period}`);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || `fees-${period}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
