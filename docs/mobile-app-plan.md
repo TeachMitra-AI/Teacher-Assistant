@@ -28,7 +28,7 @@ this section.
 | 4 — Coach | ✅ DONE (2026-08-21) — core question→answer loop verified on-device; LaTeX math, attachments, voice, Classroom Mode, and chat history deferred (see status note) |
 | 5 — Library | ✅ DONE (2026-08-21) — List/View/Edit/AI-Assist/export-share verified on-device; 3 real export bugs found and fixed |
 | 6 — Generator | ✅ DONE (2026-08-21) — built directly against the structured contract (Generator v2 Stage 3); verified on-device, one real stale-bundle bug found and fixed |
-| 7 — Notifications (in-app + realtime) | ⬜ NOT STARTED |
+| 7 — Notifications (in-app + realtime) | ✅ DONE (2026-08-22) — implementation/tests/lint/typecheck/export all done; physical-device verification complete, one real bug found and fixed (socket.io-client needed `transports: ['websocket']` on React Native) |
 | 7b — Push Notifications (backend + client) | ⬜ NOT STARTED |
 | 8 — Classroom (shell + Classes + Students) | ⬜ NOT STARTED |
 | 9 — Attendance | ⬜ NOT STARTED |
@@ -1196,6 +1196,507 @@ first. See **`docs/generator-v2-plan.md`'s "Implementation Log — Stage 3
   rendering of every individual question type beyond `match` (MCQ was seen
   once, pre-restart) — all covered by the 200 passing Jest tests but not
   independently re-confirmed on hardware.
+
+### Phase 7 — Notifications (in-app + realtime) — ✅ DONE, physical-device verification complete
+
+**Scope, from §26 Phase 7**: notification list, unread badge, realtime bell
+updates via Socket.IO, while the app is foregrounded. **Not** this phase's
+scope (explicitly deferred to **Phase 7b**, not started): OS-level push
+delivery when the app is backgrounded/killed, the `DeviceToken` model, and
+any backend change — Phase 7 itself is 100% REST/Socket.IO reuse, zero
+backend changes, per §15/§17.
+
+**What was done**: a native in-app notification center reading/writing the
+existing `/api/notifications*` REST API (already ported in Phase 1 —
+`mobile/src/api/notifications.ts` — untouched this phase) plus a realtime
+Socket.IO connection, surfaced as an unread badge in two places (the More
+tab icon and the Notifications row inside the More menu) and a full list
+screen (More → Notifications).
+
+**Files created**:
+- `mobile/src/lib/socket.ts` — ported from `client/src/lib/socket.ts`
+  (§9): same `socket.io-client` API, `connectNotificationSocket()` unchanged
+  in shape except `getToken` is async here (SecureStore, same deviation
+  Phase 1's `api/client.ts` already made) — the `auth` option is passed as a
+  callback function that awaits the token before calling back, which
+  `socket.io-client` supports natively for exactly this case.
+- `mobile/src/lib/historyTime.ts` — `formatTimestamp()` ported verbatim from
+  `client/src/lib/historyTime.ts` (pure function, zero DOM).
+- `mobile/src/notifications/NotificationContext.tsx` — `NotificationProvider`/
+  `useNotifications()`, ported from `client/src/components/Notifications.tsx`'s
+  `NotificationProvider` (§15): unread count, paginated list, mark-read/
+  mark-all-read (both optimistic, best-effort network write, no rollback —
+  same reasoning as web), and the realtime connection lifecycle including the
+  reconnect-then-`refreshUnreadCount()` correctness backstop (§15 point 2) —
+  ported as-is per the plan's own instruction. Two deliberate mobile
+  adaptations, documented in the file's own header comment: (1) no
+  `ToastProvider` exists on mobile yet (no earlier phase built one), so
+  load/mark-all failures surface as an `error` string the screen renders
+  inline (same pattern `ResourceListScreen.tsx` already uses) instead of a
+  toast; a realtime arrival still updates the list/badge, it just isn't
+  separately announced. (2) The provider is mounted only inside
+  `RootNavigator`'s authenticated branch (wrapping `MainTabs`), not globally
+  like web's `App.tsx` tree — this repo's mobile root already structurally
+  separates signed-in/signed-out subtrees (Phase 3's own "no stale screen
+  reachable after logout" design), so scoping the provider there gets the
+  same "no stale socket after logout" guarantee for free (the whole subtree
+  unmounts) without needing both an internal `if (!user)` guard and an
+  always-mounted outer provider the way web needs.
+- `mobile/src/screens/notifications/NotificationsScreen.tsx` — full native
+  rewrite of `Notifications.tsx`'s `NotificationBell` dropdown panel as its
+  own pushed screen (More → Notifications, §10/§11): loading state, empty
+  state ("You're all caught up"), a "Mark all read" action, a `FlatList` of
+  rows (type icon via `NOTIFICATION_TYPE_META`, title, message, relative
+  timestamp, an unread dot + highlighted card), a "Load more" footer control
+  (pagination, mirroring the web panel's own load-more button rather than
+  infinite scroll), reload-on-focus, and an inline error banner. **Deliberately
+  not implemented**: tap-to-navigate via a notification's `link` field —
+  mapping the web's route-string convention onto mobile's own stack/tab
+  routes is exactly the deep-link work §26 Phase 7b's own acceptance
+  criteria ("tapping it deep-links correctly") scope to the push-notification
+  phase, not this one. Tapping a row here only marks it read, matching this
+  phase's own acceptance bar.
+- `mobile/src/lib/__tests__/historyTime.test.ts`,
+  `mobile/src/notifications/__tests__/NotificationContext.test.tsx`,
+  `mobile/src/notifications/__tests__/NotificationContext.disabled.test.tsx`,
+  `mobile/src/screens/notifications/__tests__/NotificationsScreen.test.tsx` —
+  see Tests below.
+
+**Files modified**:
+- `mobile/src/config.ts` — added `NOTIFICATIONS_ENABLED` (client-side
+  cosmetic gate, mirrors `client/src/config.ts`'s `VITE_NOTIFICATIONS_ENABLED`
+  — server's `NOTIFICATIONS_ENABLED` remains the real kill switch) and
+  `NOTIFICATION_TYPE_META` (icon/label per `NotificationType`, ported from
+  the web's vocabulary; mobile has no admin compose screen yet so `sendable`
+  isn't tracked — nothing reads it).
+- `mobile/src/navigation/RootNavigator.tsx` — wraps `MainTabs` in
+  `NotificationProvider` inside the authenticated branch (see above).
+- `mobile/src/navigation/MainTabs.tsx` — `MoreTab` now sets `tabBarBadge` to
+  the live unread count (hidden at 0, capped display at "99+").
+- `mobile/src/navigation/stacks/MoreStack.tsx` — `Notifications` route now
+  renders the real `NotificationsScreen` instead of the Phase 2/6
+  `PlaceholderScreen` stub.
+- `mobile/src/screens/MoreMenuScreen.tsx` — the "Notifications" menu row now
+  shows a small unread-count badge (testID `more-menu-notif-badge`) when
+  `unreadCount > 0`.
+- `mobile/src/navigation/__tests__/RootNavigator.test.tsx` — mocks
+  `NOTIFICATIONS_ENABLED: true` (Jest doesn't run Metro's `EXPO_PUBLIC_*`
+  inlining, same reasoning `GeneratorResultScreen.test.tsx` already
+  documents for `STRUCTURED_QUESTIONS_ENABLED`) and adds one new test
+  asserting the More-menu badge renders the real unread count from a mocked
+  `/notifications/unread-count` response — same "extend this file with one
+  assertion per phase" pattern Phases 3/4 already established.
+- `mobile/jest.setup.ts` — added a default no-op `socket.io-client` mock
+  (never emits `connect`/`notification:new`) so any test rendering the
+  authenticated tree doesn't attempt a real network connection; individual
+  notification tests override it locally with a controllable fake socket.
+- `mobile/.env` / `mobile/.env.example` — added
+  `EXPO_PUBLIC_NOTIFICATIONS_ENABLED` (`.env`: `true`, matching
+  `client/.env`'s own `VITE_NOTIFICATIONS_ENABLED=true`; `.env.example`
+  default `false`, documented the same way every other flag is).
+- `mobile/package.json`/`package-lock.json` — added `socket.io-client@^4.8.3`
+  (matches `client/package.json`'s and `server/package.json`'s pinned
+  version exactly) via plain `npm install` (not `expo install` — it's a pure
+  JS package with no native module, same category as every other
+  `lib/*Api.ts` dependency).
+
+**Existing code reused**: `mobile/src/api/notifications.ts` (already ported
+in Phase 1, unchanged — `listNotifications`/`getUnreadCount`/
+`markNotificationRead`/`markAllNotificationsRead`/`mergeNewNotification`),
+the `POST/GET/PATCH /api/notifications*` route contract (§4.4) unchanged,
+`NOTIFICATION_TYPE_META`'s icon/label vocabulary (server counterpart
+`server/src/lib/notificationTypes.js`, per the CHANGE-11 duplication
+convention §9 already established), the mobile `api()`/SecureStore session
+layer from Phase 1 (token attach, refresh-on-401 — inherited for free by
+`getUnreadCount()`/etc., not reimplemented).
+
+**Backend changes**: none, as designed (§15/§17 — Phase 7 is explicitly
+"no backend change for this half of the phase"; Phase 7b is where the
+`DeviceToken` model and dispatch-hook additions belong). Confirmed via
+`git status`: no `server/` or `client/` file was touched this session.
+
+**Tests added**: 27 new tests across 4 new files (mobile suite: **221 tests
+across 27 files, 0 failures**, up from Phase 6's 200/23):
+- `lib/__tests__/historyTime.test.ts` — 4 tests (just-now/minutes/hours/day+
+  boundaries).
+- `notifications/__tests__/NotificationContext.test.tsx` — 8 tests: first-page
+  load + `hasMore` derivation, load failure sets an inline error, `loadMore`
+  pagination/append, `markRead` optimistic update + badge decrement,
+  `markAllRead` optimistic update + error-without-revert on failure, the
+  realtime socket lifecycle (opens on mount, the reconnect-then-refresh
+  backstop on a `'connect'` event, a `'notification:new'` arrival merging
+  into the list and incrementing the badge), and socket disconnect on
+  unmount.
+- `notifications/__tests__/NotificationContext.disabled.test.tsx` — 1 test,
+  in its own file specifically so `NOTIFICATIONS_ENABLED: false` can be
+  module-mocked without `jest.resetModules()` gymnastics mid-file (asserts
+  no socket is opened and no unread-count fetch fires when the flag is off).
+- `screens/notifications/__tests__/NotificationsScreen.test.tsx` — 7 tests
+  (React Native Testing Library, real rendering + `fireEvent`): loads on
+  mount, loading state, empty state, list rendering + working "Mark all
+  read", tap-to-mark-read (only for an unread row), "Load more" control,
+  inline error banner, reload on screen focus.
+- `navigation/__tests__/RootNavigator.test.tsx` — 1 new test (existing file
+  extended, matching the established per-phase pattern): signs in, mocks a
+  `count: 3` unread-count response, navigates to More, asserts the
+  `more-menu-notif-badge` testID shows "3".
+
+**Verification performed**:
+- `npm test` — **221/221 passing, 27/27 suites**.
+- `npm run typecheck` (`tsc --noEmit`) — clean.
+- `npm run lint` (`expo lint`) — clean. One issue fixed during implementation:
+  the same `react-hooks/set-state-in-effect` rule Phase 3's `AuthContext.tsx`
+  already hit fired on `NotificationContext.tsx`'s `refreshUnreadCount()`
+  call inside the socket-lifecycle effect (a standard fetch-on-mount pattern
+  the rule's static analysis can't distinguish from the synchronous-setState
+  anti-pattern it targets) — silenced with the same scoped, commented
+  `eslint-disable-next-line` precedent already established.
+- `npx expo export --platform android` — succeeded, **2879 modules** (up
+  from Phase 6's count), valid Hermes bundle (4.3MB `.hbc`). Scratch export,
+  deleted afterward.
+- Client/server regression check: `git status` confirms no `client/` or
+  `server/` file was touched this session — nothing to regress, consistent
+  with the "zero backend changes" design for this half of the phase.
+
+**Physical-device verification: COMPLETE (2026-08-22)** — the connectivity
+blocker documented below was root-caused and fixed, and every notification
+flow in this phase's scope was then genuinely exercised on the Samsung
+Galaxy M36, including a real realtime-delivery bug found and fixed. See the
+dedicated log section immediately below for the full account.
+
+**Known limitations, explicit deferrals (not oversights)**:
+- Tap-to-navigate via a notification's `link` field — see the
+  `NotificationsScreen.tsx` file note above; scoped to Phase 7b.
+- No toast/snackbar announcement of a realtime arrival — mobile has no
+  `ToastProvider` yet (no earlier phase built one); the badge/list still
+  update live, there's just no separate transient announcement. Worth
+  revisiting once/if a mobile toast primitive exists for another feature.
+- OS-level push (backgrounded/killed app delivery) — entirely out of scope
+  for this phase by design; that is all of Phase 7b (not started).
+- No admin compose screen on mobile (`sendNotification()` exists in
+  `api/notifications.ts` since Phase 1 but nothing calls it) — Admin screens
+  are a later phase per §26; the only way to exercise the realtime path
+  right now is the existing web admin UI or a direct API call.
+
+**Remaining work**: Phase 7b or Phase 8 per §26 — **not started yet, do not
+start without explicit go-ahead**.
+
+### Physical-device verification — Phase 7 (2026-08-21 evening session) — STOPPED, PENDING/BLOCKED (superseded by the 2026-08-22 session below, which root-caused and fixed this)
+
+**What was attempted**: the Samsung Galaxy M36 was connected and authorized
+(`adb devices` → `RZCY619LM4T  device`). `adb reverse tcp:3000 tcp:3000` and
+`tcp:8081 tcp:8081` were set up. The server was already running with
+`NOTIFICATIONS_ENABLED=true` (confirmed live via `curl` — `/notifications/unread-count`
+returned `401`, not `503`, proving the flag is on; no server restart was
+needed or performed). A stale Metro process left over from an earlier
+session (holding port 8081, predating this session's `socket.io-client`
+install — the same "long-running dev server + mid-session `npm install`"
+failure class Phase 2's and Phase 4's device logs already documented once
+each) was killed, and a fresh `expo start --android --clear` was started.
+
+**Every launch attempt this session failed with the same error, not a
+flaky one-off**: Expo Go's red error screen, "Something went wrong… Failed
+to download remote update", with `adb logcat` showing a genuine
+`dev.expo.updates` `UpdateFailedToLoad` error — an `okhttp3` `IOException`
+inside `Http1ExchangeCodec.readResponseHeaders` while fetching the update
+manifest (`expo.modules.updates.loader.FileDownloader.downloadRemoteUpdate`).
+This is a **connection-level** failure (a broken/reset read while parsing
+HTTP response headers for Metro's chunked multipart manifest response), not
+a JS bundling error — `curl` against the same Metro server directly from
+this machine (`http://localhost:8081/status`, the manifest endpoint with the
+real Expo-Updates headers, and the JS bundle endpoint itself) succeeded
+instantly and cleanly every time, confirming Metro itself was healthy and
+serving correctly; the failure is specifically in the phone's HTTP client
+reading the response over whatever transport carried it.
+
+**Both transport paths were tried, both failed identically**:
+- **Default (LAN)**: Expo advertised `exp://10.126.242.3:8081` (this
+  machine's real Wi-Fi IPv4, confirmed via `ipconfig`) — failed.
+- **Forced localhost via the USB `adb reverse` tunnel**
+  (`expo start --android --host localhost`, advertising
+  `exp://127.0.0.1:8081`) — failed identically, across **7 separate retry
+  attempts** (force-stop + relaunch, some after a full `adb kill-server`/
+  `adb start-server` cycle and re-adding both reverse tunnels). One earlier
+  moment in the session showed what looked like a genuinely loaded Coach
+  screen (captured via `uiautomator dump`), but on reconciling the timeline
+  this is almost certainly stale UI state left over from a **previous**
+  session's successful load (this phone already had the app signed in and
+  working from Phase 3–6 testing), not a fresh success from this session's
+  Metro server — every deliberately-fresh attempt after a `force-stop`
+  failed the same way, with no exception.
+- **`expo start --android --tunnel`** (routes over a real ngrok tunnel,
+  documented in `mobile/DEVICE_TESTING.md`'s own troubleshooting table as
+  the fallback for local-networking issues) was attempted as a third path
+  but did not get far enough to test against the device: it first needed
+  `@expo/ngrok`, which isn't installed anywhere in this environment.
+  Installed via `npm install --no-save @expo/ngrok@^4.1.0` inside `mobile/`
+  (confirmed via `git diff` that this did **not** add `@expo/ngrok` to
+  `package.json` — only `socket.io-client`, this phase's real dependency,
+  appears there; `package-lock.json`'s extra entries are also all from that
+  same legitimate `socket.io-client` install, not ngrok). The tunnel-mode
+  launch itself then failed before reaching the device
+  (`b1l6yjgd3`/later attempt's log — exit code 1; not fully diagnosed before
+  the user asked to stop for the night).
+
+**Root cause not yet confirmed** — leading theory, not verified: Metro
+under `--host localhost` was observed listening on `[::1]:8081` (IPv6
+loopback only, via `netstat -ano`) rather than a dual-stack `0.0.0.0`/`[::]`
+bind, which could explain a broken/refused connection over `adb reverse`'s
+IPv4-based forwarding — but the actual failure mode (`readResponseHeaders`
+IOException, implying a connection *was* established and then broke mid-read)
+doesn't perfectly fit a simple "wrong stack" explanation either. **This
+needs real investigation next session**, not a repeat of the same retries.
+
+**Exact stopping point / where to resume tomorrow**:
+1. The user asked to stop all further Metro/Expo/tunnel/Remote-Control
+   attempts for the night. No dev server is currently running (port 8081 is
+   free — confirmed via `netstat` immediately before stopping).
+2. `adb reverse` tunnels for `tcp:3000`/`tcp:8081` were left in place (not
+   explicitly torn down); they do not survive a USB replug regardless
+   (`DEVICE_TESTING.md`'s own documented behavior), so re-add both before
+   resuming.
+3. Next session should **start by investigating the IPv6-loopback-only bind
+   theory above** (does `expo start --android --host localhost` reliably
+   bind `0.0.0.0`/dual-stack on this machine, or only `::1`? does forcing
+   IPv4 — e.g. `REACT_NATIVE_PACKAGER_HOSTNAME=127.0.0.1` or an explicit
+   `--port`/host override — change the outcome?) before retrying the same
+   launch sequence blindly.
+4. `@expo/ngrok` is now installed locally in `mobile/node_modules` (not
+   tracked in `package.json`/committed) — `--tunnel` mode's ngrok
+   dependency is already satisfied for a next attempt; its actual launch
+   failure (separate from the ngrok-missing error already resolved) still
+   needs its own log capture and diagnosis.
+5. **No code, test, lint, or typecheck changes are needed to resume this** —
+   the blocker is entirely environmental (this machine's Metro/adb/USB
+   networking), not the Phase 7 implementation. Every other verification
+   gate (tests/lint/typecheck/export) already passed cleanly against the
+   exact code that would run on-device once connectivity is fixed.
+6. Once on-device, the verification pass itself should cover: More tab
+   badge + Notifications-row badge appearing live after triggering a real
+   admin broadcast (`POST /api/notifications` via the existing web admin UI
+   or a direct authenticated API call, matching Phase 3's own precedent for
+   driving admin endpoints directly) while the app is foregrounded, opening
+   the Notifications screen (list/loading/empty states, mark-one-read,
+   mark-all-read, load-more if enough seed data exists), Android back
+   navigation out of the screen, and both light and dark theme.
+
+### Physical-device verification — Phase 7 (2026-08-22 session) — COMPLETE
+
+**Picked up exactly where the 2026-08-21 session stopped**, per its own
+"exact stopping point" notes above: `adb devices` showed the Samsung Galaxy
+M36 connected and authorized (`RZCY619LM4T device`) with no stale Metro/8081
+process running. No Phase 7 code, test, lint, or typecheck changes were
+needed to resume — confirmed correct, per point 5 above; the eventual real
+bug (below) was found only once actual realtime traffic was exercised
+on-device, not by anything static analysis could have caught.
+
+**Root cause of the 2026-08-21 "Failed to download remote update" connection
+failure — confirmed, not theorized**: the IPv6-loopback-only bind theory the
+previous session flagged as unverified was correct, isolated with a direct
+Node repro before touching Expo again:
+```
+node -e "require('net').createServer().listen(0,'localhost',function(){console.log(this.address())})"
+// → { address: '::1', family: 'IPv6', ... }
+```
+On this machine, Node/Windows resolves the bare hostname `localhost` to the
+IPv6 loopback `::1` **only** — not dual-stack, not IPv4. `adb reverse`
+forwards over IPv4 (`127.0.0.1`), so `expo start --android --host localhost`
+was binding Metro somewhere `adb reverse`'s tunnel could never actually
+reach; a real TCP handshake could still form (explaining the confusing
+`readResponseHeaders` IOException the previous session saw, rather than a
+clean "connection refused") because *something* was listening on `::1:8081`
+and OS-level dual-stack routing partially bridged the gap before failing
+mid-response. **Fix applied**: force IPv4 resolution for `localhost` via
+Node's `--dns-result-order` flag, confirmed first in isolation
+(`node --dns-result-order=ipv4first -e "require('dns').lookup('localhost',console.log)"`
+→ `127.0.0.1`), then applied to the real dev server:
+```
+export NODE_OPTIONS="--dns-result-order=ipv4first"
+npx expo start --android --host localhost --clear
+```
+(`expo start --host` only accepts the literal values `lan`/`tunnel`/
+`localhost` — not an arbitrary IP — so the fix has to act on DNS resolution
+order, not on the `--host` value itself.) After this, `netstat -ano` showed
+Metro listening on `127.0.0.1:8081` (IPv4, not `::1`) with an
+`ESTABLISHED` connection from the device's `adb reverse` tunnel, and the app
+loaded a fresh JS bundle on the phone on the very next launch — no
+`UpdateFailedToLoad` error, confirmed via `adb logcat` showing none of the
+previous session's `okhttp3`/`dev.expo.updates` errors. **This fix is
+environmental only** (a shell export before starting the dev server) — no
+repo file changes were needed for it, matching the previous session's own
+"the blocker is entirely environmental" diagnosis.
+
+**Genuinely verified on the physical device, against the real backend**
+(server running locally with `NOTIFICATIONS_ENABLED=true`, confirmed live —
+not mocked, not assumed):
+- **Login** — `teacher@example.com`/`demo1234`, resolved through the
+  familiar RAMPUR01/RAMPUR02 multi-school picker (Phase 3's own
+  known-not-fully-screenshotted flow; this session's picker tap also landed
+  on the first option before a screenshot, same as Phase 3 — flow executes
+  correctly end-to-end either way), landed on the real authenticated 5-tab
+  app.
+- **More-tab badge + Notifications-row badge, fetched on mount** — after a
+  fresh app launch, the More tab correctly showed a live unread-count badge
+  matching the real server-side count (confirmed by cross-checking
+  `GET /api/notifications/unread-count` directly) — this REST-fetch path
+  worked on the very first attempt, before any realtime fix was needed.
+- **Notifications list screen** — loaded real seeded data (6 items:
+  `assessment_ready` and `announcement` types), correct type icons per
+  `NOTIFICATION_TYPE_META`, correct relative (`"18 hr ago"`) and absolute
+  (`"16/8/2026"`) timestamps matching `historyTime.ts`'s thresholds, correct
+  unread styling (orange dot + highlighted/outlined card) vs. read
+  (unstyled). Only 6 notifications existed for this account, so the
+  "Load more" footer control was **not** exercised — not enough seed data,
+  consistent with the pre-existing note in this phase's own "Known
+  limitations" that pagination needs enough data to trigger, not a gap
+  introduced this session.
+- **Realtime delivery while foregrounded — a real bug found and fixed** (see
+  the dedicated writeup below): first attempt failed (broadcast sent
+  server-side, confirmed via direct `GET /api/notifications` showing the row
+  existed with `read: false`, but nothing appeared on-device — no badge
+  change, no list update). After the fix, re-tested twice, both times live:
+  the More-tab badge incremented in real time (1 → 2) with **no manual
+  reload, no navigation, no app restart** — a `POST /api/notifications`
+  broadcast fired from a `curl` call while the app sat idle on the Coach tab
+  visibly changed the badge within ~2 seconds. Opening the Notifications
+  screen afterward showed the new item at the top of the list with an
+  unread dot and a `"Just now"` timestamp, exactly matching
+  `mergeNewNotification`'s dedup/prepend contract.
+- **Mark-one-read** — tapping an unread card cleared its unread dot/border
+  and decremented the More-tab badge (2 → 1) immediately (optimistic
+  update), with **no navigation away from the list** — confirming the
+  "Deliberately not implemented: tap-to-navigate" design note above is
+  accurate to what actually runs on-device, not just what the code intends.
+- **Mark-all-read** — cleared every remaining unread card's styling in one
+  tap, the "Mark all read" action itself disappeared (matching its
+  hide-at-zero-unread rule), and the More-tab badge cleared. Cross-checked
+  against the real server: a direct `GET /api/notifications/unread-count`
+  call immediately after returned `{"count":0}`, confirming this was a real
+  network write, not just local optimistic state.
+- **Empty state — genuinely triggered, not just asserted in Jest**:
+  registered a brand-new teacher account
+  (`phase7.empty@example.com`, RAMPUR01) via the real `/auth/register`
+  endpoint, approved it via the real super_admin `/admin/users/:id/approve`
+  endpoint (same precedent Phase 3 established for driving admin endpoints
+  directly), and signed into it fresh on-device. The Notifications screen
+  showed the real empty state — bell icon + "You're all caught up" — with no
+  "Mark all read" action visible (correctly hidden at zero items), not a
+  screenshot of the Jest-mocked version.
+- **Error state — genuinely triggered, not just asserted in Jest**: with
+  that same fresh account still on-device, the backend process was killed
+  outright (`taskkill`) and the Notifications screen was reloaded (back +
+  reopen, exercising the real "reload on focus" path). The real inline red
+  error banner rendered — `"Could not load notifications. Please try
+  again."` — with no crash and no infinite spinner. The backend was
+  restarted immediately afterward and `npm test`/lint/typecheck were
+  re-run clean (see below) to confirm this destructive step left no residue.
+- **Session persistence across a full server + app restart cycle** —
+  after fixing the realtime bug and restarting both the backend and the
+  Expo dev server, a fresh app relaunch restored straight back to the
+  fresh test account's authenticated session with no re-login required,
+  confirming Phase 3's SecureStore persistence is unaffected by anything in
+  this session.
+- **Android back button** — from the Notifications screen, the hardware
+  back button correctly popped one level in the native stack (back to the
+  More menu), not out of the app and not to a different tab — standard
+  native-stack back behavior, confirmed by screenshot before/after.
+- **Regression, incidental**: Login, the multi-school picker's execute-path,
+  session restore, and the More screen's identity card/role-gating (no
+  Admin item for `teacher`) all still work exactly as Phase 3 documented —
+  nothing in this session's changes touched that code path.
+- **Not independently re-checked this session**: light theme specifically
+  (the phone's system theme was dark throughout, same gap already logged
+  and accepted at Phase 2/3) — not a new gap, carried forward unchanged.
+
+**A real, reproducible realtime-delivery bug was found and fixed by this
+device pass — not by any of the 221 existing automated tests**, because
+Jest's `socket.io-client` is fully mocked in every existing test (see this
+phase's own "Files modified" note on `jest.setup.ts`'s default no-op mock) —
+there was no way for the test suite to catch a transport-layer failure that
+only exists in a real React Native runtime talking to a real server.
+
+**Symptom**: a real admin broadcast (`POST /api/notifications`, confirmed
+server-side via `{"success":true,"recipientCount":5}` and independently via
+`GET /api/notifications` showing the new row with `read: false`) never
+reached the app while it was foregrounded and already signed in — no badge
+change, no list update, nothing. This is a correctness failure of the
+feature's actual selling point ("realtime bell updates via Socket.IO, while
+the app is foregrounded" — this phase's own stated scope).
+
+**Diagnosis**: temporarily instrumented `server/src/lib/socketServer.js`
+with `console.log` calls on the handshake-auth middleware and on
+`io.on('connection', ...)` (a temporary debugging change, reverted
+afterward — confirmed via `git diff --stat server/src/lib/socketServer.js`
+showing no diff once verification was complete, preserving this phase's
+"zero backend changes" design). Force-stopping and relaunching the app
+produced **zero** log output — not an auth failure, not a rejected
+handshake, nothing — meaning the device's `socket.io-client` was never even
+reaching the server's Socket.IO endpoint, despite plain REST calls to the
+exact same `http://localhost:3000` (via the same `adb reverse tcp:3000`
+tunnel) working correctly in the same session (login, list, unread-count all
+succeeded). This narrowed the bug to the socket handshake transport
+specifically, not general connectivity, auth, or server-side room/broadcast
+logic (which a code read of `notificationService.js`'s `createBroadcast()`
+→ `emitToUser()` → `io.to('user:<id>').emit(...)` already showed was
+correct).
+
+**Root cause**: `mobile/src/lib/socket.ts` called `io(SOCKET_BASE, {...})`
+with Engine.IO's default transport order (`polling` first, upgrading to
+`websocket`) — the same configuration the web client
+(`client/src/lib/socket.ts`) uses correctly in a browser. React Native's
+`XMLHttpRequest` polyfill does not fully implement what Engine.IO's polling
+transport needs; the polling handshake request silently never completes and
+never surfaces a JS-level error (no `connect_error` event fires), so the
+socket connection attempt never reaches the server at all — exactly matching
+the zero-log-output symptom above. This is a known category of React
+Native + Engine.IO/Socket.IO incompatibility (polling transport requires
+full XHR behavior a RN polyfill doesn't provide); it is unrelated to this
+app's own server code, which needed no changes.
+
+**Fix**: `mobile/src/lib/socket.ts` — added `transports: ['websocket']` to
+the `io()` call, skipping the polling transport entirely (mobile-only
+deviation from the web client, documented in the file's own comment).
+```ts
+return io(SOCKET_BASE, {
+  path: '/socket.io',
+  auth: (cb) => { getToken().then((token) => cb({ token })); },
+  transports: ['websocket'],
+  reconnection: true,
+});
+```
+
+**Verified fixed, twice, on-device**: after the fix, a fresh app relaunch
+produced the expected `[TEMP-DEBUG] socket connected { userId: '...' }`
+server log (with the debug instrumentation still in place for this one
+confirmation pass, then reverted) matching the real signed-in teacher's
+user id, and two independent live broadcasts both updated the on-device
+badge within ~2 seconds with no manual reload — see the verified-flows list
+above.
+
+**Post-fix regression check, per the instruction to rerun relevant tests
+after any real bug fix**:
+- `npm test` (mobile) — **221/221 passing, 27/27 suites**, unchanged from
+  before this fix (the existing tests mock `socket.io-client` entirely, so
+  they neither caught this bug nor are affected by fixing it — expected, not
+  a false-clean signal, given the diagnosis above).
+- `npm run lint` (`expo lint`) — clean.
+- `npm run typecheck` (`tsc --noEmit`) — clean.
+- `server/src/lib/socketServer.js` — confirmed zero diff after reverting the
+  temporary debug logging (`git diff --stat`), preserving this phase's
+  "zero backend changes" design intact.
+
+**Known limitation this fix does not address**: `reconnection: true` is
+still set, and Engine.IO's default reconnection behavior will itself retry
+with polling-then-upgrade unless every transport in the list is
+WebSocket-only on every attempt — since `transports: ['websocket']` applies
+to all (re)connection attempts, not just the first, this is not a partial
+fix; but a WebSocket-only strategy means a `NAT`/proxy environment that
+blocks WebSocket entirely (unlikely for this app's deployment target, not
+observed in this session) would leave a device with no realtime path at
+all, silently degrading to "badge only updates via the REST fetch on next
+app open" rather than erroring visibly. Not observed as a problem in this
+session; worth keeping in mind if a future bug report describes stale
+badges on a specific network.
 
 ---
 

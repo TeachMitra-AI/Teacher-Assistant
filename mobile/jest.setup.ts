@@ -37,3 +37,19 @@ jest.mock('expo-file-system/legacy', () => ({
   cacheDirectory: 'file:///mock-cache/',
   writeAsStringAsync: jest.fn().mockResolvedValue(undefined),
 }));
+
+// socket.io-client backs NotificationContext's realtime connection (Phase 7,
+// mobile/src/lib/socket.ts) — a real `io()` call would attempt an actual
+// network connection under the Jest test renderer (open handles, flaky
+// tests). This default no-op socket (never emits 'connect' or
+// 'notification:new') is enough for every test that merely renders the
+// authenticated tree without exercising realtime behavior itself;
+// NotificationContext.test.tsx overrides this with a more specific local
+// mock to actually drive those events.
+jest.mock('socket.io-client', () => ({
+  io: jest.fn(() => ({
+    on: jest.fn(),
+    off: jest.fn(),
+    disconnect: jest.fn(),
+  })),
+}));

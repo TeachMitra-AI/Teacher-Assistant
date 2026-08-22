@@ -1,8 +1,9 @@
 import {
   NotebookPen, Target, ClipboardCheck, Lightbulb, FileText,
-  FileQuestion, ClipboardList, Ticket, House, type LucideIcon,
+  FileQuestion, ClipboardList, Ticket, House,
+  Megaphone, BookOpenCheck, FileBarChart, Settings2, BellRing, type LucideIcon,
 } from 'lucide-react-native';
-import type { ResourceType } from './types';
+import type { NotificationType, ResourceType } from './types';
 import type { AssessmentFormat, Difficulty, QuestionType } from './api/resources';
 
 // Mirrors client/src/config.ts's API_BASE/SOCKET_BASE (docs/mobile-app-plan.md
@@ -125,3 +126,23 @@ export const QUESTION_COUNT_DEFAULT = 10;
 // already-installed build offering a type the server will reject still just
 // gets that clear error, not a silently-broken generation.
 export const STRUCTURED_QUESTIONS_ENABLED = process.env.EXPO_PUBLIC_STRUCTURED_QUESTIONS_ENABLED === 'true';
+
+// --- Phase 7 (Notifications) ---
+// Ported from client/src/config.ts. Client-side gate, same "not the real kill
+// switch" caveat as every flag above: the server's NOTIFICATIONS_ENABLED is
+// the immediately-effective one (every /api/notifications route 503s and the
+// Socket.IO handshake rejects every connection regardless of this flag).
+export const NOTIFICATIONS_ENABLED = process.env.EXPO_PUBLIC_NOTIFICATIONS_ENABLED === 'true';
+
+// Closed vocabulary — SERVER COUNTERPART: server/src/lib/notificationTypes.js.
+// Same CHANGE-11 duplication convention as the vocabularies above. Unlike the
+// web's version, mobile has no admin compose screen yet (later phase, §26),
+// so `sendable` isn't tracked here — nothing reads it.
+export const NOTIFICATION_TYPE_META: Record<NotificationType, { label: string; icon: LucideIcon }> = {
+  announcement: { label: 'Announcement', icon: Megaphone },
+  lesson_generated: { label: 'Lesson ready', icon: BookOpenCheck },
+  assessment_ready: { label: 'Assessment ready', icon: ClipboardList },
+  report_ready: { label: 'Report ready', icon: FileBarChart },
+  system_update: { label: 'System update', icon: Settings2 },
+  reminder: { label: 'Reminder', icon: BellRing },
+};

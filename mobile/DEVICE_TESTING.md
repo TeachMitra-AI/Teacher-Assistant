@@ -151,3 +151,33 @@ reconnected five separate times in that session (each within 5–15s),
 survive a replug — consistent with the troubleshooting table above and
 worth expecting on future sessions with this cable/port, not a sign
 something is newly broken.
+
+**Update, Phase 7 (Notifications) implementation session — a NEW, different
+failure mode, not the disconnect flakiness above**: `adb devices` stayed
+`device`-authorized the whole session (no disconnects), and both
+`tcp:3000`/`tcp:8081` reverse tunnels were confirmed present throughout —
+but **every launch attempt still failed**, consistently, with Expo Go's red
+error screen ("Something went wrong… Failed to download remote update").
+`adb logcat` showed a real `dev.expo.updates` `UpdateFailedToLoad` error: an
+`okhttp3.internal.http1.Http1ExchangeCodec.readResponseHeaders` `IOException`
+while the phone was fetching Metro's update manifest — i.e. a connection was
+established and then broke mid-read, not a refused connection and not a JS
+bundling error. `curl` from this machine straight at Metro
+(`http://localhost:8081/status`, and the manifest endpoint with real
+`Expo-Platform`/`Expo-Protocol-Version` headers) succeeded instantly every
+time, confirming Metro itself was healthy. Tried and failed identically:
+default LAN mode (`exp://<this machine's Wi-Fi IPv4>:8081`), forced
+USB-tunnel localhost mode (`expo start --android --host localhost`,
+`exp://127.0.0.1:8081`, 7 retries including a full `adb kill-server`/
+`start-server` cycle), and `--tunnel` mode got as far as needing
+`@expo/ngrok` (now installed locally in `mobile/node_modules`, not
+committed) before its own launch failure wasn't fully diagnosed. One
+observation not yet confirmed as the actual cause: `netstat` showed Metro
+under `--host localhost` listening on `[::1]:8081` (IPv6 loopback only) —
+worth checking whether that's forcing `adb reverse`'s IPv4-based forwarding
+into a bad path, though the exact failure shape (broken mid-read, not
+connection-refused) doesn't cleanly confirm this theory either. **Genuinely
+unresolved — next session should investigate the dual-stack-bind theory
+first**, rather than repeating the same retry loop. See
+`docs/mobile-app-plan.md`'s "Physical-device verification — Phase 7" section
+for the full blow-by-blow and exact resume point.

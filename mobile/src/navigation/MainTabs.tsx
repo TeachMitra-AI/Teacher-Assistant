@@ -8,6 +8,7 @@ import { LibraryStack } from './stacks/LibraryStack';
 import { GeneratorStack } from './stacks/GeneratorStack';
 import { MoreStack } from './stacks/MoreStack';
 import { useTheme } from '../theme/ThemeContext';
+import { useNotifications } from '../notifications/NotificationContext';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -21,6 +22,7 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 // new, since "More" has no web equivalent.
 export function MainTabs() {
   const { colors } = useTheme();
+  const { unreadCount } = useNotifications();
 
   return (
     <Tab.Navigator
@@ -54,7 +56,11 @@ export function MainTabs() {
       <Tab.Screen
         name="MoreTab"
         component={MoreStack}
-        options={{ title: 'More', tabBarIcon: ({ color, size }) => <MoreHorizontal color={color} size={size} /> }}
+        options={{
+          title: 'More',
+          tabBarIcon: ({ color, size }) => <MoreHorizontal color={color} size={size} />,
+          tabBarBadge: unreadCount > 0 ? (unreadCount > 99 ? '99+' : unreadCount) : undefined,
+        }}
       />
     </Tab.Navigator>
   );

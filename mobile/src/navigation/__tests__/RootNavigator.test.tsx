@@ -13,6 +13,16 @@ import { setSession } from '../../api/session';
 import { RootNavigator } from '../RootNavigator';
 import type { Role } from '../../types';
 
+// NOTIFICATIONS_ENABLED is read once at module load from an env var
+// (mobile/src/config.ts) — Jest doesn't run Metro's EXPO_PUBLIC_* inlining,
+// so process.env alone leaves it false here. Mocking the config module
+// directly is this repo's own established way around that (same reasoning
+// GeneratorResultScreen.test.tsx documents for STRUCTURED_QUESTIONS_ENABLED).
+jest.mock('../../config', () => ({
+  ...jest.requireActual('../../config'),
+  NOTIFICATIONS_ENABLED: true,
+}));
+
 jest.mock('expo-secure-store', () => {
   const store = new Map<string, string>();
   return {
@@ -95,6 +105,25 @@ describe('RootNavigator', () => {
     // just an empty tab bar.
     expect(screen.getByText('Hi Asha Verma 👋')).toBeTruthy();
     expect(screen.getByTestId('coach-composer-input')).toBeTruthy();
+  });
+
+  it('shows an unread-notifications badge in the More menu after sign-in (§26 Phase 7)', async () => {
+    await setSession('valid-token', 'valid-refresh');
+    (globalThis.fetch as jest.Mock)
+      .mockResolvedValueOnce(
+        jsonResponse(200, { user: mockUser('teacher'), featureFlags: { learningRepresentationEnabled: false } })
+      )
+      // NotificationProvider's mount-time refreshUnreadCount() — the second
+      // fetch call once a session is restored (§15's reconnect-then-refresh
+      // backstop fires the same call, but only on a socket 'connect' event,
+      // which the globally-mocked no-op socket in jest.setup.ts never emits).
+      .mockResolvedValueOnce(jsonResponse(200, { count: 3 }));
+    await renderApp();
+
+    await waitFor(() => expect(tabButton('More')).toBeTruthy());
+    await fireEvent.press(tabButton('More'));
+    await waitFor(() => expect(screen.getByTestId('more-menu-notif-badge')).toBeTruthy());
+    expect(screen.getByTestId('more-menu-notif-badge')).toHaveTextContent('3');
   });
 
   it('hides Admin from the More menu for a teacher', async () => {

@@ -2,6 +2,7 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { MoreStackParamList } from '../types';
 import { MoreMenuScreen } from '../../screens/MoreMenuScreen';
+import { NotificationsScreen } from '../../screens/notifications/NotificationsScreen';
 import { PlaceholderScreen } from '../../screens/PlaceholderScreen';
 import { useStackScreenOptions } from '../useStackScreenOptions';
 
@@ -16,9 +17,7 @@ export function MoreStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen name="MoreMenu" component={MoreMenuScreen} options={{ title: 'More' }} />
-      <Stack.Screen name="Notifications" options={{ title: 'Notifications' }}>
-        {() => <PlaceholderScreen title="Notifications" description="List + realtime — Phase 7." />}
-      </Stack.Screen>
+      <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
       <Stack.Screen name="Settings" options={{ title: 'Settings' }}>
         {() => <PlaceholderScreen title="Settings" description="Profile + preferences — later phase." />}
       </Stack.Screen>

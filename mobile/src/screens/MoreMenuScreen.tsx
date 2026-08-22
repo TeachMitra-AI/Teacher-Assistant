@@ -7,6 +7,7 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../auth/AuthContext';
+import { useNotifications } from '../notifications/NotificationContext';
 import type { Role } from '../types';
 
 type Props = NativeStackScreenProps<MoreStackParamList, 'MoreMenu'>;
@@ -27,6 +28,7 @@ const MENU_ITEMS: { route: keyof MoreStackParamList; label: string }[] = [
 export function MoreMenuScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const { user, logout } = useAuth();
+  const { unreadCount } = useNotifications();
   const isAdmin = !!user && ADMIN_ROLES.includes(user.role);
 
   return (
@@ -39,13 +41,21 @@ export function MoreMenuScreen({ navigation }: Props) {
         </Card>
       )}
 
-      {MENU_ITEMS.map((item) => (
-        <Pressable key={item.route} onPress={() => navigation.navigate(item.route)}>
-          <Card style={styles.row}>
-            <ThemedText>{item.label}</ThemedText>
-          </Card>
-        </Pressable>
-      ))}
+      {MENU_ITEMS.map((item) => {
+        const showBadge = item.route === 'Notifications' && unreadCount > 0;
+        return (
+          <Pressable key={item.route} onPress={() => navigation.navigate(item.route)}>
+            <Card style={[styles.row, styles.rowContent]}>
+              <ThemedText>{item.label}</ThemedText>
+              {showBadge && (
+                <View style={[styles.badge, { backgroundColor: colors.orange }]} testID="more-menu-notif-badge">
+                  <ThemedText style={styles.badgeText}>{unreadCount > 9 ? '9+' : String(unreadCount)}</ThemedText>
+                </View>
+              )}
+            </Card>
+          </Pressable>
+        );
+      })}
       {isAdmin && (
         <Pressable onPress={() => navigation.navigate('Admin')}>
           <Card style={styles.row}>
@@ -63,5 +73,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, gap: 10 },
   identity: { gap: 2, marginBottom: 6 },
   row: { paddingVertical: 14 },
+  rowContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  badge: { minWidth: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  badgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   signOut: { marginTop: 24 },
 });
