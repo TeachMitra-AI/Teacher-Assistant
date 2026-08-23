@@ -6,6 +6,7 @@ import {
   Megaphone, BookOpenCheck, ClipboardList, FileBarChart, Settings2, BellRing,
 } from 'lucide-react';
 import type { Role, ResponseStyle, ResourceType, NotificationType } from './types';
+import { normalizeApiBase } from './lib/apiBase';
 
 // Languages supported for AI responses (UI itself stays in English).
 //
@@ -291,7 +292,13 @@ export const AVATAR_MAX_RAW_SIZE_MB = 5;
 // keeps stored bytes small and every rendered avatar visually consistent.
 export const AVATAR_TARGET_DIMENSION_PX = 512;
 
-export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000/api';
+// Base URL every API call is built from, as `${API_BASE}${path}` (see api.ts).
+// normalizeApiBase guarantees the /api suffix the server mounts everything
+// under, so a deployment that sets VITE_API_BASE to the bare API origin still
+// reaches the API instead of 404ing every request. See lib/apiBase.ts.
+export const API_BASE = normalizeApiBase(
+  import.meta.env.VITE_API_BASE || 'http://localhost:3000/api',
+);
 
 // Socket.IO connects to the API's ORIGIN, not through /api — same server,
 // same port, just a sibling path (see server/src/lib/socketServer.js's
