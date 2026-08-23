@@ -77,6 +77,10 @@ model User {
   supportNotes        SupportNote[]
   profilePicture      ProfilePicture?
   notifications       Notification[]
+  // OS-level push registrations (Phase 7b, docs/mobile-app-plan.md §15/§26).
+  // One row per installed-app instance the teacher has signed into, not one
+  // per user — see DeviceToken's own doc comment.
+  deviceTokens        DeviceToken[]
   // Classroom Management (docs/classroom-feature-plan.md) — a teacher's own
   // classes. Every class/student/attendance/fee row is scoped to teacherId,
   // never schoolId (see SchoolClass's own doc comment) — teacher A never
@@ -355,6 +359,39 @@ model Notification {
   @@index([recipientId, read])
   @@index([recipientId, createdAt])
   @@index([type])
+}
+
+// OS-level push registration (Phase 7b, docs/mobile-app-plan.md §15/§26) — one
+// row per installed mobile app instance, NOT one per user: the same teacher
+// signed into the app on two phones holds two rows, and `token` (not
+// `userId`) is the unique key so re-registering the same installation under a
+// different account (a shared/reset device) reassigns the row instead of
+// creating a duplicate (see the upsert in routes/notifications.js).
+// notificationService.js's createNotification/createBroadcast choke point
+// reads these rows to decide who gets an Expo push alongside the existing
+// realtime Socket.IO emit — additive, never a replacement for either the
+// in-app list or the realtime bell.
+model DeviceToken {
+  id         String   @id @default(cuid())
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String
+  // The Expo push token itself (e.g. "ExponentPushToken[xxxxxxxx]"), not a
+  // raw FCM/APNs token — Expo's push service is the delivery mechanism this
+  // phase uses (docs/mobile-app-plan.md §29 point 5), so this is what
+  // sendPushNotificationsAsync() is called with directly.
+  token      String   @unique
+  // 'ios' | 'android' — informational only today (nothing branches on it yet);
+  // kept for the same reason Session.userAgent is kept, in case a future
+  // "signed-in devices" style screen wants to show it.
+  platform   String
+  createdAt  DateTime @default(now())
+  // Bumped on every successful re-registration (app launch, token refresh) —
+  // not currently read by any query, but the natural place to add a staleness
+  // sweep later without a schema change if Expo's own delivery errors turn out
+  // not to be a complete enough cleanup signal on their own.
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 // An admin's internal note on a SupportTicket (Phase 2: the admin inbox).

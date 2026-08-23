@@ -23,11 +23,14 @@ import React, {
 import type { Socket } from 'socket.io-client';
 import { useAuth } from '../auth/AuthContext';
 import { getToken } from '../api/session';
+import { Platform } from 'react-native';
 import { connectNotificationSocket } from '../lib/socket';
 import {
   listNotifications, getUnreadCount, markNotificationRead, markAllNotificationsRead, mergeNewNotification,
+  registerDeviceToken,
 } from '../api/notifications';
-import { NOTIFICATIONS_ENABLED } from '../config';
+import { registerForPushAsync } from '../lib/push';
+import { NOTIFICATIONS_ENABLED, MOBILE_PUSH_ENABLED } from '../config';
 import type { AppNotification } from '../types';
 
 interface NotificationContextValue {
@@ -151,6 +154,37 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       socket.disconnect();
       socketRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  // Phase 7b: OS-level push registration, same per-signed-in-session
+  // lifecycle scope as the socket effect above but a SEPARATE effect — push
+  // has no live connection to tear down on sign-out (registering a device
+  // token is a one-shot action, not a subscription), and MOBILE_PUSH_ENABLED
+  // is a flag independent of NOTIFICATIONS_ENABLED (see config.ts's own
+  // comment), so this must not be gated on that flag too. Re-registers on
+  // every fresh sign-in, which is also this app's answer to "a token
+  // rotated" (§15's "on token-refresh events") — there is no live
+  // OS-token-rotation listener (a deliberate scope decision: expo-notifications'
+  // addPushTokenListener fires with the underlying native token, not a
+  // ready-to-use Expo push token, and its own docs warn against re-deriving
+  // one from inside that listener — re-registering on next sign-in is a
+  // simple, correct answer to the same rare edge case instead).
+  useEffect(() => {
+    if (!MOBILE_PUSH_ENABLED || !user) return;
+
+    // No setState involved at all here (registerForPushAsync/registerDeviceToken
+    // touch no React state), so unlike the socket effect above this needs no
+    // react-hooks/set-state-in-effect suppression.
+    registerForPushAsync().then((token) => {
+      if (!token) return;
+      registerDeviceToken(token, Platform.OS as 'ios' | 'android').catch(() => {
+        // Best-effort, matching every other write in this file: a failed
+        // registration leaves push simply not delivering to this device
+        // until the next sign-in retries it — never worth surfacing as a
+        // user-facing error for a background capability.
+      });
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 

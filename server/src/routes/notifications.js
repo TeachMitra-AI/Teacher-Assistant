@@ -12,7 +12,7 @@ const { z } = require('zod');
 const { prisma } = require('../lib/db');
 const { asyncHandler } = require('../lib/asyncHandler');
 const { authRequired, requireRole } = require('../middleware/auth');
-const { readNotificationsFlags } = require('../lib/flags');
+const { readNotificationsFlags, readMobilePushFlags } = require('../lib/flags');
 const { ADMIN_SENDABLE_TYPES } = require('../lib/notificationTypes');
 const { APP_ROLES } = require('../lib/roles');
 const { createBroadcast, toDto } = require('../lib/notificationService');
@@ -45,6 +45,25 @@ function requireNotificationsEnabled() {
     const flags = readNotificationsFlags(process.env);
     if (!flags.enabled) {
       return res.status(503).json({ error: 'This feature is not available right now.', code: 'NOTIFICATIONS_DISABLED' });
+    }
+    return next();
+  };
+}
+
+/**
+ * Gate for the device-token routes below — a SEPARATE flag from
+ * requireNotificationsEnabled() above (see lib/flags.js's readMobilePushFlags
+ * doc comment for why this is layered on top of NOTIFICATIONS_ENABLED rather
+ * than merged into it). MOBILE_PUSH_ENABLED off means no token is ever
+ * persisted and, per notificationService.js/pushService.js, no Expo call is
+ * ever made — the same "gate before any work is done" shape as the gate
+ * above.
+ */
+function requireMobilePushEnabled() {
+  return (req, res, next) => {
+    const flags = readMobilePushFlags(process.env);
+    if (!flags.enabled) {
+      return res.status(503).json({ error: 'This feature is not available right now.', code: 'MOBILE_PUSH_DISABLED' });
     }
     return next();
   };
@@ -108,6 +127,66 @@ router.patch('/notifications/:id/read', authRequired, requireNotificationsEnable
   }
   res.json({ id: req.params.id, read: true });
 }));
+
+// ---- Device tokens (Phase 7b: OS-level push) -------------------------------
+
+const DEVICE_TOKEN_PLATFORMS = ['ios', 'android'];
+
+const deviceTokenSchema = z.object({
+  // Expo push tokens look like "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]" —
+  // 200 is a generous ceiling, not a measured exact length, matching how
+  // sendSchema's own `link` field is bounded above.
+  token: z.string().trim().min(10).max(200),
+  platform: z.enum(DEVICE_TOKEN_PLATFORMS),
+});
+
+// POST /api/notifications/device-tokens — register (or re-register) the
+// CALLER'S OWN device token. Upserts on `token` itself, not on
+// [userId, token]: a token uniquely identifies one app installation, so a
+// token already on file (a re-registration after an app restart, or the same
+// physical device signed into a different account) is reassigned to
+// whichever user is registering it now rather than creating a duplicate row
+// — mirrors issueSession()'s "one row per login/refresh" shape, just keyed by
+// installation instead of by session.
+router.post(
+  '/notifications/device-tokens',
+  authRequired,
+  requireMobilePushEnabled(),
+  asyncHandler(async (req, res) => {
+    const parsed = deviceTokenSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid device token.' });
+    }
+    const { token, platform } = parsed.data;
+
+    const row = await prisma.deviceToken.upsert({
+      where: { token },
+      update: { userId: req.user.id, platform, lastSeenAt: new Date() },
+      create: { userId: req.user.id, token, platform },
+    });
+
+    res.status(201).json({ id: row.id });
+  })
+);
+
+// DELETE /api/notifications/device-tokens/:token — unregister one of the
+// CALLER'S OWN device tokens (logout). Ownership-checked the same way
+// DELETE /auth/sessions/:id is: a token that exists but isn't the caller's
+// 404s rather than silently succeeding, so this can never be used to guess
+// whether some other user's device is registered.
+router.delete(
+  '/notifications/device-tokens/:token',
+  authRequired,
+  requireMobilePushEnabled(),
+  asyncHandler(async (req, res) => {
+    const existing = await prisma.deviceToken.findUnique({ where: { token: req.params.token } });
+    if (!existing || existing.userId !== req.user.id) {
+      return res.status(404).json({ error: 'Device token not found.' });
+    }
+    await prisma.deviceToken.delete({ where: { token: req.params.token } });
+    res.json({ success: true });
+  })
+);
 
 // ---- Sending (school_admin / resource_person / super_admin only) ----------
 

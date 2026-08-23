@@ -29,7 +29,7 @@ this section.
 | 5 — Library | ✅ DONE (2026-08-21) — List/View/Edit/AI-Assist/export-share verified on-device; 3 real export bugs found and fixed |
 | 6 — Generator | ✅ DONE (2026-08-21) — built directly against the structured contract (Generator v2 Stage 3); verified on-device, one real stale-bundle bug found and fixed |
 | 7 — Notifications (in-app + realtime) | ✅ DONE (2026-08-22) — implementation/tests/lint/typecheck/export all done; physical-device verification complete, one real bug found and fixed (socket.io-client needed `transports: ['websocket']` on React Native) |
-| 7b — Push Notifications (backend + client) | ⬜ NOT STARTED |
+| 7b — Push Notifications (backend + client) | ✅ IMPLEMENTATION DONE (2026-08-23) — backend + mobile + tests/lint/typecheck all complete; **live physical-device push verification BLOCKED** on the deployed backend being unavailable (Railway subscription/payment lapse), see the Phase 7b section below |
 | 8 — Classroom (shell + Classes + Students) | ⬜ NOT STARTED |
 | 9 — Attendance | ⬜ NOT STARTED |
 | 10 — Fees | ⬜ NOT STARTED |
@@ -1697,6 +1697,206 @@ all, silently degrading to "badge only updates via the REST fetch on next
 app open" rather than erroring visibly. Not observed as a problem in this
 session; worth keeping in mind if a future bug report describes stale
 badges on a specific network.
+
+### Phase 7b — Push Notifications — ✅ IMPLEMENTATION DONE (2026-08-23); live physical-device verification BLOCKED (backend deployment unavailable)
+
+**Scope, from §26 Phase 7b**: OS-level push delivery when the app is
+backgrounded/killed, the `DeviceToken` model + migration, the device-token
+routes, the dispatch hook on the existing notification choke point, the
+`MOBILE_PUSH_ENABLED` flag, and tap-to-deep-link. This is the one phase so
+far that genuinely changes the backend (§15/§17).
+
+**Status in one line**: every code, test, lint, typecheck and build
+deliverable of this phase is complete and committed. The *only* outstanding
+item is the live end-to-end push run on the physical Samsung device, which
+cannot be performed right now because the deployed backend is unavailable
+(see "Blocked verification" below). Nothing in this phase was removed,
+stubbed, weakened or feature-flagged-away because of that block.
+
+**Files created (server)**:
+- `server/prisma/migrations/20260822112030_add_device_tokens/migration.sql`
+  — the `DeviceToken` table, its `token` unique index and its `userId`
+  index. Plain SQLite DDL, consistent with every other migration in this
+  repo (the SQLite-only constraint of §2 is unchanged by this phase).
+- `server/src/lib/pushService.js` — the Expo dispatch module.
+  `dispatchPush(recipientIds, payload, deps)` is contractually
+  **never-throwing**: a push failure must not affect the `Notification` row
+  that was already written or the Socket.IO emit beside it (§17's
+  non-blocking side-channel rule, the same contract `socketServer` already
+  has). It is a hard no-op when `MOBILE_PUSH_ENABLED` is off — no
+  `DeviceToken` read, no Expo API call. `expo-server-sdk` is loaded through
+  a cached dynamic `import()` rather than `require()` because the package is
+  ESM-only and this server is CommonJS on `"engines": { "node": ">=18" }`;
+  a bare `require()` would throw `ERR_REQUIRE_ESM` on Node older than the
+  ~22.12 require-of-ESM line. Tokens Expo reports as `DeviceNotRegistered`
+  (uninstalled app / revoked permission) are deleted as part of the same
+  call — the only cleanup this phase does.
+
+**Files changed (server)**:
+- `server/prisma/schema.prisma` — the `DeviceToken` model and its `User`
+  back-relation. One row per **installed app instance**, not per user, with
+  `token` (not `userId`) as the unique key, so re-registering the same
+  installation under a different account reassigns the row instead of
+  duplicating it.
+- `server/src/lib/flags.js` — `readMobilePushFlags()` /
+  `MOBILE_PUSH_FLAG_DEFAULTS`, same shape and same default-OFF reasoning as
+  every existing flag reader. `MOBILE_PUSH_ENABLED` is deliberately a
+  **separate** gate layered on top of `NOTIFICATIONS_ENABLED`, not merged
+  into it: the latter decides whether a `Notification` exists at all, the
+  former only whether an *additional* Expo push accompanies it. That is what
+  lets push be switched off independently while Phase 7's shipped
+  in-app/realtime behavior stays exactly as it was.
+- `server/src/lib/notificationService.js` — the dispatch hook, added at the
+  existing `createNotification`/`createBroadcast` choke point (§15/§17:
+  extended, never replaced). Both call sites are additionally wrapped in
+  `try/catch` even though `dispatchPush` already contracts not to throw —
+  the same belt-and-suspenders shape the Socket.IO emit beside them already
+  uses. `pushService` is referenced as a namespace (never destructured) so
+  the call sites stay spy-able without module-mocking machinery.
+- `server/src/routes/notifications.js` — `requireMobilePushEnabled()` plus
+  `POST /api/notifications/device-tokens` (upsert on `token`) and
+  `DELETE /api/notifications/device-tokens/:token` (ownership-checked; a
+  token that exists but isn't the caller's 404s rather than silently
+  succeeding, so it can't be used to probe another user's devices — same
+  shape as `DELETE /auth/sessions/:id`).
+- `server/src/routes/auth.js` — `POST /api/auth/logout` now also accepts an
+  optional `deviceToken` and unregisters it in the **same call**. Scoped
+  through the session the `refreshToken` identifies rather than through a
+  bearer access token, because logout already only requires the refresh
+  token; with no valid session there is no `userId` to attribute the device
+  token to, so cleanup is skipped rather than deleting an unowned row.
+- `server/.env.example` — `MOBILE_PUSH_ENABLED` (default `false`) and the
+  optional `EXPO_ACCESS_TOKEN`, documented in this file's existing style.
+- `server/package.json` — `expo-server-sdk` dependency.
+
+**Files created (mobile)**:
+- `mobile/src/lib/push.ts` — `registerForPushAsync()` /
+  `getCachedPushToken()`. Pure `expo-notifications` wrapper, no React state
+  (same "lib/* is a plain function the provider calls" shape as
+  `lib/socket.ts`). Returns `null` — never throws — for every non-usable
+  case: permission denied, no EAS `projectId`, not a physical device, or a
+  runtime without push support. A push arriving while the app is
+  **foregrounded** is deliberately silent (`shouldShowBanner: false`):
+  Phase 7's Socket.IO `notification:new` handler already updates the badge
+  and list live for exactly that case, so an OS banner would be a noisier
+  duplicate of the same event. Push exists for the backgrounded/killed case
+  Socket.IO cannot reach.
+- `mobile/src/navigation/navigationRef.ts` — a module-level
+  `createNavigationContainerRef`, so a notification tap can navigate
+  imperatively from outside the component tree. Deliberately untyped against
+  a specific param list: the mounted tree switches between the auth stack
+  and the main tabs, and a tap can arrive on either side of that switch.
+- `mobile/src/notifications/pushLinking.ts` — `resolveNotificationLink()` /
+  `navigateToNotificationLink()`: maps a `Notification.link` string (the
+  same relative web path the web bell already navigates to verbatim) onto
+  this app's route names. A plain path→route table, not a general router,
+  because the only links produced today are system-generated `/library/<id>`
+  and whatever an admin free-types into a broadcast. Anything unrecognized
+  falls back to the Notifications screen — always mounted, always safe.
+- `mobile/src/notifications/usePushNotificationRouting.ts` — tap handling
+  for all three arrival states: live via
+  `addNotificationResponseReceivedListener`, and cold-start-from-killed via
+  a one-shot `getLastNotificationResponseAsync()` that is cleared after
+  consumption so it can't re-fire on a later remount.
+- Tests: `mobile/src/lib/__tests__/push.test.ts`,
+  `mobile/src/notifications/__tests__/pushLinking.test.ts`,
+  `mobile/src/notifications/__tests__/usePushNotificationRouting.test.tsx`,
+  `mobile/src/notifications/__tests__/usePushNotificationRouting.disabled.test.tsx`,
+  `mobile/src/notifications/__tests__/NotificationContext.push.test.tsx`.
+- `mobile/eas.json` — EAS Build profiles (`development` as a
+  `developmentClient` APK, `preview`, `production`). Required because Expo
+  Go does **not** support Android push from SDK 53 onward — a development
+  build is mandatory to test this phase on a device at all.
+
+**Files changed (mobile)**:
+- `mobile/src/config.ts` — `MOBILE_PUSH_ENABLED`, with the same "the server
+  flag is the real kill switch" caveat as every other client flag.
+- `mobile/src/notifications/NotificationContext.tsx` — the registration
+  effect, scoped per signed-in session but kept as a **separate** effect
+  from the socket one: registering a token is a one-shot action with nothing
+  to tear down, and it must not be gated on `NOTIFICATIONS_ENABLED`.
+  Re-registering on each fresh sign-in is also this app's answer to token
+  rotation; there is no live rotation listener, deliberately, because
+  `addPushTokenListener` yields the native token rather than a usable Expo
+  token.
+- `mobile/src/auth/AuthContext.tsx` — `logout()` reads the cached push token
+  **before** clearing session state and sends it inline with
+  `POST /auth/logout`, so unregistration survives the session teardown.
+- `mobile/src/navigation/RootNavigator.tsx` — mounts
+  `usePushNotificationRouting()` unconditionally (not inside the signed-in
+  branch) and attaches `navigationRef`, because a cold-start tap must be
+  handled as soon as the container exists, before session restore has
+  necessarily resolved.
+- `mobile/app.json` — `expo-notifications` + `expo-dev-client` plugins, the
+  Android `package` (`com.teachmitra.assistant`), `versionCode`, and the EAS
+  project id/owner needed to obtain a push token at all.
+- `mobile/jest.setup.ts` — inert-by-default `expo-notifications` /
+  `expo-constants` mocks (permission NOT granted, no project id), so every
+  pre-existing test that merely renders the authenticated tree never
+  attempts a registration. The push tests override these locally.
+- `mobile/.env.example`, `mobile/package.json`, `README.md` — flag
+  documentation, dependencies, and the user-facing status note.
+
+**Tests / lint / typecheck (run 2026-08-23, immediately before the commit)**:
+- Mobile `npx jest` — **254/254 passing, 32/32 suites**.
+- Mobile `tsc --noEmit` — clean.
+- Mobile `expo lint` — clean.
+- Server `npx vitest run` — **2167/2167 passing, 87/87 files**.
+- Server `eslint src evals tools` — clean.
+
+**One environment-dependent server test failure, diagnosed and NOT caused by
+this phase**: running the server suite with the developer's local
+`server/.env` in place fails
+`test/resources.test.js > notification hook on save > creates exactly one
+lesson_generated notification…` with "expected 3 to have length 1". Root
+cause: that local `.env` has `NOTIFICATIONS_ENABLED=true` (set during Phase
+7's device verification), and `test/helpers/testEnv.js` does not neutralize
+it, so resources created by the *earlier* `create` describe block in the
+same file also emit notifications that the assertion then counts. Proof it
+is environmental and pre-existing, not a Phase 7b regression:
+`NOTIFICATIONS_ENABLED=false npx vitest run test/resources.test.js` passes
+95/95, and the full suite under the same override passes 2167/2167 (the
+numbers quoted above). Nothing in this phase touches resource creation or
+that flag's default. Left as-is rather than "fixed" here, since changing an
+unrelated test's isolation is outside this phase's diff.
+
+**Blocked verification — the ONLY outstanding item in this phase**:
+- **What is blocked**: the live physical-device run of §26 Phase 7b's device
+  verification — background/kill the app on the Samsung device, trigger an
+  admin broadcast, confirm the OS push arrives, confirm tapping it
+  deep-links to the right screen, and confirm logout removes the device
+  token server-side.
+- **Why it is blocked**: that run requires the *deployed* backend (the
+  device build points at the hosted API URL, and Expo's push service must be
+  reachable from a server the phone can actually talk to). The Railway
+  deployment is currently unavailable due to a subscription/payment lapse on
+  the hosting account. This is purely an infrastructure/billing condition —
+  it is **not** a code defect, not a design gap, and not a limitation of
+  anything implemented in this phase.
+- **What this does NOT block, and was therefore completed**: the entire
+  implementation (backend + mobile), the full automated test suites on both
+  sides, lint, typecheck, the Prisma migration, and the EAS Android
+  development build, which was produced and installed on the physical device.
+- **How to close it once the backend is back up** (no code change expected):
+  1. Set `MOBILE_PUSH_ENABLED=true` and, optionally, `EXPO_ACCESS_TOKEN` in
+     the deployed server environment; confirm `NOTIFICATIONS_ENABLED=true`
+     is still set there too.
+  2. Run `prisma migrate deploy` on the deployment so the `DeviceToken`
+     table exists (already part of `npm start`).
+  3. Build/install the dev-client APK with
+     `EXPO_PUBLIC_MOBILE_PUSH_ENABLED=true` and the deployed API URL.
+  4. Sign in, grant the notification permission, and confirm a
+     `DeviceToken` row appears for that user.
+  5. Background, then kill, the app; send an admin broadcast from the web
+     admin UI; confirm the OS notification arrives in both states.
+  6. Tap it from the killed state and confirm the deep link lands on the
+     screen `resolveNotificationLink()` maps its `link` to.
+  7. Log out and confirm the `DeviceToken` row is gone.
+- **Explicitly recorded so it is not lost**: until steps 5/6 have actually
+  been observed on hardware, Phase 7b's *acceptance criteria* are met on
+  code/test evidence only. That is the honest state of this phase — the
+  implementation is finished, the field verification is deferred by an
+  external blocker.
 
 ---
 

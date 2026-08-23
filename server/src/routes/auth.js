@@ -595,17 +595,40 @@ router.post('/refresh', asyncHandler(async (req, res) => {
   });
 }));
 
-// POST /api/auth/logout — revoke one refresh-token session. Always returns
-// success even if the token was already gone, so the client can clear its
-// local storage unconditionally without special-casing the response.
+// POST /api/auth/logout — revoke one refresh-token session, and (Phase 7b)
+// unregister one push device token in the same call. Always returns success
+// even if either token was already gone, so the client can clear its local
+// storage unconditionally without special-casing the response.
+//
+// `deviceToken` is deliberately scoped through the SESSION the refreshToken
+// identifies, not through a bearer access token — logout already only
+// requires the refresh token (no Authorization header), and reusing that
+// same credential to look up `userId` keeps this route's own ownership
+// contract (never delete a device token that doesn't belong to whoever is
+// logging out) without adding a second auth path. If the refresh token is
+// missing/already revoked, there is no `userId` to attribute the device
+// token to, so it is left alone — deviceToken cleanup with no valid session
+// is silently skipped rather than deleted unowned (mirrors how a missing
+// refreshToken already silently skips session revocation above).
 router.post('/logout', asyncHandler(async (req, res) => {
   const refreshToken = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken : null;
+  const deviceToken = typeof req.body?.deviceToken === 'string' ? req.body.deviceToken : null;
+
   if (refreshToken) {
+    const session = deviceToken
+      ? await prisma.session.findUnique({ where: { tokenHash: hashToken(refreshToken) }, select: { userId: true } })
+      : null;
+
     await prisma.session.updateMany({
       where: { tokenHash: hashToken(refreshToken), revokedAt: null },
       data: { revokedAt: new Date() },
     });
+
+    if (session) {
+      await prisma.deviceToken.deleteMany({ where: { token: deviceToken, userId: session.userId } });
+    }
   }
+
   return res.json({ success: true });
 }));
 

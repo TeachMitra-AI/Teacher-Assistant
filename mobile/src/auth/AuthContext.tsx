@@ -7,6 +7,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/client';
 import { setSession, getToken, getRefreshToken } from '../api/session';
+import { getCachedPushToken } from '../lib/push';
 import type {
   AuthOutcome,
   AuthResponse,
@@ -143,13 +144,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // so it can't land afterward and resurrect a user we just signed out.
     reconcileIdRef.current += 1;
     const refreshToken = await getRefreshToken();
+    // Phase 7b: read BEFORE clearing session state below — this is the same
+    // in-memory value NotificationContext.tsx's push-registration effect set,
+    // not a network call, so there is no ordering hazard reading it here.
+    const deviceToken = getCachedPushToken();
     await setSession(null, null);
     setUser(null);
     setFeatureFlags(null);
     // Revoke server-side on a best-effort basis — a failure here shouldn't
     // block or roll back the client-side logout that already happened above.
+    // `deviceToken` unregisters this device's push token in the SAME call
+    // (server/src/routes/auth.js's POST /logout, Phase 7b) — null whenever
+    // this session never registered one (MOBILE_PUSH_ENABLED off, no
+    // permission granted, no Expo project id), in which case the server
+    // route's own `if (deviceToken)` branch is simply never taken.
     if (refreshToken) {
-      api('/auth/logout', { method: 'POST', body: { refreshToken }, auth: false }).catch(() => {});
+      api('/auth/logout', { method: 'POST', body: { refreshToken, deviceToken }, auth: false }).catch(() => {});
     }
   }, []);
 

@@ -9,6 +9,7 @@ import React from 'react';
 import { renderHook, waitFor, act } from '@testing-library/react-native';
 import { AuthProvider, useAuth } from '../AuthContext';
 import { setSession, getToken } from '../../api/session';
+import * as pushLib from '../../lib/push';
 
 jest.mock('expo-secure-store', () => {
   const store = new Map<string, string>();
@@ -190,5 +191,32 @@ describe('AuthContext', () => {
     expect(await getToken()).toBeNull();
     const logoutCall = (globalThis.fetch as jest.Mock).mock.calls.find(([url]) => url.endsWith('/auth/logout'));
     expect(logoutCall).toBeTruthy();
+    const [, options] = logoutCall as [string, RequestInit];
+    // Phase 7b: no push token was ever registered in this test (nothing
+    // called registerForPushAsync), so the logout body's deviceToken is
+    // null — the next test below covers the "a token WAS registered" case.
+    expect(JSON.parse(options.body as string)).toMatchObject({ refreshToken: 'ref', deviceToken: null });
+  });
+
+  it('logout — Phase 7b: includes the cached push device token so the server can unregister it in the same call', async () => {
+    const spy = jest.spyOn(pushLib, 'getCachedPushToken').mockReturnValue('ExponentPushToken[cached]');
+
+    await setSession('tok', 'ref');
+    (globalThis.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, { user: mockUser, featureFlags: mockFeatureFlags })
+    );
+    const { result } = await renderAuth();
+    await waitFor(() => expect(result.current.user).toEqual(mockUser));
+
+    (globalThis.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(200, { success: true }));
+    await act(async () => {
+      await result.current.logout();
+    });
+
+    const logoutCall = (globalThis.fetch as jest.Mock).mock.calls.find(([url]) => url.endsWith('/auth/logout'));
+    const [, options] = logoutCall as [string, RequestInit];
+    expect(JSON.parse(options.body as string)).toMatchObject({ deviceToken: 'ExponentPushToken[cached]' });
+
+    spy.mockRestore();
   });
 });

@@ -53,3 +53,25 @@ jest.mock('socket.io-client', () => ({
     disconnect: jest.fn(),
   })),
 }));
+
+// expo-notifications/expo-constants back OS-level push (Phase 7b,
+// mobile/src/lib/push.ts, mobile/src/notifications/usePushNotificationRouting.ts)
+// — both reach for native modules that don't exist under the Jest test
+// renderer. Default: permission NOT granted and no EAS projectId configured,
+// so registerForPushAsync() resolves to null and every test that merely
+// renders the authenticated tree never attempts a "real" registration —
+// same "safe inert default" shape as the Google Sign-In mocks above.
+// push.test.ts and usePushNotificationRouting.test.tsx override specific
+// methods locally to exercise the granted/token/tap-response paths.
+jest.mock('expo-notifications', () => ({
+  setNotificationHandler: jest.fn(),
+  getPermissionsAsync: jest.fn().mockResolvedValue({ granted: false, status: 'undetermined' }),
+  requestPermissionsAsync: jest.fn().mockResolvedValue({ granted: false, status: 'denied' }),
+  setNotificationChannelAsync: jest.fn().mockResolvedValue(undefined),
+  getExpoPushTokenAsync: jest.fn().mockResolvedValue({ data: 'ExponentPushToken[mock]', type: 'expo' }),
+  getLastNotificationResponseAsync: jest.fn().mockResolvedValue(null),
+  clearLastNotificationResponseAsync: jest.fn().mockResolvedValue(undefined),
+  addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  AndroidImportance: { MIN: 1, LOW: 2, DEFAULT: 3, HIGH: 4, MAX: 5 },
+}));
+jest.mock('expo-constants', () => ({ expoConfig: {}, easConfig: undefined }));

@@ -6,6 +6,8 @@ import { AuthLoadingScreen } from '../screens/auth/AuthScreen';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import { NotificationProvider } from '../notifications/NotificationContext';
+import { usePushNotificationRouting } from '../notifications/usePushNotificationRouting';
+import { navigationRef } from './navigationRef';
 
 // §10/§26 Phase 3: an entirely separate root navigator for signed-out vs
 // signed-in, mirroring App.tsx's own signed-out route tree on web. Switching
@@ -22,9 +24,16 @@ import { NotificationProvider } from '../notifications/NotificationContext';
 // whole subtree — and its socket — unmounts on sign-out) without needing an
 // internal `if (!user)` early-return AND an outer always-mounted provider
 // the way the web version needs.
+// §26 Phase 7b: notification-tap routing (mobile/src/notifications/
+// usePushNotificationRouting.ts) is mounted here, unconditionally — unlike
+// NotificationProvider below, it is NOT scoped to the signed-in branch,
+// because a killed-app cold-start tap must be handled as soon as this
+// NavigationContainer exists, before AuthContext's own session restore has
+// necessarily resolved (loading may still be true on that first render).
 export function RootNavigator() {
   const { mode, colors } = useTheme();
   const { user, loading } = useAuth();
+  usePushNotificationRouting();
 
   const navTheme: Theme = {
     ...(mode === 'dark' ? DarkTheme : DefaultTheme),
@@ -39,7 +48,7 @@ export function RootNavigator() {
   };
 
   return (
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer ref={navigationRef} theme={navTheme}>
       {loading ? (
         <AuthLoadingScreen />
       ) : user ? (

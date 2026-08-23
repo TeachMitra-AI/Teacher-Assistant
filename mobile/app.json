@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "mobile",
-    "slug": "mobile",
+    "slug": "rajeev-kumar",
     "version": "1.0.0",
     "scheme": "teacherassistant",
     "orientation": "portrait",
@@ -17,7 +17,9 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.teachmitra.assistant",
+      "versionCode": 2
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -25,7 +27,20 @@
     "plugins": [
       "expo-secure-store",
       "expo-web-browser",
-      "expo-sharing"
-    ]
+      "expo-sharing",
+      "expo-dev-client",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "default"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "30608c6d-68e3-4c34-adad-bb31e03eef5a"
+      }
+    },
+    "owner": "rajeevnita2025s-team"
   }
 }
