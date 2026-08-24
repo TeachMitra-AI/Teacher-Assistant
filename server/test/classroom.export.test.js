@@ -165,7 +165,7 @@ describe('Classroom Management — CSV export', () => {
       expect(res.headers['content-type']).toMatch(/spreadsheetml/);
       expect(res.headers['content-disposition']).toMatch(/fees\.xlsx/);
 
-      expect(sheet.getRow(1).values.slice(1)).toEqual(['Student Name', 'Roll Number', 'Status', 'Amount Paid', 'Amount Expected']);
+      expect(sheet.getRow(1).values.slice(1)).toEqual(['Student Name', 'Roll Number', 'Status', 'Amount Paid', 'Amount Expected', 'Extra Paid']);
 
       const rows = [];
       sheet.eachRow((row, rowNumber) => { if (rowNumber > 1) rows.push(row.values.slice(1)); });
@@ -203,6 +203,45 @@ describe('Classroom Management — CSV export', () => {
     test('404s for a class owned by someone else', async () => {
       const res = await as(teacherBToken)(request(app).get(`/api/classroom/classes/${classId}/fees/export?period=2026-09`));
       expect(res.status).toBe(404);
+    });
+
+    // An overpaid student is a subset of 'paid' (amount > expectedAmount) —
+    // the export marks them distinctly (label + color + Extra Paid amount),
+    // and the TOTAL row's "still owed" figure must be the sum of each
+    // student's own shortfall, never net against another student's
+    // overpayment (docs/report-feature-fix.md — same fix as the Reports tab).
+    test('marks an overpaid student distinctly and never lets their overpayment hide another student\'s pending amount', async () => {
+      const feeClassRes = await as(teacherAToken)(
+        request(app).post('/api/classroom/classes').send({ name: 'Overpay Test Class', feeAmount: 1000 })
+      );
+      const feeClassId = feeClassRes.body.class.id;
+      const overpaidStudent = await addStudent(teacherAToken, feeClassId, 'Aarav', '1');
+      const pendingStudent = await addStudent(teacherAToken, feeClassId, 'Zara', '2');
+      await as(teacherAToken)(request(app).patch(`/api/classroom/students/${overpaidStudent}/fees/2026-09`).send({ amount: 2000 }));
+      // Zara left as default pending — no explicit PATCH, same convention as Irfan above.
+
+      const res = await as(teacherAToken)(
+        request(app).get(`/api/classroom/classes/${feeClassId}/fees/export?period=2026-09`).buffer(true).parse(binaryParser)
+      );
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(res.body);
+      const sheet = workbook.worksheets[0];
+
+      const rows = [];
+      sheet.eachRow((row, rowNumber) => { if (rowNumber > 1) rows.push({ values: row.values.slice(1), row }); });
+      const aaravRow = rows.find((r) => String(r.values[1]) === '1');
+      expect(aaravRow.values[2]).toBe('Overpaid');
+      expect(aaravRow.values[3]).toBe(2000); // amount paid
+      expect(aaravRow.values[4]).toBe(1000); // amount expected
+      expect(aaravRow.values[5]).toBe(1000); // extra paid
+      expect(aaravRow.row.getCell(3).fill.fgColor.argb).toBe('FFEFF6FF'); // overpaid = blue
+
+      const totalRow = rows.find((r) => r.values[0] === 'TOTAL');
+      // Aarav's ₹1000 overpayment must NOT cancel out Zara's ₹1000 still owed
+      // — the old (totalExpected - totalCollected) math would have shown ₹0.
+      expect(totalRow.values[2]).toContain('Overpaid: 1');
+      expect(totalRow.values[2]).toContain('₹1000 still owed');
+      expect(totalRow.values[5]).toBe(1000); // sum of everyone's Extra Paid
     });
   });
 });

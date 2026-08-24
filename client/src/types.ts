@@ -590,6 +590,7 @@ export interface ClassFeeStatus {
   feeAmount: number | null; // the class's CURRENT fee amount (not a snapshot)
   totalCollected: number;
   totalExpected: number;
+  totalPending: number; // sum of each student's own (expectedAmount - amount), never negative per student — an overpayment never offsets another student's shortfall
   perStudent: StudentFeeStatus[];
 }
 

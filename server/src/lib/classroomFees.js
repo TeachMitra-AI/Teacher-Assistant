@@ -60,6 +60,10 @@ async function getClassFeeStatus(prisma, { classId, teacherId, period }) {
   const pending = perStudent.length - paid - partial;
   const totalCollected = perStudent.reduce((sum, s) => sum + s.amount, 0);
   const totalExpected = perStudent.reduce((sum, s) => sum + (s.expectedAmount || 0), 0);
+  // Summed per-student, NOT (totalExpected - totalCollected): each student's
+  // shortfall is independent, so one student overpaying must never net
+  // against — and hide — another student's unpaid balance in this total.
+  const totalPending = perStudent.reduce((sum, s) => sum + Math.max((s.expectedAmount || 0) - s.amount, 0), 0);
 
   return {
     period,
@@ -70,6 +74,7 @@ async function getClassFeeStatus(prisma, { classId, teacherId, period }) {
     feeAmount: classFeeAmount,
     totalCollected,
     totalExpected,
+    totalPending,
     perStudent,
   };
 }

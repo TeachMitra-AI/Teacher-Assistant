@@ -3377,9 +3377,126 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .classroom-summary-tile.tile-present .classroom-summary-value { color: #15803d; }
 .classroom-summary-tile.tile-absent .classroom-summary-value { color: #b91c1c; }
 .classroom-summary-tile.tile-partial .classroom-summary-value { color: #b45309; }
+/* Overpaid — a subset of Paid, not an equal 5th status, so it gets its own
+   blue tone rather than reusing tile-present's green (which would read as a
+   second "Paid" bucket and imply the counts are mutually exclusive). */
+.classroom-summary-tile.tile-info .classroom-summary-value { color: #1d4ed8; }
 [data-theme='dark'] .classroom-summary-tile.tile-present .classroom-summary-value { color: #6ee7a8; }
 [data-theme='dark'] .classroom-summary-tile.tile-absent .classroom-summary-value { color: #fca5a5; }
 [data-theme='dark'] .classroom-summary-tile.tile-partial .classroom-summary-value { color: #fcd34d; }
+[data-theme='dark'] .classroom-summary-tile.tile-info .classroom-summary-value { color: #93c5fd; }
+
+/* Clickable fee-status tiles (Reports tab) — a modifier on the shared
+   .classroom-summary-tile, kept separate so the plain (non-interactive)
+   tiles reused in FeeStatusBoard/AttendanceDaily/AttendanceMonthly are
+   unaffected. */
+.classroom-summary-tile-clickable {
+  border: 1px solid var(--border);
+  font: inherit;
+  cursor: pointer;
+  width: 100%;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.classroom-summary-tile-clickable:hover { border-color: var(--text-muted); }
+.classroom-summary-tile-clickable:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+
+.classroom-summary-tile-chevron { color: var(--text-muted); transition: transform 0.15s ease; margin-top: 0.1rem; }
+.classroom-summary-tile-clickable.selected .classroom-summary-tile-chevron { transform: rotate(180deg); }
+
+/* Ring color matches each tile's own status tone, not one shared accent. */
+.classroom-summary-tile-clickable.selected {
+  border-color: var(--border);
+  box-shadow: 0 0 0 2px var(--border);
+}
+.classroom-summary-tile-clickable.tile-present.selected {
+  border-color: #86efac;
+  box-shadow: 0 0 0 2px rgba(21, 128, 61, 0.35);
+}
+.classroom-summary-tile-clickable.tile-partial.selected {
+  border-color: #fcd34d;
+  box-shadow: 0 0 0 2px rgba(180, 83, 9, 0.35);
+}
+.classroom-summary-tile-clickable.tile-absent.selected {
+  border-color: #fca5a5;
+  box-shadow: 0 0 0 2px rgba(185, 28, 28, 0.35);
+}
+.classroom-summary-tile-clickable.tile-info.selected {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.35);
+}
+[data-theme='dark'] .classroom-summary-tile-clickable.selected { box-shadow: 0 0 0 2px var(--border); }
+[data-theme='dark'] .classroom-summary-tile-clickable.tile-present.selected {
+  border-color: #14532d;
+  box-shadow: 0 0 0 2px rgba(110, 231, 168, 0.35);
+}
+[data-theme='dark'] .classroom-summary-tile-clickable.tile-partial.selected {
+  border-color: #78350f;
+  box-shadow: 0 0 0 2px rgba(252, 211, 77, 0.35);
+}
+[data-theme='dark'] .classroom-summary-tile-clickable.tile-absent.selected {
+  border-color: #7f1d1d;
+  box-shadow: 0 0 0 2px rgba(252, 165, 165, 0.35);
+}
+[data-theme='dark'] .classroom-summary-tile-clickable.tile-info.selected {
+  border-color: #1e3a8a;
+  box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.35);
+}
+
+/* Fee-status student list modal (Reports tab) — opened by a clickable tile
+   above. Same overlay/portal/focus-trap conventions as .attachment-modal-*,
+   kept as its own class family since sizing (a scrollable name list, not a
+   media preview) differs. */
+.classroom-fee-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(10, 12, 17, 0.72);
+  animation: classroom-fee-modal-in 0.15s ease;
+}
+.classroom-fee-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(480px, 100%);
+  max-height: min(80vh, 640px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.55), var(--shadow);
+}
+/* Static border ring around the whole open modal — no motion. Color matches
+   the status of the tile that opened it (same tones as the tile's own
+   "selected" ring), so it reinforces which category is showing rather than
+   adding an unrelated accent color. Neutral/orange for "Total Students" (no
+   tone class). */
+.classroom-fee-modal.tile-present { box-shadow: 0 0 0 2px rgba(21, 128, 61, 0.55), var(--shadow); }
+.classroom-fee-modal.tile-partial { box-shadow: 0 0 0 2px rgba(180, 83, 9, 0.55), var(--shadow); }
+.classroom-fee-modal.tile-absent { box-shadow: 0 0 0 2px rgba(185, 28, 28, 0.55), var(--shadow); }
+.classroom-fee-modal.tile-info { box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.55), var(--shadow); }
+.classroom-fee-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.6rem 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.classroom-fee-modal-title { flex: 1; min-width: 0; font-size: 0.95rem; font-weight: 700; color: var(--text); }
+.classroom-fee-modal-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0.75rem; }
+.classroom-fee-modal-body .classroom-att-list { margin: 0; }
+
+@keyframes classroom-fee-modal-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 640px) {
+  .classroom-fee-modal-backdrop { padding: 0.75rem; }
+  .classroom-fee-modal { max-height: 88vh; }
+}
 
 /* Attendance-marking roster and the monthly per-student list — a card-per-
    student list (never a dense table), so it stays one-hand-usable at any
