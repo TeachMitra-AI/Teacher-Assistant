@@ -490,6 +490,40 @@ function readStructuredQuestionsFlags(env, { warn = console.warn } = {}) {
   };
 }
 
+// ---- Mobile Push (Phase 7b) -------------------------------------------------
+//
+// Same shape and same "default OFF" reasoning as every flag above.
+// MOBILE_PUSH_ENABLED is a SEPARATE gate from NOTIFICATIONS_ENABLED, layered
+// on top of it rather than merged into it: NOTIFICATIONS_ENABLED controls
+// whether a Notification is created/emitted at all (every call site already
+// checks it before ever reaching notificationService.js), while
+// MOBILE_PUSH_ENABLED controls only the ADDITIONAL Expo push dispatch a
+// created notification triggers, plus the device-token registration routes
+// themselves (routes/notifications.js). This lets push be switched on/off
+// independently of in-app/realtime notifications — e.g. to finish Expo/FCM
+// credential setup (docs/mobile-app-plan.md §26 Phase 7b) without touching
+// the already-shipped Phase 7 behavior at all.
+
+const MOBILE_PUSH_FLAG_DEFAULTS = Object.freeze({
+  enabled: false,
+});
+
+/**
+ * Read the Mobile Push feature's global flags from an environment object.
+ * @param {Record<string, string|undefined>} env
+ * @param {{warn?: (msg: string) => void}} [opts]
+ * @returns {{enabled: boolean}}
+ */
+function readMobilePushFlags(env, { warn = console.warn } = {}) {
+  return {
+    enabled: parseBoolEnv(env.MOBILE_PUSH_ENABLED, {
+      name: 'MOBILE_PUSH_ENABLED',
+      defaultValue: MOBILE_PUSH_FLAG_DEFAULTS.enabled,
+      warn,
+    }),
+  };
+}
+
 module.exports = {
   parseBoolEnv,
   parseListEnv,
@@ -510,4 +544,6 @@ module.exports = {
   CLASSROOM_MANAGEMENT_FLAG_DEFAULTS,
   readStructuredQuestionsFlags,
   STRUCTURED_QUESTIONS_FLAG_DEFAULTS,
+  readMobilePushFlags,
+  MOBILE_PUSH_FLAG_DEFAULTS,
 };

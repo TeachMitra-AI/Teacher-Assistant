@@ -164,7 +164,42 @@ All features below are verified against the current source code.
 These are **not implemented** yet (see `docs/` and the code comments):
 - Migration from SQLite to PostgreSQL (`docs/postgres-migration-plan.md` — plan only).
 - One-time git-history secret purge (`docs/git-history-secret-purge.md` — runbook only).
-- Additional languages, video micro-learning, native mobile app, SMS/feature-phone support.
+- Additional languages, video micro-learning, SMS/feature-phone support.
+- The native mobile app is **in progress** — see below.
+
+---
+
+## Mobile App (Native, in progress)
+
+A native Android/iOS app (`mobile/`, Expo/React Native) is being built alongside the web
+client, reusing the same backend API. Full phased plan and per-phase implementation notes:
+[`docs/mobile-app-plan.md`](docs/mobile-app-plan.md).
+
+### Phase 7b — Push Notifications: implementation complete, Railway verification pending
+- **Backend**: implemented and complete — `DeviceToken` Prisma model + migration, the
+  `POST`/`DELETE /api/notifications/device-tokens` routes, Expo push dispatch wired into the
+  existing `createNotification`/`createBroadcast` choke point (`notificationService.js`),
+  invalid-token cleanup, and logout-embedded device-token unregistration
+  (`POST /api/auth/logout`) — all behind a new `MOBILE_PUSH_ENABLED` flag, independent of the
+  existing `NOTIFICATIONS_ENABLED` flag.
+- **Mobile**: implemented and complete — `expo-notifications` permission/token registration,
+  registration on sign-in and unregistration on logout, foreground/background/killed-app
+  notification handling, and tap-to-open deep-linking from a notification's `link` field into
+  the correct in-app screen.
+- **Tests**: server — new backend/device-token/push-dispatch tests passing, full server suite
+  green except one **pre-existing, unrelated** failure confirmed present on the unmodified
+  baseline (via `git stash`), not caused by this work. Mobile — **254/254 tests passing**, lint
+  clean, typecheck clean, Android bundle export verified.
+- **Physical device**: an EAS Android development build (APK) was built and installed on a
+  physical device.
+- **Blocked (the only outstanding item)**: the live end-to-end verification on a physical
+  device — background/killed-app push delivery, tap-to-open deep-linking, and logout
+  unregistration — cannot be run right now because it requires the **deployed** backend, and
+  the Railway deployment is unavailable due to a subscription/payment lapse on the hosting
+  account. This is an infrastructure/billing condition, **not** a code defect: nothing in the
+  Phase 7b implementation was removed, stubbed or weakened because of it. The step-by-step
+  procedure to close this verification once the deployment is back up is recorded in
+  [`docs/mobile-app-plan.md`](docs/mobile-app-plan.md) under "Phase 7b … Blocked verification".
 
 ---
 

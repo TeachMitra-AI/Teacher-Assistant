@@ -134,6 +134,16 @@ export const STRUCTURED_QUESTIONS_ENABLED = process.env.EXPO_PUBLIC_STRUCTURED_Q
 // Socket.IO handshake rejects every connection regardless of this flag).
 export const NOTIFICATIONS_ENABLED = process.env.EXPO_PUBLIC_NOTIFICATIONS_ENABLED === 'true';
 
+// --- Phase 7b (Push Notifications) ---
+// Client-side gate, same "not the real kill switch" caveat as every flag
+// above: the server's MOBILE_PUSH_ENABLED is the immediately-effective one
+// (both device-token routes 503 regardless of this flag). Deliberately a
+// SEPARATE flag from NOTIFICATIONS_ENABLED — this app can ship in-app/
+// realtime notifications without OS push, or vice versa, without either
+// flag implying the other (mirrors server/src/lib/flags.js's
+// readMobilePushFlags doc comment).
+export const MOBILE_PUSH_ENABLED = process.env.EXPO_PUBLIC_MOBILE_PUSH_ENABLED === 'true';
+
 // Closed vocabulary — SERVER COUNTERPART: server/src/lib/notificationTypes.js.
 // Same CHANGE-11 duplication convention as the vocabularies above. Unlike the
 // web's version, mobile has no admin compose screen yet (later phase, §26),

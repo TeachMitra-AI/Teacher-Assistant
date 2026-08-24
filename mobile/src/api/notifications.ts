@@ -32,6 +32,23 @@ export async function sendNotification(input: SendNotificationInput): Promise<{ 
   return api<{ success: boolean; recipientCount: number }>('/notifications', { method: 'POST', body: input });
 }
 
+// --- Phase 7b (Push Notifications) -------------------------------------
+// Thin wrappers around POST/DELETE /api/notifications/device-tokens (§15,
+// §26 Phase 7b) — same shape as every other function in this file.
+
+export async function registerDeviceToken(token: string, platform: 'ios' | 'android'): Promise<void> {
+  await api('/notifications/device-tokens', { method: 'POST', body: { token, platform } });
+}
+
+// Standalone unregister (not the primary logout path — AuthContext.logout()
+// sends the token inline with POST /auth/logout instead, so unregistration
+// survives even after the session is cleared; see that file). Kept for
+// completeness/future use (e.g. a "forget this device" action) and exercised
+// directly by its own tests.
+export async function unregisterDeviceToken(token: string): Promise<void> {
+  await api(`/notifications/device-tokens/${encodeURIComponent(token)}`, { method: 'DELETE' });
+}
+
 /**
  * Prepends a realtime-delivered notification (Socket.IO 'notification:new')
  * onto the cached list, deduping by id. Same pure merge function as the web

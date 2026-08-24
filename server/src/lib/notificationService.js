@@ -7,6 +7,12 @@
 // not a change at every call site.
 const { prisma } = require('./db');
 const { schoolScope } = require('./notificationScope');
+// Referenced as `pushService.dispatchPush(...)` throughout this file, never
+// destructured — that keeps the call sites test-spyable (`vi.spyOn(pushService,
+// 'dispatchPush')`) without any module-mocking machinery, matching this
+// module's existing "pass dependencies in, don't hide them behind a mock"
+// style (see socketServer, already a plain parameter on both functions below).
+const pushService = require('./pushService');
 
 // Hard ceiling on a single broadcast's recipient count. Not a tunable env var
 // (unlike the AI-feature budgets elsewhere in lib/flags.js) — this is a
@@ -76,6 +82,19 @@ async function createNotification(input, socketServer = null) {
     } catch (err) {
       console.error('[notifications] realtime emit failed', { message: err.message });
     }
+  }
+
+  // Phase 7b: OS-level push, additive alongside the realtime emit above.
+  // pushService.dispatchPush() already contracts to never throw, but this is
+  // wrapped defensively anyway — same belt-and-suspenders shape as the
+  // socketServer emit above — so a bug in that contract can never turn into
+  // a failed write the caller already committed to. A no-op when
+  // MOBILE_PUSH_ENABLED is off (the default) or the recipient has no
+  // registered device.
+  try {
+    await pushService.dispatchPush([input.recipientId], toDto(row));
+  } catch (err) {
+    console.error('[notifications] push dispatch failed', { message: err.message });
   }
 
   return row;
@@ -198,6 +217,25 @@ async function createBroadcast(input, socketServer = null) {
         console.error('[notifications] broadcast emit failed', { message: err.message });
       }
     }
+  }
+
+  // Phase 7b: OS-level push for the whole batch in one dispatch call — same
+  // additive, best-effort shape as createNotification()'s call, defensively
+  // try/caught for the same belt-and-suspenders reason (see that function's
+  // comment). Unlike the realtime emit (which needs each row's own id to key
+  // the client-side list), a broadcast's push payload has no single
+  // per-recipient notification id to attach, so `id` is left null; every
+  // recipient still gets the SAME title/message/link, which is all
+  // NotificationsScreen's tap-to-navigate (the `link` field) needs.
+  try {
+    await pushService.dispatchPush(recipientIds, {
+      id: null,
+      title: input.title,
+      message: input.message,
+      link: input.link ?? null,
+    });
+  } catch (err) {
+    console.error('[notifications] broadcast push dispatch failed', { message: err.message });
   }
 
   return { recipientCount: recipientIds.length };

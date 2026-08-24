@@ -1,8 +1,13 @@
 // mergeNewNotification is the one piece of real merge logic in
 // lib/notifications.ts worth unit-testing in isolation (ported comment from
-// client/src/lib/notifications.ts).
-import { mergeNewNotification } from '../notifications';
+// client/src/lib/notifications.ts). registerDeviceToken/unregisterDeviceToken
+// (Phase 7b) get the same request-shape coverage api/resources.test.ts uses
+// for its own thin api() wrappers.
+import { mergeNewNotification, registerDeviceToken, unregisterDeviceToken } from '../notifications';
 import type { AppNotification } from '../../types';
+
+jest.mock('../client', () => ({ api: jest.fn() }));
+const { api } = jest.requireMock('../client') as { api: jest.Mock };
 
 function notif(id: string, overrides: Partial<AppNotification> = {}): AppNotification {
   return {
@@ -32,5 +37,29 @@ describe('mergeNewNotification', () => {
     const result = mergeNewNotification(list, notif('b', { read: true }));
     expect(result.map((n) => n.id)).toEqual(['b', 'a']);
     expect(result.find((n) => n.id === 'b')?.read).toBe(true);
+  });
+});
+
+describe('registerDeviceToken / unregisterDeviceToken', () => {
+  beforeEach(() => {
+    api.mockReset();
+  });
+
+  it('registerDeviceToken POSTs the token and platform', async () => {
+    api.mockResolvedValueOnce({ id: 'dt1' });
+    await registerDeviceToken('ExponentPushToken[abc]', 'android');
+    expect(api).toHaveBeenCalledWith('/notifications/device-tokens', {
+      method: 'POST',
+      body: { token: 'ExponentPushToken[abc]', platform: 'android' },
+    });
+  });
+
+  it('unregisterDeviceToken DELETEs the URL-encoded token', async () => {
+    api.mockResolvedValueOnce(undefined);
+    await unregisterDeviceToken('ExponentPushToken[has spaces/slash]');
+    expect(api).toHaveBeenCalledWith(
+      `/notifications/device-tokens/${encodeURIComponent('ExponentPushToken[has spaces/slash]')}`,
+      { method: 'DELETE' }
+    );
   });
 });
