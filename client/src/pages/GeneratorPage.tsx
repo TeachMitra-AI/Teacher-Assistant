@@ -65,6 +65,15 @@ function defaultTitle(format: AssessmentFormat, topic: string, grade: string): s
   return `${kind}: ${t}${g}`.slice(0, 200);
 }
 
+// Keeps the question count inside [QUESTION_COUNT_MIN, QUESTION_COUNT_MAX] —
+// used both at blur time (see questionCountInput) and again right before a
+// generate/save request goes out, so the bound holds even if blur never fires
+// (e.g. Enter submitting the form mid-edit).
+function clampQuestionCount(n: number): number {
+  if (Number.isNaN(n)) return QUESTION_COUNT_MIN;
+  return Math.min(QUESTION_COUNT_MAX, Math.max(QUESTION_COUNT_MIN, n));
+}
+
 // The form's own starting values, in one place because two things now need
 // them: the initial state below, and "Clear AI fields", which restores each
 // AI-filled field to its DEFAULT rather than blanking it. Blanking would leave
@@ -121,8 +130,22 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
   const [difficulty, setDifficulty] = useState<Difficulty>(FORM_DEFAULTS.difficulty);
   const [questionType, setQuestionType] = useState<QuestionType>(FORM_DEFAULTS.questionType);
   const [questionCount, setQuestionCount] = useState<number>(FORM_DEFAULTS.questionCount);
+  // The number input's own displayed text, kept separate from `questionCount`
+  // so a teacher can freely clear/retype it (e.g. clearing "10" to type "25")
+  // without every keystroke snapping the box back to QUESTION_COUNT_MIN the
+  // instant it's empty or momentarily out of range. Clamped into range only
+  // on blur — same drafts-separate-from-committed-value pattern as
+  // FeeStatusBoard.tsx's per-student amount inputs.
+  const [questionCountInput, setQuestionCountInput] = useState(String(FORM_DEFAULTS.questionCount));
   const [language, setLanguage] = useState(FORM_DEFAULTS.language);
   const [instructions, setInstructions] = useState('');
+
+  // Reflects `questionCount` into the input's text whenever it changes from
+  // outside the input itself (AI prefill, undo/reset to default) — see
+  // questionCountInput's declaration above for why the two are kept apart.
+  useEffect(() => {
+    setQuestionCountInput(String(questionCount));
+  }, [questionCount]);
 
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
@@ -315,6 +338,16 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
       if (!ok) return;
     }
 
+    // Normally already clamped on blur (see questionCountInput) — this only
+    // matters if Enter submitted the form before the field ever blurred.
+    // Committed back to state, not just used locally, so a later Save writes
+    // metadata that matches what was actually requested here.
+    const count = clampQuestionCount(questionCount);
+    if (count !== questionCount) {
+      setQuestionCount(count);
+      setQuestionCountInput(String(count));
+    }
+
     generatingRef.current = true;
     setGenerating(true);
     setError('');
@@ -325,7 +358,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
       topic: topic.trim(),
       difficulty,
       questionType,
-      questionCount,
+      questionCount: count,
       language,
       instructions: instructions.trim() || undefined,
     };
@@ -500,14 +533,23 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
                 Grade
                 <FieldNote source={provenance.grade} uncertain={lowConfidence.includes('grade')} />
               </span>
-              <input type="text" list="gen-grades" value={grade} maxLength={80} onChange={(e) => { setGrade(e.target.value); noteEdit('grade'); }} placeholder="e.g. Class 3-5" />
+              <select value={grade} onChange={(e) => { setGrade(e.target.value); noteEdit('grade'); }}>
+                <option value="">Select grade</option>
+                {/* Covers a prefilled/remembered value outside the canonical list (e.g. from AI routing) so it's never silently dropped. */}
+                {grade && !GRADES.includes(grade) && <option value={grade}>{grade}</option>}
+                {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
             </label>
             <label className="ws-field">
               <span className="ws-label">
                 Subject
                 <FieldNote source={provenance.subject} uncertain={lowConfidence.includes('subject')} />
               </span>
-              <input type="text" list="gen-subjects" value={subject} maxLength={80} onChange={(e) => { setSubject(e.target.value); noteEdit('subject'); }} placeholder="e.g. Mathematics" />
+              <select value={subject} onChange={(e) => { setSubject(e.target.value); noteEdit('subject'); }}>
+                <option value="">Select subject</option>
+                {subject && !SUBJECTS.includes(subject) && <option value={subject}>{subject}</option>}
+                {SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
             </label>
             <label className="ws-field">
               <span className="ws-label">
@@ -536,11 +578,19 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
                 type="number"
                 min={QUESTION_COUNT_MIN}
                 max={QUESTION_COUNT_MAX}
-                value={questionCount}
+                value={questionCountInput}
                 onChange={(e) => {
+                  // Free typing: the box shows exactly what was typed, even
+                  // empty or momentarily out of range — only clamped on blur.
+                  setQuestionCountInput(e.target.value);
                   const n = parseInt(e.target.value, 10);
-                  setQuestionCount(Number.isNaN(n) ? QUESTION_COUNT_MIN : Math.min(QUESTION_COUNT_MAX, Math.max(QUESTION_COUNT_MIN, n)));
+                  if (!Number.isNaN(n)) setQuestionCount(n);
                   noteEdit('questionCount');
+                }}
+                onBlur={() => {
+                  const clamped = clampQuestionCount(parseInt(questionCountInput, 10));
+                  setQuestionCount(clamped);
+                  setQuestionCountInput(String(clamped));
                 }}
               />
             </label>
@@ -553,8 +603,6 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
                 {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
               </select>
             </label>
-            <datalist id="gen-grades">{GRADES.map((g) => <option key={g} value={g} />)}</datalist>
-            <datalist id="gen-subjects">{SUBJECTS.map((s) => <option key={s} value={s} />)}</datalist>
           </div>
 
           <label className="ws-field generator-instructions">
