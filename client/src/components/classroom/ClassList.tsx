@@ -19,7 +19,7 @@ interface ClassListProps {
   onArchiveToggle: (cls: SchoolClass) => Promise<boolean>;
 }
 
-const FORM_DEFAULTS = { name: '', grade: '', section: '' };
+const FORM_DEFAULTS = { name: '', grade: '', section: '', feeAmount: '' };
 
 export default function ClassList({
   classes,
@@ -48,13 +48,14 @@ export default function ClassList({
       name: form.name.trim(),
       grade: form.grade.trim() || undefined,
       section: form.section.trim() || undefined,
+      feeAmount: form.feeAmount.trim() ? Number(form.feeAmount) : undefined,
     });
     if (ok) setForm(FORM_DEFAULTS);
   }
 
   function startEdit(cls: SchoolClass) {
     setEditingId(cls.id);
-    setEditForm({ name: cls.name, grade: cls.grade || '', section: cls.section || '' });
+    setEditForm({ name: cls.name, grade: cls.grade || '', section: cls.section || '', feeAmount: cls.feeAmount != null ? String(cls.feeAmount) : '' });
   }
 
   async function saveEdit(id: string) {
@@ -64,6 +65,7 @@ export default function ClassList({
       name: editForm.name.trim(),
       grade: editForm.grade.trim() || undefined,
       section: editForm.section.trim() || undefined,
+      feeAmount: editForm.feeAmount.trim() ? Number(editForm.feeAmount) : null,
     });
     setSavingEdit(false);
     if (ok) setEditingId(null);
@@ -103,6 +105,14 @@ export default function ClassList({
           placeholder="Section (optional)"
           maxLength={60}
           aria-label="New class section"
+        />
+        <input
+          type="number"
+          min={0}
+          value={form.feeAmount}
+          onChange={(e) => setForm((f) => ({ ...f, feeAmount: e.target.value }))}
+          placeholder="Monthly fee ₹ (optional)"
+          aria-label="New class monthly fee amount"
         />
         <button type="submit" className="btn-primary" disabled={creating || !form.name.trim()}>
           {creating ? 'Adding…' : 'Add class'}
@@ -168,6 +178,14 @@ export default function ClassList({
                       maxLength={60}
                       aria-label="Edit class section"
                     />
+                    <input
+                      type="number"
+                      min={0}
+                      value={editForm.feeAmount}
+                      onChange={(e) => setEditForm((f) => ({ ...f, feeAmount: e.target.value }))}
+                      placeholder="Monthly fee ₹"
+                      aria-label="Edit class monthly fee amount"
+                    />
                     <div className="classroom-class-edit-actions">
                       <button type="button" className="icon-btn" title="Save" aria-label="Save" disabled={savingEdit} onClick={() => saveEdit(cls.id)}>
                         <Check size={15} aria-hidden="true" />
@@ -183,6 +201,7 @@ export default function ClassList({
                       <span className="classroom-class-name">{cls.name}</span>
                       <span className="classroom-class-meta">
                         {[cls.grade, cls.section].filter(Boolean).join(' · ') || 'No grade/section set'}
+                        {cls.feeAmount != null && ` · ₹${cls.feeAmount}/month`}
                       </span>
                       {cls.archived && <span className="classroom-badge-archived">Archived</span>}
                     </button>

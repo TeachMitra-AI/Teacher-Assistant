@@ -124,7 +124,16 @@ export default function Composer({
           value={value}
           onChange={(e) => onChange(e.target.value.slice(0, MAX_QUERY_LENGTH))}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && (e.ctrlKey || e.metaKey)) onSubmit();
+            // Enter sends (Shift+Enter for a newline) — the standard chat-app
+            // convention (ChatGPT, Slack, etc.), not the browser's default
+            // textarea behavior of Enter always inserting a newline. Guarded
+            // on `loading` since a keyboard shortcut bypasses the submit
+            // button's `disabled` attribute — mashing Enter while a response
+            // is still in flight must not queue up extra submissions.
+            if (e.key === 'Enter' && !e.shiftKey && !loading) {
+              e.preventDefault();
+              onSubmit();
+            }
           }}
           placeholder={tiny ? 'Ask…' : narrow ? 'Ask anything…' : 'Ask anything about teaching…'}
           rows={1}

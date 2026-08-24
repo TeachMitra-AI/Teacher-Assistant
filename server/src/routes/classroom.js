@@ -22,8 +22,9 @@ const { z } = require('zod');
 const { prisma } = require('../lib/db');
 const { asyncHandler } = require('../lib/asyncHandler');
 const { authRequired } = require('../middleware/auth');
-const { readClassroomManagementFlags } = require('../lib/flags');
+const { readClassroomManagementFlags, readNotificationsFlags } = require('../lib/flags');
 const { toCsv } = require('../lib/csv');
+const { createNotification } = require('../lib/notificationService');
 const {
   attendancePercentage,
   deriveUnmarked,
@@ -37,7 +38,8 @@ const {
   getTeacherAttendanceToday,
   getTeacherAttendanceMonth,
 } = require('../lib/classroomAttendance');
-const { getClassFeeStatus, getTeacherFeeCounts } = require('../lib/classroomFees');
+const { deriveFeeStatus, getClassFeeStatus, getTeacherFeeCounts } = require('../lib/classroomFees');
+const { buildFeeReportWorkbook } = require('../lib/feeReportExcel');
 
 const router = express.Router();
 
@@ -50,7 +52,10 @@ const MAX_META = 60; // grade / section / roll number
 // requesting a larger one).
 const MAX_MARKS_PER_REQUEST = 120;
 const ATTENDANCE_STATUSES = ['present', 'absent', 'unmarked'];
-const FEE_STATUSES = ['paid', 'pending'];
+// A generous ceiling for a monthly class/student fee, in whole rupees — well
+// above any real school fee, just guarding against a fat-fingered/garbage
+// value (docs/fee-tracking-amounts-plan.md).
+const MAX_FEE_AMOUNT = 1000000;
 
 /**
  * Same rollout predicate shape as routes/attachments.js's isWithinRollout:
@@ -129,6 +134,7 @@ function classToDto(c) {
     name: c.name,
     grade: c.grade,
     section: c.section,
+    feeAmount: c.feeAmount,
     archived: c.archived,
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
@@ -147,11 +153,17 @@ function studentToDto(s) {
   };
 }
 
-// V1 deliberately never returns amount/paidAt/note — those columns are
-// reserved-but-unused (§11), and the DTO omitting them keeps that true even
-// if a future migration adds a value to a row some other way.
 function feeToDto(f) {
-  return { id: f.id, studentId: f.studentId, classId: f.classId, period: f.period, status: f.status, updatedAt: f.updatedAt };
+  return {
+    id: f.id,
+    studentId: f.studentId,
+    classId: f.classId,
+    period: f.period,
+    status: f.status,
+    amount: f.amount || 0,
+    expectedAmount: f.expectedAmount,
+    updatedAt: f.updatedAt,
+  };
 }
 
 // ---- My Classes -------------------------------------------------------------
@@ -161,6 +173,7 @@ const createClassSchema = z
     name: z.string().trim().min(1).max(MAX_NAME),
     grade: z.string().trim().max(MAX_META).optional(),
     section: z.string().trim().max(MAX_META).optional(),
+    feeAmount: z.number().int().min(0).max(MAX_FEE_AMOUNT).optional(),
   })
   .strict();
 
@@ -169,6 +182,11 @@ const updateClassSchema = z
     name: z.string().trim().min(1).max(MAX_NAME).optional(),
     grade: z.string().trim().max(MAX_META).optional(),
     section: z.string().trim().max(MAX_META).optional(),
+    // null explicitly clears a previously-set fee amount (the client can't
+    // send "" to mean "cleared" the way it does for grade/section — an
+    // empty number input has no valid numeric fallback — so null is the
+    // clear signal instead).
+    feeAmount: z.number().int().min(0).max(MAX_FEE_AMOUNT).nullable().optional(),
     archived: z.boolean().optional(),
   })
   .strict()
@@ -491,10 +509,11 @@ router.get('/classroom/students/:studentId/attendance/history', ...gate, asyncHa
 
 // ---- Fees -------------------------------------------------------------------
 
-// V1 accepts ONLY `status` — amount/paidAt/note are reserved-but-unused
-// columns (§11); `.strict()` rejects any attempt to send them, turning
-// "V1 UI/API is Paid/Pending only" into an enforced contract.
-const updateFeeSchema = z.object({ status: z.enum(FEE_STATUSES) }).strict();
+// The client sends the amount actually paid so far this period — `status`
+// (paid/partial/pending) is always DERIVED server-side (classroomFees.js's
+// deriveFeeStatus), never accepted from the client, so a teacher can never
+// desync the two (docs/fee-tracking-amounts-plan.md).
+const updateFeeSchema = z.object({ amount: z.number().int().min(0).max(MAX_FEE_AMOUNT) }).strict();
 
 router.get('/classroom/classes/:classId/fees', ...gate, asyncHandler(async (req, res) => {
   const cls = await findOwnedClass(req.params.classId, req.user.id);
@@ -517,6 +536,20 @@ router.patch('/classroom/students/:studentId/fees/:period', ...gate, asyncHandle
   const student = await findOwnedStudent(req.params.studentId, req.user.id);
   if (!student) return res.status(404).json({ error: 'Student not found.' });
 
+  const cls = await findOwnedClass(student.classId, req.user.id);
+  const { amount } = parsed.data;
+  const paidAt = amount > 0 ? new Date() : null;
+
+  const existing = await prisma.feeRecord.findUnique({
+    where: { studentId_period: { studentId: student.id, period: req.params.period } },
+  });
+  // expectedAmount is a one-time snapshot of the class's CURRENT feeAmount,
+  // taken only when this period's row doesn't exist yet — see
+  // SchoolClass.feeAmount's doc comment. An existing row keeps whatever
+  // snapshot it already has, even if the class's feeAmount has since changed.
+  const expectedAmount = existing ? existing.expectedAmount : cls?.feeAmount ?? null;
+  const status = deriveFeeStatus(amount, expectedAmount);
+
   const record = await prisma.feeRecord.upsert({
     where: { studentId_period: { studentId: student.id, period: req.params.period } },
     create: {
@@ -524,15 +557,58 @@ router.patch('/classroom/students/:studentId/fees/:period', ...gate, asyncHandle
       teacherId: req.user.id,
       classId: student.classId,
       period: req.params.period,
-      status: parsed.data.status,
+      amount,
+      expectedAmount,
+      status,
+      paidAt,
     },
-    update: { status: parsed.data.status },
+    update: { amount, status, paidAt },
   });
+
+  // System-generated reminder: "N students still pending fees this month",
+  // linking to this class's Reports tab (docs/fee-tracking-amounts-plan.md
+  // Step 3). Best-effort and non-blocking — a failure here must never cost
+  // the teacher the payment they just recorded — same pattern as
+  // routes/resources.js's "resource saved" notification hook. There's no
+  // scheduled-job runner in this app (see plan doc), so this fires the
+  // first time a teacher records ANY payment for a class+period, not on a
+  // recurring schedule; deduped so it never re-fires for the same
+  // class+period once sent.
+  try {
+    if (cls && readNotificationsFlags(process.env).enabled) {
+      const feeStatus = await getClassFeeStatus(prisma, { classId: cls.id, teacherId: req.user.id, period: req.params.period });
+      const owing = feeStatus.partial + feeStatus.pending;
+      if (owing > 0) {
+        const link = `/classroom?tab=reports&class=${cls.id}&period=${req.params.period}`;
+        const already = await prisma.notification.findFirst({
+          where: { recipientId: req.user.id, type: 'reminder', link },
+        });
+        if (!already) {
+          await createNotification(
+            {
+              recipientId: req.user.id,
+              type: 'reminder',
+              title: 'Fees still pending',
+              message: `${owing} student${owing === 1 ? '' : 's'} still owe fees for ${req.params.period} in "${cls.name}".`,
+              link,
+              metadata: { classId: cls.id, period: req.params.period },
+            },
+            req.app.locals.socketServer
+          );
+        }
+      }
+    }
+  } catch (notifyError) {
+    console.error('[notifications] fee_pending_reminder_failed', { message: notifyError.message });
+  }
+
   res.json({ fee: feeToDto(record) });
 }));
 
-// GET .../fees/export?period= — CSV download (§13). Status only, matching
-// the V1 fee UI's own scope.
+// GET .../fees/export?period= — Excel (.xlsx) download (§13), including
+// real ₹ amounts AND the same Paid/Partial/Pending cell coloring the
+// Fees/Reports tabs show on screen — a plain CSV can't carry color at all,
+// so this is a real spreadsheet file, not text (docs/fee-tracking-amounts-plan.md).
 router.get('/classroom/classes/:classId/fees/export', ...gate, asyncHandler(async (req, res) => {
   const cls = await findOwnedClass(req.params.classId, req.user.id);
   if (!cls) return res.status(404).json({ error: 'Class not found.' });
@@ -542,15 +618,11 @@ router.get('/classroom/classes/:classId/fees/export', ...gate, asyncHandler(asyn
   const period = req.query.period;
   const status = await getClassFeeStatus(prisma, { classId: cls.id, teacherId: req.user.id, period });
 
-  const header = ['Student Name', 'Roll Number', 'Status'];
-  const rows = status.perStudent.map((s) => [s.name, s.rollNumber || '', s.status === 'paid' ? 'Paid' : 'Pending']);
-  rows.push([`Paid: ${status.paid}`, '', `Pending: ${status.pending}`]);
-
-  const csv = toCsv(header, rows);
-  const filename = `${sanitizeFilenamePart(cls.name)}-${period}-fees.csv`;
-  res.set('Content-Type', 'text/csv; charset=utf-8');
+  const buffer = await buildFeeReportWorkbook({ ...status, className: cls.name });
+  const filename = `${sanitizeFilenamePart(cls.name)}-${period}-fees.xlsx`;
+  res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.set('Content-Disposition', `attachment; filename="${filename}"`);
-  res.status(200).send(csv);
+  res.status(200).send(Buffer.from(buffer));
 }));
 
 // ---- Analytics --------------------------------------------------------------
@@ -586,7 +658,15 @@ router.get('/classroom/analytics/classes/:classId', ...gate, asyncHandler(async 
     classId: cls.id,
     totalStudents,
     month: monthAttendance,
-    fees: { period: month, totalStudents: feeStatus.totalStudents, paid: feeStatus.paid, pending: feeStatus.pending },
+    fees: {
+      period: month,
+      totalStudents: feeStatus.totalStudents,
+      paid: feeStatus.paid,
+      partial: feeStatus.partial,
+      pending: feeStatus.pending,
+      totalCollected: feeStatus.totalCollected,
+      totalExpected: feeStatus.totalExpected,
+    },
   });
 }));
 

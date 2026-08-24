@@ -416,6 +416,12 @@ app.use(
     },
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
+    // Without this, a cross-origin fetch() can't read Content-Disposition
+    // from the response (browsers only expose a small "simple header" list
+    // by default) — needed so a CSV download (routes/classroom.js's fee/
+    // attendance export) can read the server's suggested filename via
+    // res.headers.get() instead of falling back to a generic one.
+    exposedHeaders: ['Content-Disposition'],
   })
 );
 
