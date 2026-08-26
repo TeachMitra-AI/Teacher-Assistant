@@ -4,17 +4,23 @@ import type { ClassroomStackParamList } from '../types';
 import { ClassListScreen } from '../../screens/classroom/ClassListScreen';
 import { ClassHomeScreen } from '../../screens/classroom/ClassHomeScreen';
 import { PlaceholderScreen } from '../../screens/PlaceholderScreen';
+import { Header } from '../../components/Header';
 import { useStackScreenOptions } from '../useStackScreenOptions';
 
 const Stack = createNativeStackNavigator<ClassroomStackParamList>();
 
 // Class List -> Class Home -> {Students, Attendance, Fees, Reports}, each a
-// stack screen pushed from Class Home, not sibling tabs (§12).
+// stack screen pushed from Class Home, not sibling tabs (§12). The root
+// screen uses the shared web-parity Header (bell + profile avatar).
 export function ClassroomStack() {
   const screenOptions = useStackScreenOptions();
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="ClassList" component={ClassListScreen} options={{ title: 'Classroom' }} />
+      <Stack.Screen
+        name="ClassList"
+        component={ClassListScreen}
+        options={{ header: () => <Header /> }}
+      />
       <Stack.Screen
         name="ClassHome"
         component={ClassHomeScreen}

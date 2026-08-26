@@ -1,7 +1,13 @@
 # Mobile UI Refinement Plan — bringing the native app onto the web app's design language
 
-**Status**: PLAN ONLY. Nothing in this document has been implemented. No
-application code has been changed on this branch (`feature/mobile-ui-refinement`).
+**Status**: this was originally a PLAN-ONLY document; as of 2026-08-26,
+implementation has started (Phase U1 token foundation, plus a nav/header
+restructure that supersedes this document's own §7.1/§22 "More tab"
+recommendation — see the supersession notes inline and
+`docs/mobile-app-plan.md`'s Phase 7c section for the current, authoritative
+status of what's actually implemented, verified, and remaining. This
+document's screen-by-screen specs (§9–§16) otherwise remain the active plan
+for work not yet done.
 
 **Scope**: every mobile screen shipped through Phase 7/7b — Auth, bottom
 navigation, Coach, Classroom (Phase 2 shell), Library, Generator,
@@ -428,6 +434,16 @@ Match `.bottom-nav` (`index.css:200-230`) precisely:
 (`MainTabs.tsx` header comment, plan §10): a full-screen native app has no
 persistent top bar to hold Settings/Sessions/Help, unlike the web. This is a
 case where mobile *should* differ, and it already does correctly.
+
+> **SUPERSEDED (2026-08-26, Phase 7c — see `docs/mobile-app-plan.md`'s Phase
+> 7c section and its §10 override note).** This recommendation was
+> overridden by an explicit later product decision: for the current
+> web-mobile-parity pass, the "More" tab was removed in favor of a 4-tab bar
+> matching the web exactly, with Notifications/Settings/Admin reached from a
+> header instead. Kept here unedited for historical reference — the
+> reasoning above was sound at the time it was written and may be revisited
+> post-Phase-8+ per the "interim strategy" note in `mobile-app-plan.md`'s
+> Phase 7c section.
 
 Badge: replace the default `tabBarBadge` styling with `.notif-badge`'s spec —
 17dp min-width, fully round, `--orange`, white 11dp/700 text, and the 2dp
@@ -1011,7 +1027,7 @@ list follows the web.
 
 | Change | Reason |
 |---|---|
-| 5-tab bottom nav with a "More" tab (web has 4) | No persistent top bar natively; already decided and documented in `MainTabs.tsx` |
+| ~~5-tab bottom nav with a "More" tab (web has 4)~~ **SUPERSEDED 2026-08-26** | ~~No persistent top bar natively; already decided and documented in `MainTabs.tsx`~~ — overridden by an explicit product decision to match the web's 4-tab nav exactly for the current parity pass; see `docs/mobile-app-plan.md`'s Phase 7c section and its §10 override note |
 | Nested stacks per tab instead of routes | Native navigation idiom; already decided |
 | `Alert.alert` for destructive confirms instead of `ConfirmDialog` | Android convention; more familiar than a custom modal |
 | Number stepper instead of a number input | Numeric keyboards are a poor fit for a 3-20 range |

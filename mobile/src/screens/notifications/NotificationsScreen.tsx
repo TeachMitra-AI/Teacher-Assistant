@@ -1,6 +1,8 @@
 // Native port of client/src/components/Notifications.tsx's NotificationBell
 // panel (docs/mobile-app-plan.md §11, §26 Phase 7) — full rewrite of the
-// dropdown into its own pushed screen (More -> Notifications, §10), reading
+// dropdown into its own pushed screen (reached from the header's
+// notification bell, AppStackParamList's root-level Notifications route —
+// see Header.tsx/NotificationBell.tsx), reading
 // state from NotificationContext (the provider RootNavigator mounts around
 // MainTabs). Deliberately NOT implemented here: tap-to-navigate via a
 // notification's `link` field — mapping the web's route-string convention
@@ -13,9 +15,8 @@ import React, { useEffect } from 'react';
 import { View, FlatList, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import { Bell, CheckCheck } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { MoreStackParamList } from '../../navigation/types';
+import type { AppStackParamList } from '../../navigation/types';
 import { ThemedText } from '../../components/ThemedText';
-import { Card } from '../../components/Card';
 import { useTheme } from '../../theme/ThemeContext';
 import { spacing, radius } from '../../theme/tokens';
 import { useNotifications } from '../../notifications/NotificationContext';
@@ -23,7 +24,7 @@ import { NOTIFICATION_TYPE_META } from '../../config';
 import { formatTimestamp } from '../../lib/historyTime';
 import type { AppNotification } from '../../types';
 
-type Props = NativeStackScreenProps<MoreStackParamList, 'Notifications'>;
+type Props = NativeStackScreenProps<AppStackParamList, 'Notifications'>;
 
 export function NotificationsScreen({ navigation }: Props) {
   const { colors } = useTheme();
@@ -63,7 +64,7 @@ export function NotificationsScreen({ navigation }: Props) {
 
       {!!error && (
         <View style={[styles.errorBanner, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
-          <ThemedText style={{ color: '#e5484d' }}>{error}</ThemedText>
+          <ThemedText style={{ color: colors.semantic.danger.text }}>{error}</ThemedText>
         </View>
       )}
 
@@ -76,7 +77,11 @@ export function NotificationsScreen({ navigation }: Props) {
 
       {showEmpty && (
         <View style={styles.center} testID="notifications-empty-state">
-          <Bell size={28} color={colors.textMuted} strokeWidth={1.8} />
+          <View style={[styles.emptyIconWell, { backgroundColor: colors.surface2 }]}>
+            {/* .notif-empty svg is --border colored — a deliberately very
+                light glyph (UI_REFINED.md §14), not --text-muted. */}
+            <Bell size={26} color={colors.border} strokeWidth={1.8} />
+          </View>
           <ThemedText variant="title" style={styles.emptyTitle}>You&rsquo;re all caught up</ThemedText>
         </View>
       )}
@@ -91,27 +96,24 @@ export function NotificationsScreen({ navigation }: Props) {
             const meta = NOTIFICATION_TYPE_META[item.type];
             const Icon = meta?.icon ?? Bell;
             return (
+              // .notif-row: flat, no border/shadow, unread = orange-soft
+              // background (not a border), circular icon well
+              // (UI_REFINED.md §14) — a plain Pressable/View, not Card.
               <Pressable
                 onPress={() => handleRowPress(item)}
                 accessibilityRole="button"
                 accessibilityLabel={item.read ? item.title : `${item.title}, unread`}
+                style={[styles.row, !item.read && { backgroundColor: colors.orangeSoft }]}
               >
-                <Card
-                  style={[
-                    styles.row,
-                    !item.read && { borderColor: colors.orange, backgroundColor: colors.surface2 },
-                  ]}
-                >
-                  <View style={[styles.rowIcon, { backgroundColor: colors.surface2 }]}>
-                    <Icon size={16} color={colors.orange} />
-                  </View>
-                  <View style={styles.rowBody}>
-                    <ThemedText style={styles.rowTitle}>{item.title}</ThemedText>
-                    <ThemedText variant="muted" numberOfLines={3} style={styles.rowMessage}>{item.message}</ThemedText>
-                    <ThemedText variant="muted" style={styles.rowTime}>{formatTimestamp(item.createdAt)}</ThemedText>
-                  </View>
-                  {!item.read && <View style={[styles.dot, { backgroundColor: colors.orange }]} />}
-                </Card>
+                <View style={[styles.rowIcon, { backgroundColor: colors.surface2 }]}>
+                  <Icon size={16} color={colors.orange} />
+                </View>
+                <View style={styles.rowBody}>
+                  <ThemedText style={styles.rowTitle}>{item.title}</ThemedText>
+                  <ThemedText variant="muted" numberOfLines={2} style={styles.rowMessage}>{item.message}</ThemedText>
+                  <ThemedText variant="muted" style={styles.rowTime}>{formatTimestamp(item.createdAt)}</ThemedText>
+                </View>
+                {!item.read && <View style={[styles.dot, { backgroundColor: colors.orange }]} />}
               </Pressable>
             );
           }}
@@ -146,14 +148,18 @@ const styles = StyleSheet.create({
   errorBanner: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.sm, padding: spacing.md, marginBottom: spacing.sm },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingTop: spacing.xxl },
   loadingText: { marginTop: spacing.xs },
+  emptyIconWell: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { marginTop: spacing.sm, textAlign: 'center' },
-  list: { paddingVertical: spacing.sm, gap: spacing.sm, paddingBottom: spacing.xxl },
+  // Rows nearly touch (.notif-row's ~0.15rem gap), not a card margin.
+  list: { paddingVertical: spacing.sm, gap: 3, paddingBottom: spacing.xxl },
   row: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, padding: spacing.md, marginBottom: spacing.sm,
+    flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm, minHeight: 56,
   },
-  rowIcon: { width: 32, height: 32, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
+  rowIcon: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   rowBody: { flex: 1, gap: 2 },
-  rowTitle: { fontSize: 15, fontWeight: '600' },
+  rowTitle: { fontSize: 14, fontWeight: '600' },
   rowMessage: { fontSize: 13 },
   rowTime: { fontSize: 11, marginTop: 2 },
   dot: { width: 8, height: 8, borderRadius: 4, marginTop: 4 },

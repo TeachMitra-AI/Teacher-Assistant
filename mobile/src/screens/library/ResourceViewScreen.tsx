@@ -142,7 +142,7 @@ export function ResourceViewScreen({ route, navigation }: Props) {
 
       {!loading && !!error && (
         <View style={styles.center}>
-          <ThemedText style={{ color: '#e5484d' }}>{error}</ThemedText>
+          <ThemedText style={{ color: colors.semantic.danger.text }}>{error}</ThemedText>
           <Button title="Back to Library" onPress={() => navigation.goBack()} style={styles.backBtn} />
         </View>
       )}

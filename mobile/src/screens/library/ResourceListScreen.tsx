@@ -10,12 +10,14 @@ import { Search, Trash2, Library as LibraryIcon } from 'lucide-react-native';
 import type { LibraryStackParamList } from '../../navigation/types';
 import { ThemedText } from '../../components/ThemedText';
 import { Card } from '../../components/Card';
+import { Button } from '../../components/Button';
 import { useTheme } from '../../theme/ThemeContext';
 import { spacing, radius } from '../../theme/tokens';
 import { listResources, deleteResource } from '../../api/resources';
 import { ApiError } from '../../api/client';
 import { RESOURCE_TYPE_META, RESOURCE_TYPES } from '../../config';
 import type { LibraryResource, ResourceType } from '../../types';
+import { navigationRef } from '../../navigation/navigationRef';
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -151,13 +153,17 @@ export function ResourceListScreen({ navigation }: Props) {
 
       {!loading && !!error && (
         <View style={styles.center}>
-          <ThemedText style={{ color: '#e5484d' }}>{error}</ThemedText>
+          <ThemedText style={{ color: colors.semantic.danger.text }}>{error}</ThemedText>
         </View>
       )}
 
       {!loading && !error && items.length === 0 && (
         <View style={styles.center} testID="library-empty-state">
-          <LibraryIcon size={30} color={colors.textMuted} strokeWidth={1.8} />
+          {/* 60dp circular icon well, matching .library-empty-icon
+              (UI_REFINED.md §12.1/§16) rather than a bare icon. */}
+          <View style={[styles.emptyIconWell, { backgroundColor: colors.surface2 }]}>
+            <LibraryIcon size={26} color={colors.textMuted} strokeWidth={1.8} />
+          </View>
           {isFiltering ? (
             <>
               <ThemedText variant="title" style={styles.emptyTitle}>No matching resources</ThemedText>
@@ -169,6 +175,12 @@ export function ResourceListScreen({ navigation }: Props) {
               <ThemedText variant="muted" style={styles.emptyHint}>
                 Save useful AI answers from Coach and they&rsquo;ll appear here.
               </ThemedText>
+              <Button
+                title="Ask Coach a question"
+                variant="secondary"
+                onPress={() => navigationRef.isReady() && navigationRef.navigate('CoachTab')}
+                style={styles.emptyCta}
+              />
             </>
           )}
         </View>
@@ -191,7 +203,12 @@ export function ResourceListScreen({ navigation }: Props) {
                 >
                   <View style={styles.cardTypeRow}>
                     <Icon size={13} color={colors.orange} />
-                    <ThemedText variant="muted" style={styles.cardType}>{RESOURCE_TYPE_META[item.type].label}</ThemedText>
+                    {/* .library-card-type: uppercase, 700, letter-spacing —
+                        an eyebrow label, not a muted caption (UI_REFINED.md
+                        §12.1). */}
+                    <ThemedText style={[styles.cardType, { color: colors.orange }]}>
+                      {RESOURCE_TYPE_META[item.type].label}
+                    </ThemedText>
                   </View>
                   <ThemedText style={styles.cardTitle} numberOfLines={2}>{item.title}</ThemedText>
                   {!!item.content && (
@@ -205,12 +222,14 @@ export function ResourceListScreen({ navigation }: Props) {
                     {formatDate(item.updatedAt)}
                   </ThemedText>
                 </Pressable>
+                {/* Full-height right-edge rail with a left border, matching
+                    .library-card-delete (UI_REFINED.md §12.1) — a proper
+                    40x(card-height) touch target instead of a floating icon. */}
                 <Pressable
                   onPress={() => handleDelete(item)}
-                  style={styles.deleteBtn}
+                  style={[styles.deleteRail, { borderLeftColor: colors.border }]}
                   accessibilityRole="button"
                   accessibilityLabel={`Delete ${item.title}`}
-                  hitSlop={8}
                 >
                   <Trash2 size={16} color={colors.textMuted} />
                 </Pressable>
@@ -248,15 +267,20 @@ const styles = StyleSheet.create({
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingTop: spacing.xxl },
   loadingText: { marginTop: spacing.xs },
+  emptyIconWell: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { marginTop: spacing.sm, textAlign: 'center' },
   emptyHint: { textAlign: 'center', paddingHorizontal: spacing.xl },
+  emptyCta: { marginTop: spacing.sm },
   list: { paddingVertical: spacing.md, gap: spacing.md, paddingBottom: spacing.xxl },
-  card: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, padding: spacing.md },
-  cardMain: { flex: 1, gap: 4 },
+  // padding:0 + overflow hidden so the delete rail can sit flush against the
+  // card's right edge and respect its rounded corners (Card's own base
+  // style sets padding:16, overridden here — see the rail comment above).
+  card: { flexDirection: 'row', alignItems: 'stretch', padding: 0, overflow: 'hidden' },
+  cardMain: { flex: 1, gap: 4, padding: spacing.md },
   cardTypeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  cardType: { fontSize: 12, fontWeight: '600' },
+  cardType: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   cardTitle: { fontSize: 16, fontWeight: '600' },
   cardSnippet: { fontSize: 13 },
   cardMeta: { fontSize: 12, marginTop: 2 },
-  deleteBtn: { padding: spacing.xs },
+  deleteRail: { width: 44, alignItems: 'center', justifyContent: 'center', borderLeftWidth: StyleSheet.hairlineWidth },
 });

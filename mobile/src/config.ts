@@ -3,8 +3,16 @@ import {
   FileQuestion, ClipboardList, Ticket, House,
   Megaphone, BookOpenCheck, FileBarChart, Settings2, BellRing, type LucideIcon,
 } from 'lucide-react-native';
-import type { NotificationType, ResourceType } from './types';
+import type { NotificationType, ResourceType, Role } from './types';
 import type { AssessmentFormat, Difficulty, QuestionType } from './api/resources';
+
+// Mirrors client/src/config.ts's ROLE_LABELS verbatim.
+export const ROLE_LABELS: Record<Role, string> = {
+  teacher: 'Teacher',
+  school_admin: 'School Admin',
+  resource_person: 'Resource Person',
+  super_admin: 'Super Admin',
+};
 
 // Mirrors client/src/config.ts's API_BASE/SOCKET_BASE (docs/mobile-app-plan.md
 // §21). The plan document describes an app.config.ts + expo-constants

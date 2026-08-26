@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Sparkles, Minus, Plus } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { GeneratorStackParamList } from '../../navigation/types';
 import { ThemedText } from '../../components/ThemedText';
 import { TextField } from '../../components/TextField';
@@ -34,6 +35,7 @@ type Props = NativeStackScreenProps<GeneratorStackParamList, 'GeneratorForm'>;
 
 export function GeneratorFormScreen({ navigation }: Props) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const [format, setFormat] = useState<AssessmentFormat>('quiz');
   const [grade, setGrade] = useState('');
@@ -173,17 +175,26 @@ export function GeneratorFormScreen({ navigation }: Props) {
         />
 
         {error ? (
-          <View style={styles.errorBanner} accessibilityRole="alert">
-            <ThemedText style={styles.errorText}>{error}</ThemedText>
+          <View style={[styles.errorBanner, { backgroundColor: colors.semantic.danger.bg }]} accessibilityRole="alert">
+            <ThemedText style={{ color: colors.semantic.danger.text }}>{error}</ThemedText>
           </View>
         ) : null}
+      </ScrollView>
 
+      {/* Sticky bottom action bar, matching the web's own .classroom-save-bar
+          precedent (UI_REFINED.md §13) — the primary action stays
+          thumb-reachable instead of sitting below a 9-field scroll. */}
+      <View
+        style={[
+          styles.actionBar,
+          { backgroundColor: colors.surface, borderTopColor: colors.border, paddingBottom: insets.bottom + spacing.sm },
+        ]}
+      >
         <Button
           title={generating ? 'Generating…' : 'Generate'}
           onPress={handleGenerate}
           loading={generating}
           disabled={generating || !topic.trim()}
-          style={styles.generateBtn}
         />
         {!generating && (
           <View style={styles.generateHint}>
@@ -193,7 +204,7 @@ export function GeneratorFormScreen({ navigation }: Props) {
             </ThemedText>
           </View>
         )}
-      </ScrollView>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -210,9 +221,10 @@ const styles = StyleSheet.create({
   },
   stepperBtnDisabled: { opacity: 0.35 },
   stepperValue: { fontSize: 18, fontWeight: '700', minWidth: 32, textAlign: 'center' },
-  errorBanner: { backgroundColor: 'rgba(229,72,77,0.12)', borderRadius: 10, padding: spacing.sm },
-  errorText: { color: '#e5484d' },
-  generateBtn: { marginTop: spacing.sm },
+  errorBanner: { borderRadius: 10, padding: spacing.sm },
+  actionBar: {
+    borderTopWidth: StyleSheet.hairlineWidth, padding: spacing.lg, paddingTop: spacing.md, gap: spacing.sm,
+  },
   generateHint: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
   generateHintText: { fontSize: 12, flex: 1 },
 });

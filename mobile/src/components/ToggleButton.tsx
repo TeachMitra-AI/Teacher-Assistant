@@ -21,7 +21,7 @@ interface ToggleButtonProps {
 // of these, not to the primitive itself.
 export function ToggleButton({ label, selected, tone, onPress }: ToggleButtonProps) {
   const { colors } = useTheme();
-  const activeColor = tone === 'positive' ? '#2f9e58' : '#d64545';
+  const activeColor = tone === 'positive' ? colors.semantic.success.text : colors.semantic.danger.text;
 
   return (
     <Pressable

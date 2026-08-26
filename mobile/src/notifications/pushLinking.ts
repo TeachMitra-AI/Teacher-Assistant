@@ -20,27 +20,30 @@
 // right one for a link this app doesn't have a screen for yet.
 import { navigationRef } from '../navigation/navigationRef';
 
-type ResolvedRoute = {
-  tab: 'LibraryTab' | 'ClassroomTab' | 'GeneratorTab' | 'MoreTab';
-  screen: string;
-  params?: Record<string, unknown>;
-};
+// Screens nested inside a tab (MainTabParamList) need the two-level
+// `navigate(tab, {screen, params})` form; Notifications/Settings now live at
+// the root AppStackParamList level (siblings of the tab bar itself — see
+// navigation/types.ts, AppNavigator.tsx), reached with a plain one-level
+// `navigate(screen)`.
+type ResolvedRoute =
+  | { kind: 'tab'; tab: 'LibraryTab' | 'ClassroomTab' | 'GeneratorTab'; screen: string; params?: Record<string, unknown> }
+  | { kind: 'root'; screen: 'Notifications' | 'Settings' };
 
-const FALLBACK: ResolvedRoute = { tab: 'MoreTab', screen: 'Notifications' };
+const FALLBACK: ResolvedRoute = { kind: 'root', screen: 'Notifications' };
 
 export function resolveNotificationLink(link: string | null | undefined): ResolvedRoute {
   if (!link) return FALLBACK;
 
   const editMatch = link.match(/^\/library\/([^/?#]+)\/edit\/?$/);
-  if (editMatch) return { tab: 'LibraryTab', screen: 'ResourceEdit', params: { resourceId: editMatch[1] } };
+  if (editMatch) return { kind: 'tab', tab: 'LibraryTab', screen: 'ResourceEdit', params: { resourceId: editMatch[1] } };
 
   const viewMatch = link.match(/^\/library\/([^/?#]+)\/?$/);
-  if (viewMatch) return { tab: 'LibraryTab', screen: 'ResourceView', params: { resourceId: viewMatch[1] } };
+  if (viewMatch) return { kind: 'tab', tab: 'LibraryTab', screen: 'ResourceView', params: { resourceId: viewMatch[1] } };
 
-  if (/^\/library\/?$/.test(link)) return { tab: 'LibraryTab', screen: 'ResourceList' };
-  if (/^\/classroom\/?$/.test(link)) return { tab: 'ClassroomTab', screen: 'ClassList' };
-  if (/^\/generator\/?$/.test(link)) return { tab: 'GeneratorTab', screen: 'GeneratorForm' };
-  if (/^\/settings\/?$/.test(link)) return { tab: 'MoreTab', screen: 'Settings' };
+  if (/^\/library\/?$/.test(link)) return { kind: 'tab', tab: 'LibraryTab', screen: 'ResourceList' };
+  if (/^\/classroom\/?$/.test(link)) return { kind: 'tab', tab: 'ClassroomTab', screen: 'ClassList' };
+  if (/^\/generator\/?$/.test(link)) return { kind: 'tab', tab: 'GeneratorTab', screen: 'GeneratorForm' };
+  if (/^\/settings\/?$/.test(link)) return { kind: 'root', screen: 'Settings' };
 
   return FALLBACK;
 }
@@ -55,6 +58,10 @@ export function resolveNotificationLink(link: string | null | undefined): Resolv
  */
 export function navigateToNotificationLink(link: string | null | undefined): void {
   if (!navigationRef.isReady()) return;
-  const { tab, screen, params } = resolveNotificationLink(link);
-  navigationRef.navigate(tab, { screen, params });
+  const resolved = resolveNotificationLink(link);
+  if (resolved.kind === 'root') {
+    navigationRef.navigate(resolved.screen);
+  } else {
+    navigationRef.navigate(resolved.tab, { screen: resolved.screen, params: resolved.params });
+  }
 }

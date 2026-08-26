@@ -90,15 +90,17 @@ describe('RootNavigator', () => {
     expect(screen.queryByRole('button', { name: /^Coach, tab,/ })).toBeNull();
   });
 
-  it('restores an authenticated session on launch and shows the 5-tab bar', async () => {
+  it('restores an authenticated session on launch and shows the 4-tab bar', async () => {
     await signInAsRole('teacher');
     await renderApp();
 
     await waitFor(() => expect(tabButton('Coach')).toBeTruthy());
-    expect(tabButton('Classroom')).toBeTruthy();
     expect(tabButton('Library')).toBeTruthy();
+    expect(tabButton('Classroom')).toBeTruthy();
     expect(tabButton('Generator')).toBeTruthy();
-    expect(tabButton('More')).toBeTruthy();
+    // No "More" tab (web-UI-parity pass) — Notifications/Settings/Sign out
+    // are reached from the header instead (see tests below).
+    expect(screen.queryByRole('button', { name: /^More, tab,/ })).toBeNull();
     // Coach is the default/first tab (§10) — its own chat screen (Phase 4)
     // renders immediately, not a placeholder, confirming the authenticated
     // session flows all the way through to the actual Coach UI rather than
@@ -107,7 +109,7 @@ describe('RootNavigator', () => {
     expect(screen.getByTestId('coach-composer-input')).toBeTruthy();
   });
 
-  it('shows an unread-notifications badge in the More menu after sign-in (§26 Phase 7)', async () => {
+  it('shows an unread-notifications badge on the header bell after sign-in (§26 Phase 7)', async () => {
     await setSession('valid-token', 'valid-refresh');
     (globalThis.fetch as jest.Mock)
       .mockResolvedValueOnce(
@@ -120,39 +122,44 @@ describe('RootNavigator', () => {
       .mockResolvedValueOnce(jsonResponse(200, { count: 3 }));
     await renderApp();
 
-    await waitFor(() => expect(tabButton('More')).toBeTruthy());
-    await fireEvent.press(tabButton('More'));
-    await waitFor(() => expect(screen.getByTestId('more-menu-notif-badge')).toBeTruthy());
-    expect(screen.getByTestId('more-menu-notif-badge')).toHaveTextContent('3');
+    await waitFor(() => expect(screen.getByTestId('header-notif-badge')).toBeTruthy());
+    expect(screen.getByTestId('header-notif-badge')).toHaveTextContent('3');
   });
 
-  it('hides Admin from the More menu for a teacher', async () => {
+  it('hides Admin from Settings for a teacher', async () => {
     await signInAsRole('teacher');
     await renderApp();
-    await waitFor(() => expect(tabButton('More')).toBeTruthy());
+    await waitFor(() => expect(tabButton('Library')).toBeTruthy());
+    // Library (not Coach) shows the profile avatar in its header — Coach
+    // swaps it for the teaching-context filter icon (Header.tsx).
+    await fireEvent.press(tabButton('Library'));
 
-    await fireEvent.press(tabButton('More'));
-    expect(screen.getByText('Notifications')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('header-avatar'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByText('Signed-in devices')).toBeTruthy();
     expect(screen.queryByText('Admin')).toBeNull();
   });
 
-  it('shows Admin in the More menu for a school_admin', async () => {
+  it('shows Admin in Settings for a school_admin', async () => {
     await signInAsRole('school_admin');
     await renderApp();
-    await waitFor(() => expect(tabButton('More')).toBeTruthy());
+    await waitFor(() => expect(tabButton('Library')).toBeTruthy());
+    await fireEvent.press(tabButton('Library'));
 
-    await fireEvent.press(tabButton('More'));
+    await fireEvent.press(screen.getByTestId('header-avatar'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Settings' }));
     expect(screen.getByText('Admin')).toBeTruthy();
   });
 
-  it('signing out from the More menu returns to the sign-in screen', async () => {
+  it('signing out from the profile menu returns to the sign-in screen', async () => {
     await signInAsRole('teacher');
     await renderApp();
-    await waitFor(() => expect(tabButton('More')).toBeTruthy());
+    await waitFor(() => expect(tabButton('Library')).toBeTruthy());
+    await fireEvent.press(tabButton('Library'));
 
-    await fireEvent.press(tabButton('More'));
+    await fireEvent.press(screen.getByTestId('header-avatar'));
     (globalThis.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(200, { success: true }));
-    await fireEvent.press(screen.getByText('Sign out'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
 
     await waitFor(() => expect(screen.getByTestId('authSubmitButton')).toBeTruthy());
   });

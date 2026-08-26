@@ -52,7 +52,7 @@ export function QuestionCard({
   }
 
   return (
-    <View style={[styles.card, { backgroundColor: colors.surface2, borderColor: error ? '#e5484d' : colors.border }]}>
+    <View style={[styles.card, { backgroundColor: colors.surface2, borderColor: error ? colors.semantic.danger.action : colors.border }]}>
       <View style={styles.head}>
         <ThemedText variant="muted" style={styles.number}>{`Q${index + 1}`}</ThemedText>
         {editable ? (
@@ -97,7 +97,7 @@ export function QuestionCard({
               accessibilityRole="button"
               accessibilityLabel={`Delete question ${index + 1}`}
             >
-              <Trash2 size={17} color="#e5484d" />
+              <Trash2 size={17} color={colors.semantic.danger.action} />
             </Pressable>
           </View>
         )}
@@ -180,7 +180,7 @@ export function QuestionCard({
 
       {question.type === 'match' && <MatchFields question={question} editable={editable} index={index} onChange={onChange} />}
 
-      {editable && error && <ThemedText style={styles.error}>{error}</ThemedText>}
+      {editable && error && <ThemedText style={[styles.error, { color: colors.semantic.danger.text }]}>{error}</ThemedText>}
     </View>
   );
 }
@@ -302,7 +302,7 @@ function MatchFields({
             accessibilityRole="button"
             accessibilityLabel={`Remove pair ${i + 1}`}
           >
-            <Trash2 size={15} color="#e5484d" />
+            <Trash2 size={15} color={colors.semantic.danger.action} />
           </Pressable>
         </View>
       ))}
@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 12, fontWeight: '600' },
   answer: { fontSize: 13, marginTop: 2 },
   bold: { fontWeight: '700' },
-  error: { color: '#e5484d', fontSize: 12 },
+  error: { fontSize: 12 },
   singleInput: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.sm, padding: spacing.sm, fontSize: 15 },
   options: { gap: spacing.xs },
   optionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

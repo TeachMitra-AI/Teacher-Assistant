@@ -23,8 +23,8 @@ export function MessageBubble({ turn, onRetry, onFeedback }: MessageBubbleProps)
 
   return (
     <View style={styles.group}>
-      <View style={[styles.userBubble, { backgroundColor: colors.orange }]}>
-        <ThemedText style={styles.userText}>{turn.query}</ThemedText>
+      <View style={[styles.userBubble, { backgroundColor: colors.surface2 }]}>
+        <ThemedText style={[styles.userText, { color: colors.text }]}>{turn.query}</ThemedText>
       </View>
 
       <View style={styles.assistantRow}>
@@ -41,11 +41,14 @@ export function MessageBubble({ turn, onRetry, onFeedback }: MessageBubbleProps)
 
         {turn.status === 'error' && (
           <View
-            style={[styles.card, styles.errorCard]}
+            style={[
+              styles.card,
+              { backgroundColor: colors.semantic.danger.bg, borderColor: colors.semantic.danger.border },
+            ]}
             accessibilityRole="alert"
             accessibilityLabel={turn.error ?? 'Something went wrong'}
           >
-            <ThemedText style={styles.errorText}>⚠️ {turn.error}</ThemedText>
+            <ThemedText style={{ color: colors.semantic.danger.text, fontSize: 14 }}>⚠️ {turn.error}</ThemedText>
             <Pressable onPress={() => onRetry(turn)} accessibilityRole="button" testID={`retry-${turn.id}`}>
               <ThemedText style={[styles.retryText, { color: colors.orange }]}>Try again</ThemedText>
             </Pressable>
@@ -53,7 +56,11 @@ export function MessageBubble({ turn, onRetry, onFeedback }: MessageBubbleProps)
         )}
 
         {turn.status === 'done' && turn.response && (
-          <View style={[styles.card, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
+          // No card wrapper — the web renders the answer as plain prose at
+          // full column width (.ai-message-content/.response-body,
+          // UI_REFINED.md §10.2), not inside a bordered surface. A bordered
+          // card here also wasted ~32dp of the already-narrow reading width.
+          <View style={styles.answer}>
             <MarkdownText text={turn.response.text} />
             {turn.response.queryId && (
               <View style={styles.feedbackRow}>
@@ -99,14 +106,17 @@ export function MessageBubble({ turn, onRetry, onFeedback }: MessageBubbleProps)
 const styles = StyleSheet.create({
   group: { gap: spacing.sm },
   userBubble: {
+    // .user-bubble's exact radius asymmetry (index.css: "16px 16px 4px
+    // 16px" — CSS shorthand order is TL/TR/BR/BL, so the tail corner is
+    // bottom-right, not top-right).
     alignSelf: 'flex-end',
-    maxWidth: '85%',
-    borderRadius: radius.md,
-    borderTopRightRadius: 4,
+    maxWidth: '80%',
+    borderRadius: 16,
+    borderBottomRightRadius: 4,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
   },
-  userText: { color: '#fff', fontSize: 15, lineHeight: 21 },
+  userText: { fontSize: 15, lineHeight: 23 },
   assistantRow: { alignSelf: 'stretch' },
   card: {
     borderRadius: radius.md,
@@ -115,8 +125,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.sm,
   },
-  errorCard: { backgroundColor: '#fdeceb', borderColor: '#f3b4b0' },
-  errorText: { color: '#a02622', fontSize: 14 },
+  answer: { gap: spacing.sm },
   retryText: { fontWeight: '600', fontSize: 14 },
   feedbackRow: { flexDirection: 'row', gap: spacing.md, paddingTop: spacing.xs },
 });
