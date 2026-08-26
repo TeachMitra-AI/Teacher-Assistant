@@ -486,6 +486,7 @@ export interface SchoolClass {
   name: string;
   grade?: string | null;
   section?: string | null;
+  feeAmount?: number | null; // expected monthly fee, in whole rupees, for every active student in this class
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -598,6 +599,27 @@ export interface FeeRecordDto {
   period: string;
   status: FeeStatus;
   updatedAt: string;
+}
+
+// GET .../classroom/analytics/classes/:classId (server/src/routes/classroom.js
+// classToDto-adjacent handler) — a CURRENT-MONTH summary, not a "today"
+// breakdown (no `today` field exists on this endpoint; see
+// classroomAttendance.js's computeClassAttendanceMonthSummary). `fees` here is
+// this endpoint's own inline shape, distinct from ClassFeeStatus above (no
+// perStudent, but adds partial/totalCollected/totalExpected).
+export interface ClassAnalytics {
+  classId: string;
+  totalStudents: number;
+  month: ClassAttendanceMonthSummary;
+  fees: {
+    period: string;
+    totalStudents: number;
+    paid: number;
+    partial: number;
+    pending: number;
+    totalCollected: number;
+    totalExpected: number;
+  };
 }
 
 // A saved item in the teacher's personal library. Mirrors the server DTO

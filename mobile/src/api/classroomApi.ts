@@ -12,6 +12,7 @@ import type {
   ClassFeeStatus,
   FeeStatus,
   FeeRecordDto,
+  ClassAnalytics,
 } from '../types';
 
 export interface CreateClassInput {
@@ -123,4 +124,14 @@ export async function setFeeStatus(studentId: string, period: string, status: Fe
     body: { status },
   });
   return data.fee;
+}
+
+// ---- Analytics ----------------------------------------------------------
+
+// Current-month summary + fee snapshot for one class (Class Home's summary
+// strip). NOT a "today" figure — see ClassAnalytics's own doc comment;
+// callers wanting today's attendance specifically should pair this with
+// getDailyAttendance(classId, todayIsoDate).summary instead.
+export async function getClassAnalytics(classId: string): Promise<ClassAnalytics> {
+  return api<ClassAnalytics>(`/classroom/analytics/classes/${classId}`);
 }

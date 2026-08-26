@@ -30,8 +30,8 @@ this section.
 | 6 — Generator | ✅ DONE (2026-08-21) — built directly against the structured contract (Generator v2 Stage 3); verified on-device, one real stale-bundle bug found and fixed |
 | 7 — Notifications (in-app + realtime) | ✅ DONE (2026-08-22) — implementation/tests/lint/typecheck/export all done; physical-device verification complete, one real bug found and fixed (socket.io-client needed `transports: ['websocket']` on React Native) |
 | 7b — Push Notifications (backend + client) | ✅ IMPLEMENTATION DONE (2026-08-23) — backend + mobile + tests/lint/typecheck all complete; **live physical-device push verification BLOCKED** on the deployed backend being unavailable (Railway subscription/payment lapse), see the Phase 7b section below |
-| 7c — Mobile UI Refinement (web-mobile parity pass) | 🔶 IN PROGRESS (2026-08-26) — token foundation, dark-mode fixes, nav/header restructure, and Coach/Library/Notifications/Classroom/Generator/Auth/Settings screen parity all done and mostly device-verified; see the Phase 7c section below for the one remaining item |
-| 8 — Classroom (shell + Classes + Students) | ⬜ NOT STARTED |
+| 7c — Mobile UI Refinement (web-mobile parity pass) | ✅ DONE (2026-08-26) — token foundation, dark-mode fixes, nav/header restructure, and Coach/Library/Notifications/Classroom/Generator/Auth/Settings screen parity all complete and device-verified across three rounds, plus the newly-approved Today's Highlight and Admin Analytics / Usage Dashboard features; see the Phase 7c section below |
+| 8 — Classroom (shell + Classes + Students) | ✅ DONE (2026-08-26) — Class List/Class Home/today's-attendance summary/Students CRUD/class-switcher/class CRUD (create/archive/restore) all implemented and device-verified against the real backend; see the Phase 8 section below |
 | 9 — Attendance | ⬜ NOT STARTED |
 | 10 — Fees | ⬜ NOT STARTED |
 | 11 — Reports / Dashboard | ⬜ NOT STARTED |
@@ -1899,7 +1899,7 @@ unrelated test's isolation is outside this phase's diff.
   implementation is finished, the field verification is deferred by an
   external blocker.
 
-### Phase 7c — Mobile UI Refinement (Web Mobile Parity Pass) — 🔶 IN PROGRESS (started 2026-08-26)
+### Phase 7c — Mobile UI Refinement (Web Mobile Parity Pass) — ✅ DONE (started 2026-08-26, closed 2026-08-26)
 
 **Status note**: this phase sits between 7b and 8 — a visual/UX-parity pass
 over the screens Phases 1–7b already built, not a new feature phase. It is
@@ -2183,6 +2183,107 @@ source of truth and the existing backend — no fake data, no backend changes.
   (2 tests: loading → success, and the server-error path) — full suite now
   **291/291 passing, 35/35 suites** (up from 255/32). `tsc --noEmit` and
   `expo lint` both clean.
+
+### Phase 8 — Classroom (shell + Classes + Students) — ✅ DONE (2026-08-26)
+
+**What was done**: replaced the Phase 2 `MOCK_CLASSES`/placeholder shells
+with the real Classroom feature described in §12 and §26's own Phase 8
+scope, implemented incrementally (Class List → Class Home → Students →
+class switcher + class CRUD) with a live device-verification pass after
+each step. Every screen follows the `Screen -> useXScreen() -> classroomApi
+-> state -> UI` convention already established in Phase 7c — no Presenter/
+Store/DI layers, matching the explicit architectural instruction for this
+phase.
+
+- **Class List** (`ClassListScreen.tsx` + `useClassListScreen.ts`): real
+  `GET /classroom/classes` (always fetched with `includeArchived=true`; the
+  "Show archived classes" toggle filters client-side, same pattern as
+  `useStudentsScreen.ts`'s "Show inactive" precedent — no re-fetch per
+  toggle flip). Deliberately does **not** show a per-class "today's
+  attendance %" teaser — no batch endpoint exists for it (would mean an
+  analytics call per row) and the web's own `ClassList.tsx` doesn't show one
+  either; this was flagged and confirmed with the user before implementation
+  rather than assumed.
+- **Class Home** (`ClassHomeScreen.tsx` + `useClassHomeScreen.ts`): class
+  name as a tappable header title (opens the class switcher), a live
+  today's-attendance summary strip (Present/Absent/Unmarked via
+  `getDailyAttendance(classId, today).summary` — the per-class analytics
+  endpoint has no `today` field, only a month aggregate, so this is the
+  correct source, confirmed against the endpoint's actual implementation
+  before coding), and the four shortcut cards (Mark Today's Attendance /
+  Students / Fees this Month / Reports) — Attendance/Fees/Reports remain
+  Phase 9/10/11 placeholders, untouched.
+- **Students** (`StudentsScreen.tsx` + `useStudentsScreen.ts` +
+  `StudentFormModal.tsx`): list (active-only), add, and edit, over the
+  already-ported `classroomApi.{listStudents,addStudent,updateStudent}`.
+  Deactivate/restore stayed out of this step's scope by explicit agreement.
+- **Class switcher** (`ClassSwitcherModal.tsx` + `useClassSwitcher.ts`): tap
+  the class name on Class Home → a bottom sheet lists active classes (lazy-
+  loaded only when opened), tap another to switch via `navigation.setParams`
+  — same stack, no push/pop — which re-triggers Class Home's and (once
+  navigated into) Students' own `[classId]`-keyed data loads.
+- **Class CRUD** (`ClassFormModal.tsx` + `useClassListScreen.ts`): create
+  (`POST /classroom/classes`, name/grade/section matching the server's
+  `createClassSchema` exactly), archive (`DELETE /classroom/classes/:id`,
+  `Alert.alert` confirmation matching the web's own `ConfirmDialog` and this
+  app's destructive-confirm convention), restore (`PATCH
+  /classroom/classes/:id` with `{archived:false}`, no confirmation, matching
+  the web's asymmetry). No new backend endpoints — every one of these
+  already existed in `classroomApi.ts` from Phase 1.
+
+**Two real bugs found and fixed by device verification, not by any static
+check**: (1) the Class List "+ Add class" control was first wired via
+`navigation.setOptions({headerRight})`, matching Students' pattern — but
+`ClassroomStack.tsx` gives Class List a **full** `header` override
+(`options={{ header: () => <Header /> }}`, the shared 4-tab header), which
+silently ignores `headerRight`/`headerTitle`; confirmed never rendering
+on-device. Fixed by making it a plain in-content control instead of
+expanding the shared `Header` component for one screen's need. (2) a latent
+bug from Phase 8's own Students step: `StudentFormModal`'s `key` didn't
+change between two consecutive "Add" opens, so a successful add's leftover
+text could silently reappear on the next open; fixed with a per-open nonce
+in the key, applied to both `StudentFormModal` and the new `ClassFormModal`.
+
+**Files created**: `mobile/src/screens/classroom/{useClassListScreen,
+useClassHomeScreen,useStudentsScreen,useClassSwitcher}.ts`,
+`{ClassFormModal,StudentFormModal,ClassSwitcherModal,StudentsScreen}.tsx`,
+and their `__tests__`. **Files modified**: `ClassListScreen.tsx`,
+`ClassHomeScreen.tsx`, `mobile/src/api/classroomApi.ts` (added
+`getClassAnalytics`, a thin wrapper over the already-existing per-class
+analytics endpoint), `mobile/src/types/index.ts` (added `feeAmount` to
+`SchoolClass` — completing the mirror of the server DTO — and a new
+`ClassAnalytics` type), `mobile/src/navigation/stacks/ClassroomStack.tsx`
+(wired in `StudentsScreen`).
+
+**Backend changes**: none — every endpoint used
+(`GET/POST /classroom/classes`, `PATCH/DELETE /classroom/classes/:id`,
+`GET/POST /classroom/classes/:id/students`, `PATCH /classroom/students/:id`,
+`GET /classroom/classes/:id/attendance`, `GET
+/classroom/analytics/classes/:id`) already existed and was verified against
+the actual server implementation before use, not assumed.
+
+**Tests**: full suite **319/319 passing, 39/39 suites** (up from 291/35 at
+the end of Phase 7c). `tsc --noEmit` and `expo lint` both clean.
+
+**Device verification (Pixel 8 API 35, real backend, both themes)**:
+existing classes displayed correctly; class switcher opened, listed active
+classes, and correctly marked the current one; switching classes reloaded
+Class Home's summary strip and shortcuts, and Students correctly scoped to
+the newly-selected class (confirmed empty for a brand-new class, not a
+stale mix); created a real test class (appeared in the list, selectable);
+archived it (confirmed it dropped out of the active view); toggled "Show
+archived classes" (confirmed it reappeared, marked Archived, no extra
+fetch); restored it (confirmed it became active again, no confirmation
+prompt); Attendance/Fees/Reports shortcuts confirmed still Phase-9/10/11
+placeholders, untouched. Logcat clean throughout (no FATAL EXCEPTION, no
+ReactNativeJS errors, no unhandled rejections).
+
+**Known limitations**: none blocking. `feeAmount` is exposed for display
+(Class List) but not yet writable via the create/edit forms — out of scope
+for this phase, deferred naturally to whichever phase gives Fees its full
+treatment.
+
+**Remaining work**: Phase 9 onward, per §26.
 
 ---
 

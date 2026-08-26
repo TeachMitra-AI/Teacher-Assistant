@@ -166,11 +166,30 @@ describe('RootNavigator', () => {
 
   it('navigates Classroom -> Class List -> Class Home -> Attendance for a signed-in teacher (§12)', async () => {
     await signInAsRole('teacher');
+    // Beyond the queued /auth/me response above, this screen tree also fires
+    // NotificationProvider's mount-time unread-count fetch (see the "shows an
+    // unread-notifications badge" test above) and ClassListScreen fetches
+    // GET /classroom/classes both on mount and on the navigator 'focus' event
+    // it fires when the tab first becomes active (same reload-on-focus
+    // pattern as ResourceListScreen.tsx). Rather than guess the exact call
+    // count/order, respond by URL for every call after the queued auth/me one.
+    (globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/classroom/classes')) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            classes: [
+              { id: 'c1', name: 'Grade 6 - Section A', grade: 'Grade 6', section: 'A', archived: false, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+            ],
+          })
+        );
+      }
+      return Promise.resolve(jsonResponse(200, { count: 0 }));
+    });
     await renderApp();
     await waitFor(() => expect(tabButton('Classroom')).toBeTruthy());
 
     await fireEvent.press(tabButton('Classroom'));
-    expect(screen.getByText('Grade 6 - Section A')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Grade 6 - Section A')).toBeTruthy());
 
     await fireEvent.press(screen.getByText('Grade 6 - Section A'));
     expect(screen.getByText("Mark Today's Attendance")).toBeTruthy();
