@@ -27,6 +27,10 @@ export type ClassroomStackParamList = {
   ClassHome: { classId: string; className: string };
   Students: { classId: string; className: string };
   Attendance: { classId: string; className: string };
+  // Pushed from Monthly Summary's per-student list (§13's "student
+  // attendance history" screen). `month` seeds the history screen with the
+  // month the teacher was already looking at.
+  StudentAttendanceHistory: { studentId: string; studentName: string; classId: string; className: string; month: string };
   Fees: { classId: string; className: string };
   Reports: { classId: string; className: string };
 };
@@ -61,19 +65,28 @@ export type GeneratorStackParamList = {
   };
 };
 
-export type MoreStackParamList = {
-  MoreMenu: undefined;
+// 4 tabs, matching client/src/components/BottomNav.tsx's order exactly
+// (Coach, Library, Classroom, Generator) — see MainTabs.tsx's header comment
+// for why the previous 5th "More" tab was removed in the web-parity pass.
+export type MainTabParamList = {
+  CoachTab: NavigatorScreenParams<CoachStackParamList>;
+  LibraryTab: NavigatorScreenParams<LibraryStackParamList>;
+  ClassroomTab: NavigatorScreenParams<ClassroomStackParamList>;
+  GeneratorTab: NavigatorScreenParams<GeneratorStackParamList>;
+};
+
+// Root-level stack wrapping the tab bar. Notifications/Settings/Sessions/
+// Admin/HelpSupport now live here as siblings of the tab bar itself (pushed
+// over it, with the native back button) rather than nested inside a "More"
+// tab — reached from Header's bell/avatar controls via navigationRef from
+// anywhere in the tree, matching the web's header-bell / profile-dropdown
+// placement instead of a dedicated tab (see MainTabs.tsx, Header.tsx).
+export type AppStackParamList = {
+  Main: NavigatorScreenParams<MainTabParamList>;
   Notifications: undefined;
   Settings: undefined;
   Sessions: undefined;
   Admin: undefined;
   HelpSupport: undefined;
-};
-
-export type MainTabParamList = {
-  CoachTab: NavigatorScreenParams<CoachStackParamList>;
-  ClassroomTab: NavigatorScreenParams<ClassroomStackParamList>;
-  LibraryTab: NavigatorScreenParams<LibraryStackParamList>;
-  GeneratorTab: NavigatorScreenParams<GeneratorStackParamList>;
-  MoreTab: NavigatorScreenParams<MoreStackParamList>;
+  GettingStarted: undefined;
 };

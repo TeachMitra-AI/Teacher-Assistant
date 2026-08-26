@@ -30,7 +30,8 @@ this section.
 | 6 — Generator | ✅ DONE (2026-08-21) — built directly against the structured contract (Generator v2 Stage 3); verified on-device, one real stale-bundle bug found and fixed |
 | 7 — Notifications (in-app + realtime) | ✅ DONE (2026-08-22) — implementation/tests/lint/typecheck/export all done; physical-device verification complete, one real bug found and fixed (socket.io-client needed `transports: ['websocket']` on React Native) |
 | 7b — Push Notifications (backend + client) | ✅ IMPLEMENTATION DONE (2026-08-23) — backend + mobile + tests/lint/typecheck all complete; **live physical-device push verification BLOCKED** on the deployed backend being unavailable (Railway subscription/payment lapse), see the Phase 7b section below |
-| 8 — Classroom (shell + Classes + Students) | ⬜ NOT STARTED |
+| 7c — Mobile UI Refinement (web-mobile parity pass) | ✅ DONE (2026-08-26) — token foundation, dark-mode fixes, nav/header restructure, and Coach/Library/Notifications/Classroom/Generator/Auth/Settings screen parity all complete and device-verified across three rounds, plus the newly-approved Today's Highlight and Admin Analytics / Usage Dashboard features; see the Phase 7c section below |
+| 8 — Classroom (shell + Classes + Students) | ✅ DONE (2026-08-26) — Class List/Class Home/today's-attendance summary/Students CRUD/class-switcher/class CRUD (create/archive/restore) all implemented and device-verified against the real backend; see the Phase 8 section below |
 | 9 — Attendance | ⬜ NOT STARTED |
 | 10 — Fees | ⬜ NOT STARTED |
 | 11 — Reports / Dashboard | ⬜ NOT STARTED |
@@ -1898,6 +1899,392 @@ unrelated test's isolation is outside this phase's diff.
   implementation is finished, the field verification is deferred by an
   external blocker.
 
+### Phase 7c — Mobile UI Refinement (Web Mobile Parity Pass) — ✅ DONE (started 2026-08-26, closed 2026-08-26)
+
+**Status note**: this phase sits between 7b and 8 — a visual/UX-parity pass
+over the screens Phases 1–7b already built, not a new feature phase. It is
+driven by two documents: `docs/mobile-ui-refinement-plan.md` ("UI_REFINED.md"
+in conversation shorthand — the design-system/token/screen-by-screen spec)
+and direct product direction from the user during this pass, some of which
+**overrides** specific decisions in this document and in UI_REFINED.md — see
+"Current architecture & UI-strategy decisions (2026-08-26)" below and the
+override note added to §10.
+
+**Current architecture & UI-strategy decisions (2026-08-26)** — these are
+current, active product decisions, recorded here because they change how
+future work in this phase (and Phase 8+) should be approached:
+
+1. **Mobile technology remains React Native + Expo**, targeting Android and
+   iOS from one codebase. Not converting to Kotlin/native Android — this was
+   raised and explicitly re-confirmed, not revisited as an open question.
+2. **Activa Clinician is an architectural *inspiration*, not a literal
+   architecture to copy.** The principles adopted — UI/business-logic
+   separation, unidirectional data flow, reusable/testable logic, capability-
+   based behavior over device checks, clear feature boundaries — are applied
+   idiomatically in React Native: a plain `useXScreen()` hook per touched
+   screen owning state/API/business rules, with the screen component reduced
+   to composition over that hook's output. No interfaces-for-their-own-sake,
+   no presenter classes, no DI container, no per-screen store. This is a
+   lightweight convention to apply *as each screen is touched* during this
+   phase, not a separate refactor pass — see §CLAUDE.md's simplicity rule,
+   which this explicitly follows.
+3. **Current UI goal: reproduce the web application's mobile view as closely
+   as practical.** The existing web client's mobile-width rendering
+   (`client/`, viewed at phone width) is the visual source of truth for this
+   phase — layout, spacing, cards, typography, colors, navigation structure,
+   header content, notification/profile placement. This is an **interim
+   strategy**: once Phases 8+ are complete and the full mobile feature set
+   exists, the mobile UX is expected to get its own deliberate review/refinement
+   pass rather than staying a permanent web copy. Do not read "reproduce the
+   web mobile view" as the final design direction — it is the current one.
+4. **Future-phase functionality is not pulled forward.** A feature existing
+   in the web client is not by itself a reason to build it on mobile now —
+   see the phase-by-phase table in §26 and the "Unplanned" list below for the
+   concrete triage this pass has done so far.
+
+**What was done, verified against the repository**:
+- **Token foundation** (`mobile/src/theme/tokens.ts`): added `semantic`
+  (danger/success/warning, light+dark, transcribed from `client/src/index.css`
+  against the live file, not guessed), `orangeSoft`, the `sk-base/mid/peak`
+  skeleton-shimmer stops, `layout` constants, and a `typography` scale (not
+  yet consumed by any component — ready for the next screen pass). 21
+  hardcoded hex-literal sites across 12 files replaced with these tokens,
+  including two sites that were previously light-only-hardcoded and broke in
+  dark mode (`MessageBubble.tsx`'s error card, three auth/generator error
+  banners) — now theme-reactive.
+- **`app.json`'s `userInterfaceStyle` fixed from `"light"` to `"automatic"`**,
+  plus the `expo-system-ui` package added — without it, Android's dark theme
+  was unreachable regardless of the OS setting (verified: the app rendered
+  light even after forcing system dark mode via `adb`, until this fix +
+  native rebuild). This was necessary for dark mode to be verifiable at all,
+  not something UI_REFINED.md's original research anticipated.
+- **Bottom navigation restructured to 4 tabs** (Coach, Library, Classroom,
+  Generator — dropping the 5th "More" tab), matching
+  `client/src/components/BottomNav.tsx`'s exact order. **This overrides
+  §10's original 5-tab design and UI_REFINED.md §7.1/§22's explicit
+  recommendation to keep "More"** — see the override note added to §10
+  below for the full reasoning on both sides.
+- **New root-level stack** (`mobile/src/navigation/AppNavigator.tsx`) hosting
+  Notifications/Settings/Sessions/Admin/HelpSupport/GettingStarted as pushed
+  screens (native back button), reached from a new shared header rather than
+  a tab. Nothing removed — every route that existed under the old "More" tab
+  still exists and is reachable, just relocated.
+- **New shared `Header` component** (`mobile/src/components/Header.tsx`),
+  replacing the native stack header on all 4 tab-root screens: app logo +
+  name (left), theme toggle + notification bell-with-badge + either the
+  profile avatar or (Coach only) an inert teaching-context filter icon
+  (right) — matching `client/src/components/TopBar.tsx`'s mobile layout.
+  The filter icon is deliberately non-functional: the underlying
+  grade/subject/language picker (`TeachingContextMenu` on web) is an
+  explicit Phase 4 deferral (this document, "Deliberately NOT implemented
+  this phase" under Phase 4 above), and wiring it up would be new
+  functionality, not a restyle.
+- **`ProfileMenu.tsx`** (dropdown from the avatar): Getting started /
+  Settings / Need Help? / Sign out, matching the web's profile-dropdown item
+  set and order. "Getting started" is a new placeholder route/screen (no
+  content yet) added purely to match the web menu's visible item — see
+  "Unplanned" below.
+- **`NotificationBell.tsx`**: pushes the existing (Phase 7) Notifications
+  screen — a full-screen push is the native-idiomatic equivalent of the
+  web's header dropdown panel, reaching the same screen/data.
+- **`SettingsScreen.tsx`** (replaces `MoreMenuScreen.tsx`): identity card,
+  Signed-in devices row, role-gated Admin row, Sign out — the same content
+  the old More-menu had, reorganized under the avatar dropdown's "Settings"
+  item rather than its own tab.
+- **Coach quick actions**: single column (was a 2-up grid), 4th action
+  ("Assessment") hidden on mobile — both explicitly specified in
+  UI_REFINED.md §10.5, not a judgment call.
+- **`pushLinking.ts`** (Phase 7b deep-linking) updated for the new
+  root-vs-tab route shape; its test file updated to match (not deleted).
+
+**Files changed**: `mobile/src/theme/tokens.ts`; `app.json`;
+`mobile/src/navigation/{types.ts,MainTabs.tsx,RootNavigator.tsx}`;
+new `mobile/src/navigation/AppNavigator.tsx`; deleted
+`mobile/src/navigation/stacks/MoreStack.tsx`; `mobile/src/navigation/stacks/
+{CoachStack,LibraryStack,ClassroomStack,GeneratorStack}.tsx`; new
+`mobile/src/components/{Header,ProfileMenu,NotificationBell}.tsx`; new
+`mobile/src/screens/SettingsScreen.tsx` (deleted `MoreMenuScreen.tsx`);
+`mobile/src/screens/coach/EmptyState.tsx`;
+`mobile/src/screens/notifications/NotificationsScreen.tsx` (import fix only);
+`mobile/src/notifications/pushLinking.ts` + its test;
+`mobile/src/navigation/__tests__/RootNavigator.test.tsx` (rewritten for the
+4-tab/no-More structure); 12 screen/component files for the token swap (§ above).
+
+**Tests**: `npx jest` — **255/255 passing, 32/32 suites** (254 baseline +1
+new assertion in `pushLinking.test.ts`). `tsc --noEmit` clean. `expo lint`
+clean.
+
+**Device verification performed** (Pixel 8 API 35 emulator): light→dark
+toggle via the header's theme button; all 4 tabs render with the new header;
+avatar dropdown opens and every item (Getting started/Settings/Need Help?/
+Sign out) navigates correctly; notification bell opens the existing
+Notifications screen with real unread data and the correct badge count;
+Settings screen shows identity + Signed-in devices + Admin (role-gated,
+confirmed present for a super_admin session) + Sign out, and Sign out
+returns to the login screen; Coach's single-column quick actions render
+correctly with the 4th action hidden; Classroom/Library tab content
+unaffected (existing Phase 2/5 functionality confirmed still working).
+
+**Known limitations / explicitly deferred this pass** (not implemented,
+not silently skipped):
+- **Composer mic/attachment/"Assistant Mode" controls** — explicit Phase 4
+  deferral, carried forward unchanged.
+- **Coach chat-history sidebar, grade/subject/language context picker,
+  edit-in-place/copy/share/read-aloud on messages** — all explicit,
+  pre-existing Phase 4 deferrals, unchanged by this pass.
+
+**Update (second round, same day, 2026-08-26)** — completed the remaining
+current-scope UI_REFINED.md work across Coach/Library/Notifications/
+Classroom/Generator/Auth/Settings, closing most of the "remaining" items the
+first round of this phase had listed. Specifics:
+- **Coach**: user bubble corrected to `surface-2` (was still orange — finding
+  #1 from UI_REFINED.md's original audit, not fixed in round one); assistant
+  answer's card wrapper removed, now plain prose at full width (finding #1's
+  other half); markdown heading/paragraph/list-indent type scale matches
+  `.response-body` exactly (§10.3); composer rebuilt to `.composer-box`'s
+  surface-2/radius/border panel with an orange focus ring and a visually-38dp
+  circular send button (kept inside a 44dp touch target, not literally
+  shrunk — §13's touch-target minimum still applies) (§10.4).
+- **Library**: card type label is now an uppercase orange eyebrow (was muted/
+  lowercase); delete control is a full-height right-edge rail with a left
+  border (was a floating icon); empty state got the 60dp circular icon well
+  plus an "Ask Coach a question" CTA when genuinely empty, matching
+  `.library-empty` (§12.1).
+- **Notifications**: row rebuilt to `.notif-row` exactly — flat, no card
+  border/shadow, unread = `orangeSoft` background (was an orange border),
+  30dp circular icon well (was a rounded square), tightened row spacing,
+  56dp min row height; empty-state icon well added, glyph recolored to
+  `--border` matching the web's deliberately-faint icon (§14).
+- **Classroom** (chrome only, no Phase 8 functionality added): class list
+  rows are now flat `surface-2` rows matching `.classroom-class-item`
+  (were elevated Cards); the "Mock classes…" note is now a bordered info
+  panel with an icon (was centered plain text); Class Home's four shortcuts
+  are now icon-well + label + chevron rows matching `.quick-action-card`
+  (were centered label-only tiles) (§11).
+- **Generator**: the Generate button now sits in a sticky bottom action bar
+  above the tab bar, matching the web's `.classroom-save-bar` precedent, so
+  it stays reachable without scrolling a 9-field form (§13).
+- **Auth**: brand logo wrapped in a 54dp rounded-square tinted box (was a
+  bare emoji); a theme toggle added top-right, safe-area-aware; the
+  Sign-in/Register tab's dark-mode active-pill bug fixed (was `--surface`,
+  now `--orange-soft` in dark, matching the web's own dark-mode correction);
+  tab track now has a `surface-2` background (was transparent); error banner
+  gained a border and a leading `AlertCircle` icon (was bg+text only); the
+  school-picker's stacked gradient buttons replaced with selectable flat rows
+  (name + code + chevron), reserving the gradient for the single primary
+  action per screen (§9.1).
+- **Settings**: identity card now shows a circular orange→amber gradient
+  avatar with initials (was three text lines, no avatar) and the user's role
+  (was missing); the menu rows are grouped into one flat container with
+  hairline dividers (were separate elevated Cards), matching
+  `.profile-dropdown` (§15).
+- Added `ROLE_LABELS` to `mobile/src/config.ts`, mirroring
+  `client/src/config.ts`'s map verbatim (`Teacher`/`School Admin`/`Resource
+  Person`/`Super Admin`) — needed for Settings' role line.
+
+**Tests/verification after this round**: `npx jest` — 255/255, 32/32 suites
+(unchanged count — this round was pure restyling, no new test-relevant
+behavior). `tsc --noEmit` and `expo lint` both clean. Device-verified on the
+Pixel 8 API 35 emulator via Fast Refresh (no native rebuild): Coach composer
+box/focus-ring/send button and user-bubble color; Library empty-state icon
+well + CTA (card/delete-rail styling was code-reviewed only — the library was
+empty on-device, no way to populate it from the mobile UI as-is); Notification
+row flat/orange-soft/circular-icon treatment; Classroom class-list rows, info
+banner, and Class Home shortcut rows; Generator's sticky action bar; Settings'
+gradient avatar/role/grouped rows; Auth's brand logo, theme toggle (including
+a safe-area top-inset bug found and fixed after the toggle rendered under the
+status bar on first pass), and tab dark-mode fix. The Auth error banner's
+icon/border was code-reviewed but not screenshotted — repeated `adb input`
+attempts to trigger it kept landing on unrelated Android system-settings
+screens (an emulator/ADB-input environment quirk, not an app behavior; `tsc`
+compiling clean is the evidence the JSX is structurally correct).
+
+**Still remaining** (Phase 7c, not deferred to a later phase): any
+UI_REFINED.md detail not explicitly named above (e.g. exact focus-ring pixel
+values, per-field polish) that a closer side-by-side pass might still catch.
+
+**Update (pre-commit verification pass, 2026-08-26) — Auth error banner**:
+on-device visual confirmation was attempted twice more this pass, using
+precise `uiautomator`-derived element bounds (not guessed coordinates) for
+every tap. Both times, typing the test password into the Password
+`TextInput` via `adb shell input text` reproducibly diverted the emulator to
+Android's own "Display over other apps" system-settings screen — confirmed
+via `dumpsys activity activities` (foreground activity became
+`com.android.settings/.spa.SpaActivity`) — before the form could be
+submitted. `adb logcat` showed **zero app-side errors, warnings, or
+exceptions** at either occurrence, and no permission toggle was touched
+(all "Not allowed" entries were only viewed, never changed) — this is a
+synthetic-text-injection/IME quirk of this emulator environment (matching
+the same class of quirk the first Phase 7c pass already logged for this
+exact screen), not an application defect, and per explicit instruction it
+was not forced further with blind coordinate taps. **Closed instead via a
+safe, code-level equivalent**: new `mobile/src/screens/auth/__tests__/
+AuthScreen.test.tsx` renders the real `AuthScreen` component (only
+`useAuth()` mocked) and drives its actual `handleSubmit -> login() -> catch
+-> describeError() -> <ErrorBanner>` path with a mocked 401 "Incorrect email
+or password." rejection — the same real code, same real render tree, just
+without the ADB text-injection layer that was diverting the OS. Passes
+(292/292 full suite, up from 291). This is the practical substitute for the
+on-device screenshot; the banner's actual pixel rendering (border/icon color
+in each theme) was already code-reviewed against `ErrorBanner`'s
+implementation in the second-round update above and is not expected to
+differ from every other themed component already device-verified this
+phase.
+
+**Update (third round, 2026-08-26) — Today's Highlight + Admin Analytics /
+Usage Dashboard, newly approved and implemented**: both features named
+"Unplanned — product decision required" / "not built" above were explicitly
+approved by the user in this round and implemented against the real web
+source of truth and the existing backend — no fake data, no backend changes.
+
+- **Today's Highlight** (Coach home, above the quick-action grid): the web's
+  `client/src/lib/{welcome,specialDays,dailyContent}.ts` — pure, deterministic,
+  date-keyed content with zero DOM/React dependency — were copied byte-for-
+  byte to `mobile/src/lib/{welcome,specialDays,dailyContent}.ts` (no logic
+  changes needed; the ported `welcome.test.ts` passes unmodified). New
+  `mobile/src/screens/coach/DailyHighlightCard.tsx` is the native analogue of
+  `client/src/components/DailyHighlight.tsx` — a `surface2`/`orange`-eyebrow
+  card that opens a themed `Modal` detail view (the RN analogue of the web's
+  portalled `.highlight-overlay`/`.highlight-panel` dialog), wired into
+  `EmptyState.tsx` between the greeting and the quick-action grid, matching
+  `WelcomeScreen.tsx`'s ordering. Device-verified in both themes on 26 August
+  2026 — correctly resolved to Onam (the `onam-2026` year-specific festival
+  entry) for that live date, both on the card and in its detail dialog.
+- **Admin Analytics / Usage Dashboard** (`Settings → Admin`, role-gated
+  identically to the existing `ADMIN_ROLES` check): native port of
+  `client/src/pages/AdminPage.tsx`'s "Overview" tab (title "Usage dashboard"),
+  calling the same unmodified, role-scoped `GET /api/admin/analytics`
+  (`server/src/routes/admin.js`, `requireRole(...ADMIN_ROLES)`, scoped by
+  `schoolScope` — own school / district / all). New
+  `mobile/src/api/admin.ts` (thin wrapper), `mobile/src/screens/admin/
+  useAdminAnalyticsScreen.ts` (state/API orchestration hook, per this phase's
+  `Screen -> useXScreen()` convention), and `AdminAnalyticsScreen.tsx`
+  composing: a KPI grid (`SummaryTile`, reused as-is) for totals, then four
+  `Card` sections. **Deliberate deviation from the web**: recharts (the web's
+  chart library) has no React Native build, and adding a native charting
+  dependency for four small breakdowns isn't warranted (CLAUDE.md's
+  simplicity rule) — `HorizontalBarList.tsx` (ranked bar rows, replacing the
+  web's Bar/Pie views for By subject/By focus area/By language) and
+  `DailyTrendChart.tsx` (proportional-height bar strip in a horizontal
+  scroll, replacing the web's AreaChart for Questions over time) convey the
+  same comparisons with zero new dependencies; Top questions is a direct
+  ranked list port. Wired into `AppNavigator.tsx`'s existing `Admin` route
+  (previously a Phase-2 `PlaceholderScreen`) — no navigation/route changes.
+  Device-verified in both themes on 26 August 2026, signed in as a real
+  `super_admin` session, against live production-shaped data (91 total
+  questions, 166 teachers, 75 active, real subject/language breakdowns, a
+  10-entry top-questions list) — not mocked, not fabricated.
+- Only the Overview tab is in scope — `AdminTabs.tsx`'s other sections
+  (Manage/Support/Notifications/Settings) remain out of scope, unapproved,
+  and untouched, per the "only these two features" instruction.
+- Tests: `mobile/src/lib/__tests__/welcome.test.ts` (ported verbatim from the
+  web's own test, 22 tests), `mobile/src/api/__tests__/admin.test.ts` (1
+  test), `mobile/src/screens/admin/__tests__/AdminAnalyticsScreen.test.tsx`
+  (2 tests: loading → success, and the server-error path) — full suite now
+  **291/291 passing, 35/35 suites** (up from 255/32). `tsc --noEmit` and
+  `expo lint` both clean.
+
+### Phase 8 — Classroom (shell + Classes + Students) — ✅ DONE (2026-08-26)
+
+**What was done**: replaced the Phase 2 `MOCK_CLASSES`/placeholder shells
+with the real Classroom feature described in §12 and §26's own Phase 8
+scope, implemented incrementally (Class List → Class Home → Students →
+class switcher + class CRUD) with a live device-verification pass after
+each step. Every screen follows the `Screen -> useXScreen() -> classroomApi
+-> state -> UI` convention already established in Phase 7c — no Presenter/
+Store/DI layers, matching the explicit architectural instruction for this
+phase.
+
+- **Class List** (`ClassListScreen.tsx` + `useClassListScreen.ts`): real
+  `GET /classroom/classes` (always fetched with `includeArchived=true`; the
+  "Show archived classes" toggle filters client-side, same pattern as
+  `useStudentsScreen.ts`'s "Show inactive" precedent — no re-fetch per
+  toggle flip). Deliberately does **not** show a per-class "today's
+  attendance %" teaser — no batch endpoint exists for it (would mean an
+  analytics call per row) and the web's own `ClassList.tsx` doesn't show one
+  either; this was flagged and confirmed with the user before implementation
+  rather than assumed.
+- **Class Home** (`ClassHomeScreen.tsx` + `useClassHomeScreen.ts`): class
+  name as a tappable header title (opens the class switcher), a live
+  today's-attendance summary strip (Present/Absent/Unmarked via
+  `getDailyAttendance(classId, today).summary` — the per-class analytics
+  endpoint has no `today` field, only a month aggregate, so this is the
+  correct source, confirmed against the endpoint's actual implementation
+  before coding), and the four shortcut cards (Mark Today's Attendance /
+  Students / Fees this Month / Reports) — Attendance/Fees/Reports remain
+  Phase 9/10/11 placeholders, untouched.
+- **Students** (`StudentsScreen.tsx` + `useStudentsScreen.ts` +
+  `StudentFormModal.tsx`): list (active-only), add, and edit, over the
+  already-ported `classroomApi.{listStudents,addStudent,updateStudent}`.
+  Deactivate/restore stayed out of this step's scope by explicit agreement.
+- **Class switcher** (`ClassSwitcherModal.tsx` + `useClassSwitcher.ts`): tap
+  the class name on Class Home → a bottom sheet lists active classes (lazy-
+  loaded only when opened), tap another to switch via `navigation.setParams`
+  — same stack, no push/pop — which re-triggers Class Home's and (once
+  navigated into) Students' own `[classId]`-keyed data loads.
+- **Class CRUD** (`ClassFormModal.tsx` + `useClassListScreen.ts`): create
+  (`POST /classroom/classes`, name/grade/section matching the server's
+  `createClassSchema` exactly), archive (`DELETE /classroom/classes/:id`,
+  `Alert.alert` confirmation matching the web's own `ConfirmDialog` and this
+  app's destructive-confirm convention), restore (`PATCH
+  /classroom/classes/:id` with `{archived:false}`, no confirmation, matching
+  the web's asymmetry). No new backend endpoints — every one of these
+  already existed in `classroomApi.ts` from Phase 1.
+
+**Two real bugs found and fixed by device verification, not by any static
+check**: (1) the Class List "+ Add class" control was first wired via
+`navigation.setOptions({headerRight})`, matching Students' pattern — but
+`ClassroomStack.tsx` gives Class List a **full** `header` override
+(`options={{ header: () => <Header /> }}`, the shared 4-tab header), which
+silently ignores `headerRight`/`headerTitle`; confirmed never rendering
+on-device. Fixed by making it a plain in-content control instead of
+expanding the shared `Header` component for one screen's need. (2) a latent
+bug from Phase 8's own Students step: `StudentFormModal`'s `key` didn't
+change between two consecutive "Add" opens, so a successful add's leftover
+text could silently reappear on the next open; fixed with a per-open nonce
+in the key, applied to both `StudentFormModal` and the new `ClassFormModal`.
+
+**Files created**: `mobile/src/screens/classroom/{useClassListScreen,
+useClassHomeScreen,useStudentsScreen,useClassSwitcher}.ts`,
+`{ClassFormModal,StudentFormModal,ClassSwitcherModal,StudentsScreen}.tsx`,
+and their `__tests__`. **Files modified**: `ClassListScreen.tsx`,
+`ClassHomeScreen.tsx`, `mobile/src/api/classroomApi.ts` (added
+`getClassAnalytics`, a thin wrapper over the already-existing per-class
+analytics endpoint), `mobile/src/types/index.ts` (added `feeAmount` to
+`SchoolClass` — completing the mirror of the server DTO — and a new
+`ClassAnalytics` type), `mobile/src/navigation/stacks/ClassroomStack.tsx`
+(wired in `StudentsScreen`).
+
+**Backend changes**: none — every endpoint used
+(`GET/POST /classroom/classes`, `PATCH/DELETE /classroom/classes/:id`,
+`GET/POST /classroom/classes/:id/students`, `PATCH /classroom/students/:id`,
+`GET /classroom/classes/:id/attendance`, `GET
+/classroom/analytics/classes/:id`) already existed and was verified against
+the actual server implementation before use, not assumed.
+
+**Tests**: full suite **319/319 passing, 39/39 suites** (up from 291/35 at
+the end of Phase 7c). `tsc --noEmit` and `expo lint` both clean.
+
+**Device verification (Pixel 8 API 35, real backend, both themes)**:
+existing classes displayed correctly; class switcher opened, listed active
+classes, and correctly marked the current one; switching classes reloaded
+Class Home's summary strip and shortcuts, and Students correctly scoped to
+the newly-selected class (confirmed empty for a brand-new class, not a
+stale mix); created a real test class (appeared in the list, selectable);
+archived it (confirmed it dropped out of the active view); toggled "Show
+archived classes" (confirmed it reappeared, marked Archived, no extra
+fetch); restored it (confirmed it became active again, no confirmation
+prompt); Attendance/Fees/Reports shortcuts confirmed still Phase-9/10/11
+placeholders, untouched. Logcat clean throughout (no FATAL EXCEPTION, no
+ReactNativeJS errors, no unhandled rejections).
+
+**Known limitations**: none blocking. `feeAmount` is exposed for display
+(Class List) but not yet writable via the create/edit forms — out of scope
+for this phase, deferred naturally to whichever phase gives Fees its full
+treatment.
+
+**Remaining work**: Phase 9 onward, per §26.
+
 ---
 
 ## 1. Executive Summary
@@ -2616,6 +3003,21 @@ pre-build that abstraction speculatively.
 ---
 
 ## 10. Mobile Navigation
+
+> **CURRENT OVERRIDE (2026-08-26, Phase 7c) — read before acting on this
+> section.** The 5-tab design below (with "More") was this document's
+> original, deliberately-reasoned decision, and UI_REFINED.md §7.1/§22
+> independently agreed with it. **The current, active product decision
+> overrides both**: for the web-mobile-parity pass, the bottom nav is 4 tabs
+> (Coach, Library, Classroom, Generator) matching `BottomNav.tsx` exactly,
+> with Notifications/Settings/Admin reached from a header (bell + profile
+> avatar) instead of a "More" tab — implemented in Phase 7c above. This
+> section is kept as-is, unedited, for historical/architectural reference —
+> it is not wrong, it was simply superseded by a later, explicit product
+> decision to prioritize web-mobile visual/structural parity over the
+> native-idiom argument made below. If a future phase revisits mobile-native
+> navigation idioms (per Phase 7c's §3 "interim strategy" note), this
+> section's reasoning is the place to start.
 
 **Bottom tab bar, 5 tabs, plus per-feature stack navigators nested inside
 each tab** (React Navigation's standard `Bottom Tabs` + nested `Native

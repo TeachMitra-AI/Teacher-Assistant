@@ -80,8 +80,8 @@ export function ForgotPasswordScreen({ navigation }: Props) {
                 autoComplete="email"
               />
               {error ? (
-                <View style={styles.errorBanner} accessibilityRole="alert">
-                  <ThemedText style={styles.errorText}>{error}</ThemedText>
+                <View style={[styles.errorBanner, { backgroundColor: colors.semantic.danger.bg }]} accessibilityRole="alert">
+                  <ThemedText style={{ color: colors.semantic.danger.text }}>{error}</ThemedText>
                 </View>
               ) : null}
               <Button title="Send reset link" onPress={submit} loading={busy} disabled={busy} />
@@ -98,6 +98,5 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: { flexGrow: 1, padding: spacing.xl, justifyContent: 'center' },
   gap: { gap: spacing.md },
-  errorBanner: { backgroundColor: 'rgba(229,72,77,0.12)', borderRadius: 10, padding: spacing.sm },
-  errorText: { color: '#e5484d' },
+  errorBanner: { borderRadius: 10, padding: spacing.sm },
 });

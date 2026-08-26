@@ -17,7 +17,8 @@ interface SummaryTileProps {
 // Fees screens (§13, §14), and the Class Home summary strip (§12).
 export function SummaryTile({ label, value, tone = 'neutral' }: SummaryTileProps) {
   const { colors } = useTheme();
-  const valueColor = tone === 'positive' ? '#2f9e58' : tone === 'negative' ? '#d64545' : colors.text;
+  const valueColor =
+    tone === 'positive' ? colors.semantic.success.text : tone === 'negative' ? colors.semantic.danger.text : colors.text;
 
   return (
     <Card style={styles.card}>

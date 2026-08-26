@@ -20,17 +20,26 @@ function Inline({ segments, style }: { segments: InlineSegment[]; style: TextSty
   );
 }
 
+// Heading sizes match .response-body h1/h2/h3 (UI_REFINED.md §10.3): h1
+// 1.3rem/--text, h2 1.15rem/--orange, h3 1.05rem/--orange (h4+ falls back to
+// h3's size — the web has no h4+ rule in this context).
+function headingStyle(level: number, colors: { text: string; orange: string }): TextStyle {
+  if (level === 1) return { color: colors.text, fontSize: 21, fontWeight: '700', lineHeight: 26 };
+  if (level === 2) return { color: colors.orange, fontSize: 18, fontWeight: '700', lineHeight: 23, marginTop: 6 };
+  return { color: colors.orange, fontSize: 16, fontWeight: '700', lineHeight: 21 };
+}
+
 export function MarkdownText({ text }: { text: string }) {
   const { colors } = useTheme();
   const blocks = parseMarkdownBlocks(text);
-  const bodyStyle = { color: colors.text, fontSize: 15, lineHeight: 22 };
+  // .response-body's line-height: 1.7 on paragraphs (UI_REFINED.md §10.3).
+  const bodyStyle = { color: colors.text, fontSize: 15, lineHeight: 25 };
 
   return (
     <View style={styles.container}>
       {blocks.map((block, i) => {
         if (block.type === 'heading') {
-          const size = block.level <= 2 ? 18 : 16;
-          return <Inline key={i} segments={block.segments} style={{ color: colors.text, fontSize: size }} />;
+          return <Inline key={i} segments={block.segments} style={headingStyle(block.level, colors)} />;
         }
         if (block.type === 'list') {
           return (
@@ -55,5 +64,7 @@ const styles = StyleSheet.create({
   bold: { fontWeight: '700' },
   list: { gap: spacing.xs },
   listRow: { flexDirection: 'row', gap: spacing.xs },
-  marker: { minWidth: 18 },
+  // 21dp indent for the marker column, matching .response-body li's 1.3rem
+  // web indent (UI_REFINED.md §10.3).
+  marker: { minWidth: 21 },
 });

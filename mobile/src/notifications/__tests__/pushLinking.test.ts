@@ -12,12 +12,12 @@ const { navigationRef } = jest.requireMock('../../navigation/navigationRef') as 
 
 describe('resolveNotificationLink', () => {
   it.each([
-    ['/library/abc123', { tab: 'LibraryTab', screen: 'ResourceView', params: { resourceId: 'abc123' } }],
-    ['/library/abc123/edit', { tab: 'LibraryTab', screen: 'ResourceEdit', params: { resourceId: 'abc123' } }],
-    ['/library', { tab: 'LibraryTab', screen: 'ResourceList' }],
-    ['/classroom', { tab: 'ClassroomTab', screen: 'ClassList' }],
-    ['/generator', { tab: 'GeneratorTab', screen: 'GeneratorForm' }],
-    ['/settings', { tab: 'MoreTab', screen: 'Settings' }],
+    ['/library/abc123', { kind: 'tab', tab: 'LibraryTab', screen: 'ResourceView', params: { resourceId: 'abc123' } }],
+    ['/library/abc123/edit', { kind: 'tab', tab: 'LibraryTab', screen: 'ResourceEdit', params: { resourceId: 'abc123' } }],
+    ['/library', { kind: 'tab', tab: 'LibraryTab', screen: 'ResourceList' }],
+    ['/classroom', { kind: 'tab', tab: 'ClassroomTab', screen: 'ClassList' }],
+    ['/generator', { kind: 'tab', tab: 'GeneratorTab', screen: 'GeneratorForm' }],
+    ['/settings', { kind: 'root', screen: 'Settings' }],
   ] as const)('resolves %s', (link, expected) => {
     expect(resolveNotificationLink(link)).toEqual(expected);
   });
@@ -25,7 +25,7 @@ describe('resolveNotificationLink', () => {
   it.each([null, undefined, '', '/', '/unknown-route', '/admin/manage'])(
     'falls back to Notifications for an unrecognized/absent link: %s',
     (link) => {
-      expect(resolveNotificationLink(link)).toEqual({ tab: 'MoreTab', screen: 'Notifications' });
+      expect(resolveNotificationLink(link)).toEqual({ kind: 'root', screen: 'Notifications' });
     }
   );
 });
@@ -43,6 +43,12 @@ describe('navigateToNotificationLink', () => {
       screen: 'ResourceView',
       params: { resourceId: 'xyz' },
     });
+  });
+
+  it('navigates via a plain root-level screen name for Notifications/Settings', () => {
+    navigationRef.isReady.mockReturnValue(true);
+    navigateToNotificationLink('/settings');
+    expect(navigationRef.navigate).toHaveBeenCalledWith('Settings');
   });
 
   it('is a no-op when the container is not ready', () => {

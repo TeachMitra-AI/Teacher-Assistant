@@ -384,7 +384,7 @@ export function ResourceEditScreen({ route, navigation }: Props) {
   if (error || !form || !resource) {
     return (
       <View style={[styles.center, { backgroundColor: colors.bg }]}>
-        <ThemedText style={{ color: '#e5484d' }}>{error || 'Could not load this resource.'}</ThemedText>
+        <ThemedText style={{ color: colors.semantic.danger.text }}>{error || 'Could not load this resource.'}</ThemedText>
       </View>
     );
   }

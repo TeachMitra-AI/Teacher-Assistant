@@ -8,10 +8,12 @@ import type {
   DailyAttendance,
   AttendanceStatus,
   ClassAttendanceMonthSummary,
+  ClassAttendanceHistory,
   StudentAttendanceHistory,
   ClassFeeStatus,
   FeeStatus,
   FeeRecordDto,
+  ClassAnalytics,
 } from '../types';
 
 export interface CreateClassInput {
@@ -104,6 +106,13 @@ export async function getAttendanceMonthSummary(classId: string, month: string):
   return api<ClassAttendanceMonthSummary>(`/classroom/classes/${classId}/attendance/summary?month=${month}`);
 }
 
+// Day-by-day class totals for one month — powers the Monthly Summary
+// screen's native calendar view (§13). Distinct from getAttendanceMonthSummary
+// (per-student totals) — this is per-day.
+export async function getClassAttendanceHistory(classId: string, month: string): Promise<ClassAttendanceHistory> {
+  return api<ClassAttendanceHistory>(`/classroom/classes/${classId}/attendance/history?month=${month}`);
+}
+
 export async function getStudentAttendanceHistory(studentId: string, month: string): Promise<StudentAttendanceHistory> {
   return api<StudentAttendanceHistory>(`/classroom/students/${studentId}/attendance/history?month=${month}`);
 }
@@ -123,4 +132,14 @@ export async function setFeeStatus(studentId: string, period: string, status: Fe
     body: { status },
   });
   return data.fee;
+}
+
+// ---- Analytics ----------------------------------------------------------
+
+// Current-month summary + fee snapshot for one class (Class Home's summary
+// strip). NOT a "today" figure — see ClassAnalytics's own doc comment;
+// callers wanting today's attendance specifically should pair this with
+// getDailyAttendance(classId, todayIsoDate).summary instead.
+export async function getClassAnalytics(classId: string): Promise<ClassAnalytics> {
+  return api<ClassAnalytics>(`/classroom/analytics/classes/${classId}`);
 }

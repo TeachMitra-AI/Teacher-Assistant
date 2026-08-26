@@ -28,7 +28,7 @@ export function TextField({ label, error, help, isPassword, ...rest }: TextField
       <View
         style={[
           styles.inputWrap,
-          { backgroundColor: colors.surface2, borderColor: error ? '#e5484d' : colors.border },
+          { backgroundColor: colors.surface2, borderColor: error ? colors.semantic.danger.action : colors.border },
         ]}
       >
         <TextInput
@@ -54,7 +54,7 @@ export function TextField({ label, error, help, isPassword, ...rest }: TextField
         )}
       </View>
       {error ? (
-        <ThemedText style={styles.error}>{error}</ThemedText>
+        <ThemedText style={[styles.error, { color: colors.semantic.danger.text }]}>{error}</ThemedText>
       ) : help ? (
         <ThemedText variant="muted" style={styles.help}>
           {help}
@@ -76,6 +76,6 @@ const styles = StyleSheet.create({
     minHeight: 48, // comfortably above the 44dp touch-target minimum
   },
   input: { flex: 1, fontSize: 16, paddingVertical: spacing.sm },
-  error: { color: '#e5484d', fontSize: 12 },
+  error: { fontSize: 12 },
   help: { fontSize: 12 },
 });

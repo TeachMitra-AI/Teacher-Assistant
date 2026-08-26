@@ -1,28 +1,24 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Sparkles, Library, GraduationCap, FileQuestion, MoreHorizontal } from 'lucide-react-native';
+import { Sparkles, Library, GraduationCap, FileQuestion } from 'lucide-react-native';
 import type { MainTabParamList } from './types';
 import { CoachStack } from './stacks/CoachStack';
-import { ClassroomStack } from './stacks/ClassroomStack';
 import { LibraryStack } from './stacks/LibraryStack';
+import { ClassroomStack } from './stacks/ClassroomStack';
 import { GeneratorStack } from './stacks/GeneratorStack';
-import { MoreStack } from './stacks/MoreStack';
 import { useTheme } from '../theme/ThemeContext';
-import { useNotifications } from '../notifications/NotificationContext';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-// Bottom tab bar, 5 tabs, plus per-feature stack navigators nested inside
-// each tab (§10) — NOT a copy of the web's 4-item BottomNav.tsx. "More"
-// (Notifications/Settings/Sessions/Admin*/Help & Support) is a deliberate
-// improvement over the web nav's gap (§10): a full-screen native app has no
-// always-visible top bar to fall back on for those destinations. Icons are
-// the same lucide set the web nav already uses (§22) — Sparkles/Library/
-// GraduationCap/FileQuestion match BottomNav.tsx exactly; MoreHorizontal is
-// new, since "More" has no web equivalent.
+// 4 tabs, in the same order as the web's client/src/components/BottomNav.tsx
+// (Coach, Library, Classroom, Generator) — web-UI-parity pass. The previous
+// 5th "More" tab (Notifications/Settings/Sessions/Admin/HelpSupport) has
+// been removed: the web has no such tab, reaching those destinations
+// instead through the header's notification bell and profile avatar
+// (Header.tsx, AppNavigator.tsx) which this app now mirrors. Icons are the
+// same lucide set BottomNav.tsx already uses.
 export function MainTabs() {
   const { colors } = useTheme();
-  const { unreadCount } = useNotifications();
 
   return (
     <Tab.Navigator
@@ -39,28 +35,19 @@ export function MainTabs() {
         options={{ title: 'Coach', tabBarIcon: ({ color, size }) => <Sparkles color={color} size={size} /> }}
       />
       <Tab.Screen
-        name="ClassroomTab"
-        component={ClassroomStack}
-        options={{ title: 'Classroom', tabBarIcon: ({ color, size }) => <GraduationCap color={color} size={size} /> }}
-      />
-      <Tab.Screen
         name="LibraryTab"
         component={LibraryStack}
         options={{ title: 'Library', tabBarIcon: ({ color, size }) => <Library color={color} size={size} /> }}
       />
       <Tab.Screen
+        name="ClassroomTab"
+        component={ClassroomStack}
+        options={{ title: 'Classroom', tabBarIcon: ({ color, size }) => <GraduationCap color={color} size={size} /> }}
+      />
+      <Tab.Screen
         name="GeneratorTab"
         component={GeneratorStack}
         options={{ title: 'Generator', tabBarIcon: ({ color, size }) => <FileQuestion color={color} size={size} /> }}
-      />
-      <Tab.Screen
-        name="MoreTab"
-        component={MoreStack}
-        options={{
-          title: 'More',
-          tabBarIcon: ({ color, size }) => <MoreHorizontal color={color} size={size} />,
-          tabBarBadge: unreadCount > 0 ? (unreadCount > 99 ? '99+' : unreadCount) : undefined,
-        }}
       />
     </Tab.Navigator>
   );

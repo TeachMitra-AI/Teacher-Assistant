@@ -13,6 +13,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Sun, Moon, AlertCircle, ChevronRight } from 'lucide-react-native';
 import type { AuthStackParamList } from '../../navigation/types';
 import { ThemedText } from '../../components/ThemedText';
 import { TextField } from '../../components/TextField';
@@ -39,7 +41,8 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
 export function AuthScreen({ navigation }: Props) {
   const { login, register, loginWithGoogle } = useAuth();
-  const { colors } = useTheme();
+  const { colors, mode: themeMode, setOverride } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const [mode, setMode] = useState<Mode>('login');
   const [view, setView] = useState<ViewState>('form');
@@ -177,13 +180,28 @@ export function AuthScreen({ navigation }: Props) {
       style={[styles.flex, { backgroundColor: colors.bg }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      {/* .auth-theme's absolutely-positioned toggle (UI_REFINED.md §9.1/§7.4)
+          — also how a user first discovers the light/dark override exists. */}
+      <Pressable
+        onPress={() => setOverride(themeMode === 'dark' ? 'light' : 'dark')}
+        accessibilityRole="button"
+        accessibilityLabel={themeMode === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+        style={[styles.themeToggle, { top: insets.top + spacing.sm, backgroundColor: colors.surface2, borderColor: colors.border }]}
+      >
+        {themeMode === 'dark' ? <Moon size={18} color={colors.text} /> : <Sun size={18} color={colors.text} />}
+      </Pressable>
+
       <ScrollView
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.brand}>
-          <ThemedText style={styles.brandEmoji}>👨‍🏫</ThemedText>
+          {/* .auth-brand-logo: 54px rounded square, soft orange tint + border
+              (UI_REFINED.md §9.1), not a bare emoji. */}
+          <View style={[styles.brandLogo, { backgroundColor: colors.orangeSoft, borderColor: colors.border }]}>
+            <ThemedText style={styles.brandEmoji}>👨‍🏫</ThemedText>
+          </View>
           <ThemedText variant="title" style={styles.brandTitle}>
             शिक्षक सहायक
           </ThemedText>
@@ -223,13 +241,24 @@ export function AuthScreen({ navigation }: Props) {
         {view === 'school_picker' && (
           <Card style={styles.gap}>
             <ThemedText>Which school are you signing in to?</ThemedText>
+            {/* Selectable list rows, not stacked gradient buttons — the
+                gradient is reserved for the single primary action per
+                screen (UI_REFINED.md §9.1); four orange gradients in a row
+                dilutes that signal. */}
             {schoolChoices.map((school) => (
-              <Button
+              <Pressable
                 key={school.id}
-                title={`${school.name} (${school.code})`}
                 onPress={() => chooseSchool(school)}
                 disabled={busy}
-              />
+                style={[styles.schoolRow, { backgroundColor: colors.surface2, borderColor: colors.border }]}
+                accessibilityRole="button"
+              >
+                <View style={styles.schoolRowText}>
+                  <ThemedText style={styles.schoolName}>{school.name}</ThemedText>
+                  <ThemedText variant="muted" style={styles.schoolCode}>{school.code}</ThemedText>
+                </View>
+                <ChevronRight size={18} color={colors.textMuted} />
+              </Pressable>
             ))}
             {error ? <ErrorBanner message={error} /> : null}
             <Button title="Back" variant="text" onPress={backToForm} disabled={busy} />
@@ -238,7 +267,7 @@ export function AuthScreen({ navigation }: Props) {
 
         {view === 'form' && (
           <>
-            <View style={[styles.tabs, { borderColor: colors.border }]}>
+            <View style={[styles.tabs, { borderColor: colors.border, backgroundColor: colors.surface2 }]}>
               <TabButton label="Sign in" active={mode === 'login'} onPress={() => switchMode('login')} />
               <TabButton label="Register" active={mode === 'register'} onPress={() => switchMode('register')} />
             </View>
@@ -357,11 +386,15 @@ export function AuthScreen({ navigation }: Props) {
 }
 
 function TabButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const { colors } = useTheme();
+  const { colors, mode } = useTheme();
+  // [data-theme='dark'] .auth-tabs button.active uses --orange-soft, not
+  // --surface — in dark mode --surface is *darker* than the track, which
+  // read as a dent rather than a raised active pill (UI_REFINED.md §9.1).
+  const activeBg = mode === 'dark' ? colors.orangeSoft : colors.surface;
   return (
     <Pressable
       onPress={onPress}
-      style={[styles.tab, active && { backgroundColor: colors.surface }]}
+      style={[styles.tab, active && { backgroundColor: activeBg }]}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
     >
@@ -373,9 +406,17 @@ function TabButton({ label, active, onPress }: { label: string; active: boolean;
 }
 
 function ErrorBanner({ message }: { message: string }) {
+  const { colors } = useTheme();
   return (
-    <View style={styles.errorBanner} accessibilityRole="alert">
-      <ThemedText style={styles.errorText}>{message}</ThemedText>
+    <View
+      style={[
+        styles.errorBanner,
+        { backgroundColor: colors.semantic.danger.bg, borderColor: colors.semantic.danger.border },
+      ]}
+      accessibilityRole="alert"
+    >
+      <AlertCircle size={16} color={colors.semantic.danger.text} />
+      <ThemedText style={{ color: colors.semantic.danger.text, flex: 1 }}>{message}</ThemedText>
     </View>
   );
 }
@@ -393,8 +434,17 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
   scroll: { flexGrow: 1, padding: spacing.xl, justifyContent: 'center', gap: spacing.lg },
+  themeToggle: {
+    position: 'absolute', top: spacing.lg, right: spacing.lg, zIndex: 1,
+    width: 40, height: 40, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center', justifyContent: 'center',
+  },
   brand: { alignItems: 'center', gap: spacing.xs, marginBottom: spacing.md },
-  brandEmoji: { fontSize: 40 },
+  brandLogo: {
+    width: 54, height: 54, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xs,
+  },
+  brandEmoji: { fontSize: 26 },
   brandTitle: { fontSize: 24 },
   gap: { gap: spacing.md },
   tabs: { flexDirection: 'row', borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 4, marginBottom: spacing.lg },
@@ -404,6 +454,15 @@ const styles = StyleSheet.create({
   dividerText: { fontSize: 12 },
   hint: { fontSize: 12, textAlign: 'center' },
   footerLinks: { alignItems: 'center', gap: spacing.sm, marginTop: spacing.md },
-  errorBanner: { backgroundColor: 'rgba(229,72,77,0.12)', borderRadius: 10, padding: spacing.sm },
-  errorText: { color: '#e5484d' },
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, padding: spacing.sm,
+  },
+  schoolRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, padding: spacing.md, minHeight: 44,
+  },
+  schoolRowText: { flex: 1, gap: 2 },
+  schoolName: { fontWeight: '600', fontSize: 15 },
+  schoolCode: { fontSize: 12 },
 });

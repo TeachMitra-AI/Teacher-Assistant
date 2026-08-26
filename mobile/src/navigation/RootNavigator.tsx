@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavigationContainer, DefaultTheme, DarkTheme, type Theme } from '@react-navigation/native';
-import { MainTabs } from './MainTabs';
+import { AppNavigator } from './AppNavigator';
 import { AuthNavigator } from './AuthNavigator';
 import { AuthLoadingScreen } from '../screens/auth/AuthScreen';
 import { useAuth } from '../auth/AuthContext';
@@ -16,7 +16,8 @@ import { navigationRef } from './navigationRef';
 // left reachable after logout/session expiry.
 //
 // §26 Phase 7: NotificationProvider (the realtime bell/badge state) wraps
-// MainTabs right here, inside the authenticated branch, rather than
+// AppNavigator (the tab bar plus its root-level pushed screens) right here,
+// inside the authenticated branch, rather than
 // mounting globally the way the web's App.tsx does. This repo's mobile root
 // already structurally separates signed-in/signed-out subtrees (the comment
 // above), so scoping the provider to the branch that actually needs it gets
@@ -53,7 +54,7 @@ export function RootNavigator() {
         <AuthLoadingScreen />
       ) : user ? (
         <NotificationProvider>
-          <MainTabs />
+          <AppNavigator />
         </NotificationProvider>
       ) : (
         <AuthNavigator />

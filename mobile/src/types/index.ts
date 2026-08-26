@@ -486,6 +486,7 @@ export interface SchoolClass {
   name: string;
   grade?: string | null;
   section?: string | null;
+  feeAmount?: number | null; // expected monthly fee, in whole rupees, for every active student in this class
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -567,6 +568,26 @@ export interface StudentAttendanceHistory {
   days: { date: string; status: 'present' | 'absent' }[];
 }
 
+// One class + one day's tally within a month — only days with at least one
+// mark are included (a day nobody took attendance on is simply absent from
+// the list, see classroomAttendance.js's getClassAttendanceHistory doc
+// comment). Powers the Monthly Summary screen's native calendar view (§13)
+// — a day-by-day shape the class-level /attendance/summary response doesn't
+// provide (that one is per-student totals, not per-day).
+export interface ClassAttendanceHistoryDay {
+  date: string;
+  present: number;
+  absent: number;
+  unmarked: number;
+  percentage: number | null;
+}
+
+// GET .../classes/:classId/attendance/history?month=
+export interface ClassAttendanceHistory {
+  month: string;
+  days: ClassAttendanceHistoryDay[];
+}
+
 // ---- Classroom Management — Fees (Phase 4) ---------------------------------
 //
 // Mirrors routes/classroom.js's fee responses exactly (§11). V1 is
@@ -598,6 +619,27 @@ export interface FeeRecordDto {
   period: string;
   status: FeeStatus;
   updatedAt: string;
+}
+
+// GET .../classroom/analytics/classes/:classId (server/src/routes/classroom.js
+// classToDto-adjacent handler) — a CURRENT-MONTH summary, not a "today"
+// breakdown (no `today` field exists on this endpoint; see
+// classroomAttendance.js's computeClassAttendanceMonthSummary). `fees` here is
+// this endpoint's own inline shape, distinct from ClassFeeStatus above (no
+// perStudent, but adds partial/totalCollected/totalExpected).
+export interface ClassAnalytics {
+  classId: string;
+  totalStudents: number;
+  month: ClassAttendanceMonthSummary;
+  fees: {
+    period: string;
+    totalStudents: number;
+    paid: number;
+    partial: number;
+    pending: number;
+    totalCollected: number;
+    totalExpected: number;
+  };
 }
 
 // A saved item in the teacher's personal library. Mirrors the server DTO
