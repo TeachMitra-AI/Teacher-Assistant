@@ -8,6 +8,7 @@ import type {
   DailyAttendance,
   AttendanceStatus,
   ClassAttendanceMonthSummary,
+  ClassAttendanceHistory,
   StudentAttendanceHistory,
   ClassFeeStatus,
   FeeStatus,
@@ -103,6 +104,13 @@ export async function saveAttendance(
 
 export async function getAttendanceMonthSummary(classId: string, month: string): Promise<ClassAttendanceMonthSummary> {
   return api<ClassAttendanceMonthSummary>(`/classroom/classes/${classId}/attendance/summary?month=${month}`);
+}
+
+// Day-by-day class totals for one month — powers the Monthly Summary
+// screen's native calendar view (§13). Distinct from getAttendanceMonthSummary
+// (per-student totals) — this is per-day.
+export async function getClassAttendanceHistory(classId: string, month: string): Promise<ClassAttendanceHistory> {
+  return api<ClassAttendanceHistory>(`/classroom/classes/${classId}/attendance/history?month=${month}`);
 }
 
 export async function getStudentAttendanceHistory(studentId: string, month: string): Promise<StudentAttendanceHistory> {

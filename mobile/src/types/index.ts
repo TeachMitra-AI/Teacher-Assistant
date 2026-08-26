@@ -568,6 +568,26 @@ export interface StudentAttendanceHistory {
   days: { date: string; status: 'present' | 'absent' }[];
 }
 
+// One class + one day's tally within a month — only days with at least one
+// mark are included (a day nobody took attendance on is simply absent from
+// the list, see classroomAttendance.js's getClassAttendanceHistory doc
+// comment). Powers the Monthly Summary screen's native calendar view (§13)
+// — a day-by-day shape the class-level /attendance/summary response doesn't
+// provide (that one is per-student totals, not per-day).
+export interface ClassAttendanceHistoryDay {
+  date: string;
+  present: number;
+  absent: number;
+  unmarked: number;
+  percentage: number | null;
+}
+
+// GET .../classes/:classId/attendance/history?month=
+export interface ClassAttendanceHistory {
+  month: string;
+  days: ClassAttendanceHistoryDay[];
+}
+
 // ---- Classroom Management — Fees (Phase 4) ---------------------------------
 //
 // Mirrors routes/classroom.js's fee responses exactly (§11). V1 is

@@ -11,6 +11,8 @@ interface ToggleButtonProps {
   selected: boolean;
   tone: ToggleTone;
   onPress: () => void;
+  testID?: string;
+  accessibilityLabel?: string;
 }
 
 // Native equivalent of index.css's .classroom-att-btn primitive (§22) — the
@@ -19,13 +21,17 @@ interface ToggleButtonProps {
 // the *primitive* (selected/unselected pill); the tap-to-toggle-back-to-
 // unmarked behavior described in §13 belongs to the screen that composes two
 // of these, not to the primitive itself.
-export function ToggleButton({ label, selected, tone, onPress }: ToggleButtonProps) {
+export function ToggleButton({ label, selected, tone, onPress, testID, accessibilityLabel }: ToggleButtonProps) {
   const { colors } = useTheme();
   const activeColor = tone === 'positive' ? colors.semantic.success.text : colors.semantic.danger.text;
 
   return (
     <Pressable
       onPress={onPress}
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ selected }}
       style={[
         styles.base,
         {

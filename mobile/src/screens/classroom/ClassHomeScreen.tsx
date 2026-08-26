@@ -22,9 +22,9 @@ import type { SchoolClass } from '../../types';
 // from Class Home, not sibling tabs"). Row shape (icon well + label +
 // chevron) matches .quick-action-card, not a centred label-only tile —
 // UI_REFINED.md §11, icons per its own suggestion. These stay
-// navigation/placeholder entry points only — Students is wired for real in
-// Phase 8 Step 3; Attendance/Fees/Reports functionality belongs to Phases
-// 9/10/11 respectively and is deliberately not implemented here.
+// navigation entry points only — Students (Phase 8) and Attendance
+// (Phase 9) are wired for real; Fees/Reports functionality belongs to
+// Phases 10/11 respectively and is deliberately not implemented here.
 const SHORTCUTS: { route: 'Attendance' | 'Students' | 'Fees' | 'Reports'; label: string; icon: LucideIcon }[] = [
   { route: 'Attendance', label: "Mark Today's Attendance", icon: ClipboardCheck },
   { route: 'Students', label: 'Students', icon: Users },

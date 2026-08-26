@@ -168,12 +168,20 @@ describe('RootNavigator', () => {
     await signInAsRole('teacher');
     // Beyond the queued /auth/me response above, this screen tree also fires
     // NotificationProvider's mount-time unread-count fetch (see the "shows an
-    // unread-notifications badge" test above) and ClassListScreen fetches
+    // unread-notifications badge" test above), ClassListScreen fetches
     // GET /classroom/classes both on mount and on the navigator 'focus' event
     // it fires when the tab first becomes active (same reload-on-focus
-    // pattern as ResourceListScreen.tsx). Rather than guess the exact call
-    // count/order, respond by URL for every call after the queued auth/me one.
+    // pattern as ResourceListScreen.tsx), and — once Attendance is reached —
+    // GET .../attendance?date= (Class Home's own summary strip, then
+    // MarkAttendanceScreen's roster load, §13). Rather than guess the exact
+    // call count/order, respond by URL for every call after the queued
+    // auth/me one.
     (globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/attendance?date=')) {
+        return Promise.resolve(
+          jsonResponse(200, { date: '2026-08-26', roster: [], summary: { present: 0, absent: 0, unmarked: 0, percentage: null } })
+        );
+      }
       if (url.includes('/classroom/classes')) {
         return Promise.resolve(
           jsonResponse(200, {
@@ -195,6 +203,10 @@ describe('RootNavigator', () => {
     expect(screen.getByText("Mark Today's Attendance")).toBeTruthy();
 
     await fireEvent.press(screen.getByText("Mark Today's Attendance"));
-    expect(screen.getByText('Mark + Monthly Summary — Phase 9.')).toBeTruthy();
+    // The real Phase 9 screen — Mark/Monthly segmented control, defaulting
+    // to Mark Attendance, with the (empty, per the mocked roster) roster
+    // loaded from the real endpoint rather than a placeholder.
+    await waitFor(() => expect(screen.getByTestId('attendance-tab-mark')).toBeTruthy());
+    expect(screen.getByText('No active students')).toBeTruthy();
   });
 });

@@ -27,6 +27,10 @@ export type ClassroomStackParamList = {
   ClassHome: { classId: string; className: string };
   Students: { classId: string; className: string };
   Attendance: { classId: string; className: string };
+  // Pushed from Monthly Summary's per-student list (§13's "student
+  // attendance history" screen). `month` seeds the history screen with the
+  // month the teacher was already looking at.
+  StudentAttendanceHistory: { studentId: string; studentName: string; classId: string; className: string; month: string };
   Fees: { classId: string; className: string };
   Reports: { classId: string; className: string };
 };
