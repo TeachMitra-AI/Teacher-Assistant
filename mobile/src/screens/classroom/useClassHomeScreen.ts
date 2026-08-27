@@ -14,7 +14,8 @@
 // The four shortcut cards below the strip stay navigation-only (Students is
 // wired for real in Step 3; Attendance/Fees/Reports remain placeholders,
 // each owned by its own later phase).
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { getDailyAttendance, getClassAnalytics } from '../../api/classroomApi';
 import { ApiError } from '../../api/client';
 import type { AttendanceDaySummary } from '../../types';
@@ -58,12 +59,18 @@ export function useClassHomeScreen(classId: string): ClassHomeScreenState {
     }
   }, [classId]);
 
-  useEffect(() => {
-    // Standard fetch-on-mount pattern — see useClassListScreen.ts's
-    // identical, already-documented case.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    load();
-  }, [load]);
+  // Focus-triggered, not just mount/classId-change — a teacher marking
+  // attendance from this screen's own shortcut lands on the pushed
+  // Attendance screen, then pops straight back HERE with the same classId,
+  // which a plain mount-effect would never re-run for. Refetching on every
+  // focus (initial mount included, per useFocusEffect's own contract) is
+  // what keeps the strip from showing the pre-save snapshot after that
+  // round trip.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   return { today, totalStudents, loading, error, reload: load };
 }

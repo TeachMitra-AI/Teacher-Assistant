@@ -11,9 +11,9 @@ import type {
   ClassAttendanceHistory,
   StudentAttendanceHistory,
   ClassFeeStatus,
-  FeeStatus,
   FeeRecordDto,
   ClassAnalytics,
+  TeacherAnalyticsOverview,
 } from '../types';
 
 export interface CreateClassInput {
@@ -123,13 +123,16 @@ export async function getFeeStatus(classId: string, period: string): Promise<Cla
   return api<ClassFeeStatus>(`/classroom/classes/${classId}/fees?period=${period}`);
 }
 
-// One PATCH per status change — there is no bulk fee-upsert endpoint (unlike
-// attendance's day-at-a-time bulk save), so each tap is already exactly one
-// intentional change, not a batchable series of taps against one save button.
-export async function setFeeStatus(studentId: string, period: string, status: FeeStatus): Promise<FeeRecordDto> {
+// The client sends the amount actually paid so far this period — `status`
+// (paid/partial/pending) is always derived server-side, never accepted from
+// the client. One PATCH per save — there is no bulk fee-upsert endpoint
+// (unlike attendance's day-at-a-time bulk save), so each tap is already
+// exactly one intentional change, not a batchable series of taps against one
+// save button.
+export async function setFeeAmount(studentId: string, period: string, amount: number): Promise<FeeRecordDto> {
   const data = await api<{ fee: FeeRecordDto }>(`/classroom/students/${studentId}/fees/${period}`, {
     method: 'PATCH',
-    body: { status },
+    body: { amount },
   });
   return data.fee;
 }
@@ -142,4 +145,11 @@ export async function setFeeStatus(studentId: string, period: string, status: Fe
 // getDailyAttendance(classId, todayIsoDate).summary instead.
 export async function getClassAnalytics(classId: string): Promise<ClassAnalytics> {
   return api<ClassAnalytics>(`/classroom/analytics/classes/${classId}`);
+}
+
+// Teacher-wide (every class) totals for the Reports "All Classes" view —
+// the one figure no per-class screen shows (today's attendance summed
+// across every class, not just the one currently open).
+export async function getTeacherAnalyticsOverview(): Promise<TeacherAnalyticsOverview> {
+  return api<TeacherAnalyticsOverview>('/classroom/analytics/overview');
 }

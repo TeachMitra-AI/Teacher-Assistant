@@ -6,7 +6,8 @@ import { ClassHomeScreen } from '../../screens/classroom/ClassHomeScreen';
 import { StudentsScreen } from '../../screens/classroom/StudentsScreen';
 import { AttendanceScreen } from '../../screens/classroom/attendance/AttendanceScreen';
 import { StudentAttendanceHistoryScreen } from '../../screens/classroom/attendance/StudentAttendanceHistoryScreen';
-import { PlaceholderScreen } from '../../screens/PlaceholderScreen';
+import { FeeStatusScreen } from '../../screens/classroom/fees/FeeStatusScreen';
+import { ReportsScreen } from '../../screens/classroom/reports/ReportsScreen';
 import { Header } from '../../components/Header';
 import { useStackScreenOptions } from '../useStackScreenOptions';
 
@@ -45,11 +46,13 @@ export function ClassroomStack() {
         options={({ route }) => ({ title: `${route.params.studentName} — Attendance` })}
       />
       <Stack.Screen name="Fees" options={({ route }) => ({ title: `${route.params.className} — Fees` })}>
-        {() => <PlaceholderScreen title="Fees" description="Fee status board — Phase 10." />}
+        {({ route }) => <FeeStatusScreen classId={route.params.classId} />}
       </Stack.Screen>
-      <Stack.Screen name="Reports" options={({ route }) => ({ title: `${route.params.className} — Reports` })}>
-        {() => <PlaceholderScreen title="Reports" description="Cross-class analytics — Phase 11." />}
-      </Stack.Screen>
+      <Stack.Screen
+        name="Reports"
+        component={ReportsScreen}
+        options={({ route }) => ({ title: `${route.params.className} — Reports` })}
+      />
     </Stack.Navigator>
   );
 }

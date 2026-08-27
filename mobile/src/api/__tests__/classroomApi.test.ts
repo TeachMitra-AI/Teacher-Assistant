@@ -1,7 +1,7 @@
 // Light coverage of the request-shaping logic in classroomApi.ts (query
 // strings, method/body composition) — the wrapper functions themselves are
 // otherwise a direct, mechanical port of the already-tested web client.
-import { listClasses, getDailyAttendance, saveAttendance, setFeeStatus, getClassAnalytics } from '../classroomApi';
+import { listClasses, getDailyAttendance, saveAttendance, setFeeAmount, getClassAnalytics, getTeacherAnalyticsOverview } from '../classroomApi';
 
 jest.mock('../client', () => ({ api: jest.fn() }));
 const { api } = jest.requireMock('../client') as { api: jest.Mock };
@@ -48,12 +48,20 @@ describe('classroomApi', () => {
     expect(api).toHaveBeenCalledWith('/classroom/analytics/classes/class-1');
   });
 
-  it('setFeeStatus PATCHes exactly one status change', async () => {
-    api.mockResolvedValueOnce({ fee: { id: 'f1', studentId: 's1', classId: 'c1', period: '2026-08', status: 'paid', updatedAt: '' } });
-    await setFeeStatus('s1', '2026-08', 'paid');
+  it('getTeacherAnalyticsOverview requests the teacher-wide analytics endpoint', async () => {
+    api.mockResolvedValueOnce({ totalStudents: 12, today: {}, month: {}, fees: {} });
+    await getTeacherAnalyticsOverview();
+    expect(api).toHaveBeenCalledWith('/classroom/analytics/overview');
+  });
+
+  it('setFeeAmount PATCHes exactly one amount change', async () => {
+    api.mockResolvedValueOnce({
+      fee: { id: 'f1', studentId: 's1', classId: 'c1', period: '2026-08', status: 'paid', amount: 500, expectedAmount: 500, updatedAt: '' },
+    });
+    await setFeeAmount('s1', '2026-08', 500);
     expect(api).toHaveBeenCalledWith('/classroom/students/s1/fees/2026-08', {
       method: 'PATCH',
-      body: { status: 'paid' },
+      body: { amount: 500 },
     });
   });
 });

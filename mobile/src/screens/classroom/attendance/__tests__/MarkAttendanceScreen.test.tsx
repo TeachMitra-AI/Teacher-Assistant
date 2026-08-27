@@ -8,9 +8,17 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-
 import { ThemeProvider } from '../../../../theme/ThemeContext';
 import { ApiError } from '../../../../api/client';
 import { MarkAttendanceScreen } from '../MarkAttendanceScreen';
+import { todayDateString } from '../../../../lib/classroomDate';
 import type { DailyAttendance } from '../../../../types';
 
 jest.mock('@react-native-community/datetimepicker', () => 'DateTimePicker');
+
+// The hook under test fixes its own "today" from the real clock at module
+// load (see useMarkAttendanceScreen.ts's module-level `TODAY`), so the
+// roster fixture's date must track the real day rather than a hardcoded
+// string — otherwise this suite rots the day after whichever date it was
+// written on.
+const TODAY = todayDateString();
 
 jest.mock('../../../../api/classroomApi', () => ({
   getDailyAttendance: jest.fn(),
@@ -30,7 +38,7 @@ function renderScreen() {
 }
 
 const ROSTER_RESPONSE: DailyAttendance = {
-  date: '2026-08-26',
+  date: TODAY,
   roster: [
     { studentId: 's1', name: 'Asha', rollNumber: '1', status: 'unmarked' },
     { studentId: 's2', name: 'Ben', rollNumber: '2', status: 'present' },
@@ -101,9 +109,9 @@ describe('MarkAttendanceScreen', () => {
     await fireEvent.press(screen.getByTestId('attendance-present-s1'));
     expect(screen.getByTestId('attendance-save-button').props.accessibilityState?.disabled).toBeFalsy();
 
-    saveAttendance.mockResolvedValueOnce({ date: '2026-08-26', saved: 2 });
+    saveAttendance.mockResolvedValueOnce({ date: TODAY, saved: 2 });
     getDailyAttendance.mockResolvedValueOnce({
-      date: '2026-08-26',
+      date: TODAY,
       roster: [
         { studentId: 's1', name: 'Asha', rollNumber: '1', status: 'present' },
         { studentId: 's2', name: 'Ben', rollNumber: '2', status: 'present' },
@@ -116,7 +124,7 @@ describe('MarkAttendanceScreen', () => {
     // One bulk POST with every roster row, "unmarked" included explicitly
     // for s2's untouched state — never a per-tap save.
     expect(saveAttendance).toHaveBeenCalledTimes(1);
-    expect(saveAttendance).toHaveBeenCalledWith('c1', '2026-08-26', [
+    expect(saveAttendance).toHaveBeenCalledWith('c1', TODAY, [
       { studentId: 's1', status: 'present' },
       { studentId: 's2', status: 'present' },
     ]);
