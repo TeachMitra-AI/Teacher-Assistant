@@ -3,7 +3,7 @@
 // navigation/route params (classId/className), matching
 // ClassListScreen.test.tsx's approach.
 import React from 'react';
-import { Text } from 'react-native';
+import { Pressable, Text } from 'react-native';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -37,7 +37,17 @@ function renderScreen() {
             initialParams={{ classId: 'c1', className: 'Grade 6 - Section A' }}
           />
           <Stack.Screen name="Students">
-            {({ route }) => <Text>Students: {route.params.className}</Text>}
+            {({ route, navigation }) => (
+              <>
+                <Text>Students: {route.params.className}</Text>
+                {/* Native-stack's header back button isn't part of the RN tree
+                    (react-native-screens renders it natively), so tests that need
+                    to pop back use this in-content stand-in instead. */}
+                <Pressable onPress={() => navigation.goBack()}>
+                  <Text>Go back (test)</Text>
+                </Pressable>
+              </>
+            )}
           </Stack.Screen>
         </Stack.Navigator>
       </NavigationContainer>
@@ -116,6 +126,29 @@ describe('ClassHomeScreen', () => {
 
     await fireEvent.press(screen.getByText('Students'));
     expect(screen.getByText('Students: Grade 6 - Section A')).toBeTruthy();
+  });
+
+  it('reloads the summary when this screen regains focus after a push/pop, not just on classId change', async () => {
+    getDailyAttendance.mockResolvedValueOnce({ date: '2026-08-26', roster: [], summary: TODAY_SUMMARY });
+    getClassAnalytics.mockResolvedValueOnce(ANALYTICS);
+    await act(async () => {
+      renderScreen();
+    });
+    await waitFor(() => expect(screen.getByText('18')).toBeTruthy());
+
+    // Push Students (e.g. after marking attendance there) then pop back —
+    // same classId throughout, so only a focus-triggered refetch (not a
+    // mount/classId-change one) would pick up what changed while away.
+    await fireEvent.press(screen.getByText('Students'));
+    expect(screen.getByText('Students: Grade 6 - Section A')).toBeTruthy();
+
+    const UPDATED_SUMMARY: AttendanceDaySummary = { present: 20, absent: 1, unmarked: 4, percentage: 95 };
+    getDailyAttendance.mockResolvedValueOnce({ date: '2026-08-26', roster: [], summary: UPDATED_SUMMARY });
+    getClassAnalytics.mockResolvedValueOnce(ANALYTICS);
+
+    await fireEvent.press(screen.getByText('Go back (test)'));
+
+    await waitFor(() => expect(screen.getByText('20')).toBeTruthy());
   });
 
   it('opens the class switcher and lists active classes, with the current one marked', async () => {

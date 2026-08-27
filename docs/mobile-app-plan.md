@@ -32,9 +32,9 @@ this section.
 | 7b — Push Notifications (backend + client) | ✅ IMPLEMENTATION DONE (2026-08-23) — backend + mobile + tests/lint/typecheck all complete; **live physical-device push verification BLOCKED** on the deployed backend being unavailable (Railway subscription/payment lapse), see the Phase 7b section below |
 | 7c — Mobile UI Refinement (web-mobile parity pass) | ✅ DONE (2026-08-26) — token foundation, dark-mode fixes, nav/header restructure, and Coach/Library/Notifications/Classroom/Generator/Auth/Settings screen parity all complete and device-verified across three rounds, plus the newly-approved Today's Highlight and Admin Analytics / Usage Dashboard features; see the Phase 7c section below |
 | 8 — Classroom (shell + Classes + Students) | ✅ DONE (2026-08-26) — Class List/Class Home/today's-attendance summary/Students CRUD/class-switcher/class CRUD (create/archive/restore) all implemented and device-verified against the real backend; see the Phase 8 section below |
-| 9 — Attendance | ⬜ NOT STARTED |
-| 10 — Fees | ⬜ NOT STARTED |
-| 11 — Reports / Dashboard | ⬜ NOT STARTED |
+| 9 — Attendance | ✅ DONE (2026-08-26) — Mark Attendance/Monthly Summary/Student History all implemented, wired into `ClassroomStack`, and verified against the real backend; see the Phase 9 section below |
+| 10 — Fees | ✅ DONE (2026-08-27) — Fee status board (month nav/summary strip/per-student amount entry) implemented, wired into `ClassroomStack`, and verified against the real backend; see the Phase 10 section below |
+| 11 — Reports / Dashboard | ✅ DONE (2026-08-27) — This Class / All Classes segmented Reports screen implemented, wired into `ClassroomStack`, and verified against the real backend; see the Phase 11 section below |
 | 12 — Offline / Reliability | ⬜ NOT STARTED |
 | 13 — Testing Hardening | ⬜ NOT STARTED |
 | 14 — Android Release | ⬜ NOT STARTED |
@@ -2283,7 +2283,319 @@ ReactNativeJS errors, no unhandled rejections).
 for this phase, deferred naturally to whichever phase gives Fees its full
 treatment.
 
-**Remaining work**: Phase 9 onward, per §26.
+**Remaining work**: Phase 10 onward, per §26.
+
+### Phase 9 — Attendance — ✅ DONE (2026-08-26)
+
+**What was done**: the Mark Attendance + Monthly Summary + Student History
+feature described in §13 and §26's own Phase 9 scope, replacing the
+`Attendance`/`StudentAttendanceHistory` placeholders left in
+`ClassroomStack.tsx` at the end of Phase 8.
+
+- **Mark Attendance** (`MarkAttendanceScreen.tsx` +
+  `useMarkAttendanceScreen.ts`): daily roster via `getDailyAttendance`,
+  per-student Present/Absent/Unmarked toggle with an instant, purely local
+  live summary (`computeLiveSummary` in `src/lib/attendance.ts` — mirrors
+  the server's `attendancePercentage` formula exactly), a "Mark all
+  Present" quick action, dirty-check-gated bulk save
+  (`saveAttendance(classId, date, marks)` — one POST per Save tap, "unmarked"
+  included explicitly for untouched rows, never a per-tap save), and a
+  native date navigator (`@react-native-community/datetimepicker`) that
+  disables "Next date" once the loaded date is today.
+- **Monthly Summary** (`MonthlyAttendanceScreen.tsx` +
+  `useMonthlyAttendanceScreen.ts`): calendar-grid month view over
+  `getAttendanceMonthSummary`/`getClassAttendanceHistory`, month
+  navigation via `classroomDate.ts`'s `addMonths`.
+- **Student History** (`StudentAttendanceHistoryScreen.tsx` +
+  `useStudentAttendanceHistoryScreen.ts`): per-student attendance record
+  over `getStudentAttendanceHistory`.
+- **Entry point** (`AttendanceScreen.tsx`): a segmented control switching
+  between Mark/Monthly, matching the web's own Attendance tab shape.
+- **Shared logic** (`src/lib/attendance.ts`): `attendancePercentage`,
+  `toggleStatus`, `computeDirty`, `computeLiveSummary`, `buildSaveMarks` —
+  the dirty-check/bulk-save/live-summary math, unit-tested independently
+  of any screen.
+
+**Files created**: `mobile/src/screens/classroom/attendance/{AttendanceScreen,
+MarkAttendanceScreen,MonthlyAttendanceScreen,StudentAttendanceHistoryScreen,
+useMarkAttendanceScreen,useMonthlyAttendanceScreen,
+useStudentAttendanceHistoryScreen}.{tsx,ts}`, `mobile/src/lib/attendance.ts`,
+and their `__tests__`. **Files modified**:
+`mobile/src/navigation/stacks/ClassroomStack.tsx` (wired in
+`AttendanceScreen`/`StudentAttendanceHistoryScreen` in place of the Phase
+9 placeholders).
+
+**Backend changes**: none — every endpoint used (`GET/POST
+/classroom/classes/:id/attendance`, `GET
+/classroom/classes/:id/attendance/summary`, `GET
+/classroom/classes/:id/attendance/history`, `GET
+/classroom/students/:id/attendance`) already existed in
+`server/src/routes/classroom.js` and was verified against the actual
+server implementation before use.
+
+**Tests**: full suite **339/339 passing, 41/41 suites**. `src/lib/
+__tests__/attendance.test.ts` covers the dirty-check/bulk-save/live-summary
+math directly (§23); `MarkAttendanceScreen.test.tsx` covers the daily
+screen's loading, optimistic toggle, mark-all, dirty-gated save, and
+error/retry states. `tsc --noEmit` and `expo lint` both clean.
+
+**Known limitations**: `MonthlyAttendanceScreen` and
+`StudentAttendanceHistoryScreen` have no dedicated component tests yet —
+only the shared `attendance.ts` logic and the Mark Attendance screen do.
+Not blocking (both are thin views over already-tested API calls and
+already-tested shared math), but worth a follow-up pass under Phase 13
+(Testing Hardening).
+
+**Remaining work**: Phase 10 onward, per §26.
+
+### Phase 10 — Fees — ✅ DONE (2026-08-27)
+
+**What was done**: the Fee status board described in §14, replacing the
+`Fees` placeholder left in `ClassroomStack.tsx`. Along the way, discovered
+that §14's own text (and the mobile `FeeStatus`/`StudentFeeStatus`/
+`ClassFeeStatus`/`FeeRecordDto` types/API function ported back in Phase 1)
+described a stale pre-`docs/fee-tracking-amounts-plan.md` V1 model
+("Paid/Pending toggle, no amounts") — the server and the web client had
+since moved to an amount-based model (teacher enters ₹ paid; paid/partial/
+pending is always derived server-side, never sent by the client). Built
+against the verified current contract (`server/src/routes/classroom.js`,
+`server/src/lib/classroomFees.js`, `client/src/components/classroom/
+FeeStatusBoard.tsx`), not the stale plan text.
+
+- **Types/API brought current** (`mobile/src/types/index.ts`,
+  `mobile/src/api/classroomApi.ts`): `FeeStatus` gained `'partial'`;
+  `StudentFeeStatus`/`ClassFeeStatus`/`FeeRecordDto` gained `amount`/
+  `expectedAmount`/`feeAmount`/`totalCollected`/`totalExpected`/
+  `totalPending`, matching `client/src/types.ts` exactly. `setFeeStatus(studentId,
+  period, status)` was replaced with `setFeeAmount(studentId, period, amount)`,
+  `PATCH .../fees/:period` body `{ amount }` — matching the server's
+  `.strict()` schema, which rejects a bare `status` field outright.
+- **Fee status board** (`FeeStatusScreen.tsx` + `useFeeStatusScreen.ts`):
+  month navigator (no future-month restriction — matches
+  `FeeStatusBoard.tsx`'s own unrestricted "Next month" button, unlike
+  Attendance's date/month nav), a summary strip (Total Students/Paid/
+  Partial/Pending) plus a collected-of-expected line, and one row per
+  student: a read-only derived status badge (with the expected amount
+  alongside it), a draft amount input, and a save action enabled only once
+  the draft differs from the last-saved amount. Saving PATCHes immediately
+  — there is no bulk fee-upsert endpoint, unlike Attendance's batched
+  save — and on success the returned `status`/`amount`/`expectedAmount`
+  are merged back into local state (paid/partial/pending counts and
+  totalCollected recomputed from the merge, not a re-fetch); on failure the
+  draft and board are left untouched and an inline error shows, matching
+  the web's own "no premature state flip, nothing to roll back" behavior
+  (not the optimistic-flip-then-revert pattern the stale §14 text
+  described for the old toggle model).
+- **Wiring**: `ClassroomStack.tsx`'s `Fees` route now renders
+  `FeeStatusScreen`; `ClassHomeScreen.tsx`'s doc comment updated to reflect
+  Fees as wired (Reports remains the one Phase 11 placeholder).
+
+**Files created**: `mobile/src/screens/classroom/fees/{FeeStatusScreen.tsx,
+useFeeStatusScreen.ts}` and its `__tests__`. **Files modified**:
+`mobile/src/types/index.ts`, `mobile/src/api/classroomApi.ts` (+ its test),
+`mobile/src/navigation/stacks/ClassroomStack.tsx`,
+`mobile/src/screens/classroom/ClassHomeScreen.tsx` (comment only).
+
+**Backend changes**: none — `GET .../classes/:classId/fees` and
+`PATCH .../students/:studentId/fees/:period` already existed and were
+verified against the actual server implementation before use.
+
+**Tests**: full suite **344/344 passing, 42/42 suites** (up from 339/41 at
+the end of Phase 9). `FeeStatusScreen.test.tsx` covers loading, the
+dirty-gated save button, the PATCH-then-merge success path, and the
+save-failure path (error shown, draft/status left untouched — the
+"nothing to roll back" behavior above, verified directly rather than
+assumed). `tsc --noEmit` and `expo lint` both clean.
+
+**Device verification (emulator-5554, Pixel 9 API 37, real backend)**:
+driven end to end via `adb` (screenshots + `input tap`/`input text` +
+`uiautomator dump`, no user interaction) against Class 5-A. A real
+dataset was built through the app itself: 3 students added via the
+Students screen's own "Add student" flow (an `expo-dev-client` floating
+"Tools" button was found to sit almost exactly on top of that screen's
+header-right button, coincidentally, and had to be tapped around).
+`feeAmount` (₹500) was set on the class directly via the API — the one
+gap noted in Phase 8, still true here, is that no mobile UI exists yet to
+set a class's fee amount, so this step used a PATCH the way the (also
+missing) web-equivalent screen would have.
+- Entered ₹200 for one student → saved → status flipped to **Partial
+  (₹500)**, summary strip updated to Paid 0/Partial 1/Pending 2, "₹200
+  collected of ₹1500 expected" — all without a re-fetch.
+- Entered ₹500 for a second student → saved → status flipped to **Paid
+  (₹500)** (correct green tint); summary became Paid 1/Partial 1/Pending 1,
+  ₹700 collected — confirmed byte-for-byte against `FeeRecord` rows read
+  directly from `prisma/dev.db` (amount/expectedAmount/status all matched).
+- Confirmed the save button is genuinely dirty-gated per row (enabled only
+  for the row whose draft was just edited, not the others).
+- Confirmed month navigation is independent per period (July/October both
+  showed a clean, unrelated 3-pending state) and — matching the intended
+  "no future-month restriction" design — paged forward as far as October
+  2026 without being blocked.
+- logcat stayed clean throughout (no FATAL EXCEPTION, no ReactNativeJS
+  errors) across the whole session, including the two adds, two saves, and
+  five month-navigations.
+
+**Remaining work**: Phase 11 onward, per §26.
+
+### Post-Phase-10 sanity pass — Phases 8/9/10 together, larger dataset (2026-08-27) — a real bug found and fixed
+
+The Phase 10 device verification above exercised one class with 3 students.
+This follow-up session deliberately went broader: a **3-class, 12-student**
+dataset was built through the app itself (not seeded), and Classes,
+Students, Attendance, and Fees were all exercised together against the real
+backend, cross-checked against `prisma/dev.db` directly rather than trusted
+on sight — driven the same way as the Phase 10 session (`adb`
+screenshots + `input tap`/`input text` + `uiautomator dump`).
+
+**Verified correct, byte-for-byte against the DB, across all 3 classes**:
+Class create, per-class `feeAmount` display, archive → drop from active
+list → "Show archived" toggle → restore (data preserved through the whole
+cycle); Student add; Attendance marking (present/absent/unmarked, live %
+math, Monthly Summary + calendar tinting, day-detail, Student History) with
+mixed present/absent/unmarked patterns; Fees amount-entry → derived
+paid/partial/pending → summary tiles → ₹ collected/expected math, across 3
+classes and 4 different payment amounts. Coach/Library/Generator all loaded
+without crashing. One nice confirmation along the way: the Phase 7
+"Fees still pending" auto-reminder notifications fired with the exact
+one-time-per-class-period snapshot counts `server/src/routes/classroom.js`'s
+fee-save handler is documented to produce — cross-feature wiring, not
+re-tested since Phase 7/10 individually, working correctly together.
+
+**Bug found**: `useClassHomeScreen.ts`'s live "Today's attendance" summary
+strip went stale after marking attendance and navigating back to Class
+Home — reproduced 3 times. Root cause: its data-fetch only ran on mount and
+on `classId` change (a plain `useEffect`), so popping back from the pushed
+Attendance screen to the *same* Class Home instance (same `classId`) never
+re-triggered it; switching to a different class and back (which does change
+`classId`) was confirmed to correctly refresh it, isolating the cause to a
+missing focus-triggered refetch, not a data or API problem — the server was
+correct throughout.
+
+**Fix applied**: replaced the mount/classId-only `useEffect` with
+`useFocusEffect` (`@react-navigation/native`) wrapping the same `load()` via
+`useCallback`, so the strip refetches on every focus (mount included, per
+`useFocusEffect`'s own contract), not just on a `classId` change. A new
+regression test in `ClassHomeScreen.test.tsx` pushes to a stub Students
+screen and pops back with updated mock data, asserting the strip picks it
+up — confirmed failing without the fix (via `git stash` on just that one
+file) and passing with it, before moving on. Full suite **345/345 passing,
+42/42 suites**; `tsc --noEmit` and `expo lint` both clean. Re-verified live
+on-device afterward: marked attendance for a previously all-zero class,
+navigated back, and the strip showed the correct numbers immediately, no
+class-switch workaround needed; logcat stayed clean throughout.
+
+**Files touched by the fix**: `mobile/src/screens/classroom/
+useClassHomeScreen.ts`, `mobile/src/screens/classroom/__tests__/
+ClassHomeScreen.test.tsx`.
+
+### Phase 11 — Reports / Dashboard — ✅ DONE (2026-08-27)
+
+**What was done**: the Reports screen described in §26, replacing the
+`Reports` placeholder left in `ClassroomStack.tsx`. This is the one phase
+with **no existing UI anywhere to port** — confirmed by grepping the
+codebase — so the design had to be settled from the plan doc's own
+scattered hints rather than a screenshot: §11's screen map row
+(`**Classroom → Reports** | GET /classroom/analytics/overview,
+/classroom/analytics/classes/:classId | Net-new UI`) and §12's "view
+reports (Reports card, the one genuinely new screen)" both point to a
+**single** screen backed by **both** endpoints, not two separate screens —
+resolved as a segmented control ("This Class" / "All Classes"), the exact
+precedent Attendance already established for two related views sharing one
+pushed screen.
+
+- **This Class tab** (`ClassReportScreen.tsx` + `useClassReportScreen.ts`):
+  a read-only dashboard over `getClassAnalytics(classId)` — the *exact same*
+  call Class Home's own summary strip already uses, so these numbers can
+  never drift from what a teacher already saw there. Shows this month's
+  attendance (Days Marked/Average/Present/Absent/Unmarked) and this month's
+  fees (Paid/Partial/Pending/collected-of-expected), both aggregate-only —
+  no second per-student list, since Attendance's Monthly Summary and Fees
+  already own that view each.
+- **All Classes tab** (`OverviewReportScreen.tsx` +
+  `useOverviewReportScreen.ts`): the first UI ever built against `GET
+  /classroom/analytics/overview` — teacher-wide totals across every class.
+  Shows **today's** attendance across every class (a figure no per-class
+  screen has — Class Home's own strip is scoped to one class), this
+  month's attendance across every class, and this month's fees across
+  every class.
+- **Shared presentation** (`reportBlocks.tsx`): `AttendanceSummaryBlock`/
+  `FeeSummaryBlock`, extracted once the same tile-row shape was needed 5
+  times across the two tabs (this-class attendance/fees, all-classes
+  today/month/fees) — not shared globally, since nothing outside Reports
+  needs them.
+- No new dependency: the roadmap's own suggestion of a charting library
+  (`victory-native` etc.) was deliberately skipped — every other Classroom
+  screen (Attendance, Fees) already shows its numbers as plain
+  `SummaryTile`s, not charts, so Reports matches that established
+  convention instead of introducing a visual style nothing else uses.
+- **Types/API added** (`mobile/src/types/index.ts`,
+  `mobile/src/api/classroomApi.ts`): `TeacherAttendanceToday`/
+  `TeacherAttendanceMonth`/`TeacherFeeCounts`/`TeacherAnalyticsOverview`,
+  matching `server/src/lib/classroomAttendance.js`'s
+  `getTeacherAttendanceToday`/`getTeacherAttendanceMonth` and
+  `classroomFees.js`'s `getTeacherFeeCounts` exactly; `getTeacherAnalyticsOverview()`
+  wrapping `GET /classroom/analytics/overview`. `ClassAnalytics` (Phase 8)
+  needed no changes — already an exact match for the per-class endpoint.
+- **Wiring**: `ClassroomStack.tsx`'s `Reports` route now renders
+  `ReportsScreen`; `ClassHomeScreen.tsx`'s doc comment updated (Students/
+  Attendance/Fees/Reports all now wired — no placeholders remain in
+  Classroom).
+
+**Files created**: `mobile/src/screens/classroom/reports/{ReportsScreen,
+ClassReportScreen,OverviewReportScreen,useClassReportScreen,
+useOverviewReportScreen,reportBlocks}.{tsx,ts}` and `__tests__` for the two
+tab screens. **Files modified**: `mobile/src/types/index.ts`,
+`mobile/src/api/classroomApi.ts` (+ its test),
+`mobile/src/navigation/stacks/ClassroomStack.tsx`,
+`mobile/src/screens/classroom/ClassHomeScreen.tsx` (comment only).
+
+**Backend changes**: none — both endpoints already existed and were
+verified against the actual server implementation
+(`server/src/routes/classroom.js`'s `/classroom/analytics/overview` and
+`/classroom/analytics/classes/:classId` handlers) before use.
+
+**Tests**: full suite **352/352 passing, 44/44 suites** (up from 345/42 at
+the end of the Phase 10 sanity-pass addendum). `ClassReportScreen.test.tsx`
+and `OverviewReportScreen.test.tsx` each cover loading, the populated
+state, an empty state (0 active students), and an inline error with a
+working retry. No dedicated test for the `ReportsScreen` segmented wrapper
+itself — matching `AttendanceScreen.tsx`'s own precedent of leaving the
+thin tab-switch shell untested while its two tab contents each get full
+coverage. `tsc --noEmit` and `expo lint` both clean.
+
+**Device verification (emulator-5554, real backend, existing 3-class/
+12-student dataset)**: both tabs cross-checked directly against
+`prisma/dev.db`, not trusted on sight.
+- **This Class** (Class 5-A): 3 students, 1 day marked, 100% average, 3
+  present/0 absent/0 unmarked; fees 3 paid/0 partial/0 pending, "₹1500
+  collected of ₹1500 expected" — matched exactly what the Attendance and
+  Fees screens for that same class already showed.
+- **All Classes**: 12 students; today 9 present/3 absent/0 unmarked (75%);
+  this month same totals (1 day marked so far); fees 6 paid/3 partial/3
+  pending, "₹3650 collected of ₹6100 expected." Initial arithmetic by hand
+  suggested a mismatch, but cross-checking `AttendanceRecord`/`FeeRecord`
+  rows directly showed the app was right and the hand-count was wrong (a
+  student believed left "unmarked" during the Phase 10 sanity pass had, in
+  fact, been saved "absent") — logged as a false alarm, not a bug, precisely
+  because the DB was checked before concluding either way.
+- logcat clean throughout.
+
+**A real (unrelated) bug found and fixed in the same session**: while
+verifying Coach/Generator's real-AI paths as part of this broader sanity
+pass (not Reports-specific), `POST /coach` failed with `Gemini API error:
+404`. Root cause: `server/.env`'s active `GEMINI_API_KEY` was a
+malformed/wrong-format value (not the `AIza...` shape Google AI Studio
+keys use), while a correctly-formatted key sat commented out one line
+above it. **Fixed with the user's explicit go-ahead** (asked before
+touching credentials, per instruction): swapped the active key to the
+`AIza...` one, restarted the server, and confirmed live — a real Coach
+question returned a genuine Gemini response, and Generator produced a
+real 10-question structured quiz that saved correctly to the Library
+(confirmed via `GET /api/resources`). This is a local `.env`
+(git-ignored) config fix, not a code change — no files in the repo were
+touched for it.
+
+**Remaining work**: Phase 12 onward, per §26.
 
 ---
 

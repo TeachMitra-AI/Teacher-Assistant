@@ -588,18 +588,21 @@ export interface ClassAttendanceHistory {
   days: ClassAttendanceHistoryDay[];
 }
 
-// ---- Classroom Management — Fees (Phase 4) ---------------------------------
+// ---- Classroom Management — Fees (Phase 10) --------------------------------
 //
-// Mirrors routes/classroom.js's fee responses exactly (§11). V1 is
-// deliberately Paid/Pending only — amount/paidAt/note are reserved-but-unused
-// on FeeRecord and never appear in these DTOs.
-export type FeeStatus = 'paid' | 'pending';
+// Mirrors routes/classroom.js's fee responses exactly, extended per
+// docs/fee-tracking-amounts-plan.md. `status` is always derived server-side
+// from amount vs expectedAmount — the client sends `amount`, never `status`
+// (server/src/lib/classroomFees.js's deriveFeeStatus).
+export type FeeStatus = 'paid' | 'partial' | 'pending';
 
 export interface StudentFeeStatus {
   studentId: string;
   name: string;
   rollNumber?: string | null;
   status: FeeStatus;
+  amount: number; // rupees paid so far this period
+  expectedAmount: number | null; // snapshot of the class's feeAmount when this period was first touched; null if the class had none set yet
 }
 
 // GET .../classes/:classId/fees?period=
@@ -607,7 +610,12 @@ export interface ClassFeeStatus {
   period: string;
   totalStudents: number;
   paid: number;
+  partial: number;
   pending: number;
+  feeAmount: number | null; // the class's CURRENT fee amount (not a snapshot)
+  totalCollected: number;
+  totalExpected: number;
+  totalPending: number; // sum of each student's own (expectedAmount - amount), never negative per student — an overpayment never offsets another student's shortfall
   perStudent: StudentFeeStatus[];
 }
 
@@ -618,6 +626,8 @@ export interface FeeRecordDto {
   classId: string;
   period: string;
   status: FeeStatus;
+  amount: number;
+  expectedAmount: number | null;
   updatedAt: string;
 }
 
@@ -640,6 +650,48 @@ export interface ClassAnalytics {
     totalCollected: number;
     totalExpected: number;
   };
+}
+
+// ---- Classroom Management — Reports/Dashboard (Phase 11) -------------------
+//
+// GET /classroom/analytics/overview — teacher-wide (every class), mirrors
+// server/src/lib/classroomAttendance.js's getTeacherAttendanceToday/
+// getTeacherAttendanceMonth and classroomFees.js's getTeacherFeeCounts
+// exactly. Unlike ClassAnalytics.month above, these are aggregate-only (no
+// perStudent) — there is no "all students across every class" list to show.
+export interface TeacherAttendanceToday {
+  totalStudents: number;
+  present: number;
+  absent: number;
+  unmarked: number;
+  percentage: number | null;
+}
+
+export interface TeacherAttendanceMonth {
+  month: string;
+  totalStudents: number;
+  daysMarked: number;
+  present: number;
+  absent: number;
+  unmarked: number;
+  percentage: number | null;
+}
+
+export interface TeacherFeeCounts {
+  period: string;
+  totalStudents: number;
+  paid: number;
+  partial: number;
+  pending: number;
+  totalCollected: number;
+  totalExpected: number;
+}
+
+export interface TeacherAnalyticsOverview {
+  totalStudents: number;
+  today: TeacherAttendanceToday;
+  month: TeacherAttendanceMonth;
+  fees: TeacherFeeCounts;
 }
 
 // A saved item in the teacher's personal library. Mirrors the server DTO
