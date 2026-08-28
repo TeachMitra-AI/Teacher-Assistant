@@ -4,6 +4,7 @@
 // mocked to a no-op (never rendered on-screen by the RN test renderer),
 // matching jest.setup.ts's existing pattern for other native modules.
 import React from 'react';
+import { Alert } from 'react-native';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-native';
 import { ThemeProvider } from '../../../../theme/ThemeContext';
 import { ApiError } from '../../../../api/client';
@@ -29,6 +30,34 @@ const { getDailyAttendance, saveAttendance } = jest.requireMock('../../../../api
   saveAttendance: jest.Mock;
 };
 
+// Same pattern as CoachScreen.test.tsx — useAuth is mocked directly rather
+// than going through a real AuthProvider, since this suite is about the
+// screen's own behavior (auth is RootNavigator.test.tsx's job).
+jest.mock('../../../../auth/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'u1', name: 'Asha Verma', email: 'asha@example.com', role: 'teacher', preferences: {} } }),
+}));
+
+// Phase 12 (§18) — the offline queue module itself is covered by
+// offlineQueue.test.ts; here it's mocked at the module boundary so this
+// suite can control exactly what the screen sees a queued/pending/errored
+// entry as, the same way api/classroomApi is mocked above.
+jest.mock('../../../../lib/offlineQueue', () => ({
+  buildQueueKey: (userId: string, classId: string, date: string) => `${userId}:${classId}:${date}`,
+  enqueueAttendanceSave: jest.fn(),
+  getQueuedItem: jest.fn(),
+  subscribeToQueue: jest.fn(() => jest.fn()),
+  retryQueuedItem: jest.fn(),
+  discardQueuedItem: jest.fn(),
+}));
+const { enqueueAttendanceSave, getQueuedItem, retryQueuedItem, discardQueuedItem } = jest.requireMock(
+  '../../../../lib/offlineQueue'
+) as {
+  enqueueAttendanceSave: jest.Mock;
+  getQueuedItem: jest.Mock;
+  retryQueuedItem: jest.Mock;
+  discardQueuedItem: jest.Mock;
+};
+
 function renderScreen() {
   return render(
     <ThemeProvider>
@@ -50,6 +79,12 @@ describe('MarkAttendanceScreen', () => {
   beforeEach(() => {
     getDailyAttendance.mockReset();
     saveAttendance.mockReset();
+    enqueueAttendanceSave.mockReset();
+    retryQueuedItem.mockReset();
+    discardQueuedItem.mockReset();
+    // Default: no queued item for this class/date — every pre-Phase-12 test
+    // below relies on this to see no offline-queue UI at all.
+    getQueuedItem.mockReset().mockResolvedValue(null);
   });
 
   it('shows a loading state, then the roster with each student\'s loaded status', async () => {
@@ -168,5 +203,180 @@ describe('MarkAttendanceScreen', () => {
     getDailyAttendance.mockResolvedValueOnce(ROSTER_RESPONSE);
     await fireEvent.press(screen.getByText('Retry'));
     await waitFor(() => expect(screen.getByText('Asha')).toBeTruthy());
+  });
+
+  // ---- Phase 12: offline queueing ------------------------------------------
+
+  it('a network failure at save time queues the snapshot instead of showing an error', async () => {
+    getDailyAttendance.mockResolvedValueOnce(ROSTER_RESPONSE);
+    await act(async () => {
+      renderScreen();
+    });
+    await waitFor(() => expect(screen.getByText('Asha')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('attendance-present-s1'));
+
+    saveAttendance.mockRejectedValueOnce(new ApiError('Network error. Please check your connection.', 0));
+    await fireEvent.press(screen.getByTestId('attendance-save-button'));
+
+    await waitFor(() =>
+      expect(enqueueAttendanceSave).toHaveBeenCalledWith('u1', 'c1', TODAY, [
+        { studentId: 's1', status: 'present' },
+        { studentId: 's2', status: 'present' },
+      ])
+    );
+    expect(screen.getByTestId('attendance-pending-sync')).toBeTruthy();
+    expect(screen.getByText("Saved locally — will sync when you're back online.")).toBeTruthy();
+    // Not treated as a failure — no error banner, and load() is never
+    // re-called since there is nothing new to fetch from the server yet.
+    expect(getDailyAttendance).toHaveBeenCalledTimes(1);
+  });
+
+  it('a second offline edit re-enqueues (coalesces) even when it matches the pre-offline server state', async () => {
+    // Regression test for a bug found via manual device testing: dirty-check
+    // must compare against the just-queued snapshot, not the stale
+    // pre-offline `roster`, or a second offline edit that happens to match
+    // the original server state reads as "not dirty" and is silently
+    // dropped instead of coalescing.
+    getDailyAttendance.mockResolvedValueOnce(ROSTER_RESPONSE);
+    await act(async () => {
+      renderScreen();
+    });
+    await waitFor(() => expect(screen.getByText('Asha')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('attendance-present-s1'));
+
+    saveAttendance.mockRejectedValueOnce(new ApiError('Network error. Please check your connection.', 0));
+    await fireEvent.press(screen.getByTestId('attendance-save-button'));
+    await waitFor(() => expect(enqueueAttendanceSave).toHaveBeenCalledTimes(1));
+
+    // Tapping the now-active Present toggle again clears s1 back to
+    // Unmarked — which is exactly ROSTER_RESPONSE's original loaded value,
+    // the case that silently no-opped before the fix.
+    await fireEvent.press(screen.getByTestId('attendance-present-s1'));
+    expect(screen.getByTestId('attendance-save-button').props.accessibilityState?.disabled).toBeFalsy();
+
+    saveAttendance.mockRejectedValueOnce(new ApiError('Network error. Please check your connection.', 0));
+    await fireEvent.press(screen.getByTestId('attendance-save-button'));
+
+    await waitFor(() => expect(enqueueAttendanceSave).toHaveBeenCalledTimes(2));
+    expect(enqueueAttendanceSave).toHaveBeenLastCalledWith('u1', 'c1', TODAY, [
+      { studentId: 's1', status: 'unmarked' },
+      { studentId: 's2', status: 'present' },
+    ]);
+  });
+
+  it('a genuine (non-network) save failure still shows the existing error banner, not the queue', async () => {
+    getDailyAttendance.mockResolvedValueOnce(ROSTER_RESPONSE);
+    await act(async () => {
+      renderScreen();
+    });
+    await waitFor(() => expect(screen.getByText('Asha')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('attendance-present-s1'));
+
+    saveAttendance.mockRejectedValueOnce(new ApiError('One or more students in this request do not belong to this class.', 400));
+    await fireEvent.press(screen.getByTestId('attendance-save-button'));
+
+    await waitFor(() =>
+      expect(screen.getByText('One or more students in this request do not belong to this class.')).toBeTruthy()
+    );
+    expect(enqueueAttendanceSave).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('attendance-pending-sync')).toBeNull();
+  });
+
+  it('shows a pending-sync entry already queued for this class/date on load', async () => {
+    getDailyAttendance.mockResolvedValueOnce(ROSTER_RESPONSE);
+    getQueuedItem.mockResolvedValue({
+      key: `u1:c1:${TODAY}`,
+      userId: 'u1',
+      classId: 'c1',
+      date: TODAY,
+      marks: [],
+      createdAt: 0,
+      updatedAt: 0,
+      attempts: 0,
+      nextRetryAt: 0,
+      permanentError: null,
+    });
+    await act(async () => {
+      renderScreen();
+    });
+
+    await waitFor(() => expect(screen.getByTestId('attendance-pending-sync')).toBeTruthy());
+  });
+
+  it('surfaces a permanent sync error with a manual Retry action', async () => {
+    getDailyAttendance.mockResolvedValueOnce(ROSTER_RESPONSE);
+    getQueuedItem.mockResolvedValue({
+      key: `u1:c1:${TODAY}`,
+      userId: 'u1',
+      classId: 'c1',
+      date: TODAY,
+      marks: [],
+      createdAt: 0,
+      updatedAt: 0,
+      attempts: 3,
+      nextRetryAt: 0,
+      permanentError: 'Could not sync this attendance save. It has not been lost — you can retry or discard it.',
+    });
+    await act(async () => {
+      renderScreen();
+    });
+
+    await waitFor(() => expect(screen.getByTestId('attendance-queue-error')).toBeTruthy());
+    expect(screen.queryByTestId('attendance-pending-sync')).toBeNull(); // error state, not the plain pending state
+
+    await fireEvent.press(screen.getByTestId('attendance-queue-retry'));
+    expect(retryQueuedItem).toHaveBeenCalledWith(`u1:c1:${TODAY}`, 'u1');
+  });
+
+  it('Discard requires confirmation before removing the queued item', async () => {
+    getDailyAttendance.mockResolvedValueOnce(ROSTER_RESPONSE);
+    getQueuedItem.mockResolvedValue({
+      key: `u1:c1:${TODAY}`,
+      userId: 'u1',
+      classId: 'c1',
+      date: TODAY,
+      marks: [],
+      createdAt: 0,
+      updatedAt: 0,
+      attempts: 3,
+      nextRetryAt: 0,
+      permanentError: 'Could not sync this attendance save. It has not been lost — you can retry or discard it.',
+    });
+    // Simulate the user dismissing the confirmation without confirming.
+    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    await act(async () => {
+      renderScreen();
+    });
+    await waitFor(() => expect(screen.getByTestId('attendance-queue-discard')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('attendance-queue-discard'));
+    expect(Alert.alert).toHaveBeenCalled();
+    expect(discardQueuedItem).not.toHaveBeenCalled();
+  });
+
+  it('confirmed Discard removes the queue item', async () => {
+    getDailyAttendance.mockResolvedValueOnce(ROSTER_RESPONSE);
+    getQueuedItem.mockResolvedValue({
+      key: `u1:c1:${TODAY}`,
+      userId: 'u1',
+      classId: 'c1',
+      date: TODAY,
+      marks: [],
+      createdAt: 0,
+      updatedAt: 0,
+      attempts: 3,
+      nextRetryAt: 0,
+      permanentError: 'Could not sync this attendance save. It has not been lost — you can retry or discard it.',
+    });
+    jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
+      buttons?.find((b) => b.style === 'destructive')?.onPress?.();
+    });
+    await act(async () => {
+      renderScreen();
+    });
+    await waitFor(() => expect(screen.getByTestId('attendance-queue-discard')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('attendance-queue-discard'));
+    expect(discardQueuedItem).toHaveBeenCalledWith(`u1:c1:${TODAY}`);
   });
 });

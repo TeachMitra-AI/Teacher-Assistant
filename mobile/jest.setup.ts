@@ -75,3 +75,45 @@ jest.mock('expo-notifications', () => ({
   AndroidImportance: { MIN: 1, LOW: 2, DEFAULT: 3, HIGH: 4, MAX: 5 },
 }));
 jest.mock('expo-constants', () => ({ expoConfig: {}, easConfig: undefined }));
+
+// @react-native-async-storage/async-storage backs the offline attendance
+// queue (Phase 12, mobile/src/lib/offlineQueue.ts) — the real native module
+// doesn't exist under the Jest test renderer. A simple in-memory fake is
+// enough for every test: offlineQueue.test.ts exercises real read/write
+// round-trips against it, and every other test that merely renders a screen
+// touching the queue needs it to behave, not to be spied on. Cleared between
+// tests the same way jest's own module registry is (per-test isolation
+// relies on each test file calling AsyncStorage.clear() itself, mirroring
+// how other tests reset their own local state).
+jest.mock('@react-native-async-storage/async-storage', () => {
+  const memory = new Map<string, string>();
+  return {
+    getItem: jest.fn((key: string) => Promise.resolve(memory.has(key) ? memory.get(key)! : null)),
+    setItem: jest.fn((key: string, value: string) => {
+      memory.set(key, value);
+      return Promise.resolve();
+    }),
+    removeItem: jest.fn((key: string) => {
+      memory.delete(key);
+      return Promise.resolve();
+    }),
+    clear: jest.fn(() => {
+      memory.clear();
+      return Promise.resolve();
+    }),
+  };
+});
+
+// @react-native-community/netinfo backs the offline queue's reconnect
+// trigger (Phase 12, offlineQueue.ts's startAutoSync()) — same reasoning as
+// AsyncStorage above. Default: registers the listener but never fires it;
+// tests that need to simulate a reconnect invoke the captured listener
+// directly via `(NetInfo.addEventListener as jest.Mock).mock.calls`.
+jest.mock('@react-native-community/netinfo', () => ({
+  addEventListener: jest.fn(() => jest.fn()),
+}));
+
+// react-native's own AppState already has a working jest mock built into
+// @react-native/jest-preset (jest/mocks/AppState.js, wired up in that
+// preset's own setup.js) — no override needed here. Tests drive it via
+// `(AppState.addEventListener as jest.Mock).mock.calls`.
