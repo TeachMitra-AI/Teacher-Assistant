@@ -201,6 +201,20 @@ client, reusing the same backend API. Full phased plan and per-phase implementat
   procedure to close this verification once the deployment is back up is recorded in
   [`docs/mobile-app-plan.md`](docs/mobile-app-plan.md) under "Phase 7b … Blocked verification".
 
+### Known Issue — Offline Session Restore (found during Phase 12)
+- **What happens**: `AuthContext.reconcile()` treats a network failure on the `/auth/me`
+  restore request the same as an invalid/expired session, and signs the user out.
+- **When**: only if the app is fully restarted while the device has no backend connectivity —
+  a user with a valid, unexpired session is returned to the sign-in screen instead of staying
+  signed in.
+- **Status**: pre-existing — it predates Phase 12 (offline attendance queue) and was neither
+  introduced nor fixed by that work.
+- **Not a Phase 12 defect**: the persisted offline attendance queue itself is unaffected and
+  survives an offline restart correctly regardless of this issue — verified directly against
+  on-device storage during Phase 12 testing.
+- **Fix**: deferred to a future authentication/reliability improvement (distinguishing a
+  network failure from a genuinely invalid/expired session in `reconcile()`).
+
 ---
 
 ## Tech Stack

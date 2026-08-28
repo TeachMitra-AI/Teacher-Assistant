@@ -6,7 +6,7 @@
 // model: local taps update the UI instantly, nothing persists until "Save
 // Attendance" is tapped.
 import React, { useState } from 'react';
-import { View, FlatList, Pressable, ActivityIndicator, StyleSheet, Platform } from 'react-native';
+import { View, FlatList, Pressable, ActivityIndicator, StyleSheet, Platform, Alert } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ChevronLeft, ChevronRight, CalendarDays, ClipboardCheck } from 'lucide-react-native';
 import { ThemedText } from '../../../components/ThemedText';
@@ -32,6 +32,8 @@ export function MarkAttendanceScreen({ classId }: { classId: string }) {
     saveError,
     dirty,
     summary,
+    pendingSync,
+    queuedError,
     goToPreviousDate,
     goToNextDate,
     setDate,
@@ -39,6 +41,8 @@ export function MarkAttendanceScreen({ classId }: { classId: string }) {
     markAllPresent,
     save,
     reload,
+    retryQueued,
+    discardQueued,
   } = useMarkAttendanceScreen(classId);
 
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -50,6 +54,21 @@ export function MarkAttendanceScreen({ classId }: { classId: string }) {
 
   function handlePickerDismiss() {
     if (Platform.OS === 'android') setPickerVisible(false);
+  }
+
+  // Discard is destructive (it deletes an unsynced attendance save) — kept
+  // to the same Alert.alert confirm pattern the rest of the app already uses
+  // for destructive actions (§16: "keep Alert.alert... it is already used
+  // consistently").
+  function handleDiscard() {
+    Alert.alert(
+      'Discard this attendance save?',
+      'This will permanently delete the attendance you saved for this date. It was never confirmed by the server.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: () => { void discardQueued(); } },
+      ]
+    );
   }
 
   const percentageLabel = summary.percentage === null ? '—' : `${summary.percentage}%`;
@@ -178,6 +197,23 @@ export function MarkAttendanceScreen({ classId }: { classId: string }) {
 
           <View style={[styles.saveBar, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
             {!!saveError && <ThemedText style={{ color: colors.semantic.danger.text }}>{saveError}</ThemedText>}
+
+            {!!queuedError && (
+              <View testID="attendance-queue-error">
+                <ThemedText style={{ color: colors.semantic.danger.text }}>{queuedError}</ThemedText>
+                <View style={styles.queueActions}>
+                  <Button title="Retry" variant="secondary" onPress={() => { void retryQueued(); }} testID="attendance-queue-retry" />
+                  <Button title="Discard" variant="text" onPress={handleDiscard} testID="attendance-queue-discard" />
+                </View>
+              </View>
+            )}
+
+            {pendingSync && !queuedError && (
+              <ThemedText style={{ color: colors.semantic.warning.text }} testID="attendance-pending-sync">
+                Saved locally — will sync when you&apos;re back online.
+              </ThemedText>
+            )}
+
             <Button
               title={saving ? 'Saving…' : 'Save Attendance'}
               onPress={() => { void save(); }}
@@ -218,4 +254,5 @@ const styles = StyleSheet.create({
   roll: { fontSize: 12 },
   toggles: { flexDirection: 'row', gap: spacing.xs, width: 168 },
   saveBar: { paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, gap: spacing.xs },
+  queueActions: { flexDirection: 'row', gap: spacing.sm },
 });

@@ -9,8 +9,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getDailyAttendance, saveAttendance } from '../../../api/classroomApi';
 import { ApiError } from '../../../api/client';
+import { useAuth } from '../../../auth/AuthContext';
 import { addDays, todayDateString } from '../../../lib/classroomDate';
 import { buildSaveMarks, computeDirty, computeLiveSummary, toggleStatus, type LiveAttendanceSummary } from '../../../lib/attendance';
+import {
+  buildQueueKey,
+  discardQueuedItem,
+  enqueueAttendanceSave,
+  getQueuedItem,
+  retryQueuedItem,
+  subscribeToQueue,
+} from '../../../lib/offlineQueue';
 import type { AttendanceRosterEntry, AttendanceStatus } from '../../../types';
 
 const TODAY = todayDateString();
@@ -26,6 +35,12 @@ interface MarkAttendanceScreenState {
   saveError: string;
   dirty: boolean;
   summary: LiveAttendanceSummary;
+  // Phase 12 (§18): set once this class/date's save has been written to the
+  // offline queue (network failure at save time) and hasn't synced yet.
+  pendingSync: boolean;
+  // Set once that queued item has hit a genuine (non-network) sync failure —
+  // distinct from pendingSync, which just means "not synced yet."
+  queuedError: string | null;
   goToPreviousDate: () => void;
   goToNextDate: () => void;
   setDate: (date: string) => void;
@@ -33,9 +48,13 @@ interface MarkAttendanceScreenState {
   markAllPresent: () => void;
   save: () => Promise<boolean>;
   reload: () => void;
+  retryQueued: () => Promise<void>;
+  discardQueued: () => Promise<void>;
 }
 
 export function useMarkAttendanceScreen(classId: string): MarkAttendanceScreenState {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [date, setDateState] = useState(TODAY);
   const [roster, setRoster] = useState<AttendanceRosterEntry[]>([]);
   const [statuses, setStatuses] = useState<Map<string, AttendanceStatus>>(new Map());
@@ -43,6 +62,8 @@ export function useMarkAttendanceScreen(classId: string): MarkAttendanceScreenSt
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [pendingSync, setPendingSync] = useState(false);
+  const [queuedError, setQueuedError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,6 +85,33 @@ export function useMarkAttendanceScreen(classId: string): MarkAttendanceScreenSt
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
+
+  // Reflects this exact class/date's offline-queue state (Phase 12, §18):
+  // checked on mount/date-change, and kept live via subscribeToQueue() so a
+  // background sync (NetInfo reconnect / app foreground) that completes
+  // while this screen is open updates the banner without a manual refresh.
+  useEffect(() => {
+    if (!userId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPendingSync(false);
+      setQueuedError(null);
+      return;
+    }
+    let cancelled = false;
+    const refresh = () => {
+      getQueuedItem(userId, classId, date).then((item) => {
+        if (cancelled) return;
+        setPendingSync(!!item);
+        setQueuedError(item?.permanentError ?? null);
+      });
+    };
+    refresh();
+    const unsubscribe = subscribeToQueue(refresh);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [userId, classId, date]);
 
   const toggle = useCallback((studentId: string, tapped: 'present' | 'absent') => {
     setStatuses((prev) => {
@@ -92,17 +140,45 @@ export function useMarkAttendanceScreen(classId: string): MarkAttendanceScreenSt
   const save = useCallback(async () => {
     setSaving(true);
     setSaveError('');
+    const marks = buildSaveMarks(roster, statuses);
     try {
-      await saveAttendance(classId, date, buildSaveMarks(roster, statuses));
+      await saveAttendance(classId, date, marks);
       await load(); // confirm what actually persisted, not just the local guess
       return true;
     } catch (err) {
+      // A genuine network failure (§18) queues the full snapshot for later
+      // sync instead of surfacing an error — everything else (validation,
+      // auth) is a real failure and must still be shown as one.
+      if (err instanceof ApiError && err.status === 0 && userId) {
+        await enqueueAttendanceSave(userId, classId, date, marks);
+        // Re-baseline `roster` against what was just queued, exactly as a
+        // real load() would after an online save — otherwise computeDirty()
+        // keeps comparing against the pre-offline server snapshot, so a
+        // second offline edit that happens to match that stale snapshot
+        // reads as "not dirty" and silently fails to queue/coalesce at all
+        // (found via manual device testing, not merely theorized).
+        const marksByStudent = new Map(marks.map((m) => [m.studentId, m.status]));
+        setRoster((prev) => prev.map((r) => ({ ...r, status: marksByStudent.get(r.studentId) ?? r.status })));
+        setPendingSync(true);
+        setQueuedError(null);
+        return true;
+      }
       setSaveError(err instanceof ApiError ? err.message : 'Could not save attendance.');
       return false;
     } finally {
       setSaving(false);
     }
-  }, [classId, date, roster, statuses, load]);
+  }, [classId, date, roster, statuses, load, userId]);
+
+  const retryQueued = useCallback(async () => {
+    if (!userId) return;
+    await retryQueuedItem(buildQueueKey(userId, classId, date), userId);
+  }, [userId, classId, date]);
+
+  const discardQueued = useCallback(async () => {
+    if (!userId) return;
+    await discardQueuedItem(buildQueueKey(userId, classId, date));
+  }, [userId, classId, date]);
 
   const goToPreviousDate = useCallback(() => setDateState((d) => addDays(d, -1)), []);
   // Disabled at the call site too, but guard here as well — `date >= TODAY`
@@ -121,6 +197,8 @@ export function useMarkAttendanceScreen(classId: string): MarkAttendanceScreenSt
     saveError,
     dirty,
     summary,
+    pendingSync,
+    queuedError,
     goToPreviousDate,
     goToNextDate,
     setDate,
@@ -128,5 +206,7 @@ export function useMarkAttendanceScreen(classId: string): MarkAttendanceScreenSt
     markAllPresent,
     save,
     reload: load,
+    retryQueued,
+    discardQueued,
   };
 }

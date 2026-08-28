@@ -8,6 +8,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { api, ApiError } from '../api/client';
 import { setSession, getToken, getRefreshToken } from '../api/session';
 import { getCachedPushToken } from '../lib/push';
+import { startAutoSync } from '../lib/offlineQueue';
 import type {
   AuthOutcome,
   AuthResponse,
@@ -61,6 +62,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // there is only the one call site (mount restore), but login/logout still
   // need to invalidate it so a slow restore can't land after a fresh sign-in.
   const reconcileIdRef = useRef(0);
+
+  // Phase 12 (§18): started once for the app's lifetime, not re-subscribed
+  // on every login/logout — the ref lets startAutoSync's NetInfo/AppState
+  // listeners always read whichever user is *currently* signed in without
+  // tearing down and re-creating those subscriptions on every auth change.
+  const userIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    userIdRef.current = user?.id ?? null;
+  }, [user]);
+
+  useEffect(() => {
+    return startAutoSync(() => userIdRef.current);
+  }, []);
 
   const reconcile = useCallback(async () => {
     const id = ++reconcileIdRef.current;
