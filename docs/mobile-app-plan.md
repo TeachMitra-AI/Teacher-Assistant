@@ -35,7 +35,8 @@ this section.
 | 9 — Attendance | ✅ DONE (2026-08-26) — Mark Attendance/Monthly Summary/Student History all implemented, wired into `ClassroomStack`, and verified against the real backend; see the Phase 9 section below |
 | 10 — Fees | ✅ DONE (2026-08-27) — Fee status board (month nav/summary strip/per-student amount entry) implemented, wired into `ClassroomStack`, and verified against the real backend; see the Phase 10 section below |
 | 11 — Reports / Dashboard | ✅ DONE (2026-08-27) — This Class / All Classes segmented Reports screen implemented, wired into `ClassroomStack`, and verified against the real backend; see the Phase 11 section below |
-| 12 — Offline / Reliability | ⬜ NOT STARTED |
+| 12 — Offline / Reliability | ✅ DONE (2026-08-28) — persistent offline attendance queue (`mobile/src/lib/offlineQueue.ts`), coalesced by user+class+date, synced on NetInfo reconnect / AppState foreground with exponential backoff; wired into `useMarkAttendanceScreen`/`AuthContext`; see the Phase 12 section below |
+| 12b — Known Issues Fix | ✅ DONE (2026-08-29) — Coach chat-history sidebar + teaching-context menu, Settings profile-picture/avatar/account management, Help & Support, and Getting Started all completed and wired up; four real, live-verified bugs found and fixed in the Settings profile-picture flow; plus two same-day follow-up fixes (chat-actions popover repositioning, Generator-tab state reset); see the Phase 12b section below |
 | 13 — Testing Hardening | ⬜ NOT STARTED |
 | 14 — Android Release | ⬜ NOT STARTED |
 | 15 — iOS Release | ⬜ NOT STARTED |
@@ -2595,7 +2596,284 @@ real 10-question structured quiz that saved correctly to the Library
 (git-ignored) config fix, not a code change — no files in the repo were
 touched for it.
 
-**Remaining work**: Phase 12 onward, per §26.
+**Remaining work**: Phase 13 onward, per §26.
+
+---
+
+### Phase 12 — Offline / Reliability — ✅ DONE (2026-08-28)
+
+**What was done**: a persistent offline attendance queue
+(`mobile/src/lib/offlineQueue.ts`), scoped exactly to Attendance marking per
+§18 — a network failure at save time queues the full-day snapshot
+(AsyncStorage-backed, survives app restart), coalesced by user+class+date so
+a later offline edit replaces the earlier one rather than duplicating it.
+Sync is triggered by a NetInfo reconnect transition or an AppState
+foreground transition (wired once from `AuthContext`), processes the queue
+in order with concurrent-sync prevention, retries network failures with
+exponential backoff (5s, capped at 5min), and stops auto-retrying a genuine
+non-network failure while preserving the item for a manual Retry or a
+confirmed Discard. `useMarkAttendanceScreen.ts` integrates this on top of
+the existing online save path without regressing it, including a fix (found
+via manual device testing) for a second offline edit matching the
+pre-offline server state being silently dropped instead of coalescing.
+
+**Also**: a pre-existing (not Phase 12) offline session-restore limitation
+in `AuthContext.reconcile()` was documented as a Known Issue in the README,
+for a future auth/reliability update.
+
+**Tests**: `mobile/src/lib/__tests__/offlineQueue.test.ts` (queue/coalesce/
+retry/sync unit tests) and `MarkAttendanceScreen.test.tsx` coverage for the
+offline path.
+
+**Remaining work**: Phase 13 onward, per §26.
+
+---
+
+### Phase 12b — Known Issues Fix — ✅ DONE (2026-08-29)
+
+**Status note**: named "Known Issues Fix" rather than a numbered §26 phase
+because it isn't one body of planned work — it's the accumulated uncommitted
+work sitting on this branch (`fix/known-issues`) across several sessions,
+gathered and finished here on request. Two different kinds of work are
+mixed together: (1) **feature completion** — Coach's chat-history sidebar
+and teaching-context menu (explicit Phase 4 deferrals), and the Settings /
+Help & Support / Getting Started screens (placeholder routes since Phase
+7c), all fully built out; and (2) **real bugs found and fixed by direct
+testing** of that new work, mostly in the Settings profile-picture flow.
+Given the mixed nature, it's inserted as "12b" (following the 7b/7c
+precedent) rather than renumbering Phase 13 onward.
+
+**Coach — chat-history sidebar and teaching-context menu** (closing two of
+Phase 4's explicit deferrals):
+- **`HistorySidebar.tsx`** (new): a left-anchored drawer (Modal +
+  Pressable-backdrop, no drawer-navigator or gesture-handler dependency —
+  avoids repeating Phase 12's autolinking rebuild) porting
+  `client/src/components/Sidebar.tsx` — brand header, New chat, an inline
+  search filter, a pinned-first Recent list backed by `GET /queries`, and
+  per-row Rename/Pin/Share/Delete plus Clear all via a bottom action sheet.
+  Closes via an X button or a right-to-left swipe; the swipe's claim/close
+  decision (`shouldClaimSidebarSwipe`/`isSidebarCloseSwipe`) is factored out
+  as pure functions and unit-tested directly, since PanResponder's own
+  gesture-state machinery can't be driven by a synthetic touch event in a
+  test. The footer reuses `ProfileMenu.tsx`'s account menu via a new
+  `variant="sidebar"` (bottom sheet instead of the header's small dropdown,
+  since a footer row has nothing above it to anchor a dropdown to).
+- **`RenameChatModal.tsx`** (new) and **`mobile/src/lib/useHistoryOverrides.ts`**
+  (new, ported from `client/src/hooks/useHistoryOverrides.ts`): rename and
+  pin are optimistic local overlays on top of the `PATCH /api/queries/:id`
+  the server already exposed, rolled back on failure; a rename only changes
+  the sidebar label, never the underlying `item.query` a reopened
+  conversation is rebuilt from.
+- **`TeachingContextMenu.tsx`** (new): the Grade/Subject/Language/Classroom/
+  Focus picker, ported from `client/src/components/TeachingContextMenu.tsx`
+  as a bottom sheet of `SelectField`s (a popover doesn't fit five dropdowns
+  comfortably on a phone). Replaces the header's previously-inert filter
+  icon; a badge now shows how many of the four optional fields are set
+  (language excluded — it always has a value).
+- **`api/coach.ts`**: added `listHistory`/`deleteHistoryItem`/`clearHistory`/
+  `updateHistoryItem`, the same `GET`/`DELETE`/`PATCH /api/queries` contract
+  the web sidebar already uses — no backend change.
+- **`CoachScreen.tsx`**: now owns `language`/`context` state (previously
+  hardcoded to English/empty), loads history on mount, and wires both new
+  surfaces in via `navigation.setOptions` (the header is rendered by the
+  navigator, not as this screen's child — same pattern `StudentsScreen.tsx`
+  uses for a dynamic `headerRight`). New chat resets the context but not the
+  language; reopening a history item restores its own language/context for
+  the *next* question too, not just for display; retry replays a turn's own
+  snapshotted language/context, not whatever the menu currently holds — all
+  three mirror the web version's exact behavior.
+- **`Header.tsx`**: Coach's left slot is now a hamburger button
+  (`onMenuPress`, opens the sidebar) instead of the static app icon/name;
+  the right-side context icon gained the active-field-count badge
+  (`onContextPress`, `contextActiveCount`).
+- **`config.ts`**: added `CLASSROOM_TYPES`/`ISSUE_TYPES` (the context menu's
+  "More context" vocabularies, ported verbatim from the web).
+
+**Settings — profile picture, avatar, and account management** (the
+`SettingsScreen.tsx`/`useSettingsScreen.ts`/`useProfilePicture.ts` scaffolding
+predates this pass; the bullets below are what this pass added and fixed):
+- Built out the full screen beyond the bare identity card: Profile (display
+  name + profile picture/avatar + teaching defaults + response style),
+  Quiz/Worksheet paper letterhead defaults, and Change password — each its
+  own `Card` with an independent Save action, mirroring
+  `client/src/pages/SettingsPage.tsx`'s three independent forms exactly,
+  including which preference keys each PATCH preserves as-is so one form's
+  save can never silently wipe another's (see `useSettingsScreen.ts`'s own
+  comments).
+- New **`SelectField.tsx`** (dropdown-via-bottom-sheet) and **`OptionList.tsx`**
+  (short vertically-stacked option list with an optional hint) components,
+  reused by Settings' response-style picker, the Generator form, the
+  teaching-context menu, and Help & Support's category pickers.
+- **Four real bugs found and fixed by live testing on a connected Android
+  emulator against the real dev server** (all pre-existing in the
+  uncommitted scaffolding, not introduced this pass):
+  1. **Uploading a photo silently failed with "Network error."** Root
+     cause: Expo SDK 57's global `fetch` is its own WinterCG-spec
+     implementation (`expo/src/winter/fetch`), not React Native's old
+     XHR-based one — its FormData→multipart converter only accepts a real
+     Blob-like part (something with `.bytes()`), not RN's classic
+     `{uri, name, type}` file-part shape `useProfilePicture.ts` was using.
+     Fixed by wrapping the picked photo in `expo-file-system`'s `File`
+     class (already a dependency, already used via `expo-file-system/legacy`
+     in `lib/exportPdf.ts`) before appending — `File` implements the
+     Blob-like interface Expo's fetch requires. Verified end-to-end on
+     device: upload succeeds, delete succeeds, every avatar in the app
+     updates instantly.
+  2. **Selecting an emoji avatar while a custom photo was set did nothing
+     visible** — a photo always outranks the emoji in the render precedence
+     (by design, matching the web app), so picking an emoji silently
+     changed local state but the photo just kept showing. Fixed by porting
+     the web's `handleAvatarEmojiSelected` (`client/src/pages/SettingsPage.tsx`):
+     choosing an emoji while a photo is set now also clears the photo, the
+     same call the trash icon uses.
+  3. **Tapping the avatar photo/emoji circle itself did nothing** — only
+     the small separate camera icon opened the picker. Fixed by wrapping
+     the avatar preview in a `Pressable` that opens the same picker.
+  4. **The avatar shown in the Settings identity card and in the header /
+     Coach-sidebar avatar (`ProfileMenu.tsx`'s `AvatarCircle`) never showed
+     the chosen emoji at all** — a two-tier photo-or-initials precedence,
+     when the documented (`types/index.ts`'s `avatarUrl` comment) and
+     web-matching precedence is photo > emoji > initials. Fixed by adding
+     the missing emoji tier to both, reading `user.preferences.avatar`
+     directly so it updates the moment "Save changes" persists it — same
+     timing as the photo tier updating the moment upload/remove resolves.
+  Leftover `console.warn`/`console.error` debug logging from diagnosing bug
+  #1 was removed from `useProfilePicture.ts` and `api/client.ts` once fixed.
+
+**Help & Support** (closing a Phase 7c placeholder route): new
+`HelpSupportScreen.tsx`, a mobile port of `client/src/components/HelpSupport.tsx`
+— menu → bug report / send feedback / contact support / contact-message →
+success, same categories and same `POST /support/tickets` contract via new
+`api/support.ts`. Web mounts this as a global overlay; mobile pushes it as
+its own screen (the route already existed, only the content changed),
+using local `view` state for the menu↔sub-view steps plus a custom header
+back arrow, while the native back button/gesture always leaves the screen
+entirely. Gated by `EXPO_PUBLIC_HELP_SUPPORT_ENABLED` (new `.env.example`
+entry), same "not the real kill switch" pattern as every other client flag
+— the server's `HELP_SUPPORT_ENABLED` is what actually 503s the endpoint.
+
+**Getting Started** (closing the other Phase 7c placeholder route): new
+`GettingStartedScreen.tsx`, mirroring `client/src/components/OnboardingIntro.tsx`'s
+feature list and admin-only filtering exactly (new `ONBOARDING_FEATURES` in
+`config.ts`). Web reopens its intro inline on the Coach welcome screen;
+mobile pushes it as its own screen instead, since that route (and its
+"Getting started" profile-menu entry) already existed before this pass —
+only the placeholder content changed.
+
+**Generator form**: replaced the free-text Grade/Subject fields (with
+tap-to-fill suggestion chips) and the Difficulty/Question-type/Language
+`ChipPicker` rows with `SelectField` dropdowns throughout, for a single
+consistent input pattern across the form. The question-count stepper's
+value is now also directly typeable (a `TextInput` mirrored by a
+free-typed `questionCountText` string so an in-progress or out-of-range
+value, including empty, doesn't fight the +/- buttons on every keystroke),
+clamped to `[QUESTION_COUNT_MIN, QUESTION_COUNT_MAX]` on blur and again
+before a generate request fires.
+
+**Follow-up fix — chat-actions menu opens where the row is, not at the
+bottom of the screen**: `HistorySidebar.tsx`'s per-row Rename/Pin/Share/
+Delete menu (the three-dot button) was a full bottom sheet, unlike the web's
+`HistoryItemMenu.tsx`, which opens a small popover anchored to the clicked
+button itself. Ported that positioning: each row's button now holds a ref,
+measured on press via `measureInWindow`; the popover (`computeActionsPosition`,
+mirroring the web's `computePosition`) opens directly below the button, or
+above it if there isn't ~190px of room below. Falls back to a fixed
+top-right spot if the measurement hasn't resolved yet — also what keeps this
+working under Jest, where `measureInWindow` is a no-op in
+`@react-native/jest-preset`'s native-view mock, so it never actually calls
+back.
+
+**Follow-up fix — Generator tab didn't reset when you left it**: filling in
+the request form (or generating and landing on the unsaved Review & Save
+screen), then switching to another tab and back, left the same fields — or
+the same in-review result — sitting there, since React Navigation keeps an
+inactive tab's nested stack mounted with its state intact.
+- First attempt: a `navigation.getParent()`-based listener on the Generator
+  tab's own `'blur'` event that cleared `GeneratorFormScreen`'s field state
+  and called `navigation.reset()` to pop any pushed `GeneratorResult` back
+  to the form. This looked correct and passed a unit test against a mocked
+  `navigation` prop, but didn't actually fix anything — confirmed by
+  building a throwaway integration test against the **real** `RootNavigator`
+  (not mocked navigation), which showed the tab still landing back on the
+  stale Review screen. Traced the root cause into
+  `@react-navigation/core`'s `useOnAction`: `shouldPreventRemove` checks
+  every route-removing action — including `reset()`, not just back
+  navigation — against `beforeRemove` listeners, and `GeneratorResultScreen`
+  already has one (its "Discard this result?" unsaved-changes guard). It was
+  silently swallowing the reset every time.
+- Actual fix, in `MainTabs.tsx`: rather than fighting that guard, the
+  Generator tab's screen is now a small `useIsFocused()`-gated wrapper
+  (`GeneratorTabScreen`) that unmounts the entire nested `GeneratorStack`
+  when the tab loses focus and mounts it fresh when it regains focus — every
+  other tab (Coach/Library/Classroom) is unaffected and keeps its state as
+  before. Unmounting sidesteps `beforeRemove` entirely (no navigation action
+  is dispatched, so nothing for the guard to intercept), silently discarding
+  an unsaved review without its confirm prompt interrupting the tab switch.
+  Verified against the real `RootNavigator` this time: filled fields clear,
+  and a generated-but-unsaved result no longer reappears.
+- New tests in `RootNavigator.test.tsx` cover both cases end-to-end (real
+  navigator, not mocks): filled Form fields clearing, and an unsaved
+  `GeneratorResult` being discarded, on switching tabs away and back.
+
+**Supporting changes**:
+- `AppNavigator.tsx`: `HelpSupport`/`GettingStarted` now render the real
+  screens instead of `PlaceholderScreen`.
+- `CoachStack.tsx`: doc-comment update only, noting its `header` option is
+  a pre-mount fallback CoachScreen immediately overrides.
+- `app.json`: added the `expo-image-picker` config plugin (photo-library
+  permission string) — the one new native dependency this pass needed.
+- `package.json`: added `expo-image-picker`; removed the explicit
+  `expo-system-ui` entry (folded into the `expo` umbrella package in SDK
+  57 — nothing in the codebase imports it directly, and `app.json`'s
+  `userInterfaceStyle: "automatic"` is unaffected).
+- `DailyHighlightCard.tsx`/`EmptyState.tsx`: minor centering fixes (text
+  and single-column quick-action grid now center within their container
+  instead of left-aligning).
+- `RootNavigator.test.tsx`: one test's fetch mock switched from
+  call-order-based to URL-dispatched, since Coach now fires its own
+  history load (`GET /queries`) on mount alongside `/auth/me` and the
+  notification unread-count fetch — three independent calls with no
+  guaranteed order; plus the two new Generator-tab-reset tests above.
+- `MainTabs.tsx`: the Generator tab's `component` is now the
+  `GeneratorTabScreen` wrapper described above, instead of `GeneratorStack`
+  directly.
+- `useProfilePicture.test.ts` (new) and `SettingsScreen.test.tsx` (new)
+  cover the profile-picture flow, including the four fixed bugs;
+  `useHistoryOverrides.test.ts`, `support.test.ts`,
+  `GettingStartedScreen.test.tsx`, `HelpSupportScreen.test.tsx`, and
+  `HelpSupportScreen.whatsapp.test.tsx` are new test files for their
+  respective new modules; `coach.test.ts`, `CoachScreen.test.tsx`, and
+  `GeneratorFormScreen.test.tsx` were extended for the changes above.
+
+**Files changed**: `mobile/src/screens/coach/{HistorySidebar,RenameChatModal,TeachingContextMenu}.tsx`
+(new); `mobile/src/lib/useHistoryOverrides.ts` (new) + test;
+`mobile/src/api/coach.ts` + test; `mobile/src/screens/coach/CoachScreen.tsx`
++ test; `mobile/src/components/Header.tsx`; `mobile/src/config.ts`;
+`mobile/src/screens/SettingsScreen.tsx`; `mobile/src/screens/useSettingsScreen.ts`
+(new); `mobile/src/lib/useProfilePicture.ts` (new) + test; `mobile/src/components/{SelectField,OptionList}.tsx`
+(new); `mobile/src/components/ProfileMenu.tsx`; `mobile/src/screens/{HelpSupportScreen,GettingStartedScreen}.tsx`
+(new) + tests; `mobile/src/api/support.ts` (new) + test;
+`mobile/src/navigation/AppNavigator.tsx`; `mobile/src/navigation/MainTabs.tsx`;
+`mobile/src/navigation/stacks/CoachStack.tsx`;
+`mobile/src/navigation/__tests__/RootNavigator.test.tsx`;
+`mobile/src/screens/generator/GeneratorFormScreen.tsx` + test;
+`mobile/src/screens/coach/{DailyHighlightCard,EmptyState}.tsx`; `app.json`;
+`mobile/package.json`; `mobile/.env.example`.
+
+**Tests**: `npx jest` — **452/452 passing, 52/52 suites**. `tsc --noEmit`
+clean. `expo lint` clean.
+
+**Device verification**: the four Settings profile-picture bugs above were
+reproduced and confirmed fixed live, end-to-end, on a connected Android
+emulator against the real dev server (upload, delete, emoji selection, and
+every avatar's instant update after Save). The Coach history sidebar,
+teaching-context menu, Help & Support, Getting Started, Generator, and the
+two follow-up fixes (chat-actions popover position, Generator-tab state
+reset — the latter verified against the real `RootNavigator` under Jest)
+are covered by the automated test suite above but were **not** separately
+device-verified in this pass.
+
+**Remaining work**: Phase 13 onward, per §26.
 
 ---
 

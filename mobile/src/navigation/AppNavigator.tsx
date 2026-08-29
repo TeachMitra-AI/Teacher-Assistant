@@ -6,6 +6,8 @@ import { NotificationsScreen } from '../screens/notifications/NotificationsScree
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { PlaceholderScreen } from '../screens/PlaceholderScreen';
 import { AdminAnalyticsScreen } from '../screens/admin/AdminAnalyticsScreen';
+import { HelpSupportScreen } from '../screens/HelpSupportScreen';
+import { GettingStartedScreen } from '../screens/GettingStartedScreen';
 import { useStackScreenOptions } from './useStackScreenOptions';
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
@@ -31,12 +33,11 @@ export function AppNavigator() {
         )}
       </Stack.Screen>
       <Stack.Screen name="Admin" component={AdminAnalyticsScreen} options={{ title: 'Admin' }} />
-      <Stack.Screen name="HelpSupport" options={{ title: 'Need Help?' }}>
-        {() => <PlaceholderScreen title="Need Help?" description="Later phase." />}
-      </Stack.Screen>
-      <Stack.Screen name="GettingStarted" options={{ title: 'Getting started' }}>
-        {() => <PlaceholderScreen title="Getting started" description="Later phase." />}
-      </Stack.Screen>
+      {/* title here is only the pre-mount fallback — HelpSupportScreen.tsx
+          overrides it via navigation.setOptions once mounted, per its
+          current internal view (menu/bug/feedback/contact/success). */}
+      <Stack.Screen name="HelpSupport" component={HelpSupportScreen} options={{ title: 'Need Help?' }} />
+      <Stack.Screen name="GettingStarted" component={GettingStartedScreen} options={{ title: 'Getting started' }} />
     </Stack.Navigator>
   );
 }

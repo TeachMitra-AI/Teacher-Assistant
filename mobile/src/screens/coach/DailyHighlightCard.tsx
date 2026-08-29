@@ -77,6 +77,7 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.sm,
     width: '100%',
     borderWidth: StyleSheet.hairlineWidth,
@@ -85,9 +86,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   emoji: { fontSize: 17 },
-  text: { flex: 1, gap: 1 },
-  eyebrow: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
-  summary: { fontSize: 13, lineHeight: 18 },
+  text: { flexShrink: 1, gap: 1, alignItems: 'center' },
+  eyebrow: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', textAlign: 'center' },
+  summary: { fontSize: 13, lineHeight: 18, textAlign: 'center' },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.45)',

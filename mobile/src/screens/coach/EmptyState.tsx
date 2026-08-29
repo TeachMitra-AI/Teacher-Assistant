@@ -83,12 +83,14 @@ export function EmptyState({ name, onPickPrompt }: EmptyStateProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.xs },
-  greeting: { fontSize: 22 },
-  subtitle: { marginBottom: spacing.lg },
+  container: { padding: spacing.lg, gap: spacing.xs, alignItems: 'center' },
+  greeting: { fontSize: 22, textAlign: 'center' },
+  subtitle: { marginBottom: spacing.lg, textAlign: 'center' },
   // Single column, matching the web's `.quick-action-grid` mobile override
-  // (grid-template-columns: 1fr) — see this file's header comment.
-  grid: { gap: spacing.sm },
+  // (grid-template-columns: 1fr) — see this file's header comment. Explicit
+  // width so these stay full-width rows despite the container's centered
+  // alignItems (which only the greeting/highlight text should shrink-wrap).
+  grid: { gap: spacing.sm, width: '100%' },
   card: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,5 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useIsFocused } from '@react-navigation/native';
 import { Sparkles, Library, GraduationCap, FileQuestion } from 'lucide-react-native';
 import type { MainTabParamList } from './types';
 import { CoachStack } from './stacks/CoachStack';
@@ -9,6 +10,23 @@ import { GeneratorStack } from './stacks/GeneratorStack';
 import { useTheme } from '../theme/ThemeContext';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
+
+// Every other tab (Coach/Library/Classroom) keeps its nested stack mounted
+// — with its state — across tab switches; that's normal React Navigation
+// behavior, and those screens rely on it (Coach's in-progress draft,
+// Library/Classroom scroll position, etc). Generator is the deliberate
+// exception: a half-filled request form, or an unsaved generated result on
+// GeneratorResult, left behind when the user switches tabs should not still
+// be there next time they open Generator. Unmounting the whole nested stack
+// on blur (rather than trying to reset its state/navigation position in
+// place) guarantees a genuinely fresh form every time, and — since React
+// just removes the tree rather than dispatching a navigation action —
+// discards an in-review GeneratorResult without its own "Discard this
+// result?" prompt interrupting the tab switch.
+function GeneratorTabScreen() {
+  const isFocused = useIsFocused();
+  return isFocused ? <GeneratorStack /> : null;
+}
 
 // 4 tabs, in the same order as the web's client/src/components/BottomNav.tsx
 // (Coach, Library, Classroom, Generator) — web-UI-parity pass. The previous
@@ -46,7 +64,7 @@ export function MainTabs() {
       />
       <Tab.Screen
         name="GeneratorTab"
-        component={GeneratorStack}
+        component={GeneratorTabScreen}
         options={{ title: 'Generator', tabBarIcon: ({ color, size }) => <FileQuestion color={color} size={size} /> }}
       />
     </Tab.Navigator>

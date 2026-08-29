@@ -11,7 +11,7 @@
 // deep-link/handle contract that doesn't exist yet.
 import React, { useState } from 'react';
 import {
-  View, ScrollView, KeyboardAvoidingView, Platform, Pressable, StyleSheet,
+  View, ScrollView, KeyboardAvoidingView, Platform, Pressable, TextInput, StyleSheet,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Sparkles, Minus, Plus } from 'lucide-react-native';
@@ -20,7 +20,7 @@ import type { GeneratorStackParamList } from '../../navigation/types';
 import { ThemedText } from '../../components/ThemedText';
 import { TextField } from '../../components/TextField';
 import { ChipPicker } from '../../components/ChipPicker';
-import { SuggestionChips } from '../../components/SuggestionChips';
+import { SelectField } from '../../components/SelectField';
 import { Button } from '../../components/Button';
 import { useTheme } from '../../theme/ThemeContext';
 import { spacing, radius } from '../../theme/tokens';
@@ -44,18 +44,48 @@ export function GeneratorFormScreen({ navigation }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [questionType, setQuestionType] = useState<QuestionType>('mcq');
   const [questionCount, setQuestionCount] = useState(QUESTION_COUNT_DEFAULT);
+  // Mirrors questionCount as free-typed text so the field can hold an
+  // in-progress/out-of-range value (e.g. an empty string, or "1" while
+  // typing "15") without the +/- clamp fighting the keyboard on every
+  // keystroke. Clamped back into questionCount on blur.
+  const [questionCountText, setQuestionCountText] = useState(String(QUESTION_COUNT_DEFAULT));
   const [language, setLanguage] = useState('en');
   const [instructions, setInstructions] = useState('');
 
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
 
+  function clampCount(n: number) {
+    return Math.min(QUESTION_COUNT_MAX, Math.max(QUESTION_COUNT_MIN, n));
+  }
+
   function adjustCount(delta: number) {
-    setQuestionCount((n) => Math.min(QUESTION_COUNT_MAX, Math.max(QUESTION_COUNT_MIN, n + delta)));
+    setQuestionCount((n) => {
+      const next = clampCount(n + delta);
+      setQuestionCountText(String(next));
+      return next;
+    });
+  }
+
+  function handleCountChangeText(text: string) {
+    const digits = text.replace(/[^0-9]/g, '');
+    setQuestionCountText(digits);
+    if (digits !== '') setQuestionCount(Number(digits));
+  }
+
+  function handleCountBlur() {
+    const clamped = clampCount(Number(questionCountText) || QUESTION_COUNT_MIN);
+    setQuestionCount(clamped);
+    setQuestionCountText(String(clamped));
   }
 
   async function handleGenerate() {
     if (generating || !topic.trim()) return;
+    // Clamp here too, not just on blur — Generate can be pressed while the
+    // count field is still focused with an out-of-range typed value.
+    const count = clampCount(Number(questionCountText) || QUESTION_COUNT_MIN);
+    setQuestionCount(count);
+    setQuestionCountText(String(count));
     setGenerating(true);
     setError('');
     const input: GenerateAssessmentInput = {
@@ -65,7 +95,7 @@ export function GeneratorFormScreen({ navigation }: Props) {
       topic: topic.trim(),
       difficulty,
       questionType,
-      questionCount,
+      questionCount: count,
       language,
       instructions: instructions.trim() || undefined,
     };
@@ -73,7 +103,7 @@ export function GeneratorFormScreen({ navigation }: Props) {
       const result = await generateAssessment(input);
       navigation.navigate('GeneratorResult', {
         format, grade: grade.trim(), subject: subject.trim(), topic: topic.trim(),
-        difficulty, questionType, questionCount, language,
+        difficulty, questionType, questionCount: count, language,
         content: result.content,
         structured: result.structured,
       });
@@ -106,24 +136,30 @@ export function GeneratorFormScreen({ navigation }: Props) {
           placeholder="e.g. Fractions, Water cycle, Parts of speech"
         />
 
-        <View style={styles.field}>
-          <TextField label="Grade" value={grade} onChangeText={setGrade} placeholder="e.g. Class 3-5" maxLength={80} />
-          <SuggestionChips options={GRADES} onSelect={setGrade} />
-        </View>
+        <SelectField
+          label="Grade"
+          placeholder="Any grade"
+          options={GRADES.map((g) => ({ value: g, label: g }))}
+          value={grade}
+          onChange={setGrade}
+        />
 
-        <View style={styles.field}>
-          <TextField label="Subject" value={subject} onChangeText={setSubject} placeholder="e.g. Mathematics" maxLength={80} />
-          <SuggestionChips options={SUBJECTS} onSelect={setSubject} />
-        </View>
+        <SelectField
+          label="Subject"
+          placeholder="Any subject"
+          options={SUBJECTS.map((s) => ({ value: s, label: s }))}
+          value={subject}
+          onChange={setSubject}
+        />
 
-        <ChipPicker
+        <SelectField
           label="Difficulty"
           options={DIFFICULTIES}
           value={difficulty}
           onChange={(v) => setDifficulty(v as Difficulty)}
         />
 
-        <ChipPicker
+        <SelectField
           label="Question type"
           options={QUESTION_TYPES}
           value={questionType}
@@ -144,7 +180,16 @@ export function GeneratorFormScreen({ navigation }: Props) {
             >
               <Minus size={18} color={colors.text} />
             </Pressable>
-            <ThemedText style={styles.stepperValue}>{questionCount}</ThemedText>
+            <TextInput
+              style={[styles.stepperInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface2 }]}
+              value={questionCountText}
+              onChangeText={handleCountChangeText}
+              onBlur={handleCountBlur}
+              keyboardType="number-pad"
+              maxLength={2}
+              selectTextOnFocus
+              accessibilityLabel="Number of questions"
+            />
             <Pressable
               onPress={() => adjustCount(1)}
               disabled={questionCount >= QUESTION_COUNT_MAX}
@@ -157,7 +202,7 @@ export function GeneratorFormScreen({ navigation }: Props) {
           </View>
         </View>
 
-        <ChipPicker
+        <SelectField
           label="Language"
           options={LANGUAGES}
           value={language}
@@ -220,7 +265,10 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   stepperBtnDisabled: { opacity: 0.35 },
-  stepperValue: { fontSize: 18, fontWeight: '700', minWidth: 32, textAlign: 'center' },
+  stepperInput: {
+    fontSize: 18, fontWeight: '700', minWidth: 52, height: 44, textAlign: 'center',
+    borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.sm,
+  },
   errorBanner: { borderRadius: 10, padding: spacing.sm },
   actionBar: {
     borderTopWidth: StyleSheet.hairlineWidth, padding: spacing.lg, paddingTop: spacing.md, gap: spacing.sm,
