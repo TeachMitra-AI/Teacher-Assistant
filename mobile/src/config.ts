@@ -1,9 +1,10 @@
 import {
   NotebookPen, Target, ClipboardCheck, Lightbulb, FileText,
   FileQuestion, ClipboardList, Ticket, House,
-  Megaphone, BookOpenCheck, FileBarChart, Settings2, BellRing, type LucideIcon,
+  Megaphone, BookOpenCheck, FileBarChart, Settings2, BellRing,
+  MessageCircle, Library, PencilRuler, Sparkles, ShieldCheck, type LucideIcon,
 } from 'lucide-react-native';
-import type { NotificationType, ResourceType, Role } from './types';
+import type { NotificationType, ResourceType, ResponseStyle, Role } from './types';
 import type { AssessmentFormat, Difficulty, QuestionType } from './api/resources';
 
 // Mirrors client/src/config.ts's ROLE_LABELS verbatim.
@@ -65,6 +66,13 @@ export const RESOURCE_TYPES: ResourceType[] = [
 // server-side vocabulary drift-guard note applies (server/src/actions/vocab/*).
 export const GRADES = ['Pre-Primary', 'Class 1-2', 'Class 3-5', 'Class 6-8', 'Class 9-10', 'Class 11-12'];
 export const SUBJECTS = ['Mathematics', 'Science', 'English', 'Hindi', 'Social Studies', 'Languages', 'General'];
+
+// client/src/config.ts's CLASSROOM_TYPES/ISSUE_TYPES — the "More context"
+// section of the Coach page's teaching-context menu (Coach's header icon,
+// TeachingContextMenu.tsx). Same closed vocabularies, same drift-guard note
+// as GRADES/SUBJECTS above.
+export const CLASSROOM_TYPES = ['Single Grade', 'Multi-Grade', 'Mixed Ability', 'Large Class (40+)', 'Small Class (<20)'];
+export const ISSUE_TYPES = ['Classroom Management', 'Concept Explanation', 'Student Engagement', 'Assessment', 'Differentiation', 'Resource Constraints'];
 
 export const LANGUAGES: { value: string; label: string }[] = [
   { value: 'en', label: 'English' },
@@ -164,3 +172,86 @@ export const NOTIFICATION_TYPE_META: Record<NotificationType, { label: string; i
   system_update: { label: 'System update', icon: Settings2 },
   reminder: { label: 'Reminder', icon: BellRing },
 };
+
+// --- Settings / Getting Started / Help & Support ---
+// Ported from client/src/config.ts, verbatim values — same "CHANGE BOTH IN
+// THE SAME COMMIT" server-drift-guard convention as GRADES/SUBJECTS above.
+
+// Getting Started screen (GettingStartedScreen.tsx) — mirrors the web's
+// OnboardingIntro feature list exactly. `adminOnly` items are filtered the
+// same way ADMIN_SHORTCUTS is.
+export interface OnboardingFeature {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  adminOnly?: boolean;
+}
+
+export const ONBOARDING_FEATURES: OnboardingFeature[] = [
+  { icon: MessageCircle, title: 'Coach', description: 'Ask any teaching question and get instant, classroom-ready guidance.' },
+  { icon: Library, title: 'My Library', description: 'Save answers you find useful and reopen them anytime.' },
+  { icon: ClipboardCheck, title: 'Generator', description: 'Build printable quizzes and worksheets with a ready answer key.' },
+  { icon: PencilRuler, title: 'Workspace', description: 'Open a saved resource to edit, refine, or print it.' },
+  { icon: Sparkles, title: 'AI Assist', description: 'In the Workspace, preview an AI edit, then apply and save it.' },
+  { icon: ShieldCheck, title: 'Manage & Dashboard', description: 'Approve new teachers and track your school’s usage.', adminOnly: true },
+];
+
+// Settings screen (SettingsScreen.tsx) — preferred coaching response style.
+export const RESPONSE_STYLES: { value: ResponseStyle; label: string; hint: string }[] = [
+  { value: 'balanced', label: 'Balanced', hint: 'Well-rounded advice (default)' },
+  { value: 'concise', label: 'Concise', hint: 'Short and to the point' },
+  { value: 'detailed', label: 'Detailed', hint: 'Thorough, in-depth explanations' },
+  { value: 'step_by_step', label: 'Step by step', hint: 'Numbered, follow-along steps' },
+  { value: 'practical', label: 'Practical', hint: 'Ready-to-use classroom actions' },
+];
+
+// Lightweight preset avatars (emoji) — an alternative to the custom-photo
+// upload below, same AVATAR_PRESETS values as the web version.
+export const AVATAR_PRESETS = ['👩‍🏫', '👨‍🏫', '🧑‍🏫', '📚', '✏️', '🌟', '🍎', '🎓', '🧮', '🔬', '🎨', '🌈'];
+
+// Custom profile pictures (server counterpart: server/src/routes/avatar.js).
+// Types mirror that route's AVATAR_ALLOWED_MIME_TYPES exactly — this is a
+// fast, friendly client-side check only; the server's magic-byte sniff is
+// the real gate, same "courtesy vs. real gate" split as the Coach attachment
+// feature. Picked via expo-image-picker's launchImageLibraryAsync (the
+// device's photo library — SettingsScreen.tsx's "camera" icon opens this,
+// not a live camera capture, matching the web's file-input trigger, which
+// also opens the photo library rather than the camera on most devices).
+export const AVATAR_ACCEPTED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+// Matches the server's hardcoded cap in routes/avatar.js exactly.
+export const AVATAR_MAX_RAW_SIZE_MB = 5;
+
+// ---- Help & Support (bug reports + feedback) ----
+//
+// Client-side gate, same shape and "not the real kill switch" caveat as
+// NOTIFICATIONS_ENABLED/MOBILE_PUSH_ENABLED above. When false (the
+// default), the "Need Help?" entry point is never rendered — the server's
+// HELP_SUPPORT_ENABLED is the immediately-effective kill switch (POST
+// /api/support/tickets returns 503 regardless of this flag).
+export const HELP_SUPPORT_ENABLED = process.env.EXPO_PUBLIC_HELP_SUPPORT_ENABLED === 'true';
+
+// WhatsApp number for "Contact Support" (international format, digits only —
+// see .env.example). Empty hides the WhatsApp option; the in-app message
+// form still works either way.
+export const SUPPORT_WHATSAPP_NUMBER = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP_NUMBER || '';
+
+export const MAX_SUPPORT_DESCRIPTION_LENGTH = 1000;
+
+export interface HelpCategoryOption { value: string; label: string }
+
+export const BUG_CATEGORIES: HelpCategoryOption[] = [
+  { value: 'crash', label: 'App crashed' },
+  { value: 'connection_issue', label: 'Connection / network issue' },
+  { value: 'slow_timeout', label: 'Slow / timed out' },
+  { value: 'wrong_answer', label: 'AI gave a wrong or unhelpful answer' },
+  { value: 'upload_failed', label: 'Upload / attachment failed' },
+  { value: 'account', label: 'Sign-in / account' },
+  { value: 'other', label: 'Something else' },
+];
+
+export const FEEDBACK_CATEGORIES: HelpCategoryOption[] = [
+  { value: 'feature_request', label: 'Feature request' },
+  { value: 'suggestion', label: 'Suggestion' },
+  { value: 'praise', label: 'General feedback' },
+  { value: 'other', label: 'Something else' },
+];

@@ -35,7 +35,13 @@
           "defaultChannel": "default"
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Teacher Assistant needs access to your photos so you can set a profile picture."
+        }
+      ]
     ],
     "extra": {
       "eas": {

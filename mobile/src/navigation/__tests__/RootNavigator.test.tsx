@@ -111,15 +111,25 @@ describe('RootNavigator', () => {
 
   it('shows an unread-notifications badge on the header bell after sign-in (§26 Phase 7)', async () => {
     await setSession('valid-token', 'valid-refresh');
-    (globalThis.fetch as jest.Mock)
-      .mockResolvedValueOnce(
-        jsonResponse(200, { user: mockUser('teacher'), featureFlags: { learningRepresentationEnabled: false } })
-      )
-      // NotificationProvider's mount-time refreshUnreadCount() — the second
-      // fetch call once a session is restored (§15's reconnect-then-refresh
-      // backstop fires the same call, but only on a socket 'connect' event,
-      // which the globally-mocked no-op socket in jest.setup.ts never emits).
-      .mockResolvedValueOnce(jsonResponse(200, { count: 3 }));
+    // Dispatched by URL, not call order: besides /auth/me and
+    // NotificationProvider's mount-time refreshUnreadCount() (§15's
+    // reconnect-then-refresh backstop fires the same call, but only on a
+    // socket 'connect' event, which the globally-mocked no-op socket in
+    // jest.setup.ts never emits), Coach — the default tab, rendered
+    // immediately — also fires its own history-sidebar load (GET /queries)
+    // on mount; these three are independent and not guaranteed to resolve in
+    // any particular order.
+    (globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/auth/me')) {
+        return Promise.resolve(
+          jsonResponse(200, { user: mockUser('teacher'), featureFlags: { learningRepresentationEnabled: false } })
+        );
+      }
+      if (url.includes('/notifications/unread-count')) {
+        return Promise.resolve(jsonResponse(200, { count: 3 }));
+      }
+      return Promise.resolve(jsonResponse(200, { queries: [] }));
+    });
     await renderApp();
 
     await waitFor(() => expect(screen.getByTestId('header-notif-badge')).toBeTruthy());
@@ -208,5 +218,57 @@ describe('RootNavigator', () => {
     // loaded from the real endpoint rather than a placeholder.
     await waitFor(() => expect(screen.getByTestId('attendance-tab-mark')).toBeTruthy());
     expect(screen.getByText('No active students')).toBeTruthy();
+  });
+
+  it('clears the Generator request form after switching away and back to the tab', async () => {
+    await signInAsRole('teacher');
+    (globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/resources')) return Promise.resolve(jsonResponse(200, { resources: [] }));
+      return Promise.resolve(jsonResponse(200, { count: 0 }));
+    });
+    await renderApp();
+    await waitFor(() => expect(tabButton('Generator')).toBeTruthy());
+
+    await fireEvent.press(tabButton('Generator'));
+    await waitFor(() => expect(screen.getByLabelText('Topic *')).toBeTruthy());
+    await fireEvent.changeText(screen.getByLabelText('Topic *'), 'Fractions');
+    await fireEvent.press(screen.getByLabelText('Grade'));
+    await fireEvent.press(screen.getByText('Class 3-5'));
+    expect(screen.getByText('Class 3-5')).toBeTruthy();
+
+    await fireEvent.press(tabButton('Library'));
+    await waitFor(() => expect(tabButton('Generator')).toBeTruthy());
+    await fireEvent.press(tabButton('Generator'));
+
+    await waitFor(() => expect(screen.getByLabelText('Topic *').props.value).toBe(''));
+    expect(screen.getByText('Any grade')).toBeTruthy();
+  });
+
+  it('discards an in-review (unsaved) generated result after switching away and back to the Generator tab', async () => {
+    await signInAsRole('teacher');
+    (globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/resources/generate')) {
+        return Promise.resolve(jsonResponse(200, { content: '# Quiz\n1. Q', structured: undefined, requestId: 'r1' }));
+      }
+      if (url.includes('/resources')) return Promise.resolve(jsonResponse(200, { resources: [] }));
+      return Promise.resolve(jsonResponse(200, { count: 0 }));
+    });
+    await renderApp();
+    await waitFor(() => expect(tabButton('Generator')).toBeTruthy());
+
+    await fireEvent.press(tabButton('Generator'));
+    await waitFor(() => expect(screen.getByLabelText('Topic *')).toBeTruthy());
+    await fireEvent.changeText(screen.getByLabelText('Topic *'), 'Fractions');
+    await fireEvent.press(screen.getByText('Generate'));
+    await waitFor(() => expect(screen.getByTestId('generator-save')).toBeTruthy());
+
+    await fireEvent.press(tabButton('Library'));
+    await waitFor(() => expect(tabButton('Generator')).toBeTruthy());
+    await fireEvent.press(tabButton('Generator'));
+
+    // Back on a fresh Form, not still on the unsaved Review & Save screen.
+    await waitFor(() => expect(screen.getByLabelText('Topic *')).toBeTruthy());
+    expect(screen.queryByTestId('generator-save')).toBeNull();
+    expect(screen.getByLabelText('Topic *').props.value).toBe('');
   });
 });
