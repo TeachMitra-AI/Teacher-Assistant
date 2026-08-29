@@ -1,10 +1,9 @@
 // Native port of client/src/pages/AdminPage.tsx's "Overview" tab — the
 // role-scoped usage dashboard (KPIs, questions-over-time, subject/focus-
-// area/language breakdowns, top questions) — reached from Settings' Admin
-// row (role-gated there, same ADMIN_ROLES check). Real data only, from the
-// existing GET /api/admin/analytics contract; no other AdminTabs section
-// (Manage/Support/Notifications/Settings) is in scope for this pass — see
-// docs/mobile-app-plan.md's Phase 7c "Newly approved features" note.
+// area/language breakdowns, top questions). Rendered as the "Overview" tab
+// of AdminScreen.tsx, which also holds Manage/Support/Notifications/Settings
+// — this file stays scoped to just the analytics view, matching the web
+// page split.
 import React from 'react';
 import { View, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
 import { ThemedText } from '../../components/ThemedText';

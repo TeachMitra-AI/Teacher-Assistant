@@ -161,17 +161,26 @@ export const NOTIFICATIONS_ENABLED = process.env.EXPO_PUBLIC_NOTIFICATIONS_ENABL
 export const MOBILE_PUSH_ENABLED = process.env.EXPO_PUBLIC_MOBILE_PUSH_ENABLED === 'true';
 
 // Closed vocabulary — SERVER COUNTERPART: server/src/lib/notificationTypes.js.
-// Same CHANGE-11 duplication convention as the vocabularies above. Unlike the
-// web's version, mobile has no admin compose screen yet (later phase, §26),
-// so `sendable` isn't tracked here — nothing reads it.
-export const NOTIFICATION_TYPE_META: Record<NotificationType, { label: string; icon: LucideIcon }> = {
-  announcement: { label: 'Announcement', icon: Megaphone },
-  lesson_generated: { label: 'Lesson ready', icon: BookOpenCheck },
-  assessment_ready: { label: 'Assessment ready', icon: ClipboardList },
-  report_ready: { label: 'Report ready', icon: FileBarChart },
-  system_update: { label: 'System update', icon: Settings2 },
-  reminder: { label: 'Reminder', icon: BellRing },
+// Same CHANGE-11 duplication convention as the vocabularies above.
+// `sendable: true` marks the subset the Admin Notifications compose screen
+// may pick — mirrors client/src/config.ts's NOTIFICATION_TYPE_META exactly.
+export const NOTIFICATION_TYPE_META: Record<NotificationType, { label: string; icon: LucideIcon; sendable: boolean }> = {
+  announcement: { label: 'Announcement', icon: Megaphone, sendable: true },
+  lesson_generated: { label: 'Lesson ready', icon: BookOpenCheck, sendable: false },
+  assessment_ready: { label: 'Assessment ready', icon: ClipboardList, sendable: false },
+  report_ready: { label: 'Report ready', icon: FileBarChart, sendable: false },
+  system_update: { label: 'System update', icon: Settings2, sendable: true },
+  reminder: { label: 'Reminder', icon: BellRing, sendable: true },
 };
+
+export const ADMIN_SENDABLE_NOTIFICATION_TYPES = (Object.keys(NOTIFICATION_TYPE_META) as NotificationType[]).filter(
+  (t) => NOTIFICATION_TYPE_META[t].sendable
+);
+
+// Admin dashboard visibility gate — mirrors client/src/config.ts's
+// ADMIN_ROLES verbatim. Support/Settings tabs are further restricted to
+// super_admin only (see AdminScreen.tsx), matching AdminTabs.tsx on web.
+export const ADMIN_ROLES: Role[] = ['school_admin', 'resource_person', 'super_admin'];
 
 // --- Settings / Getting Started / Help & Support ---
 // Ported from client/src/config.ts, verbatim values — same "CHANGE BOTH IN
