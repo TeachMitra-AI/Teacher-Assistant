@@ -87,6 +87,9 @@ export type AppStackParamList = {
   Settings: undefined;
   Sessions: undefined;
   Admin: undefined;
+  // Pushed from AdminSupportScreen's ticket list (Admin > Support tab),
+  // mirroring web's separate /admin/support/:id route.
+  AdminSupportTicket: { id: string };
   HelpSupport: undefined;
   GettingStarted: undefined;
 };

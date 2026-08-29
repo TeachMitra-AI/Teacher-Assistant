@@ -22,9 +22,13 @@ interface SelectFieldProps {
   value: string;
   onChange: (next: string) => void;
   placeholder?: string;
+  /** Overrides the a11y label when `label` isn't unique on screen — e.g. a
+   *  per-row picker repeating the same visible "Role" caption on every row
+   *  (ManageUsersScreen.tsx). Defaults to `label`. */
+  accessibilityLabel?: string;
 }
 
-export function SelectField({ label, options, value, onChange, placeholder = 'Select…' }: SelectFieldProps) {
+export function SelectField({ label, options, value, onChange, placeholder = 'Select…', accessibilityLabel }: SelectFieldProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
@@ -37,7 +41,7 @@ export function SelectField({ label, options, value, onChange, placeholder = 'Se
         onPress={() => setOpen(true)}
         style={[styles.inputWrap, { backgroundColor: colors.surface2, borderColor: colors.border }]}
         accessibilityRole="button"
-        accessibilityLabel={label}
+        accessibilityLabel={accessibilityLabel ?? label}
       >
         <ThemedText style={[styles.value, { color: selected ? colors.text : colors.textMuted }]} numberOfLines={1}>
           {selected ? selected.label : placeholder}

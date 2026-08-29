@@ -5,7 +5,8 @@ import { MainTabs } from './MainTabs';
 import { NotificationsScreen } from '../screens/notifications/NotificationsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { PlaceholderScreen } from '../screens/PlaceholderScreen';
-import { AdminAnalyticsScreen } from '../screens/admin/AdminAnalyticsScreen';
+import { AdminScreen } from '../screens/admin/AdminScreen';
+import { AdminSupportTicketScreen } from '../screens/admin/support/AdminSupportTicketScreen';
 import { HelpSupportScreen } from '../screens/HelpSupportScreen';
 import { GettingStartedScreen } from '../screens/GettingStartedScreen';
 import { useStackScreenOptions } from './useStackScreenOptions';
@@ -32,7 +33,12 @@ export function AppNavigator() {
           />
         )}
       </Stack.Screen>
-      <Stack.Screen name="Admin" component={AdminAnalyticsScreen} options={{ title: 'Admin' }} />
+      <Stack.Screen name="Admin" component={AdminScreen} options={{ title: 'Admin' }} />
+      <Stack.Screen
+        name="AdminSupportTicket"
+        component={AdminSupportTicketScreen}
+        options={({ route }) => ({ title: `Ticket #${route.params.id.slice(-8)}` })}
+      />
       {/* title here is only the pre-mount fallback — HelpSupportScreen.tsx
           overrides it via navigation.setOptions once mounted, per its
           current internal view (menu/bug/feedback/contact/success). */}

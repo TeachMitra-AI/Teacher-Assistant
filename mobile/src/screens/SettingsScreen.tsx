@@ -15,10 +15,9 @@ import { useAuth } from '../auth/AuthContext';
 import { useProfilePicture } from '../lib/useProfilePicture';
 import { spacing, radius } from '../theme/tokens';
 import {
-  ROLE_LABELS, LANGUAGES, GRADES, SUBJECTS, CLASSROOM_TYPES, RESPONSE_STYLES, AVATAR_PRESETS, HELP_SUPPORT_ENABLED, API_BASE,
+  ROLE_LABELS, LANGUAGES, GRADES, SUBJECTS, CLASSROOM_TYPES, RESPONSE_STYLES, AVATAR_PRESETS, HELP_SUPPORT_ENABLED, API_BASE, ADMIN_ROLES,
 } from '../config';
 import { useSettingsScreen } from './useSettingsScreen';
-import type { Role } from '../types';
 
 type Props = NativeStackScreenProps<AppStackParamList, 'Settings'>;
 
@@ -42,8 +41,6 @@ type Props = NativeStackScreenProps<AppStackParamList, 'Settings'>;
 // Header.tsx on every screen; mobile has no font-scaling system to hook a
 // text-size control into — that would be a new, unrelated app-wide feature,
 // not a port).
-const ADMIN_ROLES: Role[] = ['school_admin', 'resource_person', 'super_admin'];
-
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
