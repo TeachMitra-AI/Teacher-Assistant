@@ -93,4 +93,90 @@ describe('parseMarkdownBlocks', () => {
     expect(parseMarkdownBlocks('')).toEqual([]);
     expect(parseMarkdownBlocks('   \n\n  ')).toEqual([]);
   });
+
+  // Ported from client/src/lib/format.ts / mobile/src/lib/formatHtml.ts's
+  // already-ported pipe-table handling — see format.table.test.ts for the
+  // web equivalents of these cases.
+  describe('pipe tables', () => {
+    const table = [
+      '| # | Teacher Activity | Student Activity |',
+      '|---|---|---|',
+      '| 1 | Cut the roti in half | Name each part |',
+      '| 2 | Write on the board | Copy into notebooks |',
+    ].join('\n');
+
+    it('parses a table block with header and rows', () => {
+      expect(parseMarkdownBlocks(table)).toEqual([
+        {
+          type: 'table',
+          header: ['#', 'Teacher Activity', 'Student Activity'],
+          rows: [
+            ['1', 'Cut the roti in half', 'Name each part'],
+            ['2', 'Write on the board', 'Copy into notebooks'],
+          ],
+        },
+      ]);
+    });
+
+    it('a cell starting with a numeral is not turned into a list item', () => {
+      const blocks = parseMarkdownBlocks('| # | Step |\n|---|---|\n| 1 | 1. First do this |\n');
+      expect(blocks).toEqual([{ type: 'table', header: ['#', 'Step'], rows: [['1', '1. First do this']] }]);
+    });
+
+    it('a cell starting with an option letter is not turned into an option block', () => {
+      const blocks = parseMarkdownBlocks('| # | Step |\n|---|---|\n| 1 | A. Ask the class |\n');
+      expect(blocks).toEqual([{ type: 'table', header: ['#', 'Step'], rows: [['1', 'A. Ask the class']] }]);
+    });
+
+    it('an escaped pipe stays inside its cell', () => {
+      const blocks = parseMarkdownBlocks('| A | B |\n|---|---|\n| x \\| y | z |\n');
+      expect(blocks).toEqual([{ type: 'table', header: ['A', 'B'], rows: [['x | y', 'z']] }]);
+    });
+
+    it('leaves a pipe line with no separator row as a plain paragraph', () => {
+      const blocks = parseMarkdownBlocks('| not | a table |\njust text');
+      expect(blocks.some((b) => b.type === 'table')).toBe(false);
+    });
+  });
+
+  describe('MCQ options', () => {
+    it('groups consecutive A./B./C./D. lines into one options block', () => {
+      const blocks = parseMarkdownBlocks('1. What is 2+2?\nA. 3\nB. 4\nC. 5\nD. 6');
+      expect(blocks).toEqual([
+        { type: 'list', ordered: true, items: [[{ text: 'What is 2+2?' }]] },
+        {
+          type: 'options',
+          items: [
+            { letter: 'A', segments: [{ text: '3' }] },
+            { letter: 'B', segments: [{ text: '4' }] },
+            { letter: 'C', segments: [{ text: '5' }] },
+            { letter: 'D', segments: [{ text: '6' }] },
+          ],
+        },
+      ]);
+    });
+
+    it('splits four options given on a single line', () => {
+      const blocks = parseMarkdownBlocks('A. 6 cm B. 10 cm C. 12 cm D. 18 cm');
+      expect(blocks).toEqual([
+        {
+          type: 'options',
+          items: [
+            { letter: 'A', segments: [{ text: '6 cm' }] },
+            { letter: 'B', segments: [{ text: '10 cm' }] },
+            { letter: 'C', segments: [{ text: '12 cm' }] },
+            { letter: 'D', segments: [{ text: '18 cm' }] },
+          ],
+        },
+      ]);
+    });
+
+    it('parses lettered sub-parts as their own block', () => {
+      const blocks = parseMarkdownBlocks('(a) Define photosynthesis.\n(b) Name its by-products.');
+      expect(blocks).toEqual([
+        { type: 'subpart', letter: 'a', segments: [{ text: 'Define photosynthesis.' }] },
+        { type: 'subpart', letter: 'b', segments: [{ text: 'Name its by-products.' }] },
+      ]);
+    });
+  });
 });

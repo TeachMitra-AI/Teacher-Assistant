@@ -1,14 +1,15 @@
 // Renders the block structure lib/formatMarkdown.ts parses out of a Coach
-// answer as native Text/View — the RN analogue of client/src/lib/format.ts's
-// HTML string (see that file's own doc comment for what is deliberately not
-// ported: pipe tables, MCQ option layout, LaTeX math).
+// answer (or the Generator/Library legacy-markdown preview) as native
+// Text/View — the RN analogue of client/src/lib/format.ts's HTML string (see
+// that file's own doc comment for what is deliberately not ported: LaTeX
+// math).
 import React from 'react';
-import { View, Text, StyleSheet, type TextStyle } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, type TextStyle, type StyleProp } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
-import { spacing } from '../../theme/tokens';
-import { parseMarkdownBlocks, type InlineSegment } from '../../lib/formatMarkdown';
+import { spacing, radius } from '../../theme/tokens';
+import { parseMarkdownBlocks, type InlineSegment, type MarkdownBlock } from '../../lib/formatMarkdown';
 
-function Inline({ segments, style }: { segments: InlineSegment[]; style: TextStyle }) {
+function Inline({ segments, style }: { segments: InlineSegment[]; style: StyleProp<TextStyle> }) {
   return (
     <Text style={style}>
       {segments.map((seg, i) => (
@@ -29,6 +30,77 @@ function headingStyle(level: number, colors: { text: string; orange: string }): 
   return { color: colors.orange, fontSize: 16, fontWeight: '700', lineHeight: 21 };
 }
 
+// MCQ options grid — index.css:1477's .fmt-options two-column grid, hung
+// under the question text at the same 1.9em indent as .fmt-li-ol/.fmt-qnum.
+function Options({
+  block,
+  bodyStyle,
+}: {
+  block: Extract<MarkdownBlock, { type: 'options' }>;
+  bodyStyle: TextStyle;
+}) {
+  return (
+    <View style={styles.options}>
+      {block.items.map((item, i) => (
+        <Inline
+          key={i}
+          segments={[{ text: `${item.letter}. `, bold: true }, ...item.segments]}
+          style={[bodyStyle, styles.optionItem]}
+        />
+      ))}
+    </View>
+  );
+}
+
+// Pipe table — index.css:1491's .fmt-table, scrollable sideways instead of
+// reflowing (a table can't drop to one column without losing the pairing
+// that makes it a table, same reasoning as the web's narrow-screen rule).
+function Table({
+  block,
+  colors,
+}: {
+  block: Extract<MarkdownBlock, { type: 'table' }>;
+  colors: { text: string; border: string; surface2: string };
+}) {
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <View style={[styles.table, { borderColor: colors.border }]}>
+        <View style={styles.tableRow}>
+          {block.header.map((cell, i) => (
+            <Text
+              key={i}
+              style={[
+                styles.tableCell,
+                styles.tableHeaderCell,
+                { color: colors.text, backgroundColor: colors.surface2, borderColor: colors.border },
+                i > 0 && { borderLeftWidth: StyleSheet.hairlineWidth },
+              ]}
+            >
+              {cell}
+            </Text>
+          ))}
+        </View>
+        {block.rows.map((row, ri) => (
+          <View key={ri} style={[styles.tableRow, { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
+            {row.map((cell, ci) => (
+              <Text
+                key={ci}
+                style={[
+                  styles.tableCell,
+                  { color: colors.text, borderColor: colors.border },
+                  ci > 0 && { borderLeftWidth: StyleSheet.hairlineWidth },
+                ]}
+              >
+                {cell}
+              </Text>
+            ))}
+          </View>
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
+
 export function MarkdownText({ text }: { text: string }) {
   const { colors } = useTheme();
   const blocks = parseMarkdownBlocks(text);
@@ -46,12 +118,29 @@ export function MarkdownText({ text }: { text: string }) {
             <View key={i} style={styles.list}>
               {block.items.map((item, j) => (
                 <View key={j} style={styles.listRow}>
-                  <Text style={[bodyStyle, styles.marker]}>{block.ordered ? `${j + 1}.` : '•'}</Text>
+                  <Text style={[bodyStyle, styles.marker, block.ordered && styles.markerBold]}>
+                    {block.ordered ? `${j + 1}.` : '•'}
+                  </Text>
                   <Inline segments={item} style={{ ...bodyStyle, flexShrink: 1 }} />
                 </View>
               ))}
             </View>
           );
+        }
+        if (block.type === 'options') {
+          return <Options key={i} block={block} bodyStyle={bodyStyle} />;
+        }
+        if (block.type === 'subpart') {
+          return (
+            <Inline
+              key={i}
+              segments={[{ text: `(${block.letter}) ` }, ...block.segments]}
+              style={[bodyStyle, styles.subpart]}
+            />
+          );
+        }
+        if (block.type === 'table') {
+          return <Table key={i} block={block} colors={colors} />;
         }
         return <Inline key={i} segments={block.segments} style={bodyStyle} />;
       })}
@@ -67,4 +156,17 @@ const styles = StyleSheet.create({
   // 21dp indent for the marker column, matching .response-body li's 1.3rem
   // web indent (UI_REFINED.md §10.3).
   marker: { minWidth: 21 },
+  // .fmt-qnum's font-weight: 700 — bolds the literal question number so it
+  // reads as a margin-hung numeral, the exam-paper convention.
+  markerBold: { fontWeight: '700' },
+  // .fmt-options: two-column grid, 1.9em/~28dp indent to align under the
+  // question text above it.
+  options: { flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.md, rowGap: spacing.xs, marginLeft: 28 },
+  optionItem: { flexBasis: '45%', flexGrow: 1 },
+  // .fmt-subpart's margin: 0.3rem 0 0.3rem 1.9em.
+  subpart: { marginLeft: 28 },
+  table: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.sm, overflow: 'hidden' },
+  tableRow: { flexDirection: 'row' },
+  tableCell: { minWidth: 110, paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, fontSize: 14 },
+  tableHeaderCell: { fontWeight: '700' },
 });

@@ -15,8 +15,8 @@ import { ThemedText } from '../../components/ThemedText';
 import { TextField } from '../../components/TextField';
 import { ChipPicker } from '../../components/ChipPicker';
 import { SuggestionChips } from '../../components/SuggestionChips';
-import { useTheme } from '../../theme/ThemeContext';
-import { spacing, radius } from '../../theme/tokens';
+import { useTheme, PaperThemeProvider } from '../../theme/ThemeContext';
+import { spacing, radius, paper } from '../../theme/tokens';
 import { useAuth } from '../../auth/AuthContext';
 import {
   getResource, updateResource, runAiAction, type AiActionId,
@@ -468,10 +468,15 @@ export function ResourceEditScreen({ route, navigation }: Props) {
               />
             </>
           ) : (
-            <View style={[styles.preview, { borderColor: colors.border }]}>
-              <ExamHeaderView meta={examMeta} fallbackTitle={form.title} subject={form.subject} grade={form.grade} />
-              {!!docInstructions && <ThemedText variant="muted" style={styles.instructions}>{docInstructions}</ThemedText>}
-              <QuestionListEditor questions={structuredQuestions} editable={false} />
+            // structuredQuestions is only ever non-null for assessments (set
+            // from parseStructuredDocument, gated on r.type === 'assessment'
+            // above) so this branch is always the exam-paper preview.
+            <View style={[styles.preview, styles.paper]}>
+              <PaperThemeProvider>
+                <ExamHeaderView meta={examMeta} fallbackTitle={form.title} subject={form.subject} grade={form.grade} />
+                {!!docInstructions && <ThemedText variant="muted" style={styles.instructions}>{docInstructions}</ThemedText>}
+                <QuestionListEditor questions={structuredQuestions} editable={false} />
+              </PaperThemeProvider>
             </View>
           )
         ) : tab === 'edit' ? (
@@ -486,11 +491,15 @@ export function ResourceEditScreen({ route, navigation }: Props) {
             accessibilityLabel="Resource content"
             testID="workspace-content"
           />
+        ) : isAssessment ? (
+          <View style={[styles.preview, styles.paper]}>
+            <PaperThemeProvider>
+              <ExamHeaderView meta={examMeta} fallbackTitle={form.title} subject={form.subject} grade={form.grade} />
+              <MarkdownText text={previewContent || '_Nothing to preview yet._'} />
+            </PaperThemeProvider>
+          </View>
         ) : (
           <View style={[styles.preview, { borderColor: colors.border }]}>
-            {isAssessment && (
-              <ExamHeaderView meta={examMeta} fallbackTitle={form.title} subject={form.subject} grade={form.grade} />
-            )}
             <MarkdownText text={previewContent || '_Nothing to preview yet._'} />
           </View>
         )}
@@ -523,6 +532,10 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   preview: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.sm, padding: spacing.md },
+  // index.css:4219's `.workspace-preview.exam-paper` — the letterhead preview
+  // always renders as a white sheet of paper, independent of the app's
+  // light/dark theme (see PaperThemeProvider for the text/icon colors).
+  paper: { backgroundColor: paper.bg, borderColor: paper.border },
   instructions: { fontSize: 13, marginBottom: spacing.sm },
   headerActions: { flexDirection: 'row', gap: spacing.xs },
   headerBtn: { padding: spacing.sm },

@@ -9,7 +9,7 @@
 // pure addition on top when Settings lands, not a redesign of this API.
 import React, { createContext, useContext, useMemo, useState } from 'react';
 import { useColorScheme } from 'react-native';
-import { light, dark, type ThemeColors } from './tokens';
+import { light, dark, paper, type ThemeColors } from './tokens';
 
 export type ThemeMode = 'light' | 'dark';
 
@@ -39,4 +39,22 @@ export function useTheme(): ThemeContextValue {
   const ctx = useContext(ThemeContext);
   if (!ctx) throw new Error('useTheme must be used within a ThemeProvider');
   return ctx;
+}
+
+// Fixed-value override for the exam-paper preview (GeneratorResultScreen's
+// and ResourceEditScreen's read-only Preview tab) — every ThemedText/
+// QuestionCard/ExamHeaderView inside picks up tokens.ts's `paper` colors via
+// the same useTheme() call they already make, so the paper look needs no
+// prop plumbing through those shared components. Mirrors how index.css's
+// `.workspace-preview.exam-paper` repaints its custom properties for
+// everything nested inside via `currentColor`, without a parallel stylesheet.
+const PAPER_VALUE: ThemeContextValue = {
+  mode: 'light',
+  colors: paper,
+  override: null,
+  setOverride: () => {},
+};
+
+export function PaperThemeProvider({ children }: { children: React.ReactNode }) {
+  return <ThemeContext.Provider value={PAPER_VALUE}>{children}</ThemeContext.Provider>;
 }

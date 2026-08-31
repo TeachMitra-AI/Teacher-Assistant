@@ -18,8 +18,8 @@ import type { GeneratorStackParamList } from '../../navigation/types';
 import { ThemedText } from '../../components/ThemedText';
 import { TextField } from '../../components/TextField';
 import { QuestionListEditor } from '../../components/QuestionListEditor';
-import { useTheme } from '../../theme/ThemeContext';
-import { spacing, radius } from '../../theme/tokens';
+import { useTheme, PaperThemeProvider } from '../../theme/ThemeContext';
+import { spacing, radius, paper } from '../../theme/tokens';
 import { useAuth } from '../../auth/AuthContext';
 import { createResource } from '../../api/resources';
 import type { AssessmentFormat, Question } from '../../api/resources';
@@ -222,10 +222,12 @@ export function GeneratorResultScreen({ route, navigation }: Props) {
               />
             </>
           ) : (
-            <View style={[styles.preview, { borderColor: colors.border }]}>
-              <ExamHeaderView meta={examMeta} fallbackTitle={title} subject={subject} grade={grade} />
-              {!!docInstructions && <ThemedText variant="muted" style={styles.instructions}>{docInstructions}</ThemedText>}
-              <QuestionListEditor questions={structuredQuestions} editable={false} />
+            <View style={[styles.preview, styles.paper]}>
+              <PaperThemeProvider>
+                <ExamHeaderView meta={examMeta} fallbackTitle={title} subject={subject} grade={grade} />
+                {!!docInstructions && <ThemedText variant="muted" style={styles.instructions}>{docInstructions}</ThemedText>}
+                <QuestionListEditor questions={structuredQuestions} editable={false} />
+              </PaperThemeProvider>
             </View>
           )
         ) : tab === 'edit' ? (
@@ -241,9 +243,11 @@ export function GeneratorResultScreen({ route, navigation }: Props) {
             testID="generator-content"
           />
         ) : (
-          <View style={[styles.preview, { borderColor: colors.border }]}>
-            {isAssessment && <ExamHeaderView meta={examMeta} fallbackTitle={title} subject={subject} grade={grade} />}
-            <MarkdownText text={previewContent || '_Nothing to preview yet._'} />
+          <View style={[styles.preview, styles.paper]}>
+            <PaperThemeProvider>
+              {isAssessment && <ExamHeaderView meta={examMeta} fallbackTitle={title} subject={subject} grade={grade} />}
+              <MarkdownText text={previewContent || '_Nothing to preview yet._'} />
+            </PaperThemeProvider>
           </View>
         )}
       </ScrollView>
@@ -263,6 +267,10 @@ const styles = StyleSheet.create({
     padding: spacing.md, fontSize: 15, lineHeight: 21,
   },
   preview: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.sm, padding: spacing.md },
+  // index.css:4219's `.workspace-preview.exam-paper` — the letterhead preview
+  // always renders as a white sheet of paper, independent of the app's
+  // light/dark theme (see PaperThemeProvider for the text/icon colors).
+  paper: { backgroundColor: paper.bg, borderColor: paper.border },
   instructions: { fontSize: 13, marginBottom: spacing.sm },
   headerBtn: { padding: spacing.sm },
   headerBtnDisabled: { opacity: 0.4 },
