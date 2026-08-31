@@ -2,6 +2,8 @@
 // properties (docs/mobile-ui-refinement-plan.md §4) — values copied 1:1, re-
 // expressed as a TypeScript object since there is no design-token file to
 // import from on the web side either.
+import { Platform } from 'react-native';
+
 export interface SemanticShades {
   /** Body/label text — index.css .auth-field-error / .toast-error text. */
   text: string;
@@ -42,6 +44,9 @@ export interface ThemeColors {
   skMid: string;
   skPeak: string;
   semantic: SemanticColors;
+  /** Only set by the `paper` theme below — ThemedText applies it verbatim
+   * when present, undefined elsewhere leaves RN's default system font. */
+  fontFamily?: string;
 }
 
 export const light: ThemeColors = {
@@ -86,6 +91,32 @@ export const dark: ThemeColors = {
     success: { text: '#6ee7a8', border: '#14532d', bg: 'rgba(20, 83, 45, 0.35)' },
     warning: { text: '#fcd34d', border: '#78350f', bg: 'rgba(120, 53, 15, 0.35)' },
   },
+};
+
+// index.css:4219's `.workspace-preview.exam-paper` override — the read-only
+// paper/letterhead preview always renders as a white sheet of ink-on-paper,
+// in both light AND dark app theme, so what a teacher sees is what the
+// exported/printed page looks like. Ported 1:1: text/textMuted/orange/border/
+// surface-2 are repainted, --orange-soft is deliberately left alone (index.css
+// never overrides it either — the question-type badge keeps its soft orange
+// tint even on "paper"), and semantic/sk* are unused in a read-only preview
+// but kept type-complete by reusing light's values.
+export const paper: ThemeColors = {
+  orange: '#1a1a1a',
+  orangeDark: '#1a1a1a',
+  amber: '#1a1a1a',
+  orangeSoft: light.orangeSoft,
+  bg: '#ffffff',
+  surface: '#ffffff',
+  surface2: '#ffffff',
+  border: '#bbbbbb',
+  text: '#1a1a1a',
+  textMuted: '#444444',
+  skBase: light.skBase,
+  skMid: light.skMid,
+  skPeak: light.skPeak,
+  semantic: light.semantic,
+  fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
 };
 
 // --radius-sm / --radius.
