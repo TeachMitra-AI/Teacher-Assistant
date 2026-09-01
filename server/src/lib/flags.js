@@ -524,6 +524,46 @@ function readMobilePushFlags(env, { warn = console.warn } = {}) {
   };
 }
 
+// ---- Teacher Attendance ------------------------------------------------------
+//
+// See docs/feature-teacher-attendance-implementation-plan.md. Same shape and
+// same "default OFF" reasoning as every flag above. MASTER KILL SWITCH: when
+// false, every /api/teacher-attendance/* route returns 503 and touches no
+// table — same contract as CLASSROOM_MANAGEMENT_ENABLED, and deliberately a
+// SEPARATE env var from it: this is teacher self check-in/out, not the
+// unrelated Classroom Management student-attendance feature.
+//
+// No daily-budget-per-user tunable: this feature makes no LLM call, so
+// TEACHER_ATTENDANCE_ALLOWED_SCHOOL_CODES (a rollout filter, empty = all
+// schools) is what bounds exposure during rollout, same reasoning as
+// Classroom Management's own flag.
+
+const TEACHER_ATTENDANCE_FLAG_DEFAULTS = Object.freeze({
+  enabled: false,
+  allowedSchoolCodes: Object.freeze([]),
+});
+
+/**
+ * Read the Teacher Attendance feature's global flags from an environment
+ * object.
+ * @param {Record<string, string|undefined>} env
+ * @param {{warn?: (msg: string) => void}} [opts]
+ * @returns {{enabled: boolean, allowedSchoolCodes: string[]}}
+ */
+function readTeacherAttendanceFlags(env, { warn = console.warn } = {}) {
+  return {
+    enabled: parseBoolEnv(env.TEACHER_ATTENDANCE_ENABLED, {
+      name: 'TEACHER_ATTENDANCE_ENABLED',
+      defaultValue: TEACHER_ATTENDANCE_FLAG_DEFAULTS.enabled,
+      warn,
+    }),
+    allowedSchoolCodes: parseListEnv(env.TEACHER_ATTENDANCE_ALLOWED_SCHOOL_CODES, {
+      name: 'TEACHER_ATTENDANCE_ALLOWED_SCHOOL_CODES',
+      defaultValue: TEACHER_ATTENDANCE_FLAG_DEFAULTS.allowedSchoolCodes,
+    }),
+  };
+}
+
 module.exports = {
   parseBoolEnv,
   parseListEnv,
@@ -546,4 +586,6 @@ module.exports = {
   STRUCTURED_QUESTIONS_FLAG_DEFAULTS,
   readMobilePushFlags,
   MOBILE_PUSH_FLAG_DEFAULTS,
+  readTeacherAttendanceFlags,
+  TEACHER_ATTENDANCE_FLAG_DEFAULTS,
 };

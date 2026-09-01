@@ -23,6 +23,23 @@ const { sendPasswordResetEmail } = require('../lib/email');
 // the route needing a seam of its own.
 const googleAuth = require('../lib/googleAuth');
 const { getEffectiveFeatureFlags } = require('../lib/systemSettings');
+const { readTeacherAttendanceFlags } = require('../lib/flags');
+const { logTeacherAttendanceActivity } = require('../lib/teacherAttendanceActivityLog');
+
+// Teacher Attendance's own activity log (decision §1.10 in
+// docs/feature-teacher-attendance-implementation-plan.md) — "login is not
+// attendance" (§1.1), but it's still one of the events that must be logged.
+// Gated the same way every teacher-attendance route gates itself, so a
+// school with the feature off never gets one of these rows. Shared by both
+// login paths below (password and Google) rather than duplicated.
+async function logAttendanceLoginIfEnabled(user) {
+  const flags = readTeacherAttendanceFlags(process.env);
+  const withinRollout =
+    flags.enabled && (flags.allowedSchoolCodes.length === 0 || flags.allowedSchoolCodes.includes(user.school.code));
+  if (withinRollout) {
+    await logTeacherAttendanceActivity({ schoolId: user.schoolId, userId: user.id, action: 'login' });
+  }
+}
 const {
   signAccessToken,
   authRequired,
@@ -189,6 +206,7 @@ function publicUser(user, school) {
     email: user.email,
     displayName: user.displayName || null,
     role: user.role,
+    createdAt: user.createdAt,
     preferences: parsePreferences(user.preferences),
     avatarUrl: user.profilePicture
       ? `/users/${user.id}/avatar?v=${user.profilePicture.updatedAt.getTime()}`
@@ -299,6 +317,7 @@ router.post('/login', asyncHandler(async (req, res) => {
     where: { id: user.id },
     data: { failedLoginCount: 0, lockedUntil: null, lastLogin: new Date() },
   });
+  await logAttendanceLoginIfEnabled(user);
 
   const { token, refreshToken } = await issueSession(user, req);
   return res.json({
@@ -414,6 +433,7 @@ router.post('/google', asyncHandler(async (req, res) => {
     where: { id: user.id },
     data: { failedLoginCount: 0, lockedUntil: null, lastLogin: new Date() },
   });
+  await logAttendanceLoginIfEnabled(user);
 
   const { token, refreshToken } = await issueSession(user, req);
   return res.json({

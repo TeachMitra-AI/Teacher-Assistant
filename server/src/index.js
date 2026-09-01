@@ -56,6 +56,13 @@ const notificationsRouter = require('./routes/notifications');
 // feature as "Classroom Mode" below (planClassroom/CLASSROOM_MODE_ENABLED) —
 // that is an unrelated AI chat feature; this router never touches it.
 const classroomRouter = require('./routes/classroom');
+// Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md)
+// — a teacher's own check-in/check-out, reviewed by their school's
+// Principal. A sibling feature, same "fail at boot on a malformed module"
+// reasoning as every router above. NOT the same feature as classroomRouter's
+// student attendance above — that router never touches this one's tables.
+const teacherAttendanceRouter = require('./routes/teacherAttendance');
+const { runCheckoutReminderSweep, SWEEP_INTERVAL_MS: teacherAttendanceReminderIntervalMs } = require('./lib/teacherAttendanceReminder');
 const { initSocketServer } = require('./lib/socketServer');
 const { readNotificationsFlags } = require('./lib/flags');
 // AI Learning Representation System (ADR Phase D). A sibling feature, same
@@ -536,6 +543,22 @@ const classroomLimiter = rateLimit({
 const supportLimiter = rateLimit({
   windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
   max: SUPPORT_RATE_LIMIT_MAX_REQUESTS,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please wait a few minutes and try again.' },
+});
+
+// Teacher Attendance — own bucket, same "frequent-but-cheap CRUD" reasoning
+// as classroomLimiter above (a check-in/check-out is a small write, not an
+// AI call). Two writes a day per teacher in the normal case, so this ceiling
+// only really matters for retries/offline-queue flushes.
+const TEACHER_ATTENDANCE_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.TEACHER_ATTENDANCE_RATE_LIMIT_MAX_REQUESTS, {
+  name: 'TEACHER_ATTENDANCE_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 300 : 1200, min: 1, max: 100000,
+});
+
+const teacherAttendanceLimiter = rateLimit({
+  windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
+  max: TEACHER_ATTENDANCE_RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Please wait a few minutes and try again.' },
@@ -1030,6 +1053,15 @@ app.use('/api', notificationsRouter);
 app.use('/api/classroom', classroomLimiter);
 app.use('/api', classroomRouter);
 
+// Teacher Attendance. Same mounting shape as Classroom Management directly
+// above: routes self-prefix with "/teacher-attendance/...", the limiter
+// binds to that exact prefix, the router mounts at the general "/api". With
+// TEACHER_ATTENDANCE_ENABLED unset (the default) every /api/teacher-attendance/*
+// route returns 503 and the application otherwise behaves exactly as it did
+// before this line.
+app.use('/api/teacher-attendance', teacherAttendanceLimiter);
+app.use('/api', teacherAttendanceRouter);
+
 // Global error handler — last line of defense. Routes wrapped in
 // asyncHandler (see lib/asyncHandler.js) forward a rejected promise here via
 // next(err) instead of letting it become an unhandled rejection, which on
@@ -1124,6 +1156,18 @@ if (require.main === module) {
       console.log('CORS: development mode — reflecting any request origin.');
     }
   });
+
+  // Teacher Attendance's checkout reminder (docs/feature-teacher-attendance-implementation-plan.md
+  // §5) — only under this same require.main guard, same reasoning as the
+  // listen() call itself: a test file requiring this module for `app` must
+  // never also start a background timer no test ever tears down. A no-op
+  // per tick whenever the feature or notifications are off (checked inside
+  // the sweep itself, read live).
+  setInterval(() => {
+    runCheckoutReminderSweep(new Date(), app.locals.socketServer).catch((err) => {
+      console.error('[teacher-attendance] checkout reminder sweep failed', { message: err.message });
+    });
+  }, teacherAttendanceReminderIntervalMs);
 }
 
 module.exports = app;

@@ -1,0 +1,914 @@
+<title>The Attendance Register</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,500&family=Public+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #f2efe6;
+    --surface: #fffdf8;
+    --surface-2: #ece8dc;
+    --ink: #1f2a24;
+    --ink-muted: #5c6b60;
+    --ink-faint: #8b9689;
+    --border: #ddd7c4;
+    --border-soft: #e8e3d4;
+    --accent: #b96b23;
+    --accent-ink: #7a4415;
+    --accent-soft: #f4e2c4;
+    --present: #2f7d4f;
+    --present-soft: #dcefe0;
+    --warning: #a9750f;
+    --warning-soft: #f7e8c9;
+    --absent: #ab4330;
+    --absent-soft: #f6e0da;
+    --info: #3a6ea5;
+    --info-soft: #dde9f5;
+    --shadow: 0 1px 2px rgba(31,42,36,0.06), 0 8px 24px -12px rgba(31,42,36,0.18);
+    --radius: 14px;
+    --serif: 'Newsreader', ui-serif, Georgia, serif;
+    --sans: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14181a;
+      --surface: #1b2123;
+      --surface-2: #232a2c;
+      --ink: #edf0e9;
+      --ink-muted: #a3ada4;
+      --ink-faint: #6c766e;
+      --border: #313a3c;
+      --border-soft: #2a3234;
+      --accent: #e0995a;
+      --accent-ink: #f3c495;
+      --accent-soft: #3a2c1c;
+      --present: #56b784;
+      --present-soft: #1c3226;
+      --warning: #e0b039;
+      --warning-soft: #3a3018;
+      --absent: #e0705a;
+      --absent-soft: #3a241f;
+      --info: #6ea8dc;
+      --info-soft: #1f2c3a;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14181a;
+    --surface: #1b2123;
+    --surface-2: #232a2c;
+    --ink: #edf0e9;
+    --ink-muted: #a3ada4;
+    --ink-faint: #6c766e;
+    --border: #313a3c;
+    --border-soft: #2a3234;
+    --accent: #e0995a;
+    --accent-ink: #f3c495;
+    --accent-soft: #3a2c1c;
+    --present: #56b784;
+    --present-soft: #1c3226;
+    --warning: #e0b039;
+    --warning-soft: #3a3018;
+    --absent: #e0705a;
+    --absent-soft: #3a241f;
+    --info: #6ea8dc;
+    --info-soft: #1f2c3a;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent-soft); color: var(--accent-ink); }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px 120px; }
+
+  /* ---------- Hero ---------- */
+  header.hero {
+    padding: 88px 28px 56px;
+    text-align: center;
+    background:
+      radial-gradient(60% 60% at 50% 0%, var(--accent-soft) 0%, transparent 70%);
+  }
+  .kicker {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 100px;
+    margin-bottom: 22px;
+  }
+  h1.title {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(2.4rem, 5vw, 3.6rem);
+    margin: 0 0 16px;
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+  }
+  .subtitle {
+    max-width: 640px;
+    margin: 0 auto;
+    font-size: 1.1rem;
+    color: var(--ink-muted);
+    text-wrap: balance;
+  }
+
+  /* ---------- Section scaffolding ---------- */
+  section { margin: 96px auto 0; max-width: 1180px; padding: 0 28px; }
+  .section-head { max-width: 720px; margin: 0 0 40px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 10px;
+  }
+  h2 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(1.6rem, 3vw, 2.1rem);
+    margin: 0 0 12px;
+    text-wrap: balance;
+  }
+  .section-head p { color: var(--ink-muted); font-size: 1.02rem; max-width: 620px; }
+
+  /* ---------- Principles ---------- */
+  .principles {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-top: 32px;
+  }
+  .principle {
+    background: var(--surface);
+    padding: 26px 22px;
+  }
+  .principle .num {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 12px;
+  }
+  .principle h3 {
+    font-family: var(--serif);
+    font-size: 1.12rem;
+    margin: 0 0 8px;
+    font-weight: 600;
+  }
+  .principle p { margin: 0; font-size: 0.9rem; color: var(--ink-muted); }
+
+  /* ---------- Layout: mockup + note ---------- */
+  .demo-row {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+    gap: 36px;
+    align-items: start;
+    margin-bottom: 56px;
+  }
+  .demo-row.stack { grid-template-columns: 1fr; }
+  .demo-row:last-child { margin-bottom: 0; }
+  @media (max-width: 860px) { .demo-row { grid-template-columns: 1fr; } }
+
+  .note-card {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+  }
+  .note-card h4 {
+    font-family: var(--serif);
+    font-size: 1.02rem;
+    margin: 0 0 10px;
+    font-weight: 600;
+  }
+  .note-card p { margin: 0 0 10px; font-size: 0.92rem; color: var(--ink-muted); }
+  .note-card p:last-child { margin-bottom: 0; }
+  .note-card .why {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--border);
+    font-size: 0.85rem;
+  }
+  .why b { color: var(--ink); }
+
+  /* ---------- Phone frame ---------- */
+  .phone {
+    width: 100%;
+    max-width: 340px;
+    margin: 0 auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 28px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .phone .statusbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px 4px;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--ink-faint);
+  }
+  .phone .screen { padding: 14px 18px 22px; }
+  .app-bar {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .app-bar .school { font-weight: 700; font-size: 0.95rem; }
+  .app-bar .date { font-size: 0.75rem; color: var(--ink-faint); }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 5px 11px;
+    border-radius: 100px;
+  }
+  .status-pill.dot::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .pill-present { background: var(--present-soft); color: var(--present); }
+  .pill-warning { background: var(--warning-soft); color: var(--warning); }
+  .pill-absent { background: var(--absent-soft); color: var(--absent); }
+  .pill-info { background: var(--info-soft); color: var(--info); }
+  .pill-muted { background: var(--surface-2); color: var(--ink-faint); }
+
+  .distance-card {
+    background: var(--surface-2);
+    border-radius: 12px;
+    padding: 18px;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+  .distance-card .big {
+    font-family: var(--mono);
+    font-size: 1.7rem;
+    font-weight: 600;
+    display: block;
+    margin: 6px 0 2px;
+  }
+  .distance-card .cap { font-size: 0.72rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.06em; }
+
+  .btn {
+    display: block;
+    width: 100%;
+    text-align: center;
+    padding: 14px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    border: none;
+    cursor: default;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-disabled { background: var(--surface-2); color: var(--ink-faint); }
+  .btn-sub { text-align: center; font-size: 0.76rem; color: var(--ink-faint); margin-top: 8px; }
+
+  .checked-block {
+    background: var(--present-soft);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+  .checked-block .lbl { font-size: 0.72rem; color: var(--present); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+  .checked-block .time { font-family: var(--mono); font-size: 1.3rem; font-weight: 600; margin: 4px 0 2px; }
+  .checked-block .sub { font-size: 0.78rem; color: var(--ink-muted); }
+
+  .reminder-banner {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    background: var(--warning-soft);
+    color: var(--warning);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin-bottom: 14px;
+  }
+  .reminder-banner span.ic { font-size: 1rem; line-height: 1; }
+  .reminder-banner .sub { display:block; font-weight: 400; color: var(--ink-muted); margin-top: 3px; font-size: 0.76rem; }
+
+  /* day row list */
+  .day-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 11px 4px;
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 0.84rem;
+  }
+  .day-row:last-child { border-bottom: none; }
+  .day-row .d-left { display: flex; flex-direction: column; }
+  .day-row .d-date { font-weight: 600; }
+  .day-row .d-time { font-size: 0.74rem; color: var(--ink-faint); font-family: var(--mono); }
+
+  /* mini calendar strip */
+  .cal-strip {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    margin-bottom: 18px;
+  }
+  .cal-cell {
+    aspect-ratio: 1;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    font-weight: 600;
+  }
+  .cal-cell.present { background: var(--present-soft); color: var(--present); }
+  .cal-cell.warning { background: var(--warning-soft); color: var(--warning); }
+  .cal-cell.absent { background: var(--absent-soft); color: var(--absent); }
+  .cal-cell.off { background: var(--surface-2); color: var(--ink-faint); }
+  .cal-cell.empty { background: transparent; }
+
+  /* ---------- Desktop/browser frame ---------- */
+  .browser {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .browser .chrome {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+  }
+  .chrome .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+  .browser .body { padding: 22px; }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 22px;
+  }
+  .stat-card {
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .stat-card .n { font-family: var(--mono); font-size: 1.5rem; font-weight: 600; display: block; }
+  .stat-card .l { font-size: 0.72rem; color: var(--ink-muted); }
+  .stat-card.present .n { color: var(--present); }
+  .stat-card.warning .n { color: var(--warning); }
+  .stat-card.absent .n { color: var(--absent); }
+
+  table.mock-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  table.mock-table th {
+    text-align: left;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-faint);
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  table.mock-table td { padding: 10px 10px; border-bottom: 1px solid var(--border-soft); }
+  table.mock-table td.num { font-family: var(--mono); text-align: center; }
+  .name-cell .em { display: block; font-size: 0.72rem; color: var(--ink-faint); font-weight: 400; }
+  .badge-count { display:inline-block; min-width: 20px; padding: 1px 6px; border-radius: 100px; font-family: var(--mono); font-weight: 600; font-size: 0.76rem;}
+  .badge-count.zero { color: var(--ink-faint); }
+  .badge-count.hit { background: var(--warning-soft); color: var(--warning); }
+
+  .settings-group {
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .settings-group summary {
+    padding: 12px 14px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    cursor: pointer;
+    background: var(--surface-2);
+    display: flex;
+    justify-content: space-between;
+  }
+  .settings-fields {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    padding: 14px;
+  }
+  .field-mock label { display: block; font-size: 0.72rem; color: var(--ink-faint); margin-bottom: 4px; }
+  .field-mock .box { background: var(--surface-2); border-radius: 6px; padding: 8px 10px; font-family: var(--mono); font-size: 0.78rem; }
+
+  .log-row {
+    display: grid;
+    grid-template-columns: 100px 1fr 90px;
+    gap: 10px;
+    padding: 9px 4px;
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 0.78rem;
+    align-items: center;
+  }
+  .log-row .t { font-family: var(--mono); color: var(--ink-faint); font-size: 0.7rem; }
+  .log-row .who { font-weight: 600; }
+
+  /* States strip */
+  .states-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-top: 32px;
+  }
+  @media (max-width: 860px) { .states-grid { grid-template-columns: repeat(2,1fr); } .stat-grid, .settings-fields { grid-template-columns: repeat(2,1fr); } }
+  .state-card {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .state-card .tag { font-family: var(--mono); font-size: 0.68rem; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 10px; display: block; }
+  .skeleton { height: 12px; border-radius: 4px; background: linear-gradient(90deg, var(--surface-2) 25%, var(--border-soft) 50%, var(--surface-2) 75%); background-size: 200% 100%; animation: shimmer 1.6s infinite; margin-bottom: 8px; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+  .toast-mock {
+    background: var(--ink); color: var(--bg);
+    border-radius: 8px; padding: 10px 12px; font-size: 0.8rem; font-weight: 600;
+  }
+  :root[data-theme="dark"] .toast-mock, :root:not([data-theme="light"]) .toast-mock { background: var(--surface-2); color: var(--ink); border: 1px solid var(--border); }
+
+  .table-mockcard { background: var(--surface-2); border-radius: 8px; padding: 10px; font-size: 0.76rem; color: var(--ink-muted); }
+
+  /* ---------- Scale controls ---------- */
+  .pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 0.78rem;
+    color: var(--ink-muted);
+  }
+  .page-btns { display: flex; gap: 4px; }
+  .page-btn {
+    min-width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    background: var(--surface-2);
+    color: var(--ink-muted);
+  }
+  .page-btn.active { background: var(--accent); color: #fff; font-weight: 700; }
+
+  .filter-chips { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .chip {
+    font-size: 0.74rem;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 100px;
+    background: var(--surface-2);
+    color: var(--ink-muted);
+  }
+  .chip.active { background: var(--accent-soft); color: var(--accent-ink); }
+
+  .trend-strip { display: flex; align-items: flex-end; gap: 5px; height: 34px; margin: 6px 0 2px; }
+  .trend-bar { width: 10px; border-radius: 3px 3px 0 0; background: var(--present-soft); position: relative; }
+  .trend-bar.hi { background: var(--warning); }
+  .trend-bar.mid { background: var(--warning-soft); }
+  .trend-labels { display: flex; gap: 5px; }
+  .trend-labels span { width: 10px; font-size: 0.58rem; color: var(--ink-faint); text-align: center; font-family: var(--mono); }
+
+  .log-loadmore {
+    text-align: center;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--accent);
+    padding: 10px;
+    margin-top: 4px;
+    border-top: 1px dashed var(--border);
+  }
+
+  footer.colophon {
+    margin-top: 110px;
+    padding: 36px 28px 0;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+    border-top: 1px solid var(--border-soft);
+  }
+</style>
+
+<header class="hero">
+  <span class="kicker">Attendance UX proposal</span>
+  <h1 class="title">The Attendance Register</h1>
+  <p class="subtitle">A visual redesign for a teacher-first, record-everything attendance system — built around one idea: the app is a register, not an inbox. Nothing waits for approval; everything is written down, plainly, the moment it happens.</p>
+</header>
+
+<div class="wrap">
+
+<section id="principles">
+  <div class="section-head">
+    <p class="eyebrow">Four decisions that shape everything below</p>
+    <h2>Design principles</h2>
+    <p>Every screen that follows is a direct consequence of these four calls. Where a mockup does something non-obvious, it traces back to one of these.</p>
+  </div>
+  <div class="principles">
+    <div class="principle">
+      <span class="num">01</span>
+      <h3>Show why, not just what</h3>
+      <p>A hidden button looks broken. A disabled button with a reason ("142m away — move closer") teaches the rule instead of hiding it.</p>
+    </div>
+    <div class="principle">
+      <span class="num">02</span>
+      <h3>Ledger, not inbox</h3>
+      <p>History is a row per day, colour-coded, done. No item waits for anyone to act. Nothing has an unread count.</p>
+    </div>
+    <div class="principle">
+      <span class="num">03</span>
+      <h3>Numbers before tables</h3>
+      <p>The Principal's first screen is four counts, not a grid. Tables are for the second click, not the first glance.</p>
+    </div>
+    <div class="principle">
+      <span class="num">04</span>
+      <h3>Investigation is opt-in</h3>
+      <p>The full activity log exists, but it's a second-tier tab — for the rare moment someone asks "what actually happened," not daily use.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== TEACHER SIDE ===================== -->
+<section id="teacher">
+  <div class="section-head">
+    <p class="eyebrow">Teacher side</p>
+    <h2>Check In → Work → Check Out</h2>
+    <p>Three screens carry the entire teacher experience. Everything else is read-only history.</p>
+  </div>
+
+  <div class="demo-row">
+    <div class="phone">
+      <div class="statusbar"><span>9:02 AM</span><span>●●●●</span></div>
+      <div class="screen">
+        <div class="app-bar"><span class="school">Rampur Primary School</span><span class="date">Mon, 31 Aug</span></div>
+        <div class="distance-card">
+          <span class="cap">Distance to school</span>
+          <span class="big" style="color:var(--absent)">410 m</span>
+          <span class="cap">need to be within 150 m</span>
+        </div>
+        <button class="btn btn-disabled">Check In</button>
+        <p class="btn-sub">Move closer to school — the button turns on automatically within range.</p>
+      </div>
+    </div>
+    <div class="note-card">
+      <h4>1 · Out of range</h4>
+      <p>The check-in window is open, but the teacher is 410m away. The button is present but disabled — not gone — with the exact distance and the exact threshold shown.</p>
+      <div class="why"><b>Why not hide it?</b> Your spec says the button shouldn't be shown when out of range. A dead patch of screen where a button used to be reads as a bug to someone on a basic Android phone with patchy signal. Showing it disabled, with the live distance counting down as they walk, turns the rule into feedback instead of a mystery — same enforcement, less confusion. The backend still re-checks location independently either way.</div>
+    </div>
+  </div>
+
+  <div class="demo-row">
+    <div class="phone">
+      <div class="statusbar"><span>9:03 AM</span><span>●●●●</span></div>
+      <div class="screen">
+        <div class="app-bar"><span class="school">Rampur Primary School</span><span class="date">Mon, 31 Aug</span></div>
+        <div class="distance-card">
+          <span class="cap">Distance to school</span>
+          <span class="big" style="color:var(--present)">62 m</span>
+          <span class="cap">within range</span>
+        </div>
+        <button class="btn btn-primary">Check In</button>
+        <p class="btn-sub">Check-in window closes 10:00 AM</p>
+      </div>
+    </div>
+    <div class="note-card">
+      <h4>2 · In range, ready</h4>
+      <p>Same screen, now live — button turns solid the instant GPS confirms they're inside the radius. The check-in window countdown stays visible so a teacher running late can see exactly how much time is left, not just a generic "late" warning after the fact.</p>
+    </div>
+  </div>
+
+  <div class="demo-row">
+    <div class="phone">
+      <div class="statusbar"><span>3:52 PM</span><span>●●●●</span></div>
+      <div class="screen">
+        <div class="app-bar"><span class="school">Rampur Primary School</span><span class="date">Mon, 31 Aug</span></div>
+        <div class="checked-block">
+          <span class="lbl">Checked in</span>
+          <span class="time">8:55 AM</span>
+          <span class="sub">On time · 63m from school</span>
+        </div>
+        <div class="reminder-banner">
+          <span class="ic">🔔</span>
+          <span>Don't forget to check out<span class="sub">School closes in 8 minutes</span></span>
+        </div>
+        <button class="btn btn-primary">Check Out</button>
+      </div>
+    </div>
+    <div class="note-card">
+      <h4>3 · Working, reminder active</h4>
+      <p>Once checked in, the whole home screen is just today's fact and the check-out button. The reminder appears as a calm inline banner starting 15 minutes before closing — not a push notification that interrupts a class — and it vanishes the instant they check out.</p>
+      <div class="why"><b>Why a banner, not a popup?</b> A modal alarm during teaching hours is disruptive and gets dismissed on reflex. An inline banner is seen the next time they glance at their phone, which is exactly the urgency level this actually has. A quieter duplicate goes to the notification tray for anyone who's left the app entirely, on the same 15-before / 30-after schedule, spaced a few minutes apart rather than every minute.</div>
+    </div>
+  </div>
+
+  <div class="demo-row">
+    <div class="phone">
+      <div class="statusbar"><span>7:40 PM</span><span>●●●●</span></div>
+      <div class="screen">
+        <div class="app-bar"><span class="school">August</span><span class="date">History</span></div>
+        <div class="cal-strip">
+          <div class="cal-cell off">S</div><div class="cal-cell present">3</div><div class="cal-cell present">4</div><div class="cal-cell present">5</div><div class="cal-cell present">6</div><div class="cal-cell present">7</div><div class="cal-cell off">8</div>
+          <div class="cal-cell off">S</div><div class="cal-cell present">10</div><div class="cal-cell warning">11</div><div class="cal-cell present">12</div><div class="cal-cell present">13</div><div class="cal-cell present">14</div><div class="cal-cell off">15</div>
+        </div>
+        <div class="day-row">
+          <div class="d-left"><span class="d-date">Aug 11 — Mon</span><span class="d-time">In 9:02 · Out — not recorded</span></div>
+          <span class="status-pill pill-warning dot">Missing checkout</span>
+        </div>
+        <div class="day-row">
+          <div class="d-left"><span class="d-date">Aug 10 — Sun</span><span class="d-time">7h 07m worked</span></div>
+          <span class="status-pill pill-present dot">Present</span>
+        </div>
+        <div class="day-row">
+          <div class="d-left"><span class="d-date">Aug 8</span></div>
+          <span class="status-pill pill-info dot">Weekly off</span>
+        </div>
+      </div>
+    </div>
+    <div class="note-card">
+      <h4>4 · Monthly history</h4>
+      <p>A colour-coded week strip sits above the list — a teacher can see the shape of their month (mostly green, one amber day) before reading a single row. The list below is the detail: exact times, exact distances, exact status. Missing-checkout gets amber, not red — it's a recorded fact, not a violation.</p>
+      <div class="why"><b>Why a strip and a list, not just one?</b> The strip answers "how's my month going" in half a second. The list answers "what exactly happened on the 11th." Neither replaces the other — a calendar grid alone hides the numbers, a list alone hides the pattern.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== ADMIN SIDE ===================== -->
+<section id="admin">
+  <div class="section-head">
+    <p class="eyebrow">Principal / admin side</p>
+    <h2>Reports first, investigation second</h2>
+    <p>There is no queue to clear. The Principal's day starts with numbers, not a to-do list, and drills down only when something actually needs a look.</p>
+  </div>
+
+  <div class="demo-row stack">
+    <div class="browser">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="body">
+        <div class="stat-grid">
+          <div class="stat-card present"><span class="n">36</span><span class="l">Present today</span></div>
+          <div class="stat-card warning"><span class="n">4</span><span class="l">Late today</span></div>
+          <div class="stat-card warning"><span class="n">2</span><span class="l">Missing checkout</span></div>
+          <div class="stat-card absent"><span class="n">1</span><span class="l">Absent, no leave on file</span></div>
+        </div>
+        <div class="table-mockcard">Tap any card to jump straight into Reports, pre-filtered to that group.</div>
+      </div>
+    </div>
+    <div class="note-card">
+      <h4>5 · Dashboard — today, in four numbers</h4>
+      <p>This is the landing screen. No table, no list of names, no items marked "pending." Four counts, each one a live filter into Reports. A Principal with 40 teachers and one free minute between periods gets the whole picture at a glance.</p>
+      <div class="why"><b>Why not lead with a table?</b> A table asks to be read row by row. A stat card asks to be glanced at. The first screen of the day should answer "is anything unusual today" in under two seconds — the table is for once that answer is yes.</div>
+    </div>
+  </div>
+
+  <div class="demo-row stack">
+    <div class="browser">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="body">
+        <table class="mock-table">
+          <thead><tr><th>Teacher</th><th>Present</th><th>Late</th><th>Missing checkout</th><th>Absent</th></tr></thead>
+          <tbody>
+            <tr><td class="name-cell">AA<span class="em">aa@rampur01</span></td><td class="num">24</td><td class="num"><span class="badge-count zero">0</span></td><td class="num"><span class="badge-count zero">0</span></td><td class="num"><span class="badge-count zero">0</span></td></tr>
+            <tr><td class="name-cell">Abhinav<span class="em">abhinav@rampur01</span></td><td class="num">22</td><td class="num"><span class="badge-count hit">4</span></td><td class="num"><span class="badge-count hit">6</span></td><td class="num"><span class="badge-count zero">1</span></td></tr>
+            <tr><td class="name-cell">Demo Teacher<span class="em">teacher@example.com</span></td><td class="num">16</td><td class="num"><span class="badge-count hit">3</span></td><td class="num"><span class="badge-count hit">1</span></td><td class="num"><span class="badge-count zero">5</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="note-card">
+      <h4>6 · Reports — the pattern lives in the colour</h4>
+      <p>Zero stays quiet grey text. Anything above the pattern threshold turns into a solid amber pill — Abhinav's "6" for missing checkout is immediately the thing your eye lands on in that row, before you've read a single label.</p>
+      <div class="why"><b>Why colour the count, not the row?</b> Colouring the whole row turns every teacher with one late day into an alarm. Colouring just the number that crossed the threshold keeps the signal proportional to how serious it actually is.</div>
+    </div>
+  </div>
+
+  <div class="demo-row stack">
+    <div class="browser">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="body">
+        <div class="cal-strip" style="grid-template-columns:repeat(14,1fr); margin-bottom:14px;">
+          <div class="cal-cell present">1</div><div class="cal-cell present">2</div><div class="cal-cell warning">3</div><div class="cal-cell present">4</div><div class="cal-cell off">5</div><div class="cal-cell present">6</div><div class="cal-cell present">7</div>
+          <div class="cal-cell warning">8</div><div class="cal-cell present">9</div><div class="cal-cell present">10</div><div class="cal-cell present">11</div><div class="cal-cell off">12</div><div class="cal-cell present">13</div><div class="cal-cell present">14</div>
+        </div>
+        <div class="day-row">
+          <div class="d-left"><span class="d-date">Aug 8 — Abhinav</span><span class="d-time">In 9:02 · Out — not recorded</span></div>
+          <span class="status-pill pill-warning dot">Missing checkout</span>
+        </div>
+        <div class="table-mockcard" style="margin-top:8px;">↳ <b>Correct this day</b> expands inline here — set a checkout time, or mark leave/on-duty — with a required reason. Collapsed by default; nobody is forced to open it.</div>
+      </div>
+    </div>
+    <div class="note-card">
+      <h4>7 · Teacher drill-down — same register, admin lens</h4>
+      <p>Clicking a name in Reports replaces the table with this teacher's own month — the same strip-plus-list layout the teacher sees, so the Principal is reading the identical record, not a separate "admin view" of it.</p>
+      <div class="why"><b>Why "Correct" instead of a review queue?</b> There's no longer a list of things demanding action. Every day is just a row; the correction tool lives on the row itself, collapsed, for the Principal to open only on the specific day they've decided to look at.</div>
+    </div>
+  </div>
+
+  <div class="demo-row">
+    <div class="browser">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="body">
+        <details class="settings-group" open>
+          <summary>Timing <span>▾</span></summary>
+          <div class="settings-fields">
+            <div class="field-mock"><label>School opens</label><div class="box">09:00 AM</div></div>
+            <div class="field-mock"><label>School closes</label><div class="box">04:00 PM</div></div>
+            <div class="field-mock"><label>Check-in window</label><div class="box">08:30–10:00</div></div>
+          </div>
+        </details>
+        <details class="settings-group">
+          <summary>Location <span>▾</span></summary>
+        </details>
+        <details class="settings-group">
+          <summary>Patterns & thresholds <span>▾</span></summary>
+        </details>
+        <details class="settings-group">
+          <summary>Weekly off & holidays <span>▾</span></summary>
+        </details>
+      </div>
+    </div>
+    <div class="note-card">
+      <h4>8 · Settings — grouped, collapsed</h4>
+      <p>Twelve-plus fields no longer sit in one flat wall. Four named groups, each collapsed except the one you're editing — the same fields, reorganised by what a Principal is actually trying to change in one sitting.</p>
+    </div>
+  </div>
+
+  <div class="demo-row">
+    <div class="browser">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="body">
+        <div class="log-row"><span class="t">14:02</span><span><span class="who">Abhinav</span> — check-in blocked, 410m away</span><span class="pill-muted status-pill">Blocked</span></div>
+        <div class="log-row"><span class="t">09:15</span><span><span class="who">AA</span> — checked in, 63m</span><span class="pill-present status-pill">OK</span></div>
+        <div class="log-row"><span class="t">08:40</span><span><span class="who">Rampur Admin</span> — corrected Aug 8 checkout for Abhinav</span><span class="pill-info status-pill">Correction</span></div>
+        <div class="log-row"><span class="t">Yesterday</span><span><span class="who">Rampur Admin</span> — changed late-grace to 10 min</span><span class="pill-info status-pill">Settings</span></div>
+      </div>
+    </div>
+    <div class="note-card">
+      <h4>9 · Activity log — a second tab, not the front door</h4>
+      <p>Every login, check-in/out, blocked attempt, correction, and settings change is written here — who, what, when, where, result — but it's tucked under its own tab, reverse-chronological, filterable by teacher and event type. It's for the day someone asks "what actually happened on Aug 8," not for daily use.</p>
+      <div class="why"><b>Why hide it at all if everything's logged?</b> Logging everything and surfacing everything are different goals. A feed this dense on the main screen would drown the four numbers that actually matter day to day.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== AT SCALE ===================== -->
+<section id="scale">
+  <div class="section-head">
+    <p class="eyebrow">This has to survive year three, not just week one</p>
+    <h2>Designing for a large school and a long history</h2>
+    <p>Every mockup above used three or four rows to stay readable. None of it works if it silently assumes a small school and a short memory — a real deployment means dozens to hundreds of teachers, and years of daily rows piling up underneath. Three specific parts break first, so they're designed for scale from the start rather than patched later.</p>
+  </div>
+
+  <div class="demo-row stack">
+    <div class="browser">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="body">
+        <table class="mock-table">
+          <thead><tr><th>Teacher</th><th>Present</th><th>Late</th><th>Missing checkout</th><th>Absent</th></tr></thead>
+          <tbody>
+            <tr><td class="name-cell">AA<span class="em">aa@rampur01</span></td><td class="num">24</td><td class="num"><span class="badge-count zero">0</span></td><td class="num"><span class="badge-count zero">0</span></td><td class="num"><span class="badge-count zero">0</span></td></tr>
+            <tr><td class="name-cell">Abhi<span class="em">abhi@rampur01</span></td><td class="num">23</td><td class="num"><span class="badge-count hit">2</span></td><td class="num"><span class="badge-count zero">0</span></td><td class="num"><span class="badge-count zero">0</span></td></tr>
+            <tr><td class="name-cell">Abhinav<span class="em">abhinav@rampur01</span></td><td class="num">22</td><td class="num"><span class="badge-count hit">4</span></td><td class="num"><span class="badge-count hit">6</span></td><td class="num"><span class="badge-count zero">1</span></td></tr>
+            <tr><td class="name-cell">Ankit Kumar<span class="em">ankit@rampur01</span></td><td class="num">24</td><td class="num"><span class="badge-count zero">0</span></td><td class="num"><span class="badge-count zero">0</span></td><td class="num"><span class="badge-count zero">0</span></td></tr>
+            <tr><td class="name-cell">Demo Teacher<span class="em">teacher@example.com</span></td><td class="num">16</td><td class="num"><span class="badge-count hit">3</span></td><td class="num"><span class="badge-count hit">1</span></td><td class="num"><span class="badge-count zero">5</span></td></tr>
+          </tbody>
+        </table>
+        <div class="pagination">
+          <span>Showing 1–25 of 84 teachers</span>
+          <div class="page-btns">
+            <span class="page-btn active">1</span><span class="page-btn">2</span><span class="page-btn">3</span><span class="page-btn">4</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="note-card">
+      <h4>10 · Reports scales by count, not by row height</h4>
+      <p>The mockup earlier showed 3 teachers — this is the same table at 84. Nothing about the layout changes; the table just paginates, 25 rows at a time, with the count stated plainly.</p>
+      <div class="why"><b>What actually has to change underneath:</b> the earlier version implied fetching every teacher's full day-by-day records just to show four summary counts — fine for 5 teachers, expensive for 200. The server needs to compute and send only the summary counts for the visible page; a teacher's full daily detail is fetched once, only when that one row is clicked. Search and the "only needing a look" filter move from filtering an already-loaded list to filtering the query itself, so page 1 of a search is fast whether the school has 20 teachers or 2,000.</div>
+    </div>
+  </div>
+
+  <div class="demo-row stack">
+    <div class="browser">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="body">
+        <h4 style="margin:0 0 4px; font-family:var(--serif); font-size:1rem;">Abhinav — last 6 months</h4>
+        <div class="trend-strip">
+          <div class="trend-bar mid" style="height:40%"></div>
+          <div class="trend-bar mid" style="height:55%"></div>
+          <div class="trend-bar hi" style="height:85%"></div>
+          <div class="trend-bar hi" style="height:70%"></div>
+          <div class="trend-bar mid" style="height:45%"></div>
+          <div class="trend-bar" style="height:20%"></div>
+        </div>
+        <div class="trend-labels"><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span><span>Aug</span></div>
+        <div class="table-mockcard" style="margin-top:14px;">Late + missing-checkout count, one bar per month. Click a bar to open that month's full detail below — nobody has to click "previous month" six times to see the trend improving.</div>
+      </div>
+    </div>
+    <div class="note-card">
+      <h4>11 · Trend, not six separate months</h4>
+      <p>The drill-down from earlier only ever showed the current month. Whether a pattern is getting better or worse over a school year is a real question a Principal will actually ask — this answers it in one glance instead of six page loads.</p>
+      <div class="why"><b>Why 6 months and not the full year or two?</b> A trend needs enough points to show direction without becoming its own dense table to read. Six months is a term-length window; going further back is one more click into a specific month, not a wall of bars nobody scans anyway.</div>
+    </div>
+  </div>
+
+  <div class="demo-row stack">
+    <div class="browser">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="body">
+        <div class="filter-chips">
+          <span class="chip active">Last 7 days</span>
+          <span class="chip">Last 30 days</span>
+          <span class="chip">Custom range</span>
+          <span class="chip">All teachers ▾</span>
+          <span class="chip">All events ▾</span>
+        </div>
+        <div class="log-row"><span class="t">14:02</span><span><span class="who">Abhinav</span> — check-in blocked, 410m away</span><span class="pill-muted status-pill">Blocked</span></div>
+        <div class="log-row"><span class="t">09:15</span><span><span class="who">AA</span> — checked in, 63m</span><span class="pill-present status-pill">OK</span></div>
+        <div class="log-row"><span class="t">08:40</span><span><span class="who">Rampur Admin</span> — corrected Aug 8 checkout for Abhinav</span><span class="pill-info status-pill">Correction</span></div>
+        <div class="log-loadmore">Load more — showing the newest 20 of last 7 days</div>
+      </div>
+    </div>
+    <div class="note-card">
+      <h4>12 · The log that grows forever, scoped so it never has to</h4>
+      <p>Every event, every teacher, every day — over a couple of years this is the one table with no natural ceiling. It opens scoped to last 7 days by default, never "everything." Widening the range or the filters is a deliberate click, not the starting state.</p>
+      <div class="why"><b>Why not just paginate the whole thing?</b> Pagination alone still means the very first query has to search the entire history to find the newest 20 rows once there are millions of them. A default date range keeps that query cheap by construction — this is a backend indexing decision as much as a UI one (index the log by school+date and by teacher+date, so both the default view and a "show me this one teacher's full history" search stay fast years in).</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== STATES ===================== -->
+<section id="states">
+  <div class="section-head">
+    <p class="eyebrow">Small moments, still designed</p>
+    <h2>Loading, empty, error, success</h2>
+    <p>The states nobody asks about are what make the register feel trustworthy rather than fragile.</p>
+  </div>
+  <div class="states-grid">
+    <div class="state-card">
+      <span class="tag">Loading</span>
+      <div class="skeleton" style="width:70%"></div>
+      <div class="skeleton" style="width:90%"></div>
+      <div class="skeleton" style="width:55%"></div>
+    </div>
+    <div class="state-card">
+      <span class="tag">Empty</span>
+      <p style="margin:0; font-size:0.85rem; color:var(--ink-muted)">"No teachers match <b>'kumar'</b>." — names the actual reason, not a blank silence.</p>
+    </div>
+    <div class="state-card">
+      <span class="tag">Error</span>
+      <p style="margin:0 0 8px; font-size:0.85rem; color:var(--absent)">Couldn't reach the server.</p>
+      <div class="status-pill pill-muted" style="cursor:default;">Retry</div>
+    </div>
+    <div class="state-card">
+      <span class="tag">Success</span>
+      <div class="toast-mock">✓ Checked out — 6h 54m worked</div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<footer class="colophon">
+  Design proposal for the Teacher Attendance feature · reasoning notes accompany every mockup above
+</footer>

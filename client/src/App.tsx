@@ -27,6 +27,7 @@ import LibraryPage from './pages/LibraryPage';
 import ResourceView from './pages/ResourceView';
 import ResourceWorkspace from './pages/ResourceWorkspace';
 import ClassroomPage from './pages/ClassroomPage';
+import AttendancePage from './pages/AttendancePage';
 import GeneratorPage from './pages/GeneratorPage';
 import BottomNav from './components/BottomNav';
 
@@ -75,6 +76,7 @@ function AppRoutes() {
           "Classroom Mode" AI chat feature, which has no page/route of its
           own. */}
       <Route path="/classroom" element={<ClassroomPage preferences={preferences} />} />
+      <Route path="/attendance" element={<AttendancePage preferences={preferences} />} />
       <Route path="/generator" element={<GeneratorPage preferences={preferences} />} />
       <Route path="/settings" element={<SettingsPage preferences={preferences} />} />
       <Route
