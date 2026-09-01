@@ -9,9 +9,12 @@
 // hamburger icon) and the teaching-context menu (TeachingContextMenu.tsx,
 // opened from Header's right-side icon) — both wired the same way, via
 // navigation.setOptions in the useLayoutEffect below — were ported after
-// Phase 4 shipped. Still deferred, as before: file/photo attachments (POST
-// /coach/attachment), voice input, Classroom Mode, LaTeX math rendering, and
-// edit-in-place/copy/save-to-library on a sent message.
+// Phase 4 shipped, as was edit-in-place on a sent message (handleEditTurn
+// below, mirroring the web's own CoachPage.tsx one-for-one). Still deferred:
+// file/photo attachments (POST /coach/attachment, a new API+UI surface),
+// voice input (needs a native speech module), Classroom Mode, LaTeX math
+// rendering, and copy-to-clipboard on a sent message (needs expo-clipboard,
+// not currently installed).
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { View, FlatList, ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -164,6 +167,21 @@ export function CoachScreen({ navigation }: Props) {
     void runTurn(turn.id, turn.query, turn.language, turn.context);
   }
 
+  // Edit-and-resubmit a sent prompt (MessageBubble's Edit action). Updates
+  // the SAME turn in place — same id, same snapshotted language/context it
+  // was first submitted with — rather than appending a new one, so the
+  // thread never grows a duplicate message. Mirrors handleRetry above, just
+  // with the query text also changing (mirrors the web's handleEditTurn).
+  function handleEditTurn(turnId: string, newQuery: string) {
+    const turn = turns.find((t) => t.id === turnId);
+    if (!turn) return;
+    setTurns((ts) => ts.map((t) => (t.id === turnId
+      ? { ...t, query: newQuery, status: 'pending', error: undefined, response: undefined, rating: null, restored: false, startedAt: Date.now() }
+      : t)));
+    scrollToEnd();
+    void runTurn(turnId, newQuery, turn.language, turn.context);
+  }
+
   async function handleFeedback(turnId: string, rating: 'helpful' | 'not_helpful') {
     const turn = turns.find((t) => t.id === turnId);
     const queryId = turn?.response?.queryId;
@@ -261,7 +279,9 @@ export function CoachScreen({ navigation }: Props) {
             ref={listRef}
             data={turns}
             keyExtractor={(t) => t.id}
-            renderItem={({ item }) => <MessageBubble turn={item} onRetry={handleRetry} onFeedback={handleFeedback} />}
+            renderItem={({ item }) => (
+              <MessageBubble turn={item} onRetry={handleRetry} onFeedback={handleFeedback} onEdit={handleEditTurn} />
+            )}
             contentContainerStyle={styles.list}
             onContentSizeChange={scrollToEnd}
             testID="coach-message-list"

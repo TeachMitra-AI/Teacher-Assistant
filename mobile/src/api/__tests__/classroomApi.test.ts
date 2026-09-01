@@ -1,14 +1,24 @@
 // Light coverage of the request-shaping logic in classroomApi.ts (query
 // strings, method/body composition) — the wrapper functions themselves are
 // otherwise a direct, mechanical port of the already-tested web client.
-import { listClasses, getDailyAttendance, saveAttendance, setFeeAmount, getClassAnalytics, getTeacherAnalyticsOverview } from '../classroomApi';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { listClasses, getDailyAttendance, saveAttendance, setFeeAmount, getClassAnalytics, downloadFeesReport } from '../classroomApi';
+import { SharingUnavailableError } from '../../lib/exportPdf';
 
-jest.mock('../client', () => ({ api: jest.fn() }));
+jest.mock('../client', () => ({ api: jest.fn(), ApiError: jest.requireActual('../client').ApiError }));
 const { api } = jest.requireMock('../client') as { api: jest.Mock };
+
+jest.mock('../session', () => ({ getToken: jest.fn().mockResolvedValue('mock-token') }));
+const { getToken } = jest.requireMock('../session') as { getToken: jest.Mock };
 
 describe('classroomApi', () => {
   beforeEach(() => {
     api.mockReset();
+    getToken.mockClear().mockResolvedValue('mock-token');
+    (FileSystem.downloadAsync as jest.Mock).mockClear().mockResolvedValue({ uri: 'file:///mock-cache/fees.xlsx', status: 200 });
+    (Sharing.isAvailableAsync as jest.Mock).mockClear().mockResolvedValue(true);
+    (Sharing.shareAsync as jest.Mock).mockClear().mockResolvedValue(undefined);
   });
 
   it('listClasses omits the query string by default', async () => {
@@ -48,10 +58,29 @@ describe('classroomApi', () => {
     expect(api).toHaveBeenCalledWith('/classroom/analytics/classes/class-1');
   });
 
-  it('getTeacherAnalyticsOverview requests the teacher-wide analytics endpoint', async () => {
-    api.mockResolvedValueOnce({ totalStudents: 12, today: {}, month: {}, fees: {} });
-    await getTeacherAnalyticsOverview();
-    expect(api).toHaveBeenCalledWith('/classroom/analytics/overview');
+  it('downloadFeesReport downloads the export with an auth header, then shares it', async () => {
+    await downloadFeesReport('class-1', '2026-08');
+    expect(FileSystem.downloadAsync).toHaveBeenCalledWith(
+      expect.stringContaining('/classroom/classes/class-1/fees/export?period=2026-08'),
+      expect.stringContaining('fees-2026-08.xlsx'),
+      { headers: { Authorization: 'Bearer mock-token' } }
+    );
+    expect(Sharing.shareAsync).toHaveBeenCalledWith(
+      'file:///mock-cache/fees.xlsx',
+      { mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', dialogTitle: 'Fees report — 2026-08' }
+    );
+  });
+
+  it('downloadFeesReport throws on a non-200 response instead of sharing', async () => {
+    (FileSystem.downloadAsync as jest.Mock).mockResolvedValueOnce({ uri: 'file:///mock-cache/fees.xlsx', status: 404 });
+    await expect(downloadFeesReport('class-1', '2026-08')).rejects.toThrow('Could not download the fee report.');
+    expect(Sharing.shareAsync).not.toHaveBeenCalled();
+  });
+
+  it('downloadFeesReport throws SharingUnavailableError when the device cannot share', async () => {
+    (Sharing.isAvailableAsync as jest.Mock).mockResolvedValueOnce(false);
+    await expect(downloadFeesReport('class-1', '2026-08')).rejects.toBeInstanceOf(SharingUnavailableError);
+    expect(Sharing.shareAsync).not.toHaveBeenCalled();
   });
 
   it('setFeeAmount PATCHes exactly one amount change', async () => {

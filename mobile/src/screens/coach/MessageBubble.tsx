@@ -1,13 +1,17 @@
 // Native port of client/src/components/MessageBubble.tsx's core states
-// (pending/error/done) — not a 1:1 port: edit-in-place, copy-to-clipboard,
-// read-aloud, share, save-to-library and Classroom Mode are all web-only for
-// this phase (see docs/mobile-app-plan.md's Phase 4 status note).
-import React from 'react';
-import { View, Pressable, StyleSheet } from 'react-native';
-import { ThumbsUp, ThumbsDown } from 'lucide-react-native';
+// (pending/error/done), now including edit-in-place — not a 1:1 port:
+// copy-to-clipboard, read-aloud, share, save-to-library and Classroom Mode
+// are still web-only for this phase (see docs/mobile-app-plan.md's Phase 4
+// status note; copy-to-clipboard needs a native module (expo-clipboard) not
+// currently installed, deliberately not added just for this).
+import React, { useState } from 'react';
+import { View, Pressable, TextInput, StyleSheet } from 'react-native';
+import { ThumbsUp, ThumbsDown, Pencil } from 'lucide-react-native';
 import { ThemedText } from '../../components/ThemedText';
+import { Button } from '../../components/Button';
 import { useTheme } from '../../theme/ThemeContext';
 import { radius, spacing } from '../../theme/tokens';
+import { MAX_QUERY_LENGTH } from '../../config';
 import { RunStatus } from './RunStatus';
 import { MarkdownText } from './MarkdownText';
 import type { Turn } from '../../types';
@@ -16,16 +20,70 @@ interface MessageBubbleProps {
   turn: Turn;
   onRetry: (turn: Turn) => void;
   onFeedback: (turnId: string, rating: 'helpful' | 'not_helpful') => void;
+  onEdit: (turnId: string, query: string) => void;
 }
 
-export function MessageBubble({ turn, onRetry, onFeedback }: MessageBubbleProps) {
+export function MessageBubble({ turn, onRetry, onFeedback, onEdit }: MessageBubbleProps) {
   const { colors } = useTheme();
+  // Local draft — never touches turn.query until Save, so Cancel is always
+  // just "throw the draft away" (mirrors web's MessageBubble.tsx exactly).
+  // Not offered mid-flight (status === 'pending'), same as web's canEdit
+  // guard (web's other half of that guard, !hasAttachments, doesn't apply —
+  // mobile Coach has no attachment feature to conflict with).
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(turn.query);
+  const canEdit = turn.status !== 'pending';
+
+  function startEdit() {
+    setDraft(turn.query);
+    setIsEditing(true);
+  }
+
+  function saveEdit() {
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    setIsEditing(false);
+    onEdit(turn.id, trimmed);
+  }
 
   return (
     <View style={styles.group}>
-      <View style={[styles.userBubble, { backgroundColor: colors.surface2 }]}>
-        <ThemedText style={[styles.userText, { color: colors.text }]}>{turn.query}</ThemedText>
-      </View>
+      {isEditing ? (
+        <View style={[styles.editBox, { backgroundColor: colors.surface2, borderColor: colors.orange }]}>
+          <TextInput
+            style={[styles.editInput, { color: colors.text }]}
+            value={draft}
+            onChangeText={setDraft}
+            multiline
+            maxLength={MAX_QUERY_LENGTH}
+            autoFocus
+            accessibilityLabel="Edit your question"
+            testID={`edit-input-${turn.id}`}
+          />
+          <View style={styles.editActions}>
+            <Button title="Cancel" variant="text" onPress={() => setIsEditing(false)} testID={`edit-cancel-${turn.id}`} />
+            <Button title="Save" onPress={saveEdit} disabled={!draft.trim()} testID={`edit-save-${turn.id}`} />
+          </View>
+        </View>
+      ) : (
+        <View style={styles.userRow}>
+          {canEdit && (
+            <Pressable
+              onPress={startEdit}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Edit message"
+              testID={`edit-start-${turn.id}`}
+              style={styles.editBtn}
+            >
+              <Pencil size={13} color={colors.textMuted} />
+            </Pressable>
+          )}
+          <View style={[styles.userBubble, { backgroundColor: colors.surface2 }]}>
+            <ThemedText style={[styles.userText, { color: colors.text }]}>{turn.query}</ThemedText>
+          </View>
+        </View>
+      )}
 
       <View style={styles.assistantRow}>
         {turn.status === 'pending' &&
@@ -105,12 +163,21 @@ export function MessageBubble({ turn, onRetry, onFeedback }: MessageBubbleProps)
 
 const styles = StyleSheet.create({
   group: { gap: spacing.sm },
+  // maxWidth lives here, not on userBubble below, so the 80%-of-screen cap
+  // applies to the pencil icon + bubble together — the bubble itself just
+  // shrinks/wraps to fill whatever the row has left (flexShrink: 1 below).
+  userRow: { flexDirection: 'row', alignSelf: 'flex-end', alignItems: 'flex-end', gap: spacing.xs, maxWidth: '80%' },
+  editBtn: { padding: spacing.xs },
+  editBox: {
+    alignSelf: 'stretch', borderRadius: radius.md, borderWidth: 1.5, padding: spacing.sm, gap: spacing.sm,
+  },
+  editInput: { fontSize: 15, lineHeight: 23, maxHeight: 160, padding: 0 },
+  editActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.xs },
   userBubble: {
     // .user-bubble's exact radius asymmetry (index.css: "16px 16px 4px
     // 16px" — CSS shorthand order is TL/TR/BR/BL, so the tail corner is
     // bottom-right, not top-right).
-    alignSelf: 'flex-end',
-    maxWidth: '80%',
+    flexShrink: 1,
     borderRadius: 16,
     borderBottomRightRadius: 4,
     paddingVertical: spacing.sm,

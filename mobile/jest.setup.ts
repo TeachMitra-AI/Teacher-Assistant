@@ -33,9 +33,12 @@ jest.mock('expo-sharing', () => ({
 // expo-file-system/legacy backs lib/exportPdf.ts's write-base64-to-cache
 // step (a real, on-device bug fix — see that file's own comment for why
 // this writes fresh bytes rather than reading printToFileAsync's own file).
+// downloadAsync backs api/classroomApi.ts's downloadFeesReport (the Reports
+// screen's Excel export) — same reasoning as writeAsStringAsync above.
 jest.mock('expo-file-system/legacy', () => ({
   cacheDirectory: 'file:///mock-cache/',
   writeAsStringAsync: jest.fn().mockResolvedValue(undefined),
+  downloadAsync: jest.fn().mockResolvedValue({ uri: 'file:///mock-cache/fees.xlsx', status: 200 }),
 }));
 
 // socket.io-client backs NotificationContext's realtime connection (Phase 7,

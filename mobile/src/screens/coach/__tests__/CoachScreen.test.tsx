@@ -198,6 +198,67 @@ describe('CoachScreen', () => {
     expect(askCoach).toHaveBeenCalledTimes(2);
   });
 
+  it('editing a sent question resubmits the edited text in place, replacing the old answer', async () => {
+    askCoach.mockResolvedValueOnce({
+      success: true, text: 'First answer.', language: 'en', context: {}, queryId: 'q1',
+    });
+    await act(async () => { renderScreen(); });
+    await fireEvent.changeText(screen.getByTestId('coach-composer-input'), 'Original question');
+    await fireEvent.press(screen.getByTestId('coach-composer-send'));
+    await waitFor(() => expect(screen.getByText('First answer.')).toBeTruthy());
+
+    await fireEvent.press(screen.getByLabelText('Edit message'));
+    expect(screen.getByLabelText('Edit your question')).toBeTruthy();
+
+    askCoach.mockResolvedValueOnce({
+      success: true, text: 'Edited answer.', language: 'en', context: {}, queryId: 'q2',
+    });
+    await fireEvent.changeText(screen.getByLabelText('Edit your question'), 'Edited question');
+    await fireEvent.press(screen.getByText('Save'));
+
+    // Same turn updated in place — one message, new question text, old
+    // answer replaced by the new one (not appended as a second turn).
+    await waitFor(() => expect(screen.getByText('Edited answer.')).toBeTruthy());
+    expect(screen.getByText('Edited question')).toBeTruthy();
+    expect(screen.queryByText('Original question')).toBeNull();
+    expect(screen.queryByText('First answer.')).toBeNull();
+    expect(askCoach).toHaveBeenCalledTimes(2);
+    expect(askCoach).toHaveBeenLastCalledWith('Edited question', 'en', expect.anything());
+  });
+
+  it('Cancel on an in-progress edit discards the draft and keeps the original question', async () => {
+    askCoach.mockResolvedValueOnce({
+      success: true, text: 'An answer.', language: 'en', context: {}, queryId: 'q1',
+    });
+    await act(async () => { renderScreen(); });
+    await fireEvent.changeText(screen.getByTestId('coach-composer-input'), 'Original question');
+    await fireEvent.press(screen.getByTestId('coach-composer-send'));
+    await waitFor(() => expect(screen.getByText('An answer.')).toBeTruthy());
+
+    await fireEvent.press(screen.getByLabelText('Edit message'));
+    await fireEvent.changeText(screen.getByLabelText('Edit your question'), 'Changed my mind');
+    await fireEvent.press(screen.getByText('Cancel'));
+
+    expect(screen.getByText('Original question')).toBeTruthy();
+    expect(screen.queryByText('Changed my mind')).toBeNull();
+    expect(askCoach).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not offer Edit while a turn is still pending', async () => {
+    let resolveAsk: (v: unknown) => void = () => {};
+    askCoach.mockReturnValueOnce(new Promise((resolve) => { resolveAsk = resolve; }));
+    await act(async () => { renderScreen(); });
+    await fireEvent.changeText(screen.getByTestId('coach-composer-input'), 'A question');
+    await fireEvent.press(screen.getByTestId('coach-composer-send'));
+
+    expect(screen.queryByLabelText('Edit message')).toBeNull();
+
+    await act(async () => {
+      resolveAsk({ success: true, text: 'An answer.', language: 'en', context: {}, queryId: 'q1' });
+    });
+    await waitFor(() => expect(screen.getByLabelText('Edit message')).toBeTruthy());
+  });
+
   it('sends thumbs-up feedback for the answered turn', async () => {
     askCoach.mockResolvedValueOnce({
       success: true,

@@ -1,7 +1,12 @@
 // Ported from client/src/lib/classroomApi.ts (docs/mobile-app-plan.md §9) —
 // identical logic, only the import paths changed. Ownership is enforced
 // server-side from the auth token, so nothing here sends a teacherId.
-import { api } from './client';
+import { api, ApiError } from './client';
+import { getToken } from './session';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { SharingUnavailableError } from '../lib/exportPdf';
+import { API_BASE } from '../config';
 import type {
   SchoolClass,
   Student,
@@ -13,7 +18,6 @@ import type {
   ClassFeeStatus,
   FeeRecordDto,
   ClassAnalytics,
-  TeacherAnalyticsOverview,
 } from '../types';
 
 export interface CreateClassInput {
@@ -137,6 +141,35 @@ export async function setFeeAmount(studentId: string, period: string, amount: nu
   return data.fee;
 }
 
+// Mirrors client/src/lib/classroomApi.ts's downloadFeesReport — same GET
+// .../fees/export?period= endpoint (an .xlsx workbook, not JSON), so this
+// bypasses api()'s JSON-only client entirely. FileSystem.downloadAsync
+// writes the response straight to a cache file (with our own auth header,
+// since it isn't a browser request), then hands that file to the native
+// share sheet — the mobile analogue of the web's browser-download trigger.
+// Same base64-avoiding approach as exportPdf.ts's exportAndSharePdf: never
+// re-open/re-read the file via a different API than the one that wrote it.
+export async function downloadFeesReport(classId: string, period: string): Promise<void> {
+  const token = await getToken();
+  const dest = `${FileSystem.cacheDirectory}fees-${period}.xlsx`;
+  const result = await FileSystem.downloadAsync(
+    `${API_BASE}/classroom/classes/${classId}/fees/export?period=${period}`,
+    dest,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+  );
+  if (result.status !== 200) {
+    throw new ApiError('Could not download the fee report.', result.status);
+  }
+
+  if (!(await Sharing.isAvailableAsync())) {
+    throw new SharingUnavailableError();
+  }
+  await Sharing.shareAsync(result.uri, {
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    dialogTitle: `Fees report — ${period}`,
+  });
+}
+
 // ---- Analytics ----------------------------------------------------------
 
 // Current-month summary + fee snapshot for one class (Class Home's summary
@@ -145,11 +178,4 @@ export async function setFeeAmount(studentId: string, period: string, amount: nu
 // getDailyAttendance(classId, todayIsoDate).summary instead.
 export async function getClassAnalytics(classId: string): Promise<ClassAnalytics> {
   return api<ClassAnalytics>(`/classroom/analytics/classes/${classId}`);
-}
-
-// Teacher-wide (every class) totals for the Reports "All Classes" view —
-// the one figure no per-class screen shows (today's attendance summed
-// across every class, not just the one currently open).
-export async function getTeacherAnalyticsOverview(): Promise<TeacherAnalyticsOverview> {
-  return api<TeacherAnalyticsOverview>('/classroom/analytics/overview');
 }
