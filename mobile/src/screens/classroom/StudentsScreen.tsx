@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useState } from 'react';
-import { View, FlatList, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, FlatList, Pressable, ActivityIndicator, RefreshControl, StyleSheet } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Users, UserPlus, Pencil } from 'lucide-react-native';
 import type { ClassroomStackParamList } from '../../navigation/types';
@@ -13,15 +13,19 @@ import type { Student } from '../../types';
 
 // Students list + Add/Edit (Phase 8 Step 3), replacing the Phase 2
 // PlaceholderScreen. Interaction pattern (not markup) follows the web's
-// StudentRoster.tsx: name required, roll number optional, list sorted by
-// name. Deactivate/restore stays out of scope this step (§ useStudentsScreen.ts).
+// StudentRoster.tsx: name required, roll number optional. The list itself is
+// sorted by roll number (numeric-aware, see lib/students.ts), not name — a
+// mobile-only divergence from the web roster's name sort. Deactivate/restore
+// stays out of scope this step (§ useStudentsScreen.ts).
 type Props = NativeStackScreenProps<ClassroomStackParamList, 'Students'>;
 
 export function StudentsScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
   const { classId } = route.params;
-  const { students, loading, error, reload, creating, createError, createStudent, savingEdit, editError, editStudent } =
-    useStudentsScreen(classId);
+  const {
+    students, loading, error, reload, refreshing, refresh,
+    creating, createError, createStudent, savingEdit, editError, editStudent,
+  } = useStudentsScreen(classId);
 
   // null = closed, 'add' = create form, a Student = editing that student.
   const [formTarget, setFormTarget] = useState<'add' | Student | null>(null);
@@ -99,6 +103,9 @@ export function StudentsScreen({ route, navigation }: Props) {
           keyExtractor={(s) => s.id}
           contentContainerStyle={styles.list}
           testID="students-list"
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.orange} colors={[colors.orange]} />
+          }
           renderItem={({ item }) => (
             <View style={[styles.row, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
               <View style={styles.rowText}>

@@ -12,6 +12,7 @@ import { ApiError } from '../../../api/client';
 import { useAuth } from '../../../auth/AuthContext';
 import { addDays, todayDateString } from '../../../lib/classroomDate';
 import { buildSaveMarks, computeDirty, computeLiveSummary, toggleStatus, type LiveAttendanceSummary } from '../../../lib/attendance';
+import { sortByRollNumber } from '../../../lib/students';
 import {
   buildQueueKey,
   discardQueuedItem,
@@ -41,6 +42,8 @@ interface MarkAttendanceScreenState {
   // Set once that queued item has hit a genuine (non-network) sync failure —
   // distinct from pendingSync, which just means "not synced yet."
   queuedError: string | null;
+  refreshing: boolean;
+  refresh: () => void;
   goToPreviousDate: () => void;
   goToNextDate: () => void;
   setDate: (date: string) => void;
@@ -64,18 +67,25 @@ export function useMarkAttendanceScreen(classId: string): MarkAttendanceScreenSt
   const [saveError, setSaveError] = useState('');
   const [pendingSync, setPendingSync] = useState(false);
   const [queuedError, setQueuedError] = useState<string | null>(null);
+  // Pull-to-refresh gets its own spinner/flag, separate from `loading` — a
+  // refresh should show the FlatList's native RefreshControl spinner without
+  // swapping the whole screen back to the full-screen loading state.
+  const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (opts?.silent) setRefreshing(true);
+    else setLoading(true);
     setError('');
     try {
       const data = await getDailyAttendance(classId, date);
-      setRoster(data.roster);
-      setStatuses(new Map(data.roster.map((r) => [r.studentId, r.status])));
+      const roster = sortByRollNumber(data.roster);
+      setRoster(roster);
+      setStatuses(new Map(roster.map((r) => [r.studentId, r.status])));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not load attendance.');
     } finally {
-      setLoading(false);
+      if (opts?.silent) setRefreshing(false);
+      else setLoading(false);
     }
   }, [classId, date]);
 
@@ -85,6 +95,8 @@ export function useMarkAttendanceScreen(classId: string): MarkAttendanceScreenSt
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
+
+  const refresh = useCallback(() => { void load({ silent: true }); }, [load]);
 
   // Reflects this exact class/date's offline-queue state (Phase 12, §18):
   // checked on mount/date-change, and kept live via subscribeToQueue() so a
@@ -199,6 +211,8 @@ export function useMarkAttendanceScreen(classId: string): MarkAttendanceScreenSt
     summary,
     pendingSync,
     queuedError,
+    refreshing,
+    refresh,
     goToPreviousDate,
     goToNextDate,
     setDate,

@@ -6,7 +6,7 @@
 // model: local taps update the UI instantly, nothing persists until "Save
 // Attendance" is tapped.
 import React, { useState } from 'react';
-import { View, FlatList, Pressable, ActivityIndicator, StyleSheet, Platform, Alert } from 'react-native';
+import { View, FlatList, Pressable, ActivityIndicator, RefreshControl, StyleSheet, Platform, Alert } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ChevronLeft, ChevronRight, CalendarDays, ClipboardCheck } from 'lucide-react-native';
 import { ThemedText } from '../../../components/ThemedText';
@@ -34,6 +34,8 @@ export function MarkAttendanceScreen({ classId }: { classId: string }) {
     summary,
     pendingSync,
     queuedError,
+    refreshing,
+    refresh,
     goToPreviousDate,
     goToNextDate,
     setDate,
@@ -164,6 +166,9 @@ export function MarkAttendanceScreen({ classId }: { classId: string }) {
             keyExtractor={(s) => s.studentId}
             contentContainerStyle={styles.list}
             testID="attendance-roster-list"
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.orange} colors={[colors.orange]} />
+            }
             renderItem={({ item }: { item: AttendanceRosterEntry }) => {
               const status = statuses.get(item.studentId) || 'unmarked';
               return (
