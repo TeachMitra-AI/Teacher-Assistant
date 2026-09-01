@@ -14,7 +14,7 @@ import type { LibraryStackParamList } from '../../navigation/types';
 import { ThemedText } from '../../components/ThemedText';
 import { TextField } from '../../components/TextField';
 import { ChipPicker } from '../../components/ChipPicker';
-import { SuggestionChips } from '../../components/SuggestionChips';
+import { SelectField } from '../../components/SelectField';
 import { useTheme, PaperThemeProvider } from '../../theme/ThemeContext';
 import { spacing, radius, paper } from '../../theme/tokens';
 import { useAuth } from '../../auth/AuthContext';
@@ -410,17 +410,23 @@ export function ResourceEditScreen({ route, navigation }: Props) {
           onChange={(v) => setField('type', v as ResourceType)}
         />
 
-        <View style={styles.field}>
-          <TextField label="Grade" value={form.grade} onChangeText={(t) => setField('grade', t)} placeholder="e.g. Class 3-5" maxLength={80} />
-          <SuggestionChips options={GRADES} onSelect={(v) => setField('grade', v)} />
-        </View>
+        <SelectField
+          label="Grade"
+          placeholder="Any grade"
+          options={GRADES.map((g) => ({ value: g, label: g }))}
+          value={form.grade}
+          onChange={(v) => setField('grade', v)}
+        />
 
-        <View style={styles.field}>
-          <TextField label="Subject" value={form.subject} onChangeText={(t) => setField('subject', t)} placeholder="e.g. Science" maxLength={80} />
-          <SuggestionChips options={SUBJECTS} onSelect={(v) => setField('subject', v)} />
-        </View>
+        <SelectField
+          label="Subject"
+          placeholder="Any subject"
+          options={SUBJECTS.map((s) => ({ value: s, label: s }))}
+          value={form.subject}
+          onChange={(v) => setField('subject', v)}
+        />
 
-        <ChipPicker
+        <SelectField
           label="Language"
           options={LANGUAGES}
           value={form.language}
@@ -520,7 +526,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scroll: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxl },
-  field: { gap: spacing.xs },
   tabs: { flexDirection: 'row', gap: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'transparent' },
   tab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: spacing.sm, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   editor: {
