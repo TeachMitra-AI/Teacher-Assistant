@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { listStudents, addStudent, updateStudent } from '../../api/classroomApi';
 import type { CreateStudentInput, UpdateStudentInput } from '../../api/classroomApi';
 import { ApiError } from '../../api/client';
+import { sortByRollNumber } from '../../lib/students';
 import type { Student } from '../../types';
 
 interface StudentsScreenState {
@@ -20,6 +21,8 @@ interface StudentsScreenState {
   loading: boolean;
   error: string;
   reload: () => void;
+  refreshing: boolean;
+  refresh: () => void;
   creating: boolean;
   createError: string;
   createStudent: (input: CreateStudentInput) => Promise<boolean>;
@@ -32,6 +35,10 @@ export function useStudentsScreen(classId: string): StudentsScreenState {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Pull-to-refresh gets its own spinner/flag, separate from `loading` — a
+  // refresh should show the FlatList's native RefreshControl spinner without
+  // swapping the whole screen back to the full-screen loading state.
+  const [refreshing, setRefreshing] = useState(false);
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
@@ -39,16 +46,18 @@ export function useStudentsScreen(classId: string): StudentsScreenState {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (opts?.silent) setRefreshing(true);
+    else setLoading(true);
     setError('');
     try {
       const list = await listStudents(classId);
-      setStudents(list);
+      setStudents(sortByRollNumber(list));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not load students.');
     } finally {
-      setLoading(false);
+      if (opts?.silent) setRefreshing(false);
+      else setLoading(false);
     }
   }, [classId]);
 
@@ -59,13 +68,15 @@ export function useStudentsScreen(classId: string): StudentsScreenState {
     load();
   }, [load]);
 
+  const refresh = useCallback(() => { void load({ silent: true }); }, [load]);
+
   const createStudent = useCallback(
     async (input: CreateStudentInput) => {
       setCreating(true);
       setCreateError('');
       try {
         const created = await addStudent(classId, input);
-        setStudents((list) => [...list, created].sort((a, b) => a.name.localeCompare(b.name)));
+        setStudents((list) => sortByRollNumber([...list, created]));
         return true;
       } catch (err) {
         setCreateError(err instanceof ApiError ? err.message : 'Could not add student.');
@@ -82,7 +93,7 @@ export function useStudentsScreen(classId: string): StudentsScreenState {
     setEditError('');
     try {
       const updated = await updateStudent(studentId, input);
-      setStudents((list) => list.map((s) => (s.id === updated.id ? updated : s)).sort((a, b) => a.name.localeCompare(b.name)));
+      setStudents((list) => sortByRollNumber(list.map((s) => (s.id === updated.id ? updated : s))));
       return true;
     } catch (err) {
       setEditError(err instanceof ApiError ? err.message : 'Could not update student.');
@@ -92,5 +103,8 @@ export function useStudentsScreen(classId: string): StudentsScreenState {
     }
   }, []);
 
-  return { students, loading, error, reload: load, creating, createError, createStudent, savingEdit, editError, editStudent };
+  return {
+    students, loading, error, reload: load, refreshing, refresh,
+    creating, createError, createStudent, savingEdit, editError, editStudent,
+  };
 }
