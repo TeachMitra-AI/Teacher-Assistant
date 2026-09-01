@@ -402,6 +402,19 @@ export const NOTIFICATIONS_ENABLED = import.meta.env.VITE_NOTIFICATIONS_ENABLED 
 // still just sees that feature's own "not available" message, not broken UI.
 export const CLASSROOM_MANAGEMENT_ENABLED = import.meta.env.VITE_CLASSROOM_MANAGEMENT_ENABLED === 'true';
 
+// ---- Teacher Attendance -----------------------------------------------------
+//
+// See docs/feature-teacher-attendance-implementation-plan.md. Client-side
+// gate, same deliberately opt-in shape and same "not the real kill switch"
+// caveat as the flags above. When false (the default), neither BottomNav nor
+// TopBar renders the Attendance link — same "zero new UI" default as every
+// other flagged feature. NOT the same feature as CLASSROOM_MANAGEMENT_ENABLED
+// above — that is a teacher marking their STUDENTS present/absent; this is a
+// teacher's own attendance. The server's TEACHER_ATTENDANCE_ENABLED is the
+// immediately-effective kill switch (every /api/teacher-attendance/* route
+// returns 503 regardless of this flag).
+export const TEACHER_ATTENDANCE_ENABLED = import.meta.env.VITE_TEACHER_ATTENDANCE_ENABLED === 'true';
+
 // ---- Structured Question Model (Generator v2) -------------------------------
 //
 // See docs/generator-v2-plan.md. Client-side gate, same deliberately opt-in

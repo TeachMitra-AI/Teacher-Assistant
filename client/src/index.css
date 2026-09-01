@@ -42,6 +42,21 @@
      its answer closer together. Only applies from tablet up — both are
      full-width inside the mobile shell's padding regardless. */
   --chat-max-width: 720px;
+
+  /* Semantic status colors for Teacher Attendance — one shared palette so
+     "present," "needs a look," and "absent" read consistently everywhere
+     a status appears (check-in card, calendar strip, dashboard, reports).
+     Deliberately separate from --orange (this app's brand accent, used for
+     active/selected states) — a status color and a brand color answering
+     different questions should never be the same hue. */
+  --att-present: #1f7a4d;
+  --att-present-soft: #dcefe0;
+  --att-warning: #92600a;
+  --att-warning-soft: #f7e8c9;
+  --att-absent: #b91c1c;
+  --att-absent-soft: #fde2e2;
+  --att-info: #2f5f8f;
+  --att-info-soft: #dde9f5;
 }
 
 [data-theme='dark'] {
@@ -56,6 +71,15 @@
   --sk-base: #232833;
   --sk-mid: #2a3040;
   --sk-peak: #333b4c;
+
+  --att-present: #56b784;
+  --att-present-soft: rgba(86, 183, 132, 0.16);
+  --att-warning: #e0b039;
+  --att-warning-soft: rgba(224, 176, 57, 0.16);
+  --att-absent: #fca5a5;
+  --att-absent-soft: rgba(252, 165, 165, 0.14);
+  --att-info: #6ea8dc;
+  --att-info-soft: rgba(110, 168, 220, 0.16);
 }
 
 * { box-sizing: border-box; }
@@ -4935,3 +4959,906 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) {
   .confirm-panel { animation: none; }
 }
+
+/* ---- Teacher Attendance ---------------------------------------------------
+   docs/feature-teacher-attendance-implementation-plan.md. .attendance-main
+   mirrors .library-main's page-shell shape; .attendance-error mirrors
+   .assistant-error's banner exactly (same color tokens, same dark-mode
+   override), so this page reads as the same design system, not a one-off. */
+.attendance-main { max-width: 640px; margin: 0 auto; padding: 1.75rem 1.25rem 3rem; }
+/* Reports (AttendancePage.tsx) needs real room for its data table — the
+   table itself still gets its own horizontal scroll below this width, so
+   narrower screens degrade the same way they always did. */
+/* 1180px measured 13px short with real teacher names/longer column
+   headers ("Needs Review", "Missing Checkout") in place — 1220px gives
+   real data some margin instead of exactly matching a lab measurement. */
+.attendance-main-wide { max-width: 1220px; }
+
+.attendance-error {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: #b91c1c;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.9rem;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+[data-theme='dark'] .attendance-error { color: #fca5a5; background: rgba(248, 113, 113, 0.1); border-color: rgba(248, 113, 113, 0.3); }
+
+.attendance-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.attendance-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  padding: 1.5rem 0;
+}
+
+.attendance-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 1.1rem;
+}
+.attendance-state-icon { color: #16a34a; flex-shrink: 0; }
+[data-theme='dark'] .attendance-state-icon { color: #4ade80; }
+
+.attendance-distance-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: -0.4rem 0 1.1rem;
+}
+.attendance-distance-status.attendance-distance-toofar {
+  color: #b91c1c;
+  font-weight: 600;
+}
+[data-theme='dark'] .attendance-distance-status.attendance-distance-toofar { color: #fca5a5; }
+.attendance-distance-refresh { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.8rem; padding: 0.15rem 0.4rem; }
+
+/* "Distance to school" card — the big colour-coded number a teacher checks
+   before the button even matters (docs/attendance-register-design.html
+   §1/§2). Present in every state (in range, out of range) so it never
+   reads as a dead patch of screen. */
+.attendance-distance-card {
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 0.9rem 1rem;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+.attendance-distance-card-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  display: block;
+}
+.attendance-distance-card-value {
+  font-size: 1.7rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  display: block;
+  margin: 0.15rem 0;
+  color: var(--att-present);
+}
+.attendance-distance-card.attendance-distance-toofar .attendance-distance-card-value { color: var(--att-absent); }
+.attendance-distance-card-caption { font-size: 0.72rem; color: var(--text-muted); display: block; }
+.attendance-distance-card-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.76rem;
+  margin-top: 0.35rem;
+  padding: 0.1rem 0.4rem;
+}
+
+/* The calm confirmation block once checked in — a fact, not just a line of
+   text, matching the register doc's "checked-block" treatment. */
+.attendance-checked-block {
+  background: var(--att-present-soft);
+  border-radius: var(--radius-sm);
+  padding: 0.9rem 1rem;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+.attendance-checked-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--att-present);
+  display: block;
+}
+.attendance-checked-time { font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; margin: 0.15rem 0; color: var(--text); display: block; }
+.attendance-checked-sub { font-size: 0.8rem; color: var(--text-muted); display: block; }
+
+/* End-of-day summary — check-in AND check-out together, plus the final
+   word on the day, in one card. The card background reflects the overall
+   day outcome (amber for half_day); each half's own label/sub-text is
+   colored independently by whether THAT event was on time, so an on-time
+   check-in still reads green even on a half-day card. */
+.attendance-day-summary.tone-warning { background: var(--att-warning-soft); }
+
+.attendance-day-summary-times {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.9rem;
+  align-items: stretch;
+}
+.attendance-day-summary-col { display: flex; flex-direction: column; min-width: 0; }
+.attendance-day-summary-col.tone-warning .attendance-checked-label,
+.attendance-day-summary-col.tone-warning .attendance-checked-sub { color: var(--att-warning); }
+.attendance-day-summary-divider { width: 1px; background: var(--border); }
+
+.attendance-day-summary-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 0.3rem 0.6rem;
+  margin-top: 0.8rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+.attendance-day-summary-status { font-weight: 700; color: var(--att-present); }
+.attendance-day-summary.tone-warning .attendance-day-summary-status { color: var(--att-warning); }
+.attendance-day-summary-worked { color: var(--text-muted); }
+
+/* Narrow phones: stack the two times instead of squeezing them side by
+   side — this card is teacher-facing and mobile is the primary surface. */
+@media (max-width: 360px) {
+  .attendance-day-summary-times { grid-template-columns: 1fr; gap: 0.7rem; }
+  .attendance-day-summary-divider { display: none; }
+}
+
+.attendance-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-width: 180px;
+}
+
+.attendance-summary { font-size: 0.95rem; color: var(--text); margin: 0.3rem 0 0; }
+.attendance-summary-muted { color: var(--text-muted); }
+
+.attendance-hint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin: 1rem 0 0;
+}
+
+/* Tab bar — same shape as .classroom-tabs (own copy per this codebase's
+   per-feature CSS-prefix convention, not a shared class). */
+.attendance-tabs {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 1.4rem;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.attendance-tabs::-webkit-scrollbar { display: none; }
+.attendance-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.attendance-tabs button:hover { color: var(--text); }
+.attendance-tabs button.active { color: var(--orange); border-bottom-color: var(--orange); }
+.attendance-tabs button:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; border-radius: var(--radius-sm); }
+
+/* Month navigator — History tab. */
+.attendance-date-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-bottom: 1.1rem;
+}
+.attendance-date-display { font-size: 0.95rem; font-weight: 700; min-width: 9rem; text-align: center; }
+
+.attendance-history-list { display: flex; flex-direction: column; gap: 0.5rem; list-style: none; margin: 0; padding: 0; }
+.attendance-history-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: 0.65rem 0.9rem;
+}
+.attendance-history-row-main { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.attendance-history-reason {
+  margin: 0;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.83rem;
+  font-style: italic;
+  color: var(--text-muted);
+}
+.attendance-history-date { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+.attendance-history-status { font-size: 0.85rem; color: var(--text-muted); text-align: right; }
+/* A Late/Short annotation used to be plain text, easy to skim past — this
+   flags it as "worth a second look" without the alarm of the red
+   Absent/Needs-review styling, which stays for the more serious cases. */
+.attendance-history-flag { color: #92400e; font-weight: 600; }
+[data-theme='dark'] .attendance-history-flag { color: #fbbf24; }
+.attendance-history-status.attendance-history-absent { color: #b91c1c; font-weight: 600; }
+[data-theme='dark'] .attendance-history-status.attendance-history-absent { color: #fca5a5; }
+
+/* Review tab (Principal) — one card per flagged/pending day, bucketed into
+   collapsible date groups so a school with many flagged teachers isn't one
+   long flat scroll. */
+.attendance-review-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.1rem;
+}
+.attendance-review-count { font-size: 0.85rem; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
+.attendance-review-search {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-muted);
+  flex: 1;
+  min-width: 200px;
+  max-width: 320px;
+}
+.attendance-review-search .text-input { flex: 1; }
+
+.attendance-review-group { margin-bottom: 1.1rem; }
+.attendance-review-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0.5rem 0.1rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+  text-align: left;
+}
+.attendance-review-group-header:hover { color: var(--orange); }
+.attendance-review-group-count {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 0.05rem 0.55rem;
+}
+
+.attendance-review-list { display: flex; flex-direction: column; gap: 1rem; margin-top: 0.6rem; }
+
+.attendance-review-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.1rem 1.25rem;
+}
+
+.attendance-review-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.15rem;
+}
+.attendance-review-teacher { font-size: 1rem; font-weight: 700; color: var(--text); }
+.attendance-review-date { font-size: 0.85rem; color: var(--text-muted); }
+
+.attendance-review-pattern-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: var(--radius-sm);
+}
+[data-theme='dark'] .attendance-review-pattern-warning { color: #fde68a; background: #451a03; }
+
+.attendance-review-evidence {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0.9rem 0;
+  padding: 0.75rem 0.9rem;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+.attendance-review-evidence dt {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  margin: 0 0 0.15rem;
+}
+.attendance-review-evidence dd { margin: 0; font-size: 0.88rem; color: var(--text); }
+
+/* Settings tab (Principal) — same grid shape as .settings-grid (own copy
+   per this codebase's per-feature CSS-prefix convention). */
+.attendance-settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.9rem; margin-bottom: 1rem; }
+.attendance-subhead { font-size: 1rem; font-weight: 700; margin: 1.4rem 0 0.6rem; }
+
+/* Settings regrouped into named, collapsible sections
+   (docs/attendance-register-design.html §8) — the same fields as before,
+   organized by what a Principal is actually trying to change in one sitting. */
+.attendance-settings-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.7rem;
+  overflow: hidden;
+}
+.attendance-settings-group summary {
+  padding: 0.75rem 0.9rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  background: var(--surface-2);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.attendance-settings-group summary::-webkit-details-marker { display: none; }
+.attendance-settings-group summary::after {
+  content: '▾';
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+.attendance-settings-group[open] summary::after { transform: rotate(180deg); }
+.attendance-settings-group-body { padding: 1rem 0.9rem; }
+.attendance-settings-group .attendance-settings-grid,
+.attendance-settings-group .attendance-weekday-picker,
+.attendance-settings-group .attendance-location-row { margin-bottom: 0; }
+/* A lead-in explanation line above a group's fields — left-aligned and
+   flush with the group body's own top padding, unlike .attendance-hint's
+   base centered/standalone styling (meant for "no results" style messages
+   elsewhere in this feature, not a sentence introducing a form). */
+.attendance-settings-group-body > .attendance-hint:first-child { text-align: left; margin: 0 0 1rem; }
+
+.attendance-location-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1.4rem; }
+.attendance-location-row .text-input { flex: 1; }
+.attendance-locate-btn { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
+
+.attendance-holiday-form { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.9rem; }
+
+.attendance-holiday-actions { display: flex; gap: 0.25rem; flex-shrink: 0; }
+.attendance-holiday-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; width: 100%; }
+.attendance-holiday-edit .text-input:first-child { flex: 0 0 150px; }
+.attendance-holiday-edit .text-input:nth-child(2) { flex: 1; min-width: 140px; }
+.attendance-holiday-form .text-input { flex: 1; min-width: 140px; }
+
+/* Reports tab (Principal) — one row per teacher; clicking a row REPLACES
+   the table with that teacher's own day-by-day view (a "Back to all
+   teachers" link takes you out) rather than expanding inline — a list of
+   days doesn't read well squeezed into one cell of a wide number table.
+   Wide table gets its own horizontal scroll, per this app's "the page body
+   never scrolls sideways" convention. */
+@keyframes attendance-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.attendance-fade-in { animation: attendance-fade-in 0.18s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .attendance-fade-in { animation: none; }
+}
+
+.attendance-reports-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin-bottom: 1.1rem;
+}
+/* A pill toggle, same visual language as the Activity tab's filter chips,
+   rather than a plain checkbox — and carries its own live count so "how
+   many need a look" is visible before the filter is even switched on. */
+.attendance-reports-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.attendance-reports-filter-chip.active { background: var(--orange-soft); color: var(--orange); border-color: var(--orange); }
+.attendance-reports-filter-chip-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--att-absent-soft);
+  color: var(--att-absent);
+  font-size: 0.72rem;
+}
+.attendance-reports-filter-chip.active .attendance-reports-filter-chip-count { background: var(--surface); }
+.attendance-reports-download { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; margin-left: auto; }
+
+/* Top-edge progress bar shown while a page/search/month refresh is
+   in-flight — always mounted at a fixed height so it never shifts layout,
+   only its motion turns on/off. */
+.attendance-reports-progress-track { height: 2px; margin: -0.4rem 0 0.9rem; border-radius: 999px; overflow: hidden; background: transparent; }
+.attendance-reports-progress-track.active { background: var(--border); }
+.attendance-reports-progress-bar { height: 100%; width: 35%; border-radius: 999px; background: var(--orange); transform: translateX(-100%); }
+.attendance-reports-progress-track.active .attendance-reports-progress-bar { animation: attendance-reports-sweep 1.1s ease-in-out infinite; }
+@keyframes attendance-reports-sweep {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(80%); }
+  100% { transform: translateX(240%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .attendance-reports-progress-track.active .attendance-reports-progress-bar { animation: none; }
+}
+
+.attendance-reports-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.attendance-reports-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+.attendance-reports-table th {
+  text-align: left;
+  padding: 0.65rem 0.85rem;
+  background: var(--surface-2);
+  border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.attendance-reports-table td {
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.attendance-reports-table tbody tr:last-child td { border-bottom: none; }
+.attendance-reports-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--surface-2) 45%, transparent); }
+
+/* Separates the two "needs your attention" columns (Flagged, Missing
+   checkout) from the six routine ones to their left — a plain wall of
+   nine equal-weight numbers is hard to scan at a glance; this makes clear
+   which two are actually worth stopping on. */
+.attendance-reports-divider-col { border-left: 2px solid var(--border); }
+
+/* Nonzero counts should read normally; a zero is a non-event and shouldn't
+   compete for attention in a row of otherwise-meaningful numbers. */
+.attendance-reports-zero { color: var(--text-muted); opacity: 0.6; }
+
+/* Flagged/missing-checkout counts as a small pill rather than bare colored
+   text — same "state as a chip" language as the rest of this feature. */
+.attendance-reports-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  background: var(--att-info-soft);
+  color: var(--att-info);
+}
+.attendance-reports-badge.warn { background: var(--att-absent-soft); color: var(--att-absent); }
+
+/* Teacher name stays put while the rest of the (wide) row scrolls
+   horizontally — otherwise a scrolled-right row is unreadable, no way to
+   tell whose numbers you're looking at. Needs its own OPAQUE background
+   (the zebra stripe above is semi-transparent) so scrolling content
+   doesn't show through underneath it. */
+.attendance-reports-table th:first-child,
+.attendance-reports-table td:first-child {
+  position: sticky;
+  left: 0;
+  box-shadow: 1px 0 0 var(--border);
+  /* Fixed, not auto — a long email (some run 40+ characters) used to
+     stretch this column wide enough to push every numeric column off
+     screen. Capped here and truncated with an ellipsis (see
+     .attendance-reports-name-text) instead. */
+  width: 210px;
+  max-width: 210px;
+}
+.attendance-reports-table th:first-child { background: var(--surface-2); z-index: 2; }
+.attendance-reports-table td:first-child { background: var(--surface); z-index: 1; }
+.attendance-reports-table tbody tr:nth-child(even) td:first-child { background: var(--surface-2); }
+.attendance-reports-table tbody tr.attendance-reports-row:hover td:first-child { background: var(--orange-soft); }
+
+.attendance-reports-num-col { text-align: right; }
+
+/* Initials avatar ahead of the name — a plain text list of 25 names is
+   hard to scan quickly; a circle of color per row gives the eye something
+   to lock onto while skimming a large roster. */
+.attendance-reports-name-cell { display: flex; align-items: center; gap: 0.65rem; min-width: 0; }
+.attendance-reports-name-text { min-width: 0; overflow: hidden; }
+.attendance-reports-name-primary { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attendance-reports-avatar {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--orange-soft);
+  color: var(--orange-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+[data-theme='dark'] .attendance-reports-avatar { color: var(--orange); }
+
+/* Two teachers can share a display name — this is the only thing that
+   actually tells them apart, so it always renders, not just on hover. */
+.attendance-reports-email { display: block; font-size: 0.76rem; font-weight: 400; color: var(--text-muted); }
+/* Only truncate inside the table's fixed-width name column — the
+   drill-down header has room to show the whole address. */
+.attendance-reports-name-text .attendance-reports-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attendance-reports-chevron-col { width: 1.5rem; color: var(--text-muted); }
+.attendance-reports-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 0;
+  transition: color 0.12s ease;
+}
+.attendance-reports-sort-btn:hover { color: var(--text); }
+.attendance-reports-sort-btn.active { color: var(--orange); }
+th.attendance-reports-num-col .attendance-reports-sort-btn { flex-direction: row-reverse; }
+.attendance-reports-sort-idle { color: var(--text-muted); opacity: 0.5; }
+.attendance-reports-row { cursor: pointer; transition: background-color 0.1s ease; }
+.attendance-reports-row:hover { background: var(--orange-soft); }
+
+.attendance-reports-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.9rem;
+  padding: 0.2rem 0;
+}
+
+/* Drill-down header — a bigger avatar than the table's, name and email
+   grouped together instead of two separately-spaced lines. */
+.attendance-reports-detail-header { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 1.2rem; }
+.attendance-reports-avatar-lg { width: 3rem; height: 3rem; font-size: 1rem; }
+.attendance-reports-detail-header .attendance-subhead { margin: 0; }
+.attendance-reports-detail-header .attendance-reports-email { margin: 0.15rem 0 0; }
+
+/* Trend + this-month used to float as two disconnected, unbounded blocks
+   with no label saying what they were — now each is its own titled card,
+   side by side where there's room. */
+.attendance-reports-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.9rem; margin-bottom: 1.3rem; max-width: 640px; }
+.attendance-reports-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.9rem 1rem; }
+.attendance-reports-panel .attendance-trend-labels,
+.attendance-reports-panel .attendance-summary { margin-bottom: 0; }
+.attendance-reports-panel-title { margin: 0 0 0.7rem; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.attendance-reports-daybyday-title { margin: 0 0 0.6rem; }
+
+.attendance-reports-detail .attendance-history-list { max-width: 640px; margin-top: 0; }
+
+.attendance-reports-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+}
+.attendance-reports-pagination-btns { display: flex; align-items: center; gap: 0.6rem; }
+.attendance-reports-pagination-btns .btn-text { padding: 0.2rem 0.5rem; }
+.attendance-reports-pagination-btns .btn-text:disabled { opacity: 0.4; cursor: default; }
+
+/* At-a-glance counts, independent of whatever filter is currently applied
+   below — "how much happened, and of what kind" before reading a single
+   row (the same reasoning as Reports' own dashboard cards). */
+.attendance-activity-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.1rem;
+  margin: 0.8rem 0 1rem;
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+.attendance-activity-summary-item strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.attendance-activity-summary-item.tone-routine strong { color: var(--att-present); }
+.attendance-activity-summary-item.tone-admin strong { color: var(--att-info); }
+.attendance-activity-summary-item.tone-warning strong { color: var(--att-absent); }
+
+.attendance-activity-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 0.8rem;
+  margin: 0 0 1.3rem;
+}
+.attendance-activity-search { flex: 1 1 200px; max-width: 240px; }
+
+/* A real segmented control (not a row of independent chips) — the active
+   segment "floats" on its own surface inside a shared track, the pattern
+   iOS/Linear use for "one choice among a few peers." Visually distinct from
+   the day-range chips beside it, which are independent toggles, not one
+   mutually-exclusive group in the same sense. */
+.attendance-activity-segmented {
+  display: inline-flex;
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+}
+.attendance-activity-segmented button {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.attendance-activity-segmented button.active { background: var(--surface); color: var(--orange); box-shadow: var(--shadow); }
+
+.attendance-activity-chips { display: flex; gap: 0.3rem; margin-left: auto; }
+.attendance-activity-chip {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.attendance-activity-chip.active { background: var(--orange-soft); color: var(--orange); border-color: var(--orange); }
+
+/* ---- Timeline ---- */
+
+.attendance-activity-day { margin-bottom: 1.4rem; }
+.attendance-activity-day-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 0 0 0.3rem 0.1rem;
+}
+
+.attendance-activity-events { list-style: none; margin: 0; padding: 0; }
+
+.attendance-activity-event {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  gap: 0.7rem;
+  align-items: start;
+  position: relative;
+  margin: 0 -0.5rem;
+  padding: 0.5rem 0.5rem;
+  border-radius: var(--radius-sm);
+}
+.attendance-activity-event:hover { background: var(--surface-2); }
+/* The connecting line between consecutive dots, within one day's group
+   only — it should read as "time passing within this day," not bridge
+   across a date boundary. */
+.attendance-activity-event:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 19px;
+  top: 32px;
+  bottom: -0.5rem;
+  width: 2px;
+  background: var(--border);
+}
+
+.attendance-activity-dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+}
+.attendance-activity-event.tone-routine .attendance-activity-dot { background: var(--att-present-soft); color: var(--att-present); }
+.attendance-activity-event.tone-warning .attendance-activity-dot { background: var(--att-absent-soft); color: var(--att-absent); }
+.attendance-activity-event.tone-admin .attendance-activity-dot { background: var(--att-info-soft); color: var(--att-info); }
+
+.attendance-activity-content { min-width: 0; }
+.attendance-activity-primary { font-size: 0.87rem; margin: 0; color: var(--text); }
+.attendance-activity-primary b { font-weight: 700; }
+.attendance-activity-event.tone-warning .attendance-activity-primary { color: var(--att-absent); }
+.attendance-activity-secondary { font-size: 0.78rem; color: var(--text-muted); margin: 0.1rem 0 0; }
+
+.attendance-activity-time {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  padding-top: 0.1rem;
+}
+
+/* Month-at-a-glance strip (MiniCalendarStrip.tsx). */
+.attendance-cal-strip {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+  margin: 0.6rem 0 1rem;
+  max-width: 320px;
+}
+.attendance-cal-head {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-align: center;
+  color: var(--text-muted);
+  padding-bottom: 2px;
+}
+.attendance-cal-cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.attendance-cal-empty { background: transparent; }
+.attendance-cal-present { background: var(--att-present-soft); color: var(--att-present); }
+.attendance-cal-warning { background: var(--att-warning-soft); color: var(--att-warning); }
+.attendance-cal-absent { background: var(--att-absent-soft); color: var(--att-absent); }
+.attendance-cal-off { background: var(--surface-2); color: var(--text-muted); }
+
+/* Dashboard-style "today" stat cards atop Reports — the landing glance
+   before the table (docs/attendance-register-design.html §5). */
+.attendance-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.7rem;
+  margin-bottom: 1.1rem;
+}
+.attendance-stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1rem;
+}
+.attendance-stat-card-n { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; display: block; }
+.attendance-stat-card-l { font-size: 0.76rem; color: var(--text-muted); display: block; }
+.attendance-stat-card.present .attendance-stat-card-n { color: var(--att-present); }
+.attendance-stat-card.warning .attendance-stat-card-n { color: var(--att-warning); }
+.attendance-stat-card.absent .attendance-stat-card-n { color: var(--att-absent); }
+
+/* 6-month trend strip in the Reports drill-down. */
+.attendance-trend-strip { display: flex; align-items: flex-end; gap: 6px; height: 40px; margin: 0.5rem 0 0.15rem; }
+.attendance-trend-bar { width: 14px; border-radius: 3px 3px 0 0; background: var(--att-present-soft); min-height: 3px; }
+.attendance-trend-bar.hi { background: var(--att-warning); }
+.attendance-trend-bar.mid { background: var(--att-warning-soft); }
+.attendance-trend-labels { display: flex; gap: 6px; margin-bottom: 0.9rem; }
+.attendance-trend-labels span { width: 14px; font-size: 0.6rem; color: var(--text-muted); text-align: center; }
+
+/* A clearly-bounded pill rather than bare text — the same action tucked
+   into a plain .btn-text read as stray, easy-to-miss clutter rather than
+   a deliberate admin control. */
+.attendance-drilldown-correct {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.76rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--surface);
+}
+.attendance-drilldown-correct:hover:not(:disabled) {
+  border-color: var(--orange);
+  color: var(--orange);
+  background: var(--orange-soft);
+}
+
+/* Offline-queue banner — check-in/check-out saved locally, not yet synced. */
+.attendance-queued-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.9rem;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+.attendance-queued-banner .btn-text { margin-left: auto; font-size: 0.82rem; padding: 0.3rem 0.6rem; }
+
+/* Closing-time checkout reminder — calm, inline, not a blocking alert. */
+.attendance-reminder-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.8rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0.5rem 0;
+}
+[data-theme='dark'] .attendance-reminder-banner { color: #fbbf24; background: rgba(251, 191, 36, 0.12); }
+
+/* Weekly-off day picker — Settings tab. */
+.attendance-weekday-picker { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.4rem; }
+.attendance-weekday-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.attendance-weekday-chip input { margin: 0; }
+.attendance-weekday-chip.checked { background: var(--orange-soft); border-color: var(--orange); color: var(--orange); }

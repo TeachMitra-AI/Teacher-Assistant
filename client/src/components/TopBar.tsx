@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { PanelLeft, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../auth';
 import { usePreferences } from '../hooks/usePreferences';
-import { ADMIN_ROLES, NOTIFICATIONS_ENABLED, CLASSROOM_MANAGEMENT_ENABLED } from '../config';
+import { ADMIN_ROLES, NOTIFICATIONS_ENABLED, CLASSROOM_MANAGEMENT_ENABLED, TEACHER_ATTENDANCE_ENABLED } from '../config';
 import ProfileMenu from './ProfileMenu';
 import NotificationBell from './Notifications';
 
@@ -100,6 +100,20 @@ export default function TopBar({
                 aria-current={location.pathname.startsWith('/classroom') ? 'page' : undefined}
               >
                 Classroom
+              </Link>
+            )}
+            {/* Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md)
+                — NOT the Classroom Management link above, which is a
+                teacher marking their STUDENTS attendance; this is a
+                teacher's own. Client-side cosmetic gate only; the server's
+                TEACHER_ATTENDANCE_ENABLED is the real kill switch. */}
+            {TEACHER_ATTENDANCE_ENABLED && (
+              <Link
+                to="/attendance"
+                className={`nav-link${location.pathname.startsWith('/attendance') ? ' active' : ''}`}
+                aria-current={location.pathname.startsWith('/attendance') ? 'page' : undefined}
+              >
+                Attendance
               </Link>
             )}
             <Link
