@@ -652,48 +652,6 @@ export interface ClassAnalytics {
   };
 }
 
-// ---- Classroom Management — Reports/Dashboard (Phase 11) -------------------
-//
-// GET /classroom/analytics/overview — teacher-wide (every class), mirrors
-// server/src/lib/classroomAttendance.js's getTeacherAttendanceToday/
-// getTeacherAttendanceMonth and classroomFees.js's getTeacherFeeCounts
-// exactly. Unlike ClassAnalytics.month above, these are aggregate-only (no
-// perStudent) — there is no "all students across every class" list to show.
-export interface TeacherAttendanceToday {
-  totalStudents: number;
-  present: number;
-  absent: number;
-  unmarked: number;
-  percentage: number | null;
-}
-
-export interface TeacherAttendanceMonth {
-  month: string;
-  totalStudents: number;
-  daysMarked: number;
-  present: number;
-  absent: number;
-  unmarked: number;
-  percentage: number | null;
-}
-
-export interface TeacherFeeCounts {
-  period: string;
-  totalStudents: number;
-  paid: number;
-  partial: number;
-  pending: number;
-  totalCollected: number;
-  totalExpected: number;
-}
-
-export interface TeacherAnalyticsOverview {
-  totalStudents: number;
-  today: TeacherAttendanceToday;
-  month: TeacherAttendanceMonth;
-  fees: TeacherFeeCounts;
-}
-
 // A saved item in the teacher's personal library. Mirrors the server DTO
 // (see server/src/routes/resources.js) — no ownership/internal fields.
 export interface LibraryResource {

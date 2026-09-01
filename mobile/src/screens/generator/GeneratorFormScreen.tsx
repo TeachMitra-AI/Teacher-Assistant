@@ -15,7 +15,6 @@ import {
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Sparkles, Minus, Plus } from 'lucide-react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { GeneratorStackParamList } from '../../navigation/types';
 import { ThemedText } from '../../components/ThemedText';
 import { TextField } from '../../components/TextField';
@@ -35,7 +34,6 @@ type Props = NativeStackScreenProps<GeneratorStackParamList, 'GeneratorForm'>;
 
 export function GeneratorFormScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
 
   const [format, setFormat] = useState<AssessmentFormat>('quiz');
   const [grade, setGrade] = useState('');
@@ -219,37 +217,34 @@ export function GeneratorFormScreen({ navigation }: Props) {
           placeholder="e.g. Focus on real-life examples; suitable for a 20-minute class activity"
         />
 
+        {/* Part of the scrollable form content, not a fixed/sticky footer —
+            matches the web's .generator-actions, which is just the last
+            child inside <form>, scrolling with the rest of the page
+            (client/src/pages/GeneratorPage.tsx). The user scrolls down
+            through the form to reach it, same as on web. */}
+        <View style={styles.actions}>
+          <Button
+            title={generating ? 'Generating…' : 'Generate'}
+            onPress={handleGenerate}
+            loading={generating}
+            disabled={generating || !topic.trim()}
+          />
+          {!generating && (
+            <View style={styles.generateHint}>
+              <Sparkles size={13} color={colors.textMuted} />
+              <ThemedText variant="muted" style={styles.generateHintText}>
+                Opens a review screen where you can edit every question before saving.
+              </ThemedText>
+            </View>
+          )}
+        </View>
+
         {error ? (
           <View style={[styles.errorBanner, { backgroundColor: colors.semantic.danger.bg }]} accessibilityRole="alert">
             <ThemedText style={{ color: colors.semantic.danger.text }}>{error}</ThemedText>
           </View>
         ) : null}
       </ScrollView>
-
-      {/* Sticky bottom action bar, matching the web's own .classroom-save-bar
-          precedent (UI_REFINED.md §13) — the primary action stays
-          thumb-reachable instead of sitting below a 9-field scroll. */}
-      <View
-        style={[
-          styles.actionBar,
-          { backgroundColor: colors.surface, borderTopColor: colors.border, paddingBottom: insets.bottom + spacing.sm },
-        ]}
-      >
-        <Button
-          title={generating ? 'Generating…' : 'Generate'}
-          onPress={handleGenerate}
-          loading={generating}
-          disabled={generating || !topic.trim()}
-        />
-        {!generating && (
-          <View style={styles.generateHint}>
-            <Sparkles size={13} color={colors.textMuted} />
-            <ThemedText variant="muted" style={styles.generateHintText}>
-              Opens a review screen where you can edit every question before saving.
-            </ThemedText>
-          </View>
-        )}
-      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -270,9 +265,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.sm,
   },
   errorBanner: { borderRadius: 10, padding: spacing.sm },
-  actionBar: {
-    borderTopWidth: StyleSheet.hairlineWidth, padding: spacing.lg, paddingTop: spacing.md, gap: spacing.sm,
-  },
+  actions: { gap: spacing.sm },
   generateHint: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
   generateHintText: { fontSize: 12, flex: 1 },
 });
