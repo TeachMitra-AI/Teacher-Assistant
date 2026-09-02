@@ -25,7 +25,9 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider } from '../../../theme/ThemeContext';
 import { ApiError } from '../../../api/client';
 import { CoachScreen } from '../CoachScreen';
-import { shouldClaimSidebarSwipe, isSidebarCloseSwipe } from '../HistorySidebar';
+import {
+  shouldClaimSidebarSwipe, isSidebarCloseSwipe, isSidebarOpenSwipe, shouldClaimEdgeOpenSwipe,
+} from '../HistorySidebar';
 import type { HistoryItem } from '../../../types';
 
 jest.mock('../../../auth/AuthContext', () => ({
@@ -321,6 +323,20 @@ describe('CoachScreen', () => {
     expect(typeof swipeArea.props.onResponderRelease).toBe('function');
   });
 
+  it('the left-edge swipe-to-open area is always present, closed or open', async () => {
+    // Mirrors the swipe-to-close wiring check above, for the opening
+    // gesture: it has to be reachable before the sidebar opens (that's the
+    // whole point), so it renders unconditionally rather than only once
+    // `sidebarOpen` is true.
+    await act(async () => {
+      renderScreen();
+    });
+
+    const edgeArea = screen.getByTestId('sidebar-edge-swipe-area');
+    expect(typeof edgeArea.props.onMoveShouldSetResponder).toBe('function');
+    expect(typeof edgeArea.props.onResponderRelease).toBe('function');
+  });
+
   it('New chat clears an active thread back to the empty state', async () => {
     listHistory.mockResolvedValueOnce([HIST_1]);
     askCoach.mockResolvedValueOnce({ success: true, text: 'An answer.', language: 'en', context: {}, queryId: 'q9' });
@@ -488,6 +504,56 @@ describe('HistorySidebar swipe-to-close gesture logic', () => {
 
     it('does not close on a left-to-right drag (opening direction, not closing)', () => {
       expect(isSidebarCloseSwipe(80)).toBe(false);
+    });
+
+    it('closes on a fast leftward fling even below the distance threshold', () => {
+      expect(isSidebarCloseSwipe(-20, -0.6)).toBe(true);
+    });
+
+    it('does not close on a slow drag below the threshold', () => {
+      expect(isSidebarCloseSwipe(-20, -0.1)).toBe(false);
+    });
+  });
+
+  describe('isSidebarOpenSwipe', () => {
+    it('opens once dx passes the left-to-right threshold', () => {
+      expect(isSidebarOpenSwipe(61)).toBe(true);
+      expect(isSidebarOpenSwipe(200)).toBe(true);
+    });
+
+    it('does not open on a short drag below the threshold', () => {
+      expect(isSidebarOpenSwipe(20)).toBe(false);
+      expect(isSidebarOpenSwipe(0)).toBe(false);
+    });
+
+    it('does not open on a right-to-left drag (closing direction, not opening)', () => {
+      expect(isSidebarOpenSwipe(-80)).toBe(false);
+    });
+
+    it('opens on a fast rightward fling even below the distance threshold', () => {
+      expect(isSidebarOpenSwipe(20, 0.6)).toBe(true);
+    });
+
+    it('does not open on a slow drag below the threshold', () => {
+      expect(isSidebarOpenSwipe(20, 0.1)).toBe(false);
+    });
+  });
+
+  describe('shouldClaimEdgeOpenSwipe', () => {
+    it('claims a mostly-horizontal rightward drag past the minimum distance', () => {
+      expect(shouldClaimEdgeOpenSwipe(80, 5)).toBe(true);
+    });
+
+    it('does not claim a mostly-vertical drag (list scrolling)', () => {
+      expect(shouldClaimEdgeOpenSwipe(10, 60)).toBe(false);
+    });
+
+    it('does not claim a drag that has barely moved yet', () => {
+      expect(shouldClaimEdgeOpenSwipe(5, 0)).toBe(false);
+    });
+
+    it('does not claim a leftward drag (that closes, it does not open)', () => {
+      expect(shouldClaimEdgeOpenSwipe(-80, 5)).toBe(false);
     });
   });
 });

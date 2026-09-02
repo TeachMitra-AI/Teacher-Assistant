@@ -303,6 +303,7 @@ export function CoachScreen({ navigation }: Props) {
         onTogglePin={togglePin}
         onRename={renameHistoryItem}
         onClose={() => setSidebarOpen(false)}
+        onOpen={openSidebar}
         onNewChat={handleNewChat}
         onSelect={selectHistory}
         onDelete={handleDeleteHistory}
