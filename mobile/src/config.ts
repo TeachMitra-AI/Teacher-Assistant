@@ -42,6 +42,39 @@ export const SOCKET_BASE = API_BASE.replace(/\/api\/?$/, '');
 // composer can stop a teacher before that round trip, not after it.
 export const MAX_QUERY_LENGTH = 500;
 
+// ---- Multimodal attachments (Coach: image/PDF upload) ----------------------
+//
+// Client-side gate, same deliberately-opt-in shape and same "not the real
+// kill switch" caveat as every flag in this file: the server's
+// ATTACHMENTS_ENABLED is the immediately-effective one (POST
+// /api/coach/attachment returns 503 regardless of this flag). When false (the
+// default), the "+" attach button is never rendered — "zero new UI" default.
+// Mirrors the web client's VITE_ATTACHMENTS_ENABLED.
+export const ATTACHMENTS_ENABLED = process.env.EXPO_PUBLIC_ATTACHMENTS_ENABLED === 'true';
+
+// Client-side checks only — mirrors client/src/config.ts's
+// MAX_ATTACHMENT_SIZE_MB/ALLOWED_ATTACHMENT_MIME_TYPES/MAX_ATTACHMENTS_COUNT/
+// MAX_ATTACHMENTS_TOTAL_SIZE_MB exactly (same SERVER COUNTERPART note applies
+// — server/src/lib/fileValidation.js and server/src/lib/flags.js hold the
+// authoritative bounds; keep these in step as "the common default").
+export const MAX_ATTACHMENT_SIZE_MB = 8;
+export const ALLOWED_ATTACHMENT_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+export const MAX_ATTACHMENTS_COUNT = 5;
+export const MAX_ATTACHMENTS_TOTAL_SIZE_MB = 15;
+// How many attachment chips the tray shows before collapsing the rest behind
+// "+N more" — a UI constant, not a server-mirrored limit.
+export const ATTACHMENT_TRAY_VISIBLE_COUNT = 3;
+
+// ---- Classroom Mode ----------------------------------------------------------
+//
+// Client-side gate, same shape and caveat as ATTACHMENTS_ENABLED above: the
+// server's CLASSROOM_MODE_ENABLED is the immediately-effective one (it
+// refuses to plan or generate artifacts regardless of this flag). When false
+// (the default), the Assistant Mode / Classroom Mode selector is never
+// rendered in the Composer. Mirrors the web client's
+// VITE_CLASSROOM_MODE_ENABLED. See docs/classroom-mode.md.
+export const CLASSROOM_MODE_ENABLED = process.env.EXPO_PUBLIC_CLASSROOM_MODE_ENABLED === 'true';
+
 // --- Phase 5 (Library) ---
 // Ported from client/src/config.ts. Same closed vocabularies, same server
 // counterpart (server/src/routes/resources.js's RESOURCE_TYPES) — kept in

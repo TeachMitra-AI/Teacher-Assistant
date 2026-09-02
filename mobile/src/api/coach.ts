@@ -16,12 +16,42 @@ import type { CoachResponse, HistoryItem, QueryContext } from '../types';
 export async function askCoach(
   query: string,
   language: string,
-  context: QueryContext
+  context: QueryContext,
+  classroomMode = false
 ): Promise<CoachResponse> {
   return api<CoachResponse>('/coach', {
     method: 'POST',
-    body: { query, language, context },
+    // `classroomMode` is sent only when it is actually on, matching the
+    // web's CoachPage.runTurn — a teacher who never touches the feature
+    // produces a request body identical to the one this app has always sent.
+    body: { query, language, context, ...(classroomMode ? { classroomMode: true } : {}) },
   });
+}
+
+// The multimodal-attachment sibling of askCoach — a SEPARATE endpoint (POST
+// /api/coach/attachment, multipart) rather than a branch inside askCoach,
+// matching the web's CoachPage.runTurnWithAttachments (see
+// docs/multimodal-attachments-architecture.md). No `context` is sent — the
+// attachment endpoint has no grade/subject fields. ALL files go in ONE
+// request (repeated 'files' form entries), not one call per file, so the
+// server sends everything to Gemini together in a single reasoning pass.
+export async function askCoachWithAttachments(
+  query: string,
+  language: string,
+  files: { uri: string; name: string; mimeType: string }[]
+): Promise<CoachResponse> {
+  const formData = new FormData();
+  formData.append('query', query);
+  formData.append('language', language);
+  for (const file of files) {
+    // React Native's FormData accepts a {uri, name, type} object in place of
+    // a Blob — the RN/Expo runtime reads the local file at `uri` and streams
+    // it as that form part. Not a real Blob, so the DOM FormData typings
+    // don't describe it; the cast matches the pattern used throughout the
+    // Expo ecosystem for multipart uploads.
+    formData.append('files', { uri: file.uri, name: file.name, type: file.mimeType } as unknown as Blob);
+  }
+  return api<CoachResponse>('/coach/attachment', { method: 'POST', body: formData });
 }
 
 export async function sendCoachFeedback(

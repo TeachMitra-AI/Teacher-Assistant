@@ -1,12 +1,12 @@
 // Native port of client/src/components/MessageBubble.tsx's core states
-// (pending/error/done), now including edit-in-place — not a 1:1 port:
-// copy-to-clipboard, read-aloud, share, save-to-library and Classroom Mode
-// are still web-only for this phase (see docs/mobile-app-plan.md's Phase 4
-// status note; copy-to-clipboard needs a native module (expo-clipboard) not
-// currently installed, deliberately not added just for this).
+// (pending/error/done), now including edit-in-place, attachments and
+// Classroom Mode — not a 1:1 port: copy-to-clipboard, read-aloud and share
+// are still web-only (copy-to-clipboard needs a native module,
+// expo-clipboard, not currently installed, deliberately not added just for
+// this).
 import React, { useState } from 'react';
 import { View, Pressable, TextInput, StyleSheet } from 'react-native';
-import { ThumbsUp, ThumbsDown, Pencil } from 'lucide-react-native';
+import { GraduationCap, ThumbsUp, ThumbsDown, Pencil } from 'lucide-react-native';
 import { ThemedText } from '../../components/ThemedText';
 import { Button } from '../../components/Button';
 import { useTheme } from '../../theme/ThemeContext';
@@ -14,6 +14,8 @@ import { radius, spacing } from '../../theme/tokens';
 import { MAX_QUERY_LENGTH } from '../../config';
 import { RunStatus } from './RunStatus';
 import { MarkdownText } from './MarkdownText';
+import { AttachmentTray } from './AttachmentTray';
+import { ClassroomSet } from './ClassroomSet';
 import type { Turn } from '../../types';
 
 interface MessageBubbleProps {
@@ -32,7 +34,11 @@ export function MessageBubble({ turn, onRetry, onFeedback, onEdit }: MessageBubb
   // mobile Coach has no attachment feature to conflict with).
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(turn.query);
-  const canEdit = turn.status !== 'pending';
+  const hasAttachments = !!turn.attachments && turn.attachments.length > 0;
+  // Not offered on an attachment turn: resubmitting the edited text alone
+  // would silently drop the file(s) — the files themselves are never kept
+  // once a turn is sent (mirrors the web's MessageBubble.tsx canEdit guard).
+  const canEdit = turn.status !== 'pending' && !hasAttachments;
 
   function startEdit() {
     setDraft(turn.query);
@@ -80,6 +86,13 @@ export function MessageBubble({ turn, onRetry, onFeedback, onEdit }: MessageBubb
             </Pressable>
           )}
           <View style={[styles.userBubble, { backgroundColor: colors.surface2 }]}>
+            {hasAttachments && (
+              // Read-only: no onRemove, so the tray reused from Composer
+              // renders plain display chips here (mirrors the web).
+              <AttachmentTray
+                attachments={turn.attachments!.map((a, i) => ({ id: `${turn.id}-${i}`, name: a.name, kind: a.kind }))}
+              />
+            )}
             <ThemedText style={[styles.userText, { color: colors.text }]}>{turn.query}</ThemedText>
           </View>
         </View>
@@ -154,6 +167,27 @@ export function MessageBubble({ turn, onRetry, onFeedback, onEdit }: MessageBubb
                 </Pressable>
               </View>
             )}
+            {/* Classroom Mode ran for this turn but found nothing to make.
+                Told, not hidden — the teacher deliberately switched the mode
+                on and is entitled to know it looked (mirrors the web's
+                MessageBubble.tsx). Only rendered when the mode actually ran:
+                `classroomMode` without `classroom` — a normal chat turn
+                stays completely silent. */}
+            {turn.response.classroomMode && !turn.response.classroom && (
+              <View style={styles.classroomEmptyNote}>
+                <GraduationCap size={14} color={colors.orange} />
+                <ThemedText variant="muted" style={styles.classroomEmptyText}>
+                  No classroom materials for this one. Ask about a topic and I’ll create them.
+                </ThemedText>
+              </View>
+            )}
+            {turn.response.classroom && (
+              <ClassroomSet
+                plan={turn.response.classroom}
+                restored={turn.restored === true}
+                queryId={turn.response.queryId ?? undefined}
+              />
+            )}
           </View>
         )}
       </View>
@@ -182,6 +216,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 4,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
+    gap: spacing.xs,
   },
   userText: { fontSize: 15, lineHeight: 23 },
   assistantRow: { alignSelf: 'stretch' },
@@ -195,4 +230,6 @@ const styles = StyleSheet.create({
   answer: { gap: spacing.sm },
   retryText: { fontWeight: '600', fontSize: 14 },
   feedbackRow: { flexDirection: 'row', gap: spacing.md, paddingTop: spacing.xs },
+  classroomEmptyNote: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  classroomEmptyText: { fontSize: 13, flexShrink: 1 },
 });
