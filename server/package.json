@@ -21,7 +21,8 @@
     "eval:replay": "node evals/run.js --mode replay",
     "eval:compare": "node evals/compare.js",
     "assistant:metrics": "node tools/assistantMetrics.js",
-    "assistant:prune-events": "node tools/pruneAssistantEvents.js"
+    "assistant:prune-events": "node tools/pruneAssistantEvents.js",
+    "attendance:clear-test-data": "node tools/clearTeacherAttendance.js"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

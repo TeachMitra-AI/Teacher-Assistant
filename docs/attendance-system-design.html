@@ -1,0 +1,1282 @@
+<title>Attendance Verification</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #f6f5f0;
+    --surface: #ffffff;
+    --surface-2: #eef0ea;
+    --ink: #16211f;
+    --ink-soft: #445450;
+    --muted: #6f7c78;
+    --line: #dcded4;
+    --accent: #0f6e63;
+    --accent-ink: #ffffff;
+    --accent-soft: #e3efec;
+    --warm: #b5680f;
+    --warm-soft: #f7ead4;
+    --danger: #a33f3f;
+    --danger-soft: #f6e4e2;
+    --shadow: 0 1px 2px rgba(22,33,31,0.06), 0 8px 24px -12px rgba(22,33,31,0.15);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #11201d;
+      --surface: #172825;
+      --surface-2: #1e332f;
+      --ink: #eaf1ee;
+      --ink-soft: #b9c9c4;
+      --muted: #8fa19c;
+      --line: #2c423c;
+      --accent: #59c2b0;
+      --accent-ink: #0b1917;
+      --accent-soft: #1f3a35;
+      --warm: #e0a655;
+      --warm-soft: #3a2f1c;
+      --danger: #e08a83;
+      --danger-soft: #3a2320;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #11201d;
+    --surface: #172825;
+    --surface-2: #1e332f;
+    --ink: #eaf1ee;
+    --ink-soft: #b9c9c4;
+    --muted: #8fa19c;
+    --line: #2c423c;
+    --accent: #59c2b0;
+    --accent-ink: #0b1917;
+    --accent-soft: #1f3a35;
+    --warm: #e0a655;
+    --warm-soft: #3a2f1c;
+    --danger: #e08a83;
+    --danger-soft: #3a2320;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection { background: var(--accent-soft); color: var(--ink); }
+
+  a { color: var(--accent); }
+
+  h1, h2, h3 {
+    font-family: "Fraunces", ui-serif, Georgia, serif;
+    font-weight: 600;
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+
+  /* ---------- Header / hero ---------- */
+  .hero {
+    padding: 3.2rem 1.5rem 2.2rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .hero-inner { max-width: 760px; margin: 0 auto; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 22px; height: 1px;
+    background: var(--accent);
+    display: inline-block;
+  }
+  .hero h1 {
+    font-size: clamp(2rem, 4vw, 2.7rem);
+    margin: 0 0 0.9rem;
+    line-height: 1.08;
+  }
+  .hero p.lede {
+    font-size: 1.12rem;
+    color: var(--ink-soft);
+    max-width: 62ch;
+    margin: 0 0 1.6rem;
+  }
+  .tldr {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 10px;
+    padding: 1.1rem 1.3rem;
+    box-shadow: var(--shadow);
+    max-width: 66ch;
+  }
+  .tldr strong { color: var(--accent); font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; display: block; margin-bottom: 0.5rem; }
+  .tldr p { margin: 0 0 0.6rem; color: var(--ink-soft); }
+  .tldr p:last-child { margin-bottom: 0; }
+
+  /* ---------- Body grid: nav + content ---------- */
+  .body-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+    padding: 0 1.5rem 4rem;
+  }
+
+  nav.toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.5rem;
+    max-width: 900px;
+    margin: 1.6rem auto 0;
+    padding-bottom: 1.6rem;
+    border-bottom: 1px solid var(--line);
+  }
+  nav.toc a {
+    font-size: 0.82rem;
+    text-decoration: none;
+    color: var(--ink-soft);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    padding: 0.32rem 0.7rem;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  nav.toc a:hover { border-color: var(--accent); color: var(--accent); }
+
+  main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding-top: 2.6rem;
+  }
+
+  section { padding-bottom: 3rem; scroll-margin-top: 1.5rem; }
+  section + section { border-top: 1px solid var(--line); padding-top: 3rem; }
+
+  .kicker {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.76rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 0.5rem;
+  }
+  section h2 { font-size: 1.6rem; margin: 0 0 1rem; }
+  section h3 { font-size: 1.12rem; margin: 1.8rem 0 0.7rem; }
+  section p { color: var(--ink-soft); margin: 0 0 1rem; max-width: 66ch; }
+  section ul, section ol { color: var(--ink-soft); padding-left: 1.3rem; margin: 0 0 1.1rem; }
+  section li { margin-bottom: 0.45rem; max-width: 62ch; }
+  section li::marker { color: var(--muted); }
+  strong { color: var(--ink); }
+
+  .callout {
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    margin: 1.2rem 0;
+  }
+  .callout p { color: var(--ink); margin: 0; max-width: 60ch; }
+  .callout .label { font-family: "IBM Plex Mono", monospace; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); display: block; margin-bottom: 0.4rem; }
+
+  .callout.warm { background: var(--warm-soft); border-color: color-mix(in srgb, var(--warm) 35%, var(--line)); }
+  .callout.warm .label { color: var(--warm); }
+
+  /* ---------- Tables ---------- */
+  .table-wrap { overflow-x: auto; margin: 0 0 1.3rem; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; background: var(--surface); }
+  th, td { text-align: left; padding: 0.65rem 0.9rem; font-size: 0.92rem; vertical-align: top; border-bottom: 1px solid var(--line); }
+  th {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--surface-2);
+    font-weight: 500;
+  }
+  tr:last-child td { border-bottom: none; }
+  td { color: var(--ink-soft); }
+  td strong { color: var(--ink); }
+  td.situation { color: var(--ink); font-weight: 500; width: 30%; }
+
+  /* ---------- Tags ---------- */
+  .tag {
+    display: inline-block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 0.16rem 0.5rem;
+    border-radius: 5px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .tag-essential { background: var(--accent-soft); color: var(--accent); }
+  .tag-optional { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+  .tag-later { background: var(--warm-soft); color: var(--warm); }
+
+  /* ---------- Figures ---------- */
+  figure { margin: 1.6rem 0; }
+  figure svg { max-width: 100%; height: auto; display: block; color: var(--ink); }
+  figure .fig-frame {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 1.2rem 1rem;
+    box-shadow: var(--shadow);
+  }
+  figcaption { font-size: 0.85rem; color: var(--muted); margin-top: 0.7rem; max-width: 60ch; }
+  .accent-fill { fill: var(--accent); }
+  .accent-stroke { stroke: var(--accent); }
+  .warm-stroke { stroke: var(--warm); }
+  .warm-fill { fill: var(--warm); }
+
+  /* ---------- MVP / phase list ---------- */
+  .phase-list { display: flex; flex-direction: column; gap: 0.9rem; margin: 1.2rem 0; }
+  .phase {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.9rem;
+    align-items: start;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0.9rem 1.1rem;
+  }
+  .phase .num {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 6px;
+    padding: 0.15rem 0.5rem;
+    height: fit-content;
+  }
+  .phase p { margin: 0; color: var(--ink-soft); }
+  .phase strong { display: block; color: var(--ink); margin-bottom: 0.2rem; font-size: 0.98rem; }
+
+  /* ---------- Footer ---------- */
+  footer {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 0 4rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  @media (min-width: 960px) {
+    nav.toc {
+      position: sticky;
+      top: 2rem;
+      align-self: start;
+      display: flex;
+      flex-direction: column;
+      flex-wrap: nowrap;
+      max-width: 200px;
+      margin: 2.6rem 0 0;
+      padding-bottom: 0;
+      border-bottom: none;
+      border-right: 1px solid var(--line);
+      padding-right: 1.4rem;
+      max-height: calc(100vh - 4rem);
+      overflow-y: auto;
+    }
+    nav.toc a { background: none; border: none; padding: 0.2rem 0; border-radius: 0; }
+    nav.toc a:hover { text-decoration: underline; }
+    .body-grid { grid-template-columns: 200px 1fr; gap: 3rem; }
+    main { padding-top: 2.6rem; margin: 0; }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    a { transition: color 0.15s ease, border-color 0.15s ease; }
+  }
+
+  /* ---------- Working-time additions ---------- */
+  .toc-group {
+    flex-basis: 100%;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 0.8rem 0 0.1rem;
+  }
+
+  .approach-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    margin: 1.4rem 0 1.6rem;
+  }
+  @media (min-width: 700px) {
+    .approach-grid { grid-template-columns: 1fr 1fr; }
+  }
+  .approach-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 1.1rem 1.2rem;
+    box-shadow: var(--shadow);
+  }
+  .approach-card.recommended {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), var(--shadow);
+  }
+  .approach-card h4 {
+    font-family: "Fraunces", serif;
+    font-size: 1.08rem;
+    margin: 0 0 0.15rem;
+    color: var(--ink);
+  }
+  .approach-card .verdict {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 0.8rem;
+  }
+  .approach-card.recommended .verdict { color: var(--accent); }
+  .approach-card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.4rem 0.7rem; }
+  .approach-card dt {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    padding-top: 0.15rem;
+    white-space: nowrap;
+  }
+  .approach-card dd { margin: 0; font-size: 0.87rem; color: var(--ink-soft); line-height: 1.5; }
+
+  .config-note {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.8rem 1rem;
+    margin: 0 0 1.3rem;
+  }
+  .config-note div { margin-bottom: 0.25rem; }
+  .config-note div:last-child { margin-bottom: 0; }
+</style>
+
+<div class="layout">
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="eyebrow">Design research — nothing built yet</div>
+      <h1>An attendance verification system, thought through in plain words</h1>
+      <p class="lede">
+        You sketched a flow: login → device check → GPS → geofence → face match → liveness →
+        server check → attendance marked. Below is a plain-language walk-through of whether
+        that's realistic, what each step should actually do, and what to build first versus
+        later — grounded in what's already in this codebase.
+      </p>
+      <div class="tldr">
+        <strong>Short version</strong>
+        <p>Yes, this is buildable — every piece is a known, off-the-shelf technique. But the
+        <em>full</em> flow (face match + liveness + device lock) is heavy: expensive, easy to
+        get wrong, and hard on old phones and weak village networks. The honest-evidence
+        version — login, GPS, a stored selfie, and a server that double-checks everything —
+        already blocks the main way people cheat attendance (marking it from home). Add face
+        matching and liveness later, only if that alone isn't enough.</p>
+        <p>The one rule that matters more than any single step: <strong>the phone captures
+        evidence, the server decides.</strong> Never trust a "yes, verified" flag the app sends
+        — recompute it server-side from the raw GPS numbers and the raw photo, every time.</p>
+        <p><strong>Update:</strong> sections 18–23 extend this into a full working-time system —
+        school timing rules, late/early/half-day math, and a direct answer to whether GPS needs
+        to run all day (it doesn't).</p>
+      </div>
+    </div>
+  </header>
+
+  <div class="body-grid">
+    <nav class="toc" aria-label="Section navigation">
+      <a href="#feasibility">1. Is it feasible</a>
+      <a href="#flow">2. The flow, step by step</a>
+      <a href="#location">3. Location &amp; geofencing</a>
+      <a href="#face">4. Face &amp; liveness</a>
+      <a href="#device">5. Device &amp; session</a>
+      <a href="#server">6. Server-side truth</a>
+      <a href="#edge-cases">7. When things go wrong</a>
+      <a href="#data">8. What gets stored</a>
+      <a href="#ux">9. Teacher experience</a>
+      <a href="#admin">10. Admin tools</a>
+      <a href="#reports">11. Reports</a>
+      <a href="#privacy">12. Privacy &amp; security</a>
+      <a href="#risks">13. Real-world risks</a>
+      <a href="#mvp">14. Simplest MVP</a>
+      <a href="#later">15. Building later</a>
+      <a href="#india">16. Govt-school ideas</a>
+      <a href="#architecture">17. Recommended architecture</a>
+      <span class="toc-group">Working-time system</span>
+      <a href="#timing-model">18. School timing rules</a>
+      <a href="#status-calc">19. Present / Late / Absent math</a>
+      <a href="#walkthrough">20. Worked scenarios</a>
+      <a href="#location-strategy">21. How much GPS is needed</a>
+      <a href="#missed-edges">22. Edge cases you missed</a>
+      <a href="#final-model">23. Final working-time model</a>
+    </nav>
+
+    <main>
+
+      <section id="feasibility">
+        <p class="kicker">01 — Feasibility</p>
+        <h2>Yes, it's technically doable</h2>
+        <p>
+          Nothing in that flow needs new invention. GPS location, geofences, face matching,
+          and liveness checks are all mature, well-documented building blocks — libraries and
+          SDKs exist for every single one. The hard part was never "can this be built."
+        </p>
+        <p>
+          The hard part is: will it work reliably for a teacher standing in a school
+          courtyard, on a three-year-old Android phone, on patchy 3G, at 8:55am when class is
+          about to start? That's an operations and product problem, not a technology one — and
+          it's what most of this document is actually about.
+        </p>
+      </section>
+
+      <section id="flow">
+        <p class="kicker">02 — The flow, step by step</p>
+        <h2>What each step should actually do</h2>
+        <p>Your original flow, with a practical approach and an honest verdict on whether it
+        earns its place in a first version.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Step</th><th>Practical approach</th><th>Build now?</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Login</strong></td>
+                <td>Already exists — bcrypt-hashed password/PIN + short-lived JWT + revocable
+                refresh sessions. Reuse it as-is.</td>
+                <td><span class="tag tag-essential">Essential</span></td>
+              </tr>
+              <tr>
+                <td><strong>Device / session check</strong></td>
+                <td>Remember which device last signed in; flag (don't block) a new, unrecognized
+                device.</td>
+                <td><span class="tag tag-optional">Later</span></td>
+              </tr>
+              <tr>
+                <td><strong>GPS + accuracy</strong></td>
+                <td>Read the phone's location <em>and</em> its accuracy radius; reject / retry
+                readings that are too fuzzy.</td>
+                <td><span class="tag tag-essential">Essential</span></td>
+              </tr>
+              <tr>
+                <td><strong>Geofence check</strong></td>
+                <td>Store each school's centre point + radius; the server (not the phone)
+                computes the distance.</td>
+                <td><span class="tag tag-essential">Essential</span></td>
+              </tr>
+              <tr>
+                <td><strong>Face verification</strong></td>
+                <td>Enroll one reference selfie; compare a same-day selfie against it using an
+                on-device model.</td>
+                <td><span class="tag tag-later">Phase 2</span></td>
+              </tr>
+              <tr>
+                <td><strong>Liveness detection</strong></td>
+                <td>Only matters once face matching exists. One short, random active prompt
+                (e.g. blink).</td>
+                <td><span class="tag tag-later">Phase 3</span></td>
+              </tr>
+              <tr>
+                <td><strong>Server-side validation</strong></td>
+                <td>Server recomputes distance, re-checks the face score, stamps its own clock —
+                never trusts a flag the app sends.</td>
+                <td><span class="tag tag-essential">Non-negotiable</span></td>
+              </tr>
+              <tr>
+                <td><strong>Attendance marked</strong></td>
+                <td>One record, written once the server itself is satisfied, with the evidence
+                attached.</td>
+                <td><span class="tag tag-essential">Essential</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>In short: keep login, GPS, geofence, and server validation from day one. Face
+        matching, liveness, and device locking are real, useful upgrades — but they're where
+        the cost, the false-rejections, and the privacy weight live, so earn them in phase 2+
+        rather than shipping them all at once.</p>
+      </section>
+
+      <section id="location">
+        <p class="kicker">03 — Location</p>
+        <h2>Handling GPS inaccuracy, and geofencing a school</h2>
+        <p>
+          A phone's GPS doesn't give one exact point — it gives a point <em>plus</em> a
+          confidence radius ("you are here, give or take 40 metres"). That radius gets worse
+          indoors, near tall buildings, or with a cheap GPS chip.
+        </p>
+        <ul>
+          <li><strong>Set an accuracy floor.</strong> If the reported accuracy is worse than,
+          say, 100 metres, don't accept it — ask the app to wait a couple of seconds and try
+          again, and use the best of the last few readings.</li>
+          <li><strong>Make the geofence bigger than the GPS error.</strong> If typical error is
+          ±40–60m, a school geofence of 150–200m radius absorbs that noise. A tight geofence
+          the same size as the campus will reject real teachers standing on it.</li>
+          <li><strong>Never trust the phone's own "inside the fence" answer.</strong> The app
+          can compute a preview for instant feedback, but the number that counts is the one the
+          server computes itself from the raw coordinates.</li>
+        </ul>
+
+        <figure>
+          <div class="fig-frame">
+            <svg viewBox="0 0 400 300" role="img" aria-label="Diagram showing a school's geofence boundary drawn larger than the phone's typical GPS error radius, so a genuine teacher standing on campus isn't rejected by GPS noise.">
+              <circle cx="200" cy="155" r="120" fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.55"/>
+              <text x="200" y="27" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity="0.75">geofence boundary (e.g. 180m radius)</text>
+
+              <circle cx="255" cy="120" r="46" fill="none" class="accent-stroke" stroke-width="1.6" stroke-dasharray="4 4"/>
+              <text x="255" y="72" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" class="accent-fill">typical GPS error (±40–60m)</text>
+
+              <circle cx="200" cy="155" r="4.5" fill="currentColor"/>
+              <text x="200" y="175" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="11" fill="currentColor">School's stored coordinates</text>
+
+              <circle cx="255" cy="120" r="4.5" class="accent-fill"/>
+              <text x="262" y="118" text-anchor="start" font-family="IBM Plex Sans, sans-serif" font-size="11" class="accent-fill">Teacher's reported position</text>
+              <text x="262" y="132" text-anchor="start" font-family="IBM Plex Sans, sans-serif" font-size="10" fill="currentColor" opacity="0.6">(this check-in — still real, GPS just drifted)</text>
+            </svg>
+          </div>
+          <figcaption>The dashed circle is normal GPS drift, not spoofing. The solid geofence
+          has to be drawn wider than that drift, or honest teachers standing on campus get
+          bounced.</figcaption>
+        </figure>
+
+        <h3>Location spoofing</h3>
+        <p>
+          Apps exist that fake a phone's GPS (a "mock location"). Two practical defenses, used
+          together rather than relying on either alone:
+        </p>
+        <ul>
+          <li><strong>Mock-provider flag.</strong> Android tells the OS whether a location came
+          from a fake provider — check it and flag (or reject) any reading that's flagged.
+          iOS doesn't expose an equivalent, so treat this as a useful signal, not a guarantee.</li>
+          <li><strong>Impossible-travel check.</strong> If the same teacher's last check-in was
+          200km away 5 minutes ago, that's not a GPS-noise problem — flag it for review
+          regardless of what the mock-provider flag says.</li>
+        </ul>
+        <p><strong>Geofence shape:</strong> a circle (centre point + radius) is enough for
+        almost every school and is trivial to store and compute. Reach for a custom-drawn
+        polygon only for the rare oversized or oddly-shaped campus — it's not worth the extra
+        complexity as a default.</p>
+      </section>
+
+      <section id="face">
+        <p class="kicker">04 — Identity</p>
+        <h2>Face verification, and stopping a photo standing in for a face</h2>
+        <h3>How face verification works, in plain words</h3>
+        <p>
+          A teacher enrolls once with a clear reference selfie (ideally with an admin present,
+          so the reference photo itself can be trusted). On every check-in, the app captures a
+          new selfie. A face-matching model turns each photo into a string of numbers — a
+          "fingerprint" of that face — and the system checks how close the two fingerprints
+          are. Close enough, above a set threshold, counts as a match.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Option</th><th>Trade-off</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><strong>Cloud API</strong> (e.g. a hosted face-matching service)</td>
+                <td>Very accurate, but costs money per check, needs internet every time, and
+                sends teachers' faces to a third-party server — a real concern once
+                "government school" and "data localisation" are both in the picture.</td>
+              </tr>
+              <tr>
+                <td><strong>On-device model</strong> (runs inside the app itself)</td>
+                <td>Free per use, works with no internet, keeps the photo on the phone. Slightly
+                less accurate than the best cloud services, but more than enough for this use
+                case. <strong>Recommended</strong> for cost, offline-capability, and privacy —
+                especially at government-school scale.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Stopping someone from holding up a photo or playing a video</h3>
+        <p>
+          This is exactly the job of <strong>liveness detection</strong> — proving the thing in
+          front of the camera is a real, present person, not a printed photo or a screen
+          playing a video.
+        </p>
+        <ul>
+          <li><strong>Passive liveness</strong> — the model inspects a single shot for
+          giveaways: screen glare, flat texture, moiré patterns from a phone screen. No effort
+          from the teacher, but it's a quiet arms race against ever-better fakes.</li>
+          <li><strong>Active liveness</strong> — the app asks for one small, randomly-chosen
+          action in the moment (blink, turn your head, smile). Costs the teacher two or three
+          seconds, but a pre-recorded video can't fake a prompt it hasn't seen yet.</li>
+        </ul>
+        <div class="callout">
+          <span class="label">Recommendation</span>
+          <p>Active liveness with one random simple prompt. It needs no special hardware or
+          heavy model, and for a low-cost-device, low-tech-literacy audience it's the most
+          reliable trick for the least engineering effort.</p>
+        </div>
+
+        <h3>Is liveness even necessary?</h3>
+        <p>
+          Only in proportion to whether face matching is doing real work. Skip face matching in
+          the MVP (see §14) and liveness has nothing to protect — it's meaningless on its own.
+          The moment face matching <em>is</em> added, liveness stops being optional: without
+          it, anyone can hold up a printed photo of the teacher and pass.
+        </p>
+      </section>
+
+      <section id="device">
+        <p class="kicker">05 — Device &amp; session</p>
+        <h2>Stopping attendance from an unauthorized device</h2>
+        <p>
+          The baseline control already exists: a password/PIN login with short-lived tokens.
+          On top of that:
+        </p>
+        <ul>
+          <li>Record a device identifier the first time a teacher signs in.</li>
+          <li>When a check-in arrives from a device that isn't the recognized one, don't
+          silently allow it — either require a fresh login (already enforced by session expiry)
+          or notify the teacher and flag it for admin review.</li>
+        </ul>
+        <p>
+          A common alternative in Indian government attendance apps is a <strong>hard device
+          lock</strong> — the account only ever works on one phone. It's a strong guarantee, but
+          it creates real support load (lost phones, phone upgrades, repairs), and none of that
+          maps to fixing an actual fraud pattern unless you've observed one. Flag unrecognized
+          devices; don't hard-lock unless a specific problem shows up that justifies the support
+          cost.
+        </p>
+      </section>
+
+      <section id="server">
+        <p class="kicker">06 — The one rule that matters most</p>
+        <h2>Server-side validation: the phone proposes, the server decides</h2>
+        <p>
+          A phone app can be modified, rooted, or run through a tool that fakes what it reports.
+          So anything the <em>app itself</em> calculates and simply tells the server — "I'm
+          inside the fence," "the face matched" — can be lied about. The fix is structural, not
+          a patch:
+        </p>
+        <ul>
+          <li>The server only accepts <strong>raw evidence</strong>: GPS coordinates + accuracy,
+          the actual selfie bytes, a client timestamp, device info.</li>
+          <li>The server <strong>recomputes the geofence distance itself</strong>, from the
+          school's stored coordinates — it never reads a client-sent "inside: true".</li>
+          <li>The server <strong>runs (or independently checks) the face match itself</strong> —
+          it never accepts a client-sent "matched: true".</li>
+          <li>The server stamps the <strong>official time using its own clock</strong>, never
+          the phone's — phone clocks can be changed by the user.</li>
+          <li>The server rejects stale or duplicate submissions (a timestamp/nonce check), so old
+          evidence can't be replayed later.</li>
+        </ul>
+
+        <figure>
+          <div class="fig-frame">
+            <svg viewBox="0 0 720 260" role="img" aria-label="Diagram: the teacher's phone sends only raw evidence — GPS, accuracy, selfie, timestamp, device id — to the server. The server independently recomputes distance, verifies the face match score, and stamps its own timestamp before writing the attendance record. A client-reported pass/fail verdict is discarded, not trusted.">
+              <defs>
+                <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+                </marker>
+                <marker id="arrow-accent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" class="accent-fill"/>
+                </marker>
+              </defs>
+
+              <!-- Phone box -->
+              <rect x="18" y="82" width="160" height="96" rx="10" fill="none" stroke="currentColor" stroke-width="1.4"/>
+              <text x="98" y="112" text-anchor="middle" font-family="Fraunces, serif" font-size="14" font-weight="600" fill="currentColor">Teacher's phone</text>
+              <text x="98" y="134" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="10.5" fill="currentColor" opacity="0.7">captures:</text>
+              <text x="98" y="150" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="currentColor" opacity="0.75">GPS + accuracy, selfie,</text>
+              <text x="98" y="163" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="currentColor" opacity="0.75">timestamp, device id</text>
+
+              <!-- accepted arrow -->
+              <line x1="178" y1="118" x2="288" y2="100" class="accent-stroke" stroke-width="1.8" marker-end="url(#arrow-accent)"/>
+              <text x="233" y="93" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10" class="accent-fill">raw evidence (used)</text>
+
+              <!-- rejected arrow -->
+              <line x1="178" y1="150" x2="280" y2="168" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 4" opacity="0.5" marker-end="url(#arrow)"/>
+              <text x="233" y="196" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10" fill="currentColor" opacity="0.55">✕ client's own verdict (ignored)</text>
+
+              <!-- Server box -->
+              <rect x="290" y="40" width="220" height="180" rx="10" fill="none" stroke="currentColor" stroke-width="1.4"/>
+              <text x="400" y="65" text-anchor="middle" font-family="Fraunces, serif" font-size="14" font-weight="600" fill="currentColor">Server — decides alone</text>
+              <text x="312" y="98" font-family="IBM Plex Sans, sans-serif" font-size="11" fill="currentColor" opacity="0.85">① recompute distance to school</text>
+              <text x="312" y="130" font-family="IBM Plex Sans, sans-serif" font-size="11" fill="currentColor" opacity="0.85">② verify face-match score</text>
+              <text x="312" y="162" font-family="IBM Plex Sans, sans-serif" font-size="11" fill="currentColor" opacity="0.85">③ stamp server's own time</text>
+              <text x="312" y="194" font-family="IBM Plex Sans, sans-serif" font-size="11" fill="currentColor" opacity="0.85">④ reject stale/duplicate evidence</text>
+
+              <!-- to DB -->
+              <line x1="510" y1="118" x2="590" y2="118" stroke="currentColor" stroke-width="1.6" marker-end="url(#arrow)"/>
+              <text x="550" y="105" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="currentColor" opacity="0.75">verdict</text>
+
+              <rect x="592" y="82" width="118" height="72" rx="10" fill="none" stroke="currentColor" stroke-width="1.4"/>
+              <text x="651" y="112" text-anchor="middle" font-family="Fraunces, serif" font-size="13" font-weight="600" fill="currentColor">Attendance</text>
+              <text x="651" y="128" text-anchor="middle" font-family="Fraunces, serif" font-size="13" font-weight="600" fill="currentColor">record</text>
+              <text x="651" y="145" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="currentColor" opacity="0.7">verified / flagged</text>
+            </svg>
+          </div>
+          <figcaption>The app is a sensor, not a judge. Everything security-relevant gets
+          recomputed on the server from raw evidence — this mirrors how auth and role checks
+          already work elsewhere in this codebase.</figcaption>
+        </figure>
+      </section>
+
+      <section id="edge-cases">
+        <p class="kicker">07 — Edge cases</p>
+        <h2>What should happen when something goes wrong</h2>
+        <p>
+          Two failure modes are equally bad here: a system that silently marks someone
+          "present" when it shouldn't, and one that hard-blocks a genuine teacher with no way
+          forward — attendance affects pay and service record, so a human fallback matters as
+          much as the automated check.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Situation</th><th>What the system should do</th></tr></thead>
+            <tbody>
+              <tr><td class="situation">GPS unavailable</td><td>Ask the teacher to enable location and retry. Don't mark attendance with no location at all — offer a manual entry, clearly flagged "no GPS" for admin review.</td></tr>
+              <tr><td class="situation">GPS accuracy is poor</td><td>Retry a few times / wait briefly for a better fix. If it's still poor after several tries, accept the check-in but mark it "low confidence" for admin review rather than blocking a genuine teacher.</td></tr>
+              <tr><td class="situation">Teacher is just outside the fence</td><td>Offer "mark anyway" with an optional short reason, auto-flagged for admin review — not a hard block.</td></tr>
+              <tr><td class="situation">No internet</td><td>Queue the attempt on-device with all the same evidence and a local timestamp; auto-submit on reconnect. Show "pending sync" until the server confirms with its own timestamp.</td></tr>
+              <tr><td class="situation">Face verification fails</td><td>Allow a couple of retries — bad lighting is extremely common. After repeated failure, fall back to a flagged manual/admin-confirmed path instead of blocking attendance entirely.</td></tr>
+              <tr><td class="situation">Liveness fails</td><td>Same pattern: limited retries, then the same flagged fallback path.</td></tr>
+              <tr><td class="situation">Location spoofing suspected</td><td>Block the automatic mark and flag it prominently for admin review — never let a suspected spoof through silently.</td></tr>
+              <tr><td class="situation">Unrecognized device used</td><td>Require a fresh login, notify the real teacher, and optionally require admin approval before that device can check in again.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="data">
+        <p class="kicker">08 — Data model</p>
+        <h2>What gets stored, and why</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Why it's kept</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">teacherId, schoolId</td><td>Who and where.</td></tr>
+              <tr><td class="mono">serverTimestamp</td><td>The official time — from the server's clock, never the phone's.</td></tr>
+              <tr><td class="mono">gps lat/lon + accuracy</td><td>The raw reading, so the geofence check can be re-verified later if disputed.</td></tr>
+              <tr><td class="mono">distanceFromSchool</td><td>Computed server-side, stored so an admin doesn't have to recompute it to review a flag.</td></tr>
+              <tr><td class="mono">deviceId</td><td>For the device-recognition check and audit trail.</td></tr>
+              <tr><td class="mono">verificationMethod</td><td>geofence-only / face / face+liveness / manual — makes it clear which phase produced this record.</td></tr>
+              <tr><td class="mono">faceMatchScore</td><td>A number, not necessarily the photo kept forever — see retention note below.</td></tr>
+              <tr><td class="mono">status + reason</td><td>verified / flagged / manual-override, with the reason a human gave if it was overridden.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warm">
+          <span class="label">Retention note</span>
+          <p>Keep a raw selfie only as long as it's actually useful for resolving a dispute
+          (e.g. 30–90 days), then auto-delete it. The much-less-sensitive match score/embedding
+          can be kept longer for audit purposes if needed — minimize what's held, not what's
+          computed.</p>
+        </div>
+      </section>
+
+      <section id="ux">
+        <p class="kicker">09 — Teacher experience</p>
+        <h2>Opening the app to attendance marked</h2>
+        <p>The whole happy path should take under 10–15 seconds:</p>
+        <ol>
+          <li>Teacher opens the app, already signed in.</li>
+          <li>Taps "Mark attendance."</li>
+          <li>App silently gets a GPS fix; if accuracy is poor, it says so and waits a moment
+          rather than failing immediately.</li>
+          <li><em>(Phase 2+)</em> Front camera opens, teacher looks at the phone; a quick
+          prompt appears if liveness is on ("blink").</li>
+          <li>"Verifying…" for a second or two.</li>
+          <li>Clear result: "Attendance marked at 9:02 AM" — or, on a flagged case, a plain
+          explanation ("You're a bit outside the school boundary — mark anyway and let the
+          admin know why?") rather than a dead-end error.</li>
+        </ol>
+      </section>
+
+      <section id="admin">
+        <p class="kicker">10 — Admin tools</p>
+        <h2>What a school/district admin needs</h2>
+        <ul>
+          <li>Set each school's geofence centre + radius (ideally by dropping a pin on a map).</li>
+          <li>Enroll or re-enroll a teacher's reference photo.</li>
+          <li>Review a queue of flagged check-ins (poor GPS, outside fence, spoofing suspected,
+          unrecognized device) and approve/reject with a logged reason.</li>
+          <li>Manage recognized devices per teacher.</li>
+          <li>Browse attendance by date, school, or teacher; export for whatever the state
+          education department already asks for.</li>
+        </ul>
+      </section>
+
+      <section id="reports">
+        <p class="kicker">11 — Reports &amp; analytics</p>
+        <h2>What's worth surfacing</h2>
+        <ul>
+          <li>Daily and monthly attendance percentage, per teacher / school / district.</li>
+          <li>Late-arrival trends over time.</li>
+          <li>A flagged-incident log, for accountability review.</li>
+          <li>CSV/PDF export shaped to match existing government reporting formats, so a school
+          isn't doing the same data entry twice.</li>
+        </ul>
+      </section>
+
+      <section id="privacy">
+        <p class="kicker">12 — Privacy &amp; security</p>
+        <h2>Face data is sensitive personal data</h2>
+        <p>
+          Under India's DPDP Act, 2023, biometric data counts as sensitive personal data — that
+          has real, specific implications for this system, not just general good practice:
+        </p>
+        <ul>
+          <li><strong>Clear consent</strong> at enrollment, with the purpose stated plainly
+          (attendance only).</li>
+          <li><strong>Data minimization</strong> — store the minimum needed; prefer the
+          numeric embedding over the raw photo wherever the raw photo isn't specifically
+          needed.</li>
+          <li><strong>Encryption</strong> in transit and at rest.</li>
+          <li><strong>Access control</strong> — only the roles that need to see raw evidence
+          (e.g. admins resolving a flagged dispute) can see it.</li>
+          <li><strong>A retention and deletion policy</strong>, actually enforced, not just
+          written down.</li>
+          <li><strong>Data localization</strong> — if a cloud face-matching API is ever used,
+          check where it actually processes the data. This is one more reason on-device
+          processing is the better default for a system built around government schools.</li>
+        </ul>
+      </section>
+
+      <section id="risks">
+        <p class="kicker">13 — Real-world risks</p>
+        <h2>What actually tends to break, in this specific context</h2>
+        <ul>
+          <li><strong>Old, budget Android phones</strong> with weak cameras and noisier GPS
+          chips — design for the low end, not a flagship.</li>
+          <li><strong>Patchy or absent mobile network</strong> in rural areas, right at
+          check-in time — this has to be offline-first, not offline-tolerant.</li>
+          <li><strong>Face-match false rejects</strong> from poor lighting, glare on
+          spectacles, or a reference photo that's years old.</li>
+          <li><strong>Recurring cloud API cost</strong>, multiplied across thousands of schools
+          and lakhs of daily check-ins — this is the strongest single argument for on-device
+          processing over a cloud face API.</li>
+          <li><strong>Teacher trust and pushback</strong> around biometric surveillance — needs
+          honest communication about what's stored and why, not just a rollout notice.</li>
+          <li><strong>The spoofing arms race is never "solved."</strong> Treat every
+          anti-spoofing measure as raising the cost of cheating, not eliminating it outright.</li>
+        </ul>
+      </section>
+
+      <section id="mvp">
+        <p class="kicker">14 — MVP</p>
+        <h2>The simplest version worth actually building</h2>
+        <p>
+          Login (already built) + a GPS reading with its accuracy + the server recomputing the
+          geofence distance itself + a selfie captured as stored evidence (not yet
+          algorithmically matched) + a server-stamped timestamp + one record with a status an
+          admin can review.
+        </p>
+        <p>
+          No face matching, no liveness, no device binding yet. This alone removes the most
+          common form of cheating — marking attendance from home — without any of the cost,
+          false-reject risk, or privacy weight that biometrics bring. It's also the fastest
+          path to learning whether the fancier steps are even needed.
+        </p>
+      </section>
+
+      <section id="later">
+        <p class="kicker">15 — Roadmap</p>
+        <h2>What to add later, and in what order</h2>
+        <div class="phase-list">
+          <div class="phase">
+            <span class="num">Phase 2</span>
+            <p><strong>On-device face matching.</strong> Compare embeddings only; keep it
+            human-reviewable rather than auto-rejecting on a borderline score.</p>
+          </div>
+          <div class="phase">
+            <span class="num">Phase 3</span>
+            <p><strong>Active liveness.</strong> One random simple prompt, added only once face
+            matching is live and worth protecting.</p>
+          </div>
+          <div class="phase">
+            <span class="num">Phase 4</span>
+            <p><strong>Device binding + anomaly detection.</strong> Impossible-travel checks,
+            repeated-flag patterns, recognized-device enforcement.</p>
+          </div>
+        </div>
+        <p>Build each phase once the previous one shows a real, measured gap — not ahead of
+        evidence that it's needed.</p>
+      </section>
+
+      <section id="india">
+        <p class="kicker">16 — Separate from the core flow</p>
+        <h2>Ideas specifically for Indian government schools</h2>
+        <p>These aren't part of the verification flow itself — they're what would make the
+        system genuinely usable in this specific context, worth considering alongside it:</p>
+        <ul>
+          <li><strong>Offline-first by default</strong>, not offline-tolerant — a local queue
+          and background sync is core infrastructure here, not a nice-to-have.</li>
+          <li><strong>A low-bandwidth mode</strong> — compress the selfie heavily or defer photo
+          upload on 2G, syncing full evidence once on wifi.</li>
+          <li><strong>Regional-language UI and voice prompts</strong>, for lower digital
+          literacy audiences.</li>
+          <li><strong>Integration hooks with existing state systems</strong> (e.g. UDISE+,
+          Shala Darpan / a state SDMIS) so schools aren't doing double data entry.</li>
+          <li><strong>An SMS or missed-call fallback</strong> for genuinely zero-connectivity
+          days — heavily flagged for review, as a last resort only.</li>
+          <li><strong>Guest/proxy-teacher support</strong>, common in under-staffed schools,
+          with explicit admin approval rather than being treated as fraud by default.</li>
+          <li><strong>Design for cheap Android phones as the baseline</strong>, not high-end
+          devices — this shapes camera, GPS, and battery/data assumptions throughout.</li>
+        </ul>
+      </section>
+
+      <section id="architecture">
+        <p class="kicker">17 — Recommendation</p>
+        <h2>Recommended end-to-end architecture</h2>
+        <p>
+          <strong>Mobile app</strong> (the existing Expo app in <code>mobile/</code>) captures
+          raw evidence only — GPS + accuracy, a selfie in phase 2+, device id, client
+          timestamp — and does only fast local checks for instant feedback (e.g. "accuracy too
+          low, retry") before sending anything. It never decides pass/fail on its own.
+        </p>
+        <p>
+          It sends that evidence to a new endpoint on the <strong>existing server</strong>
+          (Express + Prisma, in <code>server/</code>), authenticated with the JWT session that
+          already exists. The server loads the school's stored geofence, recomputes the real
+          distance, checks the accuracy threshold, and — from phase 2 onward — runs the face
+          match itself against the stored enrollment. It stamps its own timestamp and writes
+          one attendance record with a verified / flagged / rejected status and a reason.
+        </p>
+        <p>
+          New data conceptually needed (not being built yet): geofence fields on
+          <code class="mono">School</code>, a new attendance-record model, a face-enrollment
+          model in phase 2 (storing the embedding rather than the raw photo where possible),
+          and a device model in phase 4.
+        </p>
+        <h3>Why this shape</h3>
+        <ul>
+          <li>It reuses the auth, session, school, and role system that's already
+          battle-tested in this codebase, instead of building a parallel one.</li>
+          <li>It keeps the "server never trusts the client" rule that this codebase already
+          applies to auth and role checks — the same discipline, applied to a new feature.</li>
+          <li>On-device face/liveness processing keeps the recurring cost near zero at
+          government scale and works with no internet — the single most important constraint
+          for this specific audience.</li>
+          <li>Shipping in phases means real value — an honest, GPS-and-evidence-backed
+          attendance system — lands in weeks, not after months spent building a full biometric
+          pipeline that the honest-evidence version might make unnecessary in the first place.</li>
+        </ul>
+      </section>
+
+      <section id="timing-model">
+        <p class="kicker">18 — Working-time system</p>
+        <h2>School timing rules and the check-in window</h2>
+        <p>
+          Three separate clock boundaries do different jobs, and mixing them up is where most
+          attendance systems get confusing. Keep them distinct:
+        </p>
+        <ul>
+          <li><strong>Opening / closing time</strong> — when the school day formally starts and
+          ends. This is the anchor everything else (late, early, required hours) is measured
+          against.</li>
+          <li><strong>Check-in window</strong> — the range of time the app will accept a
+          check-in as a normal, same-day event at all (e.g. 8:30–10:00 for a 9:00 opening).
+          Arriving before it isn't penalized — early is simply on-time. Arriving after it isn't
+          silently rejected either — it's still recorded, just held for a human decision instead
+          of auto-approved (see §19).</li>
+          <li><strong>Required working time</strong> — how long a teacher is expected to be
+          present, used to work out shortfall and half-day. By default this equals the school
+          day's duration (closing − opening), not a separate number — see the policy note in
+          §19.</li>
+        </ul>
+        <p>
+          All three need to be configurable <strong>per school, per weekday</strong>, with two
+          real-world extras: a <strong>date-specific override</strong> (a declared holiday, a
+          half-day for an exam, a one-off early closure) and an <strong>effective-date range</strong>
+          (many states shift school hours seasonally — summer timing vs. winter timing — so
+          "Monday's timing" isn't a single permanent value, it can change from a given date
+          onward).
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Config field</th><th>Example</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">schoolId, dayOfWeek</td><td>Which school, which weekday this row applies to.</td></tr>
+              <tr><td class="mono">openingTime, closingTime</td><td>09:00, 16:00</td></tr>
+              <tr><td class="mono">checkinWindowStart, checkinWindowEnd</td><td>08:30, 10:00</td></tr>
+              <tr><td class="mono">effectiveFrom</td><td>2026-04-01 (so a seasonal timing change doesn't require rewriting history)</td></tr>
+              <tr><td class="mono">dateOverride</td><td>A specific date row (holiday / half-day / exam-day) that takes priority over the weekday default for that one date.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="status-calc">
+        <p class="kicker">19 — Working-time system</p>
+        <h2>How Present, Late, Absent, Half-day and shortfall get calculated</h2>
+
+        <div class="callout warm">
+          <span class="label">Policy choice worth deciding explicitly</span>
+          <p>Should a teacher who arrives late but stays late "make up" the lost time, or is
+          being present for the full 9:00–4:00 window the actual requirement regardless of total
+          hours? Most government service-rule conventions use the second model — a fixed
+          window, with late arrival and early departure tracked as their own separate facts, not
+          netted against each other. That's the default recommended here
+          (<code class="mono">compensateLateWithStay: false</code>), kept as a per-school
+          config flag rather than hard-coded, since some institutions do allow the trade-off.</p>
+        </div>
+
+        <h3>Arrival classification</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Check-in time</th><th>Classification</th></tr></thead>
+            <tbody>
+              <tr><td>At or before opening time</td><td>On-time. No flag.</td></tr>
+              <tr><td>After opening, at or before window close</td><td>Late — recorded minutes late. Still Present.</td></tr>
+              <tr><td>After window close</td><td>Recorded, but held as <strong>Flagged — outside window</strong>, pending an admin decision (Present-late / Half-day / Absent). Never auto-approved as a normal Present.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>A small configurable grace period (5–10 minutes) before "Late" kicks in is a
+        reasonable real-world default — arriving 3 minutes after the bell shouldn't read the
+        same as arriving 40 minutes after it. Left as an off-by-default config knob so the
+        numbers below stay literal.</p>
+
+        <h3>Working time and thresholds</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Term</th><th>How it's worked out</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Working minutes</strong></td><td>Check-out time − check-in time. Raw elapsed time; no break deduction in the base model.</td></tr>
+              <tr><td><strong>Required working time</strong></td><td>Closing − opening for that weekday, by default.</td></tr>
+              <tr><td><strong>Half-day threshold</strong></td><td>A configurable fraction of required time (e.g. 50%). Below it → Half-day.</td></tr>
+              <tr><td><strong>Full-day grace</strong></td><td>A small buffer near 100% (e.g. within 15 minutes) still counts as a full day — a teacher shouldn't lose "full day" status over walking-to-the-gate rounding.</td></tr>
+              <tr><td><strong>Shortfall</strong></td><td>Required − actual, whenever actual is below the full-day grace band. Shown even when the status is still "Present," not only on Half-day.</td></tr>
+              <tr><td><strong>Early departure</strong></td><td>Closing time − check-out time, whenever check-out is earlier than a small configurable grace before closing.</td></tr>
+              <tr><td><strong>Absent</strong></td><td>No check-in at all on a working day, <em>and</em> no approved leave or on-duty record for that date (see §22 — this second condition matters a lot in practice).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Shortfall and early-departure are two views of the same underlying gap, not two
+        separate penalties — show them together on one record rather than double-counting.</p>
+      </section>
+
+      <section id="walkthrough">
+        <p class="kicker">20 — Working-time system</p>
+        <h2>Your eleven scenarios, worked through exactly</h2>
+        <div class="config-note">
+          <div>Opening 9:00 AM · Closing 4:00 PM · Check-in window 8:30–10:00 AM</div>
+          <div>Required working time 420 min (7h) · Half-day threshold 210 min (50%) · Full-day grace ≥ 405 min</div>
+          <div>Early-departure grace 15 min before closing · Late grace 0 (shown literally, no hidden rounding)</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th class="situation">Scenario</th><th>What the system does</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td class="situation">Arrives 8:40 AM</td><td>Before opening, inside window → <strong>On-time</strong>. No flag.</td></tr>
+              <tr><td>2</td><td class="situation">Arrives 9:05 AM</td><td>5 min after opening, inside window → <strong>Late by 5 min</strong>, still Present.</td></tr>
+              <tr><td>3</td><td class="situation">Arrives 9:45 AM</td><td>45 min after opening, inside window → <strong>Late by 45 min</strong>, still Present.</td></tr>
+              <tr><td>4</td><td class="situation">Arrives 10:30 AM</td><td>Past window close (10:00) → check-in is still recorded, but status is <strong>Flagged — outside window</strong>, pending an admin decision. Not auto-Present, not auto-Absent.</td></tr>
+              <tr><td>5</td><td class="situation">In 9:00, out 3:00 PM</td><td>On-time arrival. Checkout is 60 min before closing → <strong>Early departure, 60 min</strong>. Worked 360 min, between half-day and full-day grace → <strong>Present, shortfall flagged 60 min</strong>.</td></tr>
+              <tr><td>6</td><td class="situation">In 9:00, out 4:00 PM</td><td>Worked exactly 420 min = required → <strong>Full day</strong>, no flags.</td></tr>
+              <tr><td>7</td><td class="situation">Checks in, never checks out</td><td>Arrival classification stands (On-time/Late). Working time is unknown → <strong>Pending regularization</strong>. Never silently assumed to be a full day.</td></tr>
+              <tr><td>8</td><td class="situation">Checks out early (e.g. 2:00 PM)</td><td>Checkout 120 min before closing → <strong>Early departure, 120 min</strong>. Worked 300 min → <strong>Present, shortfall flagged 120 min</strong>.</td></tr>
+              <tr><td>9</td><td class="situation">Temporarily leaves mid-day, returns, checks out normally</td><td>Not tracked at all by default (§21's recommended model doesn't watch the middle of the day) → <strong>no flag</strong> — exactly what a paper register would also show.</td></tr>
+              <tr><td>10</td><td class="situation">Loses internet after check-in</td><td>Check-in already reached the server before the drop, so it's safe. If still offline at day's end, check-out is captured on-device and queued, then synced later, <strong>lightly flagged "offline submission"</strong> for admin awareness — not penalized.</td></tr>
+              <tr><td>11</td><td class="situation">GPS unavailable mid-day</td><td>Irrelevant under the recommended model — GPS is only needed at check-in and check-out. Only matters if it's unavailable at one of those two moments, handled the same as any poor-GPS case: retry, then allow with a flag rather than blocking.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="location-strategy">
+        <p class="kicker">21 — Working-time system</p>
+        <h2>Do we actually need to track location all day?</h2>
+        <p>
+          Direct answer: <strong>no.</strong> If a teacher's check-in already places them at
+          school, watching their location every minute until 4:00 PM buys very little on top of
+          that — and even continuous tracking doesn't fully solve the problem it's aimed at,
+          because a phone left behind on a desk defeats <em>every</em> location-based approach
+          equally, including the most aggressive one. Paying the heaviest cost doesn't buy a
+          real guarantee — it buys a false sense of certainty. Here's the comparison:
+        </p>
+
+        <div class="approach-grid">
+          <div class="approach-card">
+            <h4>A — Check-in and check-out only</h4>
+            <span class="verdict">Baseline — always included</span>
+            <dl>
+              <dt>How</dt><dd>One GPS fix when marking present, one when marking checkout.</dd>
+              <dt>Solves</dt><dd>Confirms the teacher was physically at school at both boundary moments.</dd>
+              <dt>Accuracy</dt><dd>As good as a single well-taken reading, with retry logic.</dd>
+              <dt>Battery</dt><dd>Negligible — a few seconds of GPS, twice a day.</dd>
+              <dt>Data</dt><dd>Negligible — two small requests a day.</dd>
+              <dt>Privacy</dt><dd>Best of the four — only two location points, ever.</dd>
+              <dt>To build</dt><dd>Low — no background service, no special permission.</dd>
+              <dt>Abuse gap</dt><dd>Check in, leave for the day, come back only to tap checkout.</dd>
+              <dt>India fit</dt><dd>Excellent — lightest footprint, most reliable across OEMs.</dd>
+            </dl>
+          </div>
+
+          <div class="approach-card">
+            <h4>B — Periodic GPS through the day</h4>
+            <span class="verdict">Not recommended as default</span>
+            <dl>
+              <dt>How</dt><dd>App pings location every 30–60 min via a background task.</dd>
+              <dt>Solves</dt><dd>Narrows the "duck out and come back" gap A leaves open.</dd>
+              <dt>Accuracy</dt><dd>Same per-reading, but many more chances for one noisy result — needs tolerant logic.</dd>
+              <dt>Battery</dt><dd>Noticeable drain over a 7-hour day, worse on old batteries.</dd>
+              <dt>Data</dt><dd>Small per ping, adds up across a full day and many teachers.</dd>
+              <dt>Privacy</dt><dd>A real jump — now a rough movement trail, not two points.</dd>
+              <dt>To build</dt><dd>Moderate–high — Android's scrutinized background-location permission, plus handling for OS battery-savers killing the service.</dd>
+              <dt>Abuse gap</dt><dd>Still doesn't close it — a phone left on a desk fools this too.</dd>
+              <dt>India fit</dt><dd>Poor — budget OEMs are exactly the phones most likely to kill background tracking, generating false "left school" flags that erode trust in the system.</dd>
+            </dl>
+          </div>
+
+          <div class="approach-card">
+            <h4>C — Continuous background tracking</h4>
+            <span class="verdict">Recommend against</span>
+            <dl>
+              <dt>How</dt><dd>Constant GPS polling for a full movement trail all day.</dd>
+              <dt>Solves</dt><dd>A complete timeline in theory — the OS throttles it for power anyway, so the benefit rarely fully lands.</dd>
+              <dt>Accuracy</dt><dd>Best in theory, coarsened in practice by power-saving throttles.</dd>
+              <dt>Battery</dt><dd>Heavy — a real, complained-about drain across the school day.</dd>
+              <dt>Data</dt><dd>Continuous small uploads all day; meaningful on limited plans.</dd>
+              <dt>Privacy</dt><dd>Highest concern by far — a minute-by-minute workday trail is close to surveillance, and sits against the DPDP Act's data-minimization principle.</dd>
+              <dt>To build</dt><dd>Highest — same permission hurdles as B, a trail-shaped data pipeline, and the hardest Play Store justification story.</dd>
+              <dt>Abuse gap</dt><dd>Same "phone left behind" hole as A and B — more data doesn't close it.</dd>
+              <dt>India fit</dt><dd>Worst — heaviest cost for the audience least able to absorb it, most fragile on cheap OEMs, biggest trust cost.</dd>
+            </dl>
+          </div>
+
+          <div class="approach-card recommended">
+            <h4>D — Check-in/out, plus rare targeted spot-checks</h4>
+            <span class="verdict">Recommended</span>
+            <dl>
+              <dt>How</dt><dd>A stays the backbone. On top, an occasional push-notification spot-check (one foreground GPS tap), reserved for accounts that already show a reason to look closer — a pattern of flags, a random audit sample — not a daily routine for everyone.</dd>
+              <dt>Solves</dt><dd>Closes most of A's gap over time through patterns, without paying B or C's daily cost for every teacher.</dd>
+              <dt>Accuracy</dt><dd>Same as A for its anchors; a spot-check is the same single-fix accuracy.</dd>
+              <dt>Battery</dt><dd>Same as A on the vast majority of days — negligible.</dd>
+              <dt>Data</dt><dd>Same as A on the vast majority of days — negligible.</dd>
+              <dt>Privacy</dt><dd>Essentially A's profile, briefly elevated only where there's already a stated reason — proportionate, and the easiest of the four to defend under data-minimization.</dd>
+              <dt>To build</dt><dd>Modest — no background-location permission at all; a spot-check reuses the exact foreground capture already built for check-in.</dd>
+              <dt>Abuse gap</dt><dd>Doesn't fully close "phone left behind" either — but that's a face/liveness problem, addressed by keeping face+liveness on the anchor events, not by out-spending it with more location data.</dd>
+              <dt>India fit</dt><dd>Best of the four — lightest burden, no background-kill risk, cheapest to build, easiest to defend on privacy.</dd>
+            </dl>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Approach</th><th>Daily battery cost</th><th>Daily privacy cost</th><th>Reliable on budget phones?</th><th>Closes the "duck out" gap?</th></tr></thead>
+            <tbody>
+              <tr><td>A — check-in/out only</td><td>None</td><td>Lowest</td><td>Best</td><td>No</td></tr>
+              <tr><td>B — periodic pings</td><td>Moderate</td><td>High</td><td>Poor — OS often kills it</td><td>Partly</td></tr>
+              <tr><td>C — continuous tracking</td><td>High</td><td>Highest</td><td>Worst</td><td>Partly — same core hole</td></tr>
+              <tr><td><strong>D — recommended</strong></td><td>~None most days</td><td>Lowest, proportionate</td><td>Best</td><td>Mostly — via patterns, not brute force</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>
+          To your specific questions: <strong>yes, check-in + check-out alone is enough</strong>
+          as the backbone — it's already strictly better than the paper register it replaces,
+          since it adds location and (later) identity proof at the two boundaries paper never
+          had. <strong>Yes, occasional verification is the better shape</strong> for the
+          remaining gap. And <strong>yes, it should only escalate when something already looks
+          suspicious</strong> — a pattern of flags, a random audit sample — mirroring how a head
+          teacher already manages trust in a physical school: not by watching everyone
+          constantly, but by noticing patterns and following up on outliers.
+        </p>
+      </section>
+
+      <section id="missed-edges">
+        <p class="kicker">22 — Working-time system</p>
+        <h2>Real-world cases worth adding to the list</h2>
+        <ul>
+          <li><strong>On-duty elsewhere.</strong> The single most important addition — Indian
+          government-school teachers are routinely pulled for election duty, census work,
+          training, cluster meetings, or invigilation at another school. Without a distinct
+          "On duty" status, the system will constantly and wrongly flag extremely normal
+          days as Absent or unexplained.</li>
+          <li><strong>Approved leave.</strong> A day with sanctioned CL/EL/medical leave should
+          never be computed as Absent just because there's no check-in — it needs its own status
+          that a leave-management process (even a simple one) can set.</li>
+          <li><strong>Declared holidays and school closures.</strong> Attendance shouldn't be
+          expected — or computed as Absent — on a day the school was officially closed.</li>
+          <li><strong>Pre-approved early leave / half-day.</strong> A teacher with prior
+          permission to leave early for a specific reason shouldn't generate the same flag as an
+          unapproved early departure — the record needs an "approved" note, not just a raw
+          timestamp gap.</li>
+          <li><strong>Seasonal timing changes.</strong> Many states shift school hours between
+          summer and winter — timing configuration needs an effective-date range, not a single
+          permanent weekday value (already covered in §18's config).</li>
+          <li><strong>Shift schools.</strong> Two schools sharing one campus in a morning/evening
+          shift is common — same geofence, different timing windows depending on which school
+          (and shift) the teacher belongs to.</li>
+          <li><strong>Duplicate check-in taps.</strong> An accidental double-tap should update
+          the same record, not create a second one.</li>
+          <li><strong>Server unreachable at the exact check-in moment.</strong> Same handling as
+          losing internet mid-day — queue locally, sync automatically, don't lose the evidence.</li>
+        </ul>
+      </section>
+
+      <section id="final-model">
+        <p class="kicker">23 — Working-time system</p>
+        <h2>The recommended model, in one place</h2>
+        <div class="phase-list">
+          <div class="phase"><span class="num">1</span><p><strong>School timing rules.</strong> Per school, per weekday, with date-specific overrides for holidays/half-days and an effective-date range for seasonal timing changes.</p></div>
+          <div class="phase"><span class="num">2</span><p><strong>Check-in window.</strong> Opens before opening time, extends a defined grace past it. Inside it: always accepted. After it: still recorded, held for admin review rather than auto-approved.</p></div>
+          <div class="phase"><span class="num">3</span><p><strong>Late-arrival rule.</strong> Any check-in after opening time (optionally past a small configurable grace) is marked Late with exact minutes recorded; still counts as Present.</p></div>
+          <div class="phase"><span class="num">4</span><p><strong>Check-out rules.</strong> One check-out event, same evidence bundle as check-in. A duplicate tap updates the existing record rather than creating a new one.</p></div>
+          <div class="phase"><span class="num">5</span><p><strong>Early-departure rule.</strong> Checkout before closing time (minus a small grace) is flagged with exact minutes recorded, feeding the same shortfall figure rather than a separate penalty.</p></div>
+          <div class="phase"><span class="num">6</span><p><strong>Minimum working-time rule.</strong> Required time = that weekday's school-day duration by default. Below a configurable half-day threshold → Half-day; below full (with a small grace) → Present with shortfall flagged; at or above → Full day.</p></div>
+          <div class="phase"><span class="num">7</span><p><strong>Absent rule.</strong> No check-in and no approved leave/holiday/on-duty record for that date → Absent. Any of those records present → never auto-Absent.</p></div>
+          <div class="phase"><span class="num">8</span><p><strong>Missing check-out handling.</strong> End of day with no checkout → "Pending regularization." Arrival classification stands; working time and shortfall stay unresolved until confirmed — never silently assumed as a full day.</p></div>
+          <div class="phase"><span class="num">9</span><p><strong>GPS/location strategy.</strong> Approach D — check-in and check-out only, plus rare pattern-triggered spot-checks. No continuous or scheduled background tracking.</p></div>
+          <div class="phase"><span class="num">10</span><p><strong>Offline handling.</strong> Evidence is captured and timestamped on-device, queued locally, synced automatically once online. Offline submissions are lightly flagged, never penalized outright.</p></div>
+          <div class="phase"><span class="num">11</span><p><strong>Suspicious-activity handling.</strong> Mock-location flags, impossible-travel patterns, or repeated flags on one account escalate to a spot-check or the admin queue — never silently rejected, never silently approved.</p></div>
+          <div class="phase"><span class="num">12</span><p><strong>Admin review/fallback.</strong> Every flagged case lands in one review queue, resolved with a one-tap decision and a logged reason — never edited silently.</p></div>
+          <div class="phase"><span class="num">13</span><p><strong>What's stored.</strong> Raw check-in/check-out evidence as the source of truth, plus computed fields (status, late/early minutes, working minutes, shortfall) recalculated by one shared function whenever an input changes — the same discipline this codebase already uses for classroom attendance percentages, applied here instead of reimplemented per route.</p></div>
+          <div class="phase"><span class="num">14</span><p><strong>What the teacher sees.</strong> Today's live status in plain language, a monthly calendar of day-by-day status, a running summary of lates/shortfalls, and any flagged item explained with a clear next step — never a bare error.</p></div>
+          <div class="phase"><span class="num">15</span><p><strong>What the admin sees.</strong> A same-day dashboard of who's present/late/absent/flagged, a dedicated review queue, the school timing configuration screen, and exportable monthly reports.</p></div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <footer>
+    Research and design exploration only — no code changes were made to the Teacher Assistant
+    codebase as part of this document.
+  </footer>
+</div>

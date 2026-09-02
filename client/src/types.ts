@@ -76,6 +76,7 @@ export interface User {
   email: string;
   displayName?: string | null;
   role: Role;
+  createdAt: string;
   preferences: TeacherPreferences;
   school: School;
   // A path relative to the API root (like every path passed to api()), e.g.
@@ -562,6 +563,233 @@ export interface StudentAttendanceHistory {
   unmarked: number;
   percentage: number | null;
   days: { date: string; status: 'present' | 'absent' }[];
+}
+
+// ---- Teacher Attendance ----------------------------------------------------
+//
+// A teacher's OWN check-in/check-out, reviewed by their school's Principal
+// (role = school_admin) — mirrors routes/teacherAttendance.js's DTOs
+// exactly. NOT the same feature as the AttendanceStatus/DailyAttendance
+// types above, which are STUDENT attendance a teacher marks for their own
+// class (Classroom Management). Deliberately distinct type names so the two
+// can never be confused at an import site.
+// 'flagged_review' is kept in the type (a Principal's 'reject' action, or
+// legacy data, could still carry it) even though nothing auto-assigns it
+// any more — see docs/feature-teacher-attendance-implementation-plan.md
+// §1.7/§4: geofence/window failures are now hard blocks, not a flagged,
+// allowed record, and there is no review queue any more.
+export type TeacherAttendanceStatus =
+  | 'present'
+  | 'half_day'
+  | 'absent'
+  | 'on_leave'
+  | 'on_duty'
+  | 'pending_regularization'
+  | 'flagged_review';
+
+// A teacher's own view — no raw GPS/device evidence fields, see
+// attendanceToDto's own doc comment server-side.
+export interface TeacherAttendanceDto {
+  id: string;
+  date: string; // "YYYY-MM-DD"
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  status: TeacherAttendanceStatus;
+  lateMinutes: number | null;
+  earlyDepartureMinutes: number | null;
+  workingMinutes: number | null;
+  shortfallMinutes: number | null;
+  leaveOrDutyCategory: string | null;
+  leaveOrDutyReason: string | null;
+  // The Principal's own typed reason from the latest review, so the
+  // teacher can see *why* a day was resolved this way, not just the final
+  // status. `null` when the day was never reviewed.
+  reviewReason: string | null;
+}
+
+// A Principal's per-day detail view of one teacher's record — includes the
+// raw evidence a correction decision needs. Mirrors
+// attendanceToDetailDto's shape exactly. No repeatPatternWarning any more —
+// there's no queue for a pattern banner to live on; the pattern itself
+// still shows, as a coloured count, on ReportsTab's summary table.
+export interface TeacherAttendanceDetailDto extends TeacherAttendanceDto {
+  teacher?: { id: string; name: string; email: string };
+  checkInLat: number | null;
+  checkInLon: number | null;
+  checkInAccuracyMeters: number | null;
+  checkInDistanceMeters: number | null;
+  checkInDeviceId: string | null;
+  checkOutLat: number | null;
+  checkOutLon: number | null;
+  checkOutAccuracyMeters: number | null;
+  checkOutDistanceMeters: number | null;
+  checkOutDeviceId: string | null;
+}
+
+// Mirrors teacherAttendanceSchema.js's REVIEW_ACTIONS exactly — keep both
+// in step, the same CHANGE-11 duplication convention as LANGUAGES/GRADES.
+export type TeacherAttendanceReviewAction =
+  | 'approve'
+  | 'correct_checkin'
+  | 'correct_checkout'
+  | 'mark_on_leave'
+  | 'mark_on_duty'
+  | 'reject';
+
+export interface TeacherAttendanceReviewInput {
+  action: TeacherAttendanceReviewAction;
+  reason: string;
+  correctedCheckInAt?: string;
+  correctedCheckOutAt?: string;
+  leaveOrDutyCategory?: string;
+}
+
+// A school's own attendance settings (school_admin only) — mirrors
+// SchoolAttendanceConfig exactly.
+export interface SchoolAttendanceConfigDto {
+  id: string;
+  schoolId: string;
+  openTime: string;
+  closeTime: string;
+  checkinWindowStart: string;
+  checkinWindowEnd: string;
+  // Comma-separated day-of-week numbers (0=Sunday..6=Saturday), e.g. "0" or
+  // "0,6" — matches lib/teacherAttendance.js's isWeeklyOff() format exactly.
+  weeklyOffDays: string;
+  lateGraceMinutes: number;
+  halfDayThresholdPercent: number;
+  fullDayGraceMinutes: number;
+  geofenceLat: number;
+  geofenceLon: number;
+  geofenceRadiusMeters: number;
+  repeatPatternThreshold: number;
+  repeatPatternWindowDays: number;
+  // The checkout reminder's own timing — minutes before/after closeTime it
+  // fires (server/src/lib/teacherAttendanceReminder.js).
+  reminderMinutesBeforeClose: number;
+  reminderMinutesAfterClose: number;
+  // When the school's attendance settings were first created — the earliest
+  // date tracking could apply, used to stop History from showing
+  // Absent/Weekly-off for months before that.
+  createdAt: string;
+}
+
+// Mirrors teacherAttendanceSchema.js's schoolAttendanceConfigSchema — every
+// threshold optional on write (a partial update keeps its stored default
+// for anything omitted), openTime/closeTime/geofence required together to
+// actually enable check-ins for the school.
+export interface SchoolAttendanceConfigInput {
+  openTime: string;
+  closeTime: string;
+  checkinWindowStart: string;
+  checkinWindowEnd: string;
+  weeklyOffDays?: string;
+  lateGraceMinutes?: number;
+  halfDayThresholdPercent?: number;
+  fullDayGraceMinutes?: number;
+  geofenceLat: number;
+  geofenceLon: number;
+  geofenceRadiusMeters?: number;
+  repeatPatternThreshold?: number;
+  repeatPatternWindowDays?: number;
+  reminderMinutesBeforeClose?: number;
+  reminderMinutesAfterClose?: number;
+}
+
+export interface SchoolHolidayDto {
+  id: string;
+  schoolId: string;
+  date: string; // "YYYY-MM-DD"
+  reason: string;
+  source: 'department' | 'principal_emergency';
+}
+
+export interface CreateHolidayInput {
+  date: string;
+  reason: string;
+}
+
+// Matches lib/teacherAttendance.js's summarizeTeacherMonth() output exactly
+// — counts only, per outcome, for one teacher's month.
+export interface TeacherAttendanceSummary {
+  present: number;
+  absent: number;
+  late: number;
+  half_day: number;
+  on_leave: number;
+  on_duty: number;
+  flagged_review: number;
+  pending_regularization: number;
+}
+
+// GET /school-history — the whole-school Reports tab's LIST view
+// (school_admin only). Summary-only and paginated: a school with many
+// teachers can't have every teacher's full day-by-day month loaded just to
+// show a count (docs/feature-teacher-attendance-implementation-plan.md §7).
+// A specific teacher's day-by-day detail is a separate call — see
+// TeacherAttendanceDetailPage below.
+export interface SchoolHistoryTeacherSummary {
+  id: string;
+  name: string;
+  email: string;
+  summary: TeacherAttendanceSummary;
+}
+
+export interface SchoolHistoryPage {
+  month: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  teachers: SchoolHistoryTeacherSummary[];
+}
+
+// GET /school-history/:userId — one teacher's real day-by-day records for a
+// month, the Reports drill-down's detail fetch.
+export interface TeacherAttendanceDetailPage {
+  month: string;
+  teacher: { id: string; name: string; email: string; createdAt: string };
+  records: TeacherAttendanceDetailDto[];
+}
+
+// GET /activity-log — the "who → what → when → where → result" feed
+// (school_admin only). Defaults to a recent window server-side; never
+// "everything" — see the plan's §7.
+export interface TeacherAttendanceActivityLogEntry {
+  id: string;
+  userId: string;
+  userName: string | null;
+  performedBy: string | null;
+  action: string;
+  result: string | null;
+  distanceMeters: number | null;
+  createdAt: string;
+}
+
+export interface TeacherAttendanceActivityLogPage {
+  days: number;
+  page: number;
+  pageSize: number;
+  total: number;
+  entries: TeacherAttendanceActivityLogEntry[];
+}
+
+// GET /today-summary — the Reports tab's dashboard stat cards
+// (docs/attendance-register-design.html §5): four numbers for today across
+// the whole school, before any per-teacher detail.
+export interface TeacherAttendanceTodaySummary {
+  date: string;
+  nonWorkingDay: NonWorkingDayInfo | null;
+  present: number;
+  late: number;
+  missingCheckout: number;
+  absent: number;
+}
+
+// GET .../today's extra field — lets the check-in page show "today is a
+// holiday" up front, matching routes/teacherAttendance.js's own shape.
+export interface NonWorkingDayInfo {
+  code: 'WEEKLY_OFF_DAY' | 'HOLIDAY';
+  message: string;
 }
 
 // ---- Classroom Management — Fees ------------------------------------------

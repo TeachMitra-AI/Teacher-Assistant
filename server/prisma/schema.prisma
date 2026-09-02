@@ -21,17 +21,22 @@ model School {
   state     String?
   createdAt DateTime @default(now())
 
-  users          User[]
-  queries        Query[]
-  events         Event[]
-  resources      Resource[]
-  supportTickets SupportTicket[]
+  users                  User[]
+  queries                Query[]
+  events                 Event[]
+  resources              Resource[]
+  supportTickets         SupportTicket[]
   // Classroom Management (docs/classroom-feature-plan.md) — denormalized
   // alongside SchoolClass.teacherId, NEVER used for row-level access (every
   // Classroom query filters on teacherId only). Reserved for a possible
   // future school-admin rollup view; unused by any V1 route.
-  schoolClasses  SchoolClass[]
-  conversations  Conversation[]
+  schoolClasses          SchoolClass[]
+  conversations          Conversation[]
+  // Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md)
+  attendanceConfig       SchoolAttendanceConfig?
+  teacherAttendances     TeacherAttendance[]
+  holidays               SchoolHoliday[]
+  attendanceActivityLogs TeacherAttendanceActivityLog[]
 }
 
 // Roles: teacher | school_admin | resource_person | super_admin
@@ -68,27 +73,33 @@ model User {
   lastLogin        DateTime?
   createdAt        DateTime  @default(now())
 
-  queries             Query[]
-  feedback            Feedback[]
-  events              Event[]
-  sessions            Session[]
-  resources           Resource[]
-  passwordResetTokens PasswordResetToken[]
-  supportTickets      SupportTicket[]
-  supportNotes        SupportNote[]
-  profilePicture      ProfilePicture?
-  notifications       Notification[]
+  queries                Query[]
+  feedback               Feedback[]
+  events                 Event[]
+  sessions               Session[]
+  resources              Resource[]
+  passwordResetTokens    PasswordResetToken[]
+  supportTickets         SupportTicket[]
+  supportNotes           SupportNote[]
+  profilePicture         ProfilePicture?
+  notifications          Notification[]
   // OS-level push registrations (Phase 7b, docs/mobile-app-plan.md §15/§26).
   // One row per installed-app instance the teacher has signed into, not one
   // per user — see DeviceToken's own doc comment.
-  deviceTokens        DeviceToken[]
+  deviceTokens           DeviceToken[]
   // Classroom Management (docs/classroom-feature-plan.md) — a teacher's own
   // classes. Every class/student/attendance/fee row is scoped to teacherId,
   // never schoolId (see SchoolClass's own doc comment) — teacher A never
   // sees teacher B's classes/students/attendance/fees, even within the same
   // school.
-  schoolClasses       SchoolClass[]
-  conversations       Conversation[]
+  schoolClasses          SchoolClass[]
+  conversations          Conversation[]
+  // Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md)
+  // — this teacher's own check-in/check-out days, and (for a school_admin)
+  // the review actions they've taken on other teachers' flagged days.
+  teacherAttendances     TeacherAttendance[]
+  attendanceReviews      TeacherAttendanceReview[]
+  attendanceActivityLogs TeacherAttendanceActivityLog[]
 
   // A teacher's email is unique within a school. The same email may hold
   // accounts at more than one school, which is why sign-in looks up by email
@@ -598,4 +609,191 @@ model FeeRecord {
   @@unique([studentId, period])
   @@index([classId, period])
   @@index([teacherId, period])
+}
+
+// ---------------------------------------------------------------------------
+// Teacher Attendance — see docs/feature-teacher-attendance-implementation-plan.md
+// and docs/attendance-plan-review.md (the policy decisions this schema
+// implements).
+//
+// NOT to be confused with the unrelated Classroom Management models above
+// (SchoolClass/Student/AttendanceRecord/FeeRecord) — those record STUDENT
+// attendance a teacher marks for their own class. These models record a
+// TEACHER's own attendance, reviewed by their school's Principal
+// (role = school_admin).
+// ---------------------------------------------------------------------------
+
+// One row per school. Holds only what this feature needs — kept separate
+// from School itself so a school with the feature off carries no
+// attendance-specific columns, and so School's own doc comment/shape stays
+// unchanged by this feature.
+model SchoolAttendanceConfig {
+  id       String @id @default(cuid())
+  school   School @relation(fields: [schoolId], references: [id])
+  schoolId String @unique
+
+  openTime           String // "09:00", 24h IST wall-clock time
+  closeTime          String // "16:00"
+  checkinWindowStart String // "08:30"
+  checkinWindowEnd   String // "10:00"
+  // Comma-separated day-of-week numbers this school is closed every week —
+  // JS Date.getDay() convention (0=Sunday..6=Saturday), same comma-separated
+  // convention as TEACHER_ATTENDANCE_ALLOWED_SCHOOL_CODES. Default "0" —
+  // Sunday off — the common case; a school with alternate/every Saturday
+  // off too sets "0,6". Checked alongside SchoolHoliday before a check-in
+  // is allowed at all — see lib/teacherAttendance.js's isWeeklyOff().
+  weeklyOffDays      String @default("0")
+
+  lateGraceMinutes           Int @default(10)
+  halfDayThresholdPercent    Int @default(50)
+  fullDayGraceMinutes        Int @default(15)
+  earlyDepartureGraceMinutes Int @default(15)
+
+  geofenceLat          Float
+  geofenceLon          Float
+  geofenceRadiusMeters Int   @default(180)
+
+  repeatPatternThreshold  Int @default(3)
+  repeatPatternWindowDays Int @default(30)
+
+  // The checkout reminder's own timing (lib/teacherAttendanceReminder.js) —
+  // previously fixed at 15/30 in code with no way for a Principal to change
+  // it. Same "informational rule becomes a real setting" reasoning as every
+  // other grace-period field above.
+  reminderMinutesBeforeClose Int @default(15)
+  reminderMinutesAfterClose  Int @default(30)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// One row per teacher per calendar date. Raw check-in/check-out evidence
+// (the checkIn*/checkOut* fields) is the source of truth; status and every
+// other derived field are always recomputed by the shared functions in
+// lib/teacherAttendance.js — never hand-written by a route, same discipline
+// as classroomAttendance.js's attendancePercentage()/deriveUnmarked().
+model TeacherAttendance {
+  id       String @id @default(cuid())
+  user     User   @relation(fields: [userId], references: [id])
+  userId   String
+  school   School @relation(fields: [schoolId], references: [id])
+  schoolId String
+  date     String // "YYYY-MM-DD", IST calendar date
+
+  checkInAt             DateTime?
+  checkInLat            Float?
+  checkInLon            Float?
+  checkInAccuracyMeters Float?
+  checkInDistanceMeters Float?
+  checkInDeviceId       String?
+
+  checkOutAt             DateTime?
+  checkOutLat            Float?
+  checkOutLon            Float?
+  checkOutAccuracyMeters Float?
+  checkOutDistanceMeters Float?
+  checkOutDeviceId       String?
+
+  // present | late | half_day | absent | on_leave | on_duty |
+  // pending_regularization | flagged_review — attendance-plan-review.md §4/§9.
+  status                String
+  lateMinutes           Int?
+  earlyDepartureMinutes Int?
+  workingMinutes        Int?
+  shortfallMinutes      Int?
+
+  // Free text on purpose, not a fixed enum — the official leave/duty
+  // category list is still pending from the department. Changing the
+  // allowed values later needs no migration.
+  leaveOrDutyCategory String?
+  leaveOrDutyReason   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reviews TeacherAttendanceReview[]
+
+  // One attendance row per teacher per day — the DB enforces the invariant
+  // routes rely on, mirroring AttendanceRecord's @@unique([studentId, date]).
+  @@unique([userId, date])
+  @@index([schoolId, date])
+}
+
+// Append-only audit trail. A Principal action NEVER overwrites
+// TeacherAttendance's original fields — it adds a row here, and only then
+// updates TeacherAttendance's derived status. Mirrors Session's "never
+// delete, mark revoked" discipline already used in this schema.
+model TeacherAttendanceReview {
+  id               String            @id @default(cuid())
+  attendance       TeacherAttendance @relation(fields: [attendanceId], references: [id])
+  attendanceId     String
+  reviewedBy       User              @relation(fields: [reviewedByUserId], references: [id])
+  reviewedByUserId String
+  // approve | correct_checkin | correct_checkout | mark_on_leave |
+  // mark_on_duty | reject — see lib/teacherAttendanceSchema.js's REVIEW_ACTIONS.
+  action           String
+  previousStatus   String
+  newStatus        String
+  // Mandatory — enforced in teacherAttendanceSchema.js's Zod schema, not
+  // just documented here. attendance-plan-review.md §11: "every approval or
+  // correction must include a written reason — it can't be a blank
+  // 'approve' click."
+  reason           String
+  createdAt        DateTime          @default(now())
+
+  @@index([attendanceId])
+}
+
+// A one-off non-working day for a school — department-set (the yearly
+// calendar) or Principal-set (an emergency closure). attendance-plan-review.md
+// §8/§9.
+model SchoolHoliday {
+  id        String   @id @default(cuid())
+  school    School   @relation(fields: [schoolId], references: [id])
+  schoolId  String
+  date      String // "YYYY-MM-DD"
+  reason    String
+  source    String // "department" | "principal_emergency"
+  createdAt DateTime @default(now())
+
+  @@unique([schoolId, date])
+}
+
+// Every meaningful attendance-related event, whether or not it changed a
+// TeacherAttendance row — login, check-in, check-out, a blocked attempt,
+// a correction, a settings change, a reminder firing. Separate from
+// TeacherAttendanceReview (which stays scoped to Principal corrections
+// specifically): most rows here — a plain check-in, a blocked attempt, a
+// reminder — were never a "review" of anything, and there's no queue
+// left for a review-style audit trail to resolve against. See
+// docs/feature-teacher-attendance-implementation-plan.md §1.10/§3.
+model TeacherAttendanceActivityLog {
+  id       String @id @default(cuid())
+  school   School @relation(fields: [schoolId], references: [id])
+  schoolId String
+  user     User   @relation(fields: [userId], references: [id])
+  userId   String // whose day this event is about
+
+  // Set only when different from userId — e.g. an admin correcting
+  // someone else's record. Plain id, not a relation: this is a log, not
+  // something ever queried "give me every log row this admin performed."
+  performedBy String?
+
+  // login | check_in | check_out | check_in_blocked | check_out_blocked |
+  // missing_checkout | correction | mark_on_leave | mark_on_duty |
+  // holiday_changed | settings_changed | reminder_sent
+  action String
+
+  result         String? // short human-readable summary, e.g. "63m from school" or "blocked, 410m away"
+  lat            Float?
+  lon            Float?
+  distanceMeters Float?
+  // JSON, only for actions that need extra detail (old/new values on a
+  // correction or settings change).
+  metadata       String?
+
+  createdAt DateTime @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([userId, createdAt])
 }
