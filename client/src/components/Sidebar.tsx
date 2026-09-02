@@ -140,10 +140,10 @@ export default function Sidebar({
         </button>
 
         <div className="sidebar-brand-row">
-          <Link to="/" className="brand" aria-label="Teacher Assistant — home">
-            <span className="brand-logo" aria-hidden="true">👨‍🏫</span>
+          <Link to="/" className="brand" aria-label="SarasTech — home">
+            <img src="/logo.png" alt="" className="brand-logo" aria-hidden="true" />
             <span className="brand-text">
-              <strong className="brand-title">शिक्षक सहायक</strong>
+              <strong className="brand-title">SarasTech</strong>
               <span className="brand-sub">Teacher Assistant</span>
             </span>
           </Link>

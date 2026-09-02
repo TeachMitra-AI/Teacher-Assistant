@@ -113,7 +113,7 @@ async function sendPasswordResetEmail({ to, token, name, schoolName, expiresInMi
   const text = [
     greeting,
     '',
-    `We received a request to reset your शिक्षक सहायक password${which}.`,
+    `We received a request to reset your SarasTech password${which}.`,
     '',
     `Open this link to choose a new password (it expires in ${expiresInMinutes} minutes):`,
     resetUrl,
@@ -124,7 +124,7 @@ async function sendPasswordResetEmail({ to, token, name, schoolName, expiresInMi
   const html = `
     <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; font-size: 16px; line-height: 1.5; color: #1f2937;">
       <p>${greeting}</p>
-      <p>We received a request to reset your <strong>शिक्षक सहायक</strong> password${which}.</p>
+      <p>We received a request to reset your <strong>SarasTech</strong> password${which}.</p>
       <p>
         <a href="${resetUrl}" style="display: inline-block; padding: 12px 20px; background: #2563eb; color: #ffffff; border-radius: 8px; text-decoration: none;">
           Choose a new password
@@ -139,7 +139,7 @@ async function sendPasswordResetEmail({ to, token, name, schoolName, expiresInMi
 
   return sendEmail({
     to,
-    subject: 'Reset your शिक्षक सहायक password',
+    subject: 'Reset your SarasTech password',
     html,
     text,
   });

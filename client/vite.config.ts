@@ -9,17 +9,17 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg'],
+      includeAssets: ['logo.png'],
       manifest: {
-        name: 'शिक्षक सहायक — Teacher Assistant',
-        short_name: 'शिक्षक सहायक',
+        name: 'SarasTech — Teacher Assistant',
+        short_name: 'SarasTech',
         description: 'AI coaching assistant for teachers',
         start_url: '.',
         display: 'standalone',
         background_color: '#ffffff',
         theme_color: '#FF6B35',
         icons: [
-          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' },
+          { src: 'logo.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
         ],
       },
       workbox: {
