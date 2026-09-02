@@ -90,7 +90,14 @@ const styles = StyleSheet.create({
   // (grid-template-columns: 1fr) — see this file's header comment. Explicit
   // width so these stay full-width rows despite the container's centered
   // alignItems (which only the greeting/highlight text should shrink-wrap).
-  grid: { gap: spacing.sm, width: '100%' },
+  //
+  // marginTop tops up the container's own `gap: spacing.xs` (4dp) between
+  // this grid and the DailyHighlightCard above it to spacing.md (12dp) total
+  // — matching the web's phone-width gap between `.daily-highlight-card` and
+  // `.quick-action-grid` (`.welcome-screen`'s 0.75rem flex gap, index.css's
+  // mobile breakpoint) instead of the much tighter default the shared
+  // container gap alone would leave between just these two children.
+  grid: { gap: spacing.sm, width: '100%', marginTop: spacing.sm },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
