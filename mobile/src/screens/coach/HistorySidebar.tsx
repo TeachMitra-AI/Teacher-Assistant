@@ -20,7 +20,7 @@
 // filter instead, since there is no second surface competing for it here).
 import React, { useMemo, useRef, useState } from 'react';
 import {
-  View, Pressable, Modal, FlatList, TextInput, Alert, Share, PanResponder,
+  View, Image, Pressable, Modal, FlatList, TextInput, Alert, Share, PanResponder,
   ActivityIndicator, useWindowDimensions, StyleSheet, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -215,11 +215,9 @@ export function HistorySidebar({
             <View style={styles.panelInner} testID="sidebar-swipe-area" {...panResponder.panHandlers}>
             <View style={styles.headerRow}>
               <View style={styles.brandRow}>
-                <View style={[styles.brandLogo, { backgroundColor: colors.orangeSoft }]}>
-                  <ThemedText style={styles.brandEmoji}>👨‍🏫</ThemedText>
-                </View>
+                <Image source={require('../../../assets/logo.png')} style={styles.brandLogo} />
                 <View style={styles.brandText}>
-                  <ThemedText style={styles.brandTitle}>शिक्षक सहायक</ThemedText>
+                  <ThemedText style={styles.brandTitle}>SarasTech</ThemedText>
                   <ThemedText variant="muted" style={styles.brandSub}>Teacher Assistant</ThemedText>
                 </View>
               </View>
@@ -427,8 +425,7 @@ const styles = StyleSheet.create({
   panelInner: { flex: 1, paddingHorizontal: spacing.md, gap: spacing.sm },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
-  brandLogo: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  brandEmoji: { fontSize: 15 },
+  brandLogo: { width: 30, height: 30, borderRadius: 8 },
   brandText: { flexShrink: 1 },
   brandTitle: { fontSize: 15, fontWeight: '700' },
   brandSub: { fontSize: 11 },

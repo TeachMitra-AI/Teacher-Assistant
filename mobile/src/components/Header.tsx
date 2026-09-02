@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Pressable, StyleSheet, Platform } from 'react-native';
+import { View, Image, Pressable, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Sun, Moon, SlidersHorizontal, PanelLeft } from 'lucide-react-native';
 import { ThemedText } from './ThemedText';
@@ -60,10 +60,8 @@ export function Header({ variant = 'default', onMenuPress, onContextPress, conte
           </Pressable>
         ) : (
           <>
-            <View style={[styles.logo, { backgroundColor: colors.orangeSoft }]}>
-              <ThemedText style={styles.logoEmoji}>👨‍🏫</ThemedText>
-            </View>
-            <ThemedText style={styles.title}>शिक्षक सहायक</ThemedText>
+            <Image source={require('../../assets/logo.png')} style={styles.logo} />
+            <ThemedText style={styles.title}>SarasTech</ThemedText>
           </>
         )}
       </View>
@@ -113,8 +111,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   left: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
-  logo: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  logoEmoji: { fontSize: 15 },
+  logo: { width: 30, height: 30, borderRadius: 8 },
   title: { fontWeight: '700', fontSize: 16, flexShrink: 1 },
   right: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   iconButton: {

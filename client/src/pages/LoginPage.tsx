@@ -227,8 +227,8 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
       <div className="auth-layout auth-layout--split">
         <aside className="auth-hero" aria-hidden="true">
           <div className="auth-hero-inner">
-            <div className="auth-hero-logo">👨‍🏫</div>
-            <h2 className="auth-hero-title">शिक्षक सहायक</h2>
+            <img src="/logo.png" alt="" className="auth-hero-logo" />
+            <h2 className="auth-hero-title">SarasTech</h2>
             <p className="auth-hero-tagline">
               Your AI teaching companion — practical, classroom-ready advice in your language.
             </p>
@@ -242,8 +242,8 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
 
         <div className="auth-card">
           <div className="auth-brand">
-            <span className="auth-brand-logo" aria-hidden="true">👨‍🏫</span>
-            <h1>शिक्षक सहायक</h1>
+            <img src="/logo.png" alt="" className="auth-brand-logo" />
+            <h1>SarasTech</h1>
             <p>{subtitle}</p>
           </div>
 

@@ -5,6 +5,7 @@
 import React, { useCallback, useState } from 'react';
 import {
   View,
+  Image,
   ScrollView,
   Pressable,
   StyleSheet,
@@ -197,13 +198,10 @@ export function AuthScreen({ navigation }: Props) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.brand}>
-          {/* .auth-brand-logo: 54px rounded square, soft orange tint + border
-              (UI_REFINED.md §9.1), not a bare emoji. */}
-          <View style={[styles.brandLogo, { backgroundColor: colors.orangeSoft, borderColor: colors.border }]}>
-            <ThemedText style={styles.brandEmoji}>👨‍🏫</ThemedText>
-          </View>
+          {/* .auth-brand-logo: 54px rounded square app logo (UI_REFINED.md §9.1). */}
+          <Image source={require('../../../assets/logo.png')} style={styles.brandLogo} />
           <ThemedText variant="title" style={styles.brandTitle}>
-            शिक्षक सहायक
+            SarasTech
           </ThemedText>
           <ThemedText variant="muted">
             {view === 'pending'
@@ -441,10 +439,8 @@ const styles = StyleSheet.create({
   },
   brand: { alignItems: 'center', gap: spacing.xs, marginBottom: spacing.md },
   brandLogo: {
-    width: 54, height: 54, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xs,
+    width: 54, height: 54, borderRadius: 16, marginBottom: spacing.xs,
   },
-  brandEmoji: { fontSize: 26 },
   brandTitle: { fontSize: 24 },
   gap: { gap: spacing.md },
   tabs: { flexDirection: 'row', borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 4, marginBottom: spacing.lg },

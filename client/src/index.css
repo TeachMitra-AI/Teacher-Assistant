@@ -183,14 +183,11 @@ button { font-family: inherit; cursor: pointer; }
   flex-shrink: 0;
 }
 .brand-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   width: 40px;
   height: 40px;
-  font-size: 1.35rem;
   border-radius: 11px;
-  background: linear-gradient(135deg, var(--orange), var(--amber));
+  object-fit: cover;
   box-shadow: 0 2px 8px rgba(255, 107, 53, 0.35);
   flex-shrink: 0;
 }
@@ -2589,12 +2586,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .auth-hero-logo {
   width: 60px;
   height: 60px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 2rem;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  display: block;
+  object-fit: cover;
   border-radius: 16px;
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.16);
   margin-bottom: 1.1rem;
@@ -2684,14 +2677,10 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 }
 .auth-brand { text-align: center; margin-bottom: 1.6rem; }
 .auth-brand-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-block;
   width: 54px;
   height: 54px;
-  font-size: 1.75rem;
-  background: linear-gradient(135deg, rgba(255, 107, 53, 0.15), rgba(247, 147, 30, 0.12));
-  border: 1px solid var(--border);
+  object-fit: cover;
   border-radius: 16px;
   box-shadow: 0 6px 16px rgba(255, 107, 53, 0.14);
   margin-bottom: 0.75rem;
@@ -2928,7 +2917,7 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 @media (max-width: 480px) {
   .auth-screen { padding: 1rem; }
   .auth-card { padding: 2rem 1.4rem; }
-  .auth-brand-logo { width: 48px; height: 48px; font-size: 1.55rem; }
+  .auth-brand-logo { width: 48px; height: 48px; }
   .auth-brand h1 { font-size: 1.3rem; }
 }
 @media (prefers-reduced-motion: reduce) {
