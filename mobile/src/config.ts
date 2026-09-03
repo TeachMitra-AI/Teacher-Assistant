@@ -120,6 +120,22 @@ export const LANGUAGES: { value: string; label: string }[] = [
   { value: 'hinglish', label: 'Hinglish' },
 ];
 
+// Maps a response language to a BCP-47 code for voice input (Coach's mic
+// button, lib/useVoiceInput.ts). Ported verbatim from client/src/config.ts's
+// SPEECH_LOCALE — same values, same "hinglish speaks Hindi" choice.
+export const SPEECH_LOCALE: Record<string, string> = {
+  en: 'en-US',
+  hi: 'hi-IN',
+  bn: 'bn-IN',
+  te: 'te-IN',
+  mr: 'mr-IN',
+  ta: 'ta-IN',
+  gu: 'gu-IN',
+  kn: 'kn-IN',
+  or: 'or-IN',
+  hinglish: 'hi-IN',
+};
+
 // --- Phase 6 (Generator) ---
 // Ported from client/src/config.ts. Same closed vocabularies, same server
 // counterpart (server/src/actions/schemas/generateAssessment.js) — kept in
