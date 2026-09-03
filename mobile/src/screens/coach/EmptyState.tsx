@@ -3,6 +3,13 @@
 // prompts/copy from client/src/config.ts's QUICK_ACTIONS) plus the Today's
 // Highlight card (client/src/components/DailyHighlight.tsx), ported in
 // Phase 7c's "Newly approved features" pass — see docs/mobile-app-plan.md.
+//
+// Unlike the web's own narrow-viewport view (which trims to a single-column,
+// 3-card list so the composer stays reachable without scrolling — index.css's
+// `.quick-action-card--mobile-hidden` rule), this screen is always inside a
+// ScrollView with the composer docked outside it (CoachScreen.tsx), so there
+// is no above-the-fold budget to protect. All four cards are shown, one per
+// row.
 import React, { useMemo } from 'react';
 import { View, Pressable, StyleSheet } from 'react-native';
 import { NotebookPen, Target, Lightbulb, ClipboardCheck, type LucideIcon } from 'lucide-react-native';
@@ -17,19 +24,14 @@ interface QuickAction {
   label: string;
   description: string;
   prompt: string;
-  hideOnMobile?: boolean;
 }
 
-// Copy ported verbatim from client/src/config.ts's QUICK_ACTIONS, including
-// its `hideOnMobile` flag on the 4th action — the web hides it at mobile
-// width (client/src/config.ts, enforced by `.quick-action-card--mobile-
-// hidden`) so the composer stays reachable without scrolling; mirrored here
-// for the same reason and to match the web's mobile view exactly.
+// Copy ported verbatim from client/src/config.ts's QUICK_ACTIONS.
 const QUICK_ACTIONS: QuickAction[] = [
   { icon: NotebookPen, label: 'Lesson Plan', description: 'Structured plans with objectives and activities', prompt: 'Create a lesson plan for ' },
   { icon: Target, label: 'Classroom Activity', description: 'Engaging, ready-to-run activities', prompt: 'Suggest a classroom activity for ' },
   { icon: Lightbulb, label: 'Explain a Concept', description: 'Simple explanations for your grade', prompt: 'Explain this concept simply: ' },
-  { icon: ClipboardCheck, label: 'Assessment', description: 'Quizzes and worksheets to check learning', prompt: 'Create a short assessment for ', hideOnMobile: true },
+  { icon: ClipboardCheck, label: 'Assessment', description: 'Quizzes and worksheets to check learning', prompt: 'Create a short assessment for ' },
 ];
 
 interface EmptyStateProps {
@@ -57,7 +59,7 @@ export function EmptyState({ name, onPickPrompt }: EmptyStateProps) {
       <DailyHighlightCard highlight={highlight} />
 
       <View style={styles.grid}>
-        {QUICK_ACTIONS.filter((a) => !a.hideOnMobile).map((action) => (
+        {QUICK_ACTIONS.map((action) => (
           <Pressable
             key={action.label}
             onPress={() => onPickPrompt(action.prompt)}
@@ -83,21 +85,17 @@ export function EmptyState({ name, onPickPrompt }: EmptyStateProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.xs, alignItems: 'center' },
+  // A single, even gap carries the rhythm between every section (greeting →
+  // subtitle → highlight card → suggestion grid) instead of one-off margins
+  // on each child, so the whole welcome view reads as one consistent column.
+  container: { padding: spacing.lg, gap: spacing.md, alignItems: 'center' },
   greeting: { fontSize: 22, textAlign: 'center' },
-  subtitle: { marginBottom: spacing.lg, textAlign: 'center' },
-  // Single column, matching the web's `.quick-action-grid` mobile override
-  // (grid-template-columns: 1fr) — see this file's header comment. Explicit
-  // width so these stay full-width rows despite the container's centered
-  // alignItems (which only the greeting/highlight text should shrink-wrap).
-  //
-  // marginTop tops up the container's own `gap: spacing.xs` (4dp) between
-  // this grid and the DailyHighlightCard above it to spacing.md (12dp) total
-  // — matching the web's phone-width gap between `.daily-highlight-card` and
-  // `.quick-action-grid` (`.welcome-screen`'s 0.75rem flex gap, index.css's
-  // mobile breakpoint) instead of the much tighter default the shared
-  // container gap alone would leave between just these two children.
-  grid: { gap: spacing.sm, width: '100%', marginTop: spacing.sm },
+  subtitle: { textAlign: 'center' },
+  // One card per row, full width — a single scannable column.
+  grid: { gap: spacing.sm, width: '100%' },
+  // Icon-left row layout — full card width comfortably fits icon + title +
+  // description on one line without the wrapping a narrower multi-column
+  // card would force.
   card: {
     flexDirection: 'row',
     alignItems: 'center',
