@@ -6,15 +6,19 @@
 // (AddMenu + ClassroomModeMenu on the left, char count + send on the right) —
 // see that file's own doc comment for why a MODE lives on the opposite side
 // from an "add". Box styling (surface-2 panel, focus ring, circular send)
-// ported from .composer-box / .composer-send in UI_REFINED.md §10.4.
-import React, { useState } from 'react';
-import { View, TextInput, Pressable, StyleSheet } from 'react-native';
-import { ArrowUp } from 'lucide-react-native';
+// ported from .composer-box / .composer-send in UI_REFINED.md §10.4. The mic
+// (voice input, lib/useVoiceInput.ts) was ported after that, mirroring the
+// web's own .voice-btn — same right-of-char-count, left-of-send placement,
+// same orange-fill + pulse while listening (index.css:2248's `.voice-btn.listening`).
+import React, { useEffect, useRef, useState } from 'react';
+import { View, TextInput, Pressable, StyleSheet, Animated, Easing } from 'react-native';
+import { ArrowUp, Mic } from 'lucide-react-native';
 import { ThemedText } from '../../components/ThemedText';
 import { useTheme } from '../../theme/ThemeContext';
 import { radius, spacing } from '../../theme/tokens';
 import { MAX_QUERY_LENGTH, ATTACHMENTS_ENABLED, CLASSROOM_MODE_ENABLED, MAX_ATTACHMENTS_COUNT } from '../../config';
 import type { useAttachments } from '../../lib/useAttachments';
+import type { useVoiceInput } from '../../lib/useVoiceInput';
 import { AttachmentTray } from './AttachmentTray';
 import { AddMenu } from './AddMenu';
 import { ClassroomModeMenu } from './ClassroomModeMenu';
@@ -25,15 +29,37 @@ interface ComposerProps {
   onSubmit: () => void;
   loading: boolean;
   attachments: ReturnType<typeof useAttachments>;
+  voice: ReturnType<typeof useVoiceInput>;
   classroomMode: boolean;
   onClassroomModeChange: (on: boolean) => void;
 }
 
 export function Composer({
-  value, onChange, onSubmit, loading, attachments, classroomMode, onClassroomModeChange,
+  value, onChange, onSubmit, loading, attachments, voice, classroomMode, onClassroomModeChange,
 }: ComposerProps) {
   const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
+  // Matches RunStatus.tsx's own pulse: a looping 0.4<->1 scale, not a
+  // useRef(x).current lazy singleton (the eslint-config-expo react-hooks/refs
+  // rule flags that pattern).
+  const [pulse] = useState(() => new Animated.Value(1));
+  const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
+
+  useEffect(() => {
+    if (voice.listening) {
+      pulseLoop.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulse, { toValue: 1.12, duration: 600, easing: Easing.ease, useNativeDriver: true }),
+          Animated.timing(pulse, { toValue: 1, duration: 600, easing: Easing.ease, useNativeDriver: true }),
+        ]),
+      );
+      pulseLoop.current.start();
+    } else {
+      pulseLoop.current?.stop();
+      pulse.setValue(1);
+    }
+    return () => pulseLoop.current?.stop();
+  }, [voice.listening, pulse]);
   // Matches the web's handleSubmit: text is always required, even with
   // attachments staged — an attachment-only send has no question to ask.
   const canSend = !loading && value.trim().length > 0;
@@ -95,21 +121,46 @@ export function Composer({
               <ClassroomModeMenu classroomMode={classroomMode} onClassroomModeChange={onClassroomModeChange} disabled={loading} />
             )}
           </View>
-          <Pressable
-            onPress={onSubmit}
-            disabled={!canSend}
-            accessibilityRole="button"
-            accessibilityLabel="Send question"
-            testID="coach-composer-send"
-            hitSlop={4}
-            style={styles.sendHitArea}
-          >
-            <View
-              style={[styles.send, { backgroundColor: colors.orange }, !canSend && styles.sendDisabled]}
+          <View style={styles.rowRight}>
+            {voice.supported && (
+              <Pressable
+                onPress={voice.toggle}
+                disabled={loading}
+                accessibilityRole="button"
+                accessibilityLabel={voice.listening ? 'Stop voice input' : 'Start voice input'}
+                accessibilityState={{ selected: voice.listening, disabled: loading }}
+                testID="coach-composer-voice"
+                hitSlop={4}
+                style={styles.voiceHitArea}
+              >
+                <Animated.View
+                  style={[
+                    styles.voiceBtn,
+                    { backgroundColor: voice.listening ? colors.orange : colors.surface2, borderColor: colors.border },
+                    voice.listening && { borderColor: colors.orange, transform: [{ scale: pulse }] },
+                    loading && styles.sendDisabled,
+                  ]}
+                >
+                  <Mic size={18} color={voice.listening ? '#fff' : colors.text} />
+                </Animated.View>
+              </Pressable>
+            )}
+            <Pressable
+              onPress={onSubmit}
+              disabled={!canSend}
+              accessibilityRole="button"
+              accessibilityLabel="Send question"
+              testID="coach-composer-send"
+              hitSlop={4}
+              style={styles.sendHitArea}
             >
-              <ArrowUp size={18} color="#fff" />
-            </View>
-          </Pressable>
+              <View
+                style={[styles.send, { backgroundColor: colors.orange }, !canSend && styles.sendDisabled]}
+              >
+                <ArrowUp size={18} color="#fff" />
+              </View>
+            </Pressable>
+          </View>
         </View>
       </View>
       </View>
@@ -143,10 +194,19 @@ const styles = StyleSheet.create({
   // for cramped horizontal space.
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   rowLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 1 },
+  // .composer-controls-right on web: the mic sits directly left of send.
+  rowRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   // Visual circle matches .composer-send's 38dp exactly; the touchable area
   // stays 44x44dp (§13's minimum touch target) via padding around it, not by
   // growing the visible circle.
   sendHitArea: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   send: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   sendDisabled: { opacity: 0.4 }, // .composer-send:disabled's exact value (index.css:2237)
+  // Same 44x44 touch target as send; the visible circle matches AddMenu's
+  // 34dp icon button (.voice-btn on web is sized with the other icon-btns).
+  voiceHitArea: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  voiceBtn: {
+    width: 34, height: 34, borderRadius: radius.sm, borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center', justifyContent: 'center',
+  },
 });

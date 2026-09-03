@@ -53,6 +53,31 @@ const {
   updateHistoryItem: jest.Mock;
 };
 
+// expo-speech-recognition is mocked globally in jest.setup.ts (a safe
+// "unsupported device" default — see that file's own comment) — pulled in
+// here by reference so the "voice input" tests below can flip
+// isRecognitionAvailable() per test and inspect what useVoiceInput told the
+// native module to do.
+const { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } = jest.requireMock('expo-speech-recognition') as {
+  ExpoSpeechRecognitionModule: {
+    isRecognitionAvailable: jest.Mock;
+    requestPermissionsAsync: jest.Mock;
+    start: jest.Mock;
+    stop: jest.Mock;
+    abort: jest.Mock;
+  };
+  useSpeechRecognitionEvent: jest.Mock;
+};
+
+// useSpeechRecognitionEvent is a no-op jest.fn(), so the "start"/"result"/
+// "error"/"end" callbacks useVoiceInput registers are never actually wired
+// to anything — this replays the most recently registered handler for a
+// given event name, standing in for the native module firing it for real.
+function latestVoiceHandler(event: string) {
+  const calls = useSpeechRecognitionEvent.mock.calls.filter((c) => c[0] === event);
+  return calls[calls.length - 1][1];
+}
+
 const HIST_1: HistoryItem = {
   id: 'q1', query: 'How do I teach fractions?', language: 'en',
   context: { grade: 'Class 5', subject: 'Mathematics' },
@@ -469,6 +494,70 @@ describe('CoachScreen', () => {
       'hi',
       expect.objectContaining({ grade: 'Class 3-5', subject: 'Mathematics' })
     ));
+  });
+
+  describe('voice input (mic button)', () => {
+    beforeEach(() => {
+      useSpeechRecognitionEvent.mockClear();
+      ExpoSpeechRecognitionModule.requestPermissionsAsync.mockReset();
+      ExpoSpeechRecognitionModule.start.mockReset();
+      ExpoSpeechRecognitionModule.stop.mockReset();
+    });
+
+    afterEach(() => {
+      // Restore jest.setup.ts's default so the mic stays hidden for every
+      // other describe block in this file.
+      ExpoSpeechRecognitionModule.isRecognitionAvailable.mockReturnValue(false);
+    });
+
+    it('is hidden when the device has no speech recognizer available', async () => {
+      ExpoSpeechRecognitionModule.isRecognitionAvailable.mockReturnValue(false);
+      await act(async () => { renderScreen(); });
+      expect(screen.queryByTestId('coach-composer-voice')).toBeNull();
+    });
+
+    it('tapping the mic requests permission and starts recognition in the current language', async () => {
+      ExpoSpeechRecognitionModule.isRecognitionAvailable.mockReturnValue(true);
+      ExpoSpeechRecognitionModule.requestPermissionsAsync.mockResolvedValue({ granted: true });
+      await act(async () => { renderScreen(); });
+
+      await fireEvent.press(screen.getByTestId('coach-composer-voice'));
+
+      await waitFor(() => expect(ExpoSpeechRecognitionModule.start).toHaveBeenCalledWith(
+        expect.objectContaining({ lang: 'en-US', continuous: false, interimResults: false })
+      ));
+    });
+
+    it('appends a final transcript to whatever is already in the composer', async () => {
+      ExpoSpeechRecognitionModule.isRecognitionAvailable.mockReturnValue(true);
+      ExpoSpeechRecognitionModule.requestPermissionsAsync.mockResolvedValue({ granted: true });
+      await act(async () => { renderScreen(); });
+
+      await fireEvent.changeText(screen.getByTestId('coach-composer-input'), 'How do I');
+      await fireEvent.press(screen.getByTestId('coach-composer-voice'));
+      await waitFor(() => expect(ExpoSpeechRecognitionModule.start).toHaveBeenCalled());
+
+      await act(async () => {
+        latestVoiceHandler('result')({ isFinal: true, results: [{ transcript: 'teach fractions' }] });
+      });
+
+      expect(screen.getByTestId('coach-composer-input').props.value).toBe('How do I teach fractions');
+    });
+
+    it('shows an alert and does not start recognition when permission is denied', async () => {
+      ExpoSpeechRecognitionModule.isRecognitionAvailable.mockReturnValue(true);
+      ExpoSpeechRecognitionModule.requestPermissionsAsync.mockResolvedValue({ granted: false, status: 'denied' });
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+      await act(async () => { renderScreen(); });
+
+      await fireEvent.press(screen.getByTestId('coach-composer-voice'));
+
+      await waitFor(() => expect(alertSpy).toHaveBeenCalledWith(
+        'Microphone access needed',
+        expect.any(String)
+      ));
+      expect(ExpoSpeechRecognitionModule.start).not.toHaveBeenCalled();
+    });
   });
 });
 

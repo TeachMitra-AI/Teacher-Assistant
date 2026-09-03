@@ -79,6 +79,24 @@ jest.mock('expo-notifications', () => ({
 }));
 jest.mock('expo-constants', () => ({ expoConfig: {}, easConfig: undefined }));
 
+// expo-speech-recognition backs the Coach composer's mic button
+// (mobile/src/lib/useVoiceInput.ts) — a native module that doesn't exist
+// under the Jest test renderer, same "safe inert default" shape as the
+// expo-notifications mock above. isRecognitionAvailable() false means
+// useVoiceInput's `supported` is false, so the mic button renders as absent
+// (mirroring an unsupported browser on web) and no test accidentally
+// exercises the real native start/stop/permission flow.
+jest.mock('expo-speech-recognition', () => ({
+  ExpoSpeechRecognitionModule: {
+    isRecognitionAvailable: jest.fn(() => false),
+    requestPermissionsAsync: jest.fn().mockResolvedValue({ granted: false, status: 'denied' }),
+    start: jest.fn(),
+    stop: jest.fn(),
+    abort: jest.fn(),
+  },
+  useSpeechRecognitionEvent: jest.fn(),
+}));
+
 // @react-native-async-storage/async-storage backs the offline attendance
 // queue (Phase 12, mobile/src/lib/offlineQueue.ts) — the real native module
 // doesn't exist under the Jest test renderer. A simple in-memory fake is

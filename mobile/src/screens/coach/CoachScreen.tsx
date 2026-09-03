@@ -12,10 +12,13 @@
 // Phase 4 shipped, as was edit-in-place on a sent message (handleEditTurn
 // below, mirroring the web's own CoachPage.tsx one-for-one). File/photo
 // attachments (POST /coach/attachment) and Classroom Mode were ported after
-// that, mirroring the web's Composer/ClassroomSet. Still deferred: voice
-// input (needs a native speech module), LaTeX math rendering, and
-// copy-to-clipboard on a sent message (needs expo-clipboard, not currently
-// installed).
+// that, mirroring the web's Composer/ClassroomSet. Voice input (the
+// Composer's mic button, lib/useVoiceInput.ts) was ported after that, over
+// expo-speech-recognition — the native speech module Expo Go can't load, so
+// it needs the custom dev client this app already builds for other native
+// modules (Google Sign-In, notifications). Still deferred: LaTeX math
+// rendering and copy-to-clipboard on a sent message (needs expo-clipboard,
+// not currently installed).
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { View, FlatList, ScrollView, KeyboardAvoidingView, Platform, StyleSheet, Alert } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -30,7 +33,8 @@ import {
 } from '../../api/coach';
 import { useHistoryOverrides } from '../../lib/useHistoryOverrides';
 import { useAttachments, type SelectedAttachment } from '../../lib/useAttachments';
-import { ATTACHMENTS_ENABLED, CLASSROOM_MODE_ENABLED } from '../../config';
+import { useVoiceInput } from '../../lib/useVoiceInput';
+import { ATTACHMENTS_ENABLED, CLASSROOM_MODE_ENABLED, SPEECH_LOCALE } from '../../config';
 import { Header } from '../../components/Header';
 import { EmptyState } from './EmptyState';
 import { MessageBubble } from './MessageBubble';
@@ -69,6 +73,9 @@ export function CoachScreen({ navigation }: Props) {
   const [classroomMode, setClassroomMode] = useState(false);
 
   const [language, setLanguage] = useState(DEFAULT_LANGUAGE);
+  const voice = useVoiceInput(SPEECH_LOCALE[language] || 'en-US', (text) => {
+    setQuery((q) => (q ? `${q} ${text}` : text));
+  });
   const [context, setContext] = useState<QueryContext>(EMPTY_CONTEXT);
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   // Language isn't counted: it always has a value (defaults to English), so
@@ -378,6 +385,7 @@ export function CoachScreen({ navigation }: Props) {
             onSubmit={handleSubmit}
             loading={isSubmitting}
             attachments={attachments}
+            voice={voice}
             classroomMode={classroomMode}
             onClassroomModeChange={setClassroomMode}
           />
