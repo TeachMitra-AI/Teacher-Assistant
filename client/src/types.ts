@@ -140,15 +140,16 @@ export interface LoginCredentials {
 }
 
 export interface RegisterCredentials {
-  schoolCode: string;
   name: string;
   email: string;
   password: string;
 }
 
 export interface GoogleAuthOptions {
-  // Present => this is a sign-UP under that school code. Absent => sign-in.
-  schoolCode?: string;
+  // true => this is a sign-UP (the server assigns a default school — the
+  // website Register form no longer collects a school code). Absent/false
+  // => sign-in.
+  signup?: boolean;
   name?: string;
   // Sent only on the second attempt, after a needs_school outcome.
   schoolId?: string;

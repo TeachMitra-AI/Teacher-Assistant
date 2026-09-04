@@ -172,7 +172,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [authenticate]);
 
   // One call serves Google sign-up and Google sign-in, mirroring the single
-  // server endpoint: passing a schoolCode makes it a sign-up.
+  // server endpoint: passing `signup: true` makes it a sign-up (the server
+  // assigns a default school — this app no longer collects a school code).
   const loginWithGoogle = useCallback(
     (idToken: string, options: GoogleAuthOptions = {}) =>
       authenticate('/auth/google', { idToken, ...options }),

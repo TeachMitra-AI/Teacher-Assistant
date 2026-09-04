@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
-import { Mail, Lock, User, School, Eye, EyeOff, Sun, Moon, CircleAlert, ArrowLeft, Lightbulb, Languages, BookOpen } from 'lucide-react';
+import { Mail, Lock, User, Eye, EyeOff, Sun, Moon, CircleAlert, ArrowLeft, Lightbulb, Languages, BookOpen } from 'lucide-react';
 import { useAuth } from '../auth';
 import { ApiError } from '../api';
 import { GOOGLE_CLIENT_ID } from '../config';
@@ -27,7 +27,6 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
   const { login, register, loginWithGoogle } = useAuth();
   const [mode, setMode] = useState<Mode>('login');
   const [view, setView] = useState<View>('form');
-  const [schoolCode, setSchoolCode] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -41,7 +40,7 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
   // Field-level errors surface only once a field has been visited (blur) or a
   // submit was attempted — matching the rest of the form, nothing is flagged
   // while the user is still typing their first pass through it.
-  const [touched, setTouched] = useState<{ schoolCode?: boolean; email?: boolean; password?: boolean }>({});
+  const [touched, setTouched] = useState<{ email?: boolean; password?: boolean }>({});
   function touch(field: keyof typeof touched) {
     setTouched((t) => (t[field] ? t : { ...t, [field]: true }));
   }
@@ -50,9 +49,6 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
     : '';
   const passwordError = touched.password && password.length > 0 && password.length < 8
     ? 'Password must be at least 8 characters.'
-    : '';
-  const schoolCodeError = touched.schoolCode && schoolCode.length > 0 && /\s/.test(schoolCode)
-    ? 'School code should not contain spaces.'
     : '';
 
   // Google's button won't take a percentage width, so to make it read as
@@ -125,13 +121,12 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
     e.preventDefault();
     setError('');
     // Marking every field touched surfaces the matching inline error (see
-    // emailError / passwordError / schoolCodeError) instead of duplicating
-    // the same message in the top-level banner below.
-    setTouched({ schoolCode: true, email: true, password: true });
+    // emailError / passwordError) instead of duplicating the same message in
+    // the top-level banner below.
+    setTouched({ email: true, password: true });
 
     if (!EMAIL_RE.test(email.trim())) return;
     if (password.length < 8) return;
-    if (mode === 'register' && /\s/.test(schoolCode)) return;
 
     setBusy(true);
     try {
@@ -142,7 +137,6 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
         const credentials = { email: email.trim(), password };
         applyOutcome(
           await register({
-            schoolCode: schoolCode.trim(),
             name: name.trim(),
             ...credentials,
           }),
@@ -157,19 +151,14 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
   }
 
   // Google hands back an ID token; everything else (which account it maps to,
-  // whether it's approved) is decided server-side from the verified token.
+  // whether it's approved, which school a sign-up lands at) is decided
+  // server-side from the verified token.
   async function handleGoogleToken(idToken: string) {
     setError('');
 
-    if (mode === 'register' && !schoolCode.trim()) {
-      setError('Enter your school code first, then continue with Google.');
-      return;
-    }
-
     setBusy(true);
     try {
-      const options =
-        mode === 'register' ? { schoolCode: schoolCode.trim(), name: name.trim() || undefined } : undefined;
+      const options = mode === 'register' ? { signup: true, name: name.trim() || undefined } : undefined;
       applyOutcome(await loginWithGoogle(idToken, options), { via: 'google', idToken });
     } catch (err) {
       setError(describeError(err));
@@ -196,11 +185,6 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
       setBusy(false);
     }
   }
-
-  // Google can only create an account once we know which school it belongs to.
-  // Sign-in is unaffected: it resolves the account from the verified Google
-  // identity alone, so no code is needed there.
-  const googleBlocked = mode === 'register' && !schoolCode.trim();
 
   const subtitle =
     view === 'pending'
@@ -335,47 +319,20 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
           {view === 'form' && (
             <>
               <form onSubmit={handleSubmit} className="auth-form">
-                {/* The school code picks the tenant, so it's needed only when
-                    creating an account — never to sign back in. */}
                 {mode === 'register' && (
-                  <>
-                    <label className="auth-field">
-                      <span className="auth-field-label">School code</span>
-                      <span className="auth-input">
-                        <School className="auth-input-icon" size={16} aria-hidden="true" />
-                        <input
-                          value={schoolCode}
-                          onChange={(e) => setSchoolCode(e.target.value)}
-                          onBlur={() => touch('schoolCode')}
-                          placeholder="e.g. RAMPUR01"
-                          autoComplete="off"
-                          autoCapitalize="characters"
-                          aria-describedby="schoolcode-help"
-                          aria-invalid={!!schoolCodeError}
-                          required
-                        />
-                      </span>
-                      {schoolCodeError ? (
-                        <span className="auth-field-error" id="schoolcode-help">{schoolCodeError}</span>
-                      ) : (
-                        <span className="auth-field-help" id="schoolcode-help">Provided by your school administrator.</span>
-                      )}
-                    </label>
-
-                    <label className="auth-field auth-field-spaced">
-                      <span className="auth-field-label">Your name</span>
-                      <span className="auth-input">
-                        <User className="auth-input-icon" size={16} aria-hidden="true" />
-                        <input
-                          value={name}
-                          onChange={(e) => setName(e.target.value)}
-                          placeholder="Full name"
-                          autoComplete="name"
-                          required
-                        />
-                      </span>
-                    </label>
-                  </>
+                  <label className="auth-field">
+                    <span className="auth-field-label">Your name</span>
+                    <span className="auth-input">
+                      <User className="auth-input-icon" size={16} aria-hidden="true" />
+                      <input
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Full name"
+                        autoComplete="name"
+                        required
+                      />
+                    </span>
+                  </label>
                 )}
 
                 <label className="auth-field">
@@ -459,44 +416,28 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
               {GOOGLE_CLIENT_ID && (
                 <>
                   <div className="auth-divider" role="presentation"><span>or</span></div>
-                  {/* Blocked until a school code is entered, but only on
-                      Register — signing in needs no code, so the button stays
-                      live on that tab by design. */}
-                  <div
-                    className="auth-google"
-                    ref={googleWrapRef}
-                    onClick={
-                      googleBlocked
-                        ? () => setError('Enter your school code first, then continue with Google.')
-                        : undefined
-                    }
-                  >
-                    <div className={googleBlocked ? 'auth-google-blocked' : undefined}>
-                      {/* GoogleOAuthProvider lives at the app root (App.tsx) so
-                          GSI initializes once, not on every tab switch. */}
-                      <GoogleLogin
-                        // Remounted on mode/theme/width changes: mode changes
-                        // its label, Google's own button doesn't re-theme
-                        // itself live, and it also won't resize live — each
-                        // needs a fresh render to take effect.
-                        key={`${mode}-${theme}-${googleWidth}`}
-                        theme={theme === 'dark' ? 'filled_black' : 'outline'}
-                        width={googleWidth}
-                        text={mode === 'login' ? 'signin_with' : 'signup_with'}
-                        onSuccess={(credentialResponse) => {
-                          if (credentialResponse.credential) {
-                            handleGoogleToken(credentialResponse.credential);
-                          } else {
-                            setError('Google did not return a sign-in token. Please try again.');
-                          }
-                        }}
-                        onError={() => setError('Google sign-in was cancelled or failed. Please try again.')}
-                      />
-                    </div>
+                  <div className="auth-google" ref={googleWrapRef}>
+                    {/* GoogleOAuthProvider lives at the app root (App.tsx) so
+                        GSI initializes once, not on every tab switch. */}
+                    <GoogleLogin
+                      // Remounted on mode/theme/width changes: mode changes
+                      // its label, Google's own button doesn't re-theme
+                      // itself live, and it also won't resize live — each
+                      // needs a fresh render to take effect.
+                      key={`${mode}-${theme}-${googleWidth}`}
+                      theme={theme === 'dark' ? 'filled_black' : 'outline'}
+                      width={googleWidth}
+                      text={mode === 'login' ? 'signin_with' : 'signup_with'}
+                      onSuccess={(credentialResponse) => {
+                        if (credentialResponse.credential) {
+                          handleGoogleToken(credentialResponse.credential);
+                        } else {
+                          setError('Google did not return a sign-in token. Please try again.');
+                        }
+                      }}
+                      onError={() => setError('Google sign-in was cancelled or failed. Please try again.')}
+                    />
                   </div>
-                  {googleBlocked && (
-                    <p className="auth-hint">Enter your school code above before continuing with Google.</p>
-                  )}
                 </>
               )}
 
@@ -510,8 +451,8 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
                     First time here?{' '}
                     <button type="button" className="auth-link" onClick={() => switchMode('register')}>
                       Create an account
-                    </button>{' '}
-                    with your school code.
+                    </button>
+                    .
                   </>
                 ) : (
                   <>

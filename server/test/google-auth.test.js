@@ -18,12 +18,22 @@ const googleAuth = require('../src/lib/googleAuth');
 // Each request gets its own synthetic client IP — see helpers/http.js.
 const http = makeClient(app);
 
+// Must match DEFAULT_REGISTRATION_SCHOOL_CODE in routes/auth.js. Created
+// (idempotently) rather than assumed present, since this file's DB is a
+// throwaway test DB that never runs seed.js.
+const DEFAULT_REGISTRATION_SCHOOL_CODE = 'RAMPUR01';
+
 describe('Google sign-in', () => {
   let fx;
   let verifySpy;
 
   beforeAll(async () => {
     fx = await createFixtures(prisma, 'goog');
+    await prisma.school.upsert({
+      where: { code: DEFAULT_REGISTRATION_SCHOOL_CODE },
+      update: {},
+      create: { code: DEFAULT_REGISTRATION_SCHOOL_CODE, name: 'Default Registration School' },
+    });
   });
 
   beforeEach(() => {
@@ -102,7 +112,7 @@ describe('Google sign-in', () => {
     });
   });
 
-  describe('sign-up (schoolCode supplied)', () => {
+  describe('sign-up (schoolCode supplied, or signup flag for the no-code website flow)', () => {
     test('creates an active Google account and issues NO session of its own', async () => {
       googleIdentity({ sub: 'goog-signup-1', email: 'goog-signup@example.com', name: 'Google Signup' });
 
@@ -124,6 +134,28 @@ describe('Google sign-in', () => {
       // A Google account has no local password at all.
       expect(created.passwordHash).toBeNull();
       expect(await prisma.session.count({ where: { userId: created.id } })).toBe(0);
+    });
+
+    test('signup: true with no schoolCode assigns the default registration school', async () => {
+      googleIdentity({ sub: 'goog-nocode-1', email: 'goog-nocode@example.com' });
+
+      const res = await http.post('/api/auth/google').send({
+        idToken: 'a'.repeat(40),
+        signup: true,
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.body.status).toBe('active');
+
+      const created = await prisma.user.findFirst({ where: { email: 'goog-nocode@example.com' } });
+      const defaultSchool = await prisma.school.findUnique({ where: { code: DEFAULT_REGISTRATION_SCHOOL_CODE } });
+      expect(created.schoolId).toBe(defaultSchool.id);
+
+      // Signs in normally afterward, same as any other account.
+      googleIdentity({ sub: 'goog-nocode-1', email: 'goog-nocode@example.com' });
+      const login = await http.post('/api/auth/google').send({ idToken: 'a'.repeat(40) });
+      expect(login.status).toBe(200);
+      expect(login.body.user.school.code).toBe(DEFAULT_REGISTRATION_SCHOOL_CODE);
     });
 
     test('falls back to the name on the Google profile when the form sends none', async () => {
