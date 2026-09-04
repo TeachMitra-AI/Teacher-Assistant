@@ -39,6 +39,20 @@ export function initGoogleAnalytics(): void {
     window.dataLayer.push(args);
   };
   window.gtag('js', new Date());
+  // Google Consent Mode is active on this gtag.js load (confirmed via Tag
+  // Assistant: hits were "deferred" and reported "default consent state has
+  // not been set yet"), so gtag.js withholds every hit until a default
+  // consent state is declared. This site has no cookie-consent banner, so
+  // there is nothing to gate on — granting outright is what tells gtag.js to
+  // stop withholding hits. Must come BEFORE the 'config' call below: gtag.js
+  // applies consent state to hits based on what had been set at the time
+  // each hit is queued.
+  window.gtag('consent', 'default', {
+    ad_storage: 'granted',
+    analytics_storage: 'granted',
+    ad_user_data: 'granted',
+    ad_personalization: 'granted',
+  });
   window.gtag('config', GA_MEASUREMENT_ID, { send_page_view: false });
 
   const script = document.createElement('script');
