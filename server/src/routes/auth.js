@@ -4,13 +4,19 @@
 // within a single school, and email is also what Google hands back from a
 // verified ID token, so both sign-in methods key off the same field.
 //
-// The school code picks the tenant at sign-UP only. Sign-in resolves an
-// account by email alone, so a returning teacher never needs the code; if one
-// email happens to hold accounts at several schools, the client is asked to
-// choose one and re-submits with an explicit schoolId.
+// The school code picks the tenant at sign-UP only, and is now OPTIONAL there
+// (the website's Register form no longer collects one — see
+// DEFAULT_REGISTRATION_SCHOOL_CODE below); a caller that still supplies one
+// (e.g. the mobile app) is placed at that school exactly as before. Sign-in
+// resolves an account by email alone, so a returning teacher never needs the
+// code; if one email happens to hold accounts at several schools, the client
+// is asked to choose one and re-submits with an explicit schoolId.
 //
-// Every new sign-up lands in `status: 'pending'` and gets no session until a
-// school_admin/super_admin approves it (see routes/admin.js).
+// New sign-ups are created `status: 'active'` and can sign in immediately.
+// statusGateError() below still enforces `pending`/`rejected` for any
+// existing account in one of those states (e.g. a manual admin action via
+// routes/admin.js) — the approval gate itself isn't removed, new accounts
+// just no longer start in it.
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { z } = require('zod');
@@ -92,7 +98,10 @@ const newPasswordField = z
 const existingPasswordField = z.string().min(1, 'Enter your password.').max(72);
 
 const registerSchema = z.object({
-  schoolCode: z.string().trim().min(1).max(40),
+  // Optional: the website Register form no longer collects one (see
+  // DEFAULT_REGISTRATION_SCHOOL_CODE). A caller that still sends a real code
+  // (the mobile app) is placed at that school exactly as before.
+  schoolCode: z.string().trim().min(1).max(40).optional(),
   name: z.string().trim().min(2).max(60),
   email: emailField,
   password: newPasswordField,
@@ -169,6 +178,12 @@ function normalizeCode(code) {
   return code.trim().toUpperCase();
 }
 
+// The school a sign-up is placed at when the caller supplies no schoolCode
+// (the website's Register form, since it no longer asks for one). Must name
+// an existing School — chosen because it already has a school_admin in place
+// to review new pending accounts.
+const DEFAULT_REGISTRATION_SCHOOL_CODE = 'RAMPUR01';
+
 // The approval gate, shared by both sign-in methods so email+password and
 // Google can never drift apart on who is allowed in. Returns the error code to
 // send with a 403, or null when the account may proceed. These strings are a
@@ -215,11 +230,14 @@ function publicUser(user, school) {
   };
 }
 
-// POST /api/auth/register — first-time teacher sign-up under a valid school
-// code. Deliberately issues NO session: the account is created `pending` and
-// cannot sign in until an admin approves it, so there is nothing to hand back
-// a token for. Fail-closed by construction — no JWT/authRequired changes were
-// needed to gate it.
+// POST /api/auth/register — first-time teacher sign-up. Issues NO session
+// itself: the account is created `active`, but this endpoint only reports
+// that status back — the client signs the teacher in with a separate
+// /auth/login call using the same credentials.
+//
+// schoolCode is optional (see registerSchema): a caller that supplies one is
+// placed at that school; a caller that doesn't (the website form) is placed
+// at DEFAULT_REGISTRATION_SCHOOL_CODE automatically.
 router.post('/register', asyncHandler(async (req, res) => {
   const parsed = registerSchema.safeParse(req.body || {});
   if (!parsed.success) {
@@ -227,9 +245,15 @@ router.post('/register', asyncHandler(async (req, res) => {
   }
   const { schoolCode, name, email, password } = parsed.data;
 
-  const school = await prisma.school.findUnique({ where: { code: normalizeCode(schoolCode) } });
+  const school = await prisma.school.findUnique({
+    where: { code: schoolCode ? normalizeCode(schoolCode) : DEFAULT_REGISTRATION_SCHOOL_CODE },
+  });
   if (!school) {
-    return res.status(400).json({ error: 'Invalid school code. Please check with your administrator.' });
+    return res.status(400).json({
+      error: schoolCode
+        ? 'Invalid school code. Please check with your administrator.'
+        : 'Registration is not available right now. Please try again later.',
+    });
   }
 
   const existing = await prisma.user.findUnique({
@@ -243,10 +267,10 @@ router.post('/register', asyncHandler(async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, 10);
   await prisma.user.create({
-    data: { schoolId: school.id, name, email, passwordHash, role: 'teacher', status: 'pending' },
+    data: { schoolId: school.id, name, email, passwordHash, role: 'teacher', status: 'active' },
   });
 
-  return res.status(201).json({ status: 'pending' });
+  return res.status(201).json({ status: 'active' });
 }));
 
 // POST /api/auth/login — returning teacher/admin sign-in with email +
@@ -330,8 +354,12 @@ router.post('/login', asyncHandler(async (req, res) => {
 
 const googleAuthSchema = z.object({
   idToken: z.string().trim().min(20).max(4096),
-  // Present => this is a sign-UP (the code picks the tenant). Absent => sign-in.
+  // Either one supplied => this is a sign-UP. schoolCode (when present) picks
+  // the tenant, same as /register. `signup` is the website's no-code path —
+  // it no longer collects a schoolCode, so it sends this instead and the
+  // account lands at DEFAULT_REGISTRATION_SCHOOL_CODE. Neither => sign-in.
   schoolCode: z.string().trim().min(1).max(40).optional(),
+  signup: z.boolean().optional(),
   // Display name from the sign-up form. Purely presentational; if omitted, the
   // name on the verified Google profile is used instead.
   name: z.string().trim().min(2).max(60).optional(),
@@ -340,9 +368,10 @@ const googleAuthSchema = z.object({
 });
 
 // POST /api/auth/google — one endpoint for both Google sign-up and Google
-// sign-in, branching on whether a schoolCode was supplied. It's a fully
-// parallel alternative to email+password, not a replacement: the two share the
-// same User rows, the same approval gate, and the same issueSession().
+// sign-in, branching on whether a schoolCode or a signup flag was supplied.
+// It's a fully parallel alternative to email+password, not a replacement: the
+// two share the same User rows, the same approval gate, and the same
+// issueSession().
 //
 // Identity comes from Google's verified `sub`, not from the email in the
 // request body. Signing in is matched on `sub` alone — deliberately NOT on
@@ -358,7 +387,7 @@ router.post('/google', asyncHandler(async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid Google sign-in request.' });
   }
-  const { idToken, schoolCode, name, schoolId } = parsed.data;
+  const { idToken, schoolCode, signup, name, schoolId } = parsed.data;
 
   let identity;
   try {
@@ -369,11 +398,17 @@ router.post('/google', asyncHandler(async (req, res) => {
     return res.status(401).json({ error: 'Google sign-in failed. Please try again.' });
   }
 
-  // ---- Sign-UP: a school code was supplied ----
-  if (schoolCode) {
-    const school = await prisma.school.findUnique({ where: { code: normalizeCode(schoolCode) } });
+  // ---- Sign-UP: a school code or an explicit signup flag was supplied ----
+  if (schoolCode || signup) {
+    const school = await prisma.school.findUnique({
+      where: { code: schoolCode ? normalizeCode(schoolCode) : DEFAULT_REGISTRATION_SCHOOL_CODE },
+    });
     if (!school) {
-      return res.status(400).json({ error: 'Invalid school code. Please check with your administrator.' });
+      return res.status(400).json({
+        error: schoolCode
+          ? 'Invalid school code. Please check with your administrator.'
+          : 'Registration is not available right now. Please try again later.',
+      });
     }
 
     const existing = await prisma.user.findFirst({
@@ -398,14 +433,14 @@ router.post('/google', asyncHandler(async (req, res) => {
         email: identity.email,
         googleSub: identity.sub,
         role: 'teacher',
-        status: 'pending',
+        status: 'active',
       },
     });
 
-    return res.status(201).json({ status: 'pending' });
+    return res.status(201).json({ status: 'active' });
   }
 
-  // ---- Sign-IN: no school code ----
+  // ---- Sign-IN: neither schoolCode nor signup was supplied ----
   const matches = await prisma.user.findMany({
     where: { googleSub: identity.sub, ...(schoolId ? { schoolId } : {}) },
     include: { school: true, profilePicture: { select: { updatedAt: true } } },

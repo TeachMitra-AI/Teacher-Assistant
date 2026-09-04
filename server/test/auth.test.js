@@ -1,10 +1,15 @@
-// Email + password authentication and approval-gated sign-up.
+// Email + password authentication and sign-up.
 //
 // The credential model itself changed here (name + 6-digit PIN -> email +
 // password), so these cases replace the old name/PIN ones rather than
-// extending them. Identity is now the email address, the school code is
-// needed only at sign-UP, and every new registration lands in `pending`
-// until an admin approves it.
+// extending them. Identity is now the email address. schoolCode at sign-UP is
+// now OPTIONAL: a caller that supplies one is placed at that school (covered
+// below); the website no longer collects one, so a caller that omits it is
+// placed at DEFAULT_REGISTRATION_SCHOOL_CODE automatically (routes/auth.js).
+// New registrations land `active` and can sign in immediately; the
+// pending/rejected approval gate (statusGateError in routes/auth.js) still
+// exists and is still enforced for any account an admin later moves into one
+// of those states.
 const bcrypt = require('bcryptjs');
 const { app, prisma } = require('./helpers/testApp');
 const { makeClient } = require('./helpers/http');
@@ -13,11 +18,21 @@ const { createFixtures, PASSWORD } = require('./helpers/fixtures');
 // Each request gets its own synthetic client IP — see helpers/http.js.
 const http = makeClient(app);
 
+// Must match DEFAULT_REGISTRATION_SCHOOL_CODE in routes/auth.js. Created
+// (idempotently) rather than assumed present, since this file's DB is a
+// throwaway test DB that never runs seed.js.
+const DEFAULT_REGISTRATION_SCHOOL_CODE = 'RAMPUR01';
+
 describe('auth', () => {
   let fx;
 
   beforeAll(async () => {
     fx = await createFixtures(prisma, 'auth');
+    await prisma.school.upsert({
+      where: { code: DEFAULT_REGISTRATION_SCHOOL_CODE },
+      update: {},
+      create: { code: DEFAULT_REGISTRATION_SCHOOL_CODE, name: 'Default Registration School' },
+    });
   });
 
   // Approves a pending user the way the admin endpoint does, without needing
@@ -109,8 +124,8 @@ describe('auth', () => {
     });
   });
 
-  describe('register (approval-gated)', () => {
-    test('creates a pending account and issues NO session', async () => {
+  describe('register', () => {
+    test('creates an active account and issues NO session of its own', async () => {
       const res = await http.post('/api/auth/register').send({
         schoolCode: fx.schoolA.code,
         name: 'Brand New Teacher',
@@ -119,29 +134,81 @@ describe('auth', () => {
       });
 
       expect(res.status).toBe(201);
-      expect(res.body.status).toBe('pending');
+      expect(res.body.status).toBe('active');
       expect(res.body.token).toBeUndefined();
       expect(res.body.refreshToken).toBeUndefined();
       expect(res.body.user).toBeUndefined();
 
       const created = await prisma.user.findFirst({ where: { email: 'auth-brand-new@example.com' } });
-      expect(created.status).toBe('pending');
+      expect(created.status).toBe('active');
       expect(created.role).toBe('teacher');
       expect(created.schoolId).toBe(fx.schoolA.id);
       // The password is stored hashed, never in the clear.
       expect(created.passwordHash).not.toBe('a-good-password');
       expect(await bcrypt.compare('a-good-password', created.passwordHash)).toBe(true);
-      // No session row was created for a pending account.
+      // Registration itself still issues no session — the client makes a
+      // separate /auth/login call with the same credentials.
       expect(await prisma.session.count({ where: { userId: created.id } })).toBe(0);
     });
 
-    test('login before approval is refused with pending_approval', async () => {
+    test('omitting schoolCode assigns the default registration school automatically', async () => {
+      const res = await http.post('/api/auth/register').send({
+        name: 'No School Code',
+        email: 'auth-no-school-code@example.com',
+        password: 'a-good-password',
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.body.status).toBe('active');
+
+      const created = await prisma.user.findFirst({ where: { email: 'auth-no-school-code@example.com' } });
+      const defaultSchool = await prisma.school.findUnique({ where: { code: DEFAULT_REGISTRATION_SCHOOL_CODE } });
+      expect(created.schoolId).toBe(defaultSchool.id);
+
+      // The account works exactly like any other — it can log in right away.
+      const login = await http.post('/api/auth/login')
+        .send({ email: 'auth-no-school-code@example.com', password: 'a-good-password' });
+      expect(login.status).toBe(200);
+      expect(login.body.user.school.code).toBe(DEFAULT_REGISTRATION_SCHOOL_CODE);
+    });
+
+    test('a caller that still supplies a schoolCode is placed at that school, not the default', async () => {
+      const res = await http.post('/api/auth/register').send({
+        schoolCode: fx.schoolB.code,
+        name: 'Explicit School',
+        email: 'auth-explicit-school@example.com',
+        password: 'a-good-password',
+      });
+      expect(res.status).toBe(201);
+
+      const created = await prisma.user.findFirst({ where: { email: 'auth-explicit-school@example.com' } });
+      expect(created.schoolId).toBe(fx.schoolB.id);
+    });
+
+    test('a newly registered account can log in immediately, without any admin action', async () => {
+      await http.post('/api/auth/register').send({
+        schoolCode: fx.schoolA.code,
+        name: 'Signs In Right Away',
+        email: 'auth-immediate@example.com',
+        password: 'a-good-password',
+      });
+
+      const res = await http.post('/api/auth/login')
+        .send({ email: 'auth-immediate@example.com', password: 'a-good-password' });
+      expect(res.status).toBe(200);
+      expect(res.body.token).toBeTruthy();
+    });
+
+    test('the approval gate is still enforced for an account an admin has set to pending', async () => {
       await http.post('/api/auth/register').send({
         schoolCode: fx.schoolA.code,
         name: 'Awaiting Approval',
         email: 'auth-pending@example.com',
         password: 'a-good-password',
       });
+      // Registration no longer produces this state on its own; simulate an
+      // admin having moved the account back into it.
+      await prisma.user.updateMany({ where: { email: 'auth-pending@example.com' }, data: { status: 'pending' } });
 
       const res = await http.post('/api/auth/login')
         .send({ email: 'auth-pending@example.com', password: 'a-good-password' });
@@ -149,13 +216,14 @@ describe('auth', () => {
       expect(res.body.error).toBe('pending_approval');
     });
 
-    test('login after approval succeeds', async () => {
+    test('login after re-approval succeeds', async () => {
       await http.post('/api/auth/register').send({
         schoolCode: fx.schoolA.code,
         name: 'Soon Approved',
         email: 'auth-approved@example.com',
         password: 'a-good-password',
       });
+      await prisma.user.updateMany({ where: { email: 'auth-approved@example.com' }, data: { status: 'pending' } });
       await activate('auth-approved@example.com');
 
       const res = await http.post('/api/auth/login')

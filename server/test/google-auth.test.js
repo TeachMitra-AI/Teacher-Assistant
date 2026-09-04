@@ -18,12 +18,22 @@ const googleAuth = require('../src/lib/googleAuth');
 // Each request gets its own synthetic client IP — see helpers/http.js.
 const http = makeClient(app);
 
+// Must match DEFAULT_REGISTRATION_SCHOOL_CODE in routes/auth.js. Created
+// (idempotently) rather than assumed present, since this file's DB is a
+// throwaway test DB that never runs seed.js.
+const DEFAULT_REGISTRATION_SCHOOL_CODE = 'RAMPUR01';
+
 describe('Google sign-in', () => {
   let fx;
   let verifySpy;
 
   beforeAll(async () => {
     fx = await createFixtures(prisma, 'goog');
+    await prisma.school.upsert({
+      where: { code: DEFAULT_REGISTRATION_SCHOOL_CODE },
+      update: {},
+      create: { code: DEFAULT_REGISTRATION_SCHOOL_CODE, name: 'Default Registration School' },
+    });
   });
 
   beforeEach(() => {
@@ -102,8 +112,8 @@ describe('Google sign-in', () => {
     });
   });
 
-  describe('sign-up (schoolCode supplied)', () => {
-    test('creates a pending Google account and issues NO session', async () => {
+  describe('sign-up (schoolCode supplied, or signup flag for the no-code website flow)', () => {
+    test('creates an active Google account and issues NO session of its own', async () => {
       googleIdentity({ sub: 'goog-signup-1', email: 'goog-signup@example.com', name: 'Google Signup' });
 
       const res = await http.post('/api/auth/google').send({
@@ -113,17 +123,39 @@ describe('Google sign-in', () => {
       });
 
       expect(res.status).toBe(201);
-      expect(res.body.status).toBe('pending');
+      expect(res.body.status).toBe('active');
       expect(res.body.token).toBeUndefined();
 
       const created = await prisma.user.findFirst({ where: { email: 'goog-signup@example.com' } });
-      expect(created.status).toBe('pending');
+      expect(created.status).toBe('active');
       expect(created.googleSub).toBe('goog-signup-1');
       expect(created.schoolId).toBe(fx.schoolA.id);
       expect(created.name).toBe('Form Supplied Name');
       // A Google account has no local password at all.
       expect(created.passwordHash).toBeNull();
       expect(await prisma.session.count({ where: { userId: created.id } })).toBe(0);
+    });
+
+    test('signup: true with no schoolCode assigns the default registration school', async () => {
+      googleIdentity({ sub: 'goog-nocode-1', email: 'goog-nocode@example.com' });
+
+      const res = await http.post('/api/auth/google').send({
+        idToken: 'a'.repeat(40),
+        signup: true,
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.body.status).toBe('active');
+
+      const created = await prisma.user.findFirst({ where: { email: 'goog-nocode@example.com' } });
+      const defaultSchool = await prisma.school.findUnique({ where: { code: DEFAULT_REGISTRATION_SCHOOL_CODE } });
+      expect(created.schoolId).toBe(defaultSchool.id);
+
+      // Signs in normally afterward, same as any other account.
+      googleIdentity({ sub: 'goog-nocode-1', email: 'goog-nocode@example.com' });
+      const login = await http.post('/api/auth/google').send({ idToken: 'a'.repeat(40) });
+      expect(login.status).toBe(200);
+      expect(login.body.user.school.code).toBe(DEFAULT_REGISTRATION_SCHOOL_CODE);
     });
 
     test('falls back to the name on the Google profile when the form sends none', async () => {
@@ -141,14 +173,15 @@ describe('Google sign-in', () => {
     test('the email and subject come from the VERIFIED token, never the request body', async () => {
       googleIdentity({ sub: 'goog-real-sub', email: 'goog-real@example.com', name: 'Real Person' });
 
-      // A hand-written body claiming to be somebody else entirely.
+      // A hand-written body claiming to be somebody else entirely, and trying
+      // to downgrade its own status to something the gate would block.
       const res = await http.post('/api/auth/google').send({
         idToken: 'a'.repeat(40),
         schoolCode: fx.schoolA.code,
         email: 'attacker@example.com',
         googleSub: 'attacker-sub',
         role: 'super_admin',
-        status: 'active',
+        status: 'rejected',
       });
       expect(res.status).toBe(201);
 
@@ -156,7 +189,7 @@ describe('Google sign-in', () => {
       expect(created.email).toBe('goog-real@example.com');
       // The self-asserted role and status were ignored.
       expect(created.role).toBe('teacher');
-      expect(created.status).toBe('pending');
+      expect(created.status).toBe('active');
       expect(await prisma.user.findFirst({ where: { email: 'attacker@example.com' } })).toBeNull();
     });
 
@@ -238,12 +271,15 @@ describe('Google sign-in', () => {
       expect(after.lastLogin).not.toBeNull();
     });
 
-    test('a pending Google sign-up cannot sign in yet', async () => {
+    test('the approval gate still blocks a Google account an admin has set to pending', async () => {
       googleIdentity({ sub: 'goog-pending-1', email: 'goog-pending@example.com' });
       await http.post('/api/auth/google').send({
         idToken: 'a'.repeat(40),
         schoolCode: fx.schoolA.code,
       });
+      // Sign-up no longer produces this state on its own; simulate an admin
+      // having moved the account back into it.
+      await prisma.user.updateMany({ where: { email: 'goog-pending@example.com' }, data: { status: 'pending' } });
 
       googleIdentity({ sub: 'goog-pending-1', email: 'goog-pending@example.com' });
       const res = await http.post('/api/auth/google').send({ idToken: 'a'.repeat(40) });
@@ -300,8 +336,11 @@ describe('Google sign-in', () => {
   });
 
   // Both methods must land on the same account model and the same gate, or
-  // approving somebody would mean different things depending on how they joined.
-  test('a Google account and a password account are approved through the same admin flow', async () => {
+  // approving somebody would mean different things depending on how they
+  // joined. New sign-ups start active now, so this exercises the shared
+  // pending queue/approve flow the way an admin would still use it against
+  // an account manually moved back into `pending` — e.g. a re-review.
+  test('a Google account and a password account share the same admin approval flow', async () => {
     googleIdentity({ sub: 'goog-parity-1', email: 'goog-parity-google@example.com' });
     const googleSignup = await http.post('/api/auth/google').send({
       idToken: 'a'.repeat(40),
@@ -317,6 +356,11 @@ describe('Google sign-in', () => {
     });
     expect(passwordSignup.status).toBe(201);
 
+    await prisma.user.updateMany({
+      where: { email: { in: ['goog-parity-google@example.com', 'goog-parity-password@example.com'] } },
+      data: { status: 'pending' },
+    });
+
     // Both appear in the same pending queue.
     const adminLogin = await http
       .post('/api/auth/login')
@@ -326,9 +370,25 @@ describe('Google sign-in', () => {
       .set('Authorization', `Bearer ${adminLogin.body.token}`);
     expect(pending.status).toBe(200);
 
-    const emails = pending.body.users.map((u) => u.email);
-    expect(emails).toContain('goog-parity-google@example.com');
-    expect(emails).toContain('goog-parity-password@example.com');
+    const pendingUsers = pending.body.users.filter((u) =>
+      ['goog-parity-google@example.com', 'goog-parity-password@example.com'].includes(u.email)
+    );
+    expect(pendingUsers.map((u) => u.email).sort()).toEqual(
+      ['goog-parity-google@example.com', 'goog-parity-password@example.com'].sort()
+    );
+
+    // Both are approved the same way and can then sign in.
+    for (const u of pendingUsers) {
+      const approve = await http
+        .patch(`/api/admin/users/${u.id}/approve`)
+        .set('Authorization', `Bearer ${adminLogin.body.token}`);
+      expect(approve.status).toBe(200);
+    }
+
+    const passwordLogin = await http
+      .post('/api/auth/login')
+      .send({ email: 'goog-parity-password@example.com', password: 'a-good-password' });
+    expect(passwordLogin.status).toBe(200);
   });
 
   // Sanity check that stubbing Google didn't disturb the password path, which
