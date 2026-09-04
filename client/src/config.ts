@@ -312,6 +312,10 @@ export const SOCKET_BASE = API_BASE.replace(/\/api\/?$/, '');
 // password sign-in carries on untouched.
 export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
+// Google Analytics 4 (GA4) Measurement ID. Left unset, GA is never loaded —
+// see lib/analytics.ts, which treats an empty/invalid value as "disabled."
+export const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID || '';
+
 // AI Action Router — client-side gate. When false (the default, and the value
 // until the feature is deliberately switched on) the client never calls an
 // assistant endpoint, and the composer and Generator behave exactly as they did
