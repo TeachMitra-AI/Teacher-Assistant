@@ -1,6 +1,8 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider, useAuth } from './auth';
+import { trackPageView } from './lib/analytics';
 import { OnboardingProvider } from './onboarding';
 import { ToastProvider } from './components/Toast';
 import { NotificationProvider } from './components/Notifications';
@@ -34,6 +36,16 @@ import BottomNav from './components/BottomNav';
 function AppRoutes() {
   const { user, loading } = useAuth();
   const preferences = usePreferences();
+  const location = useLocation();
+
+  // GA4 page_view per SPA navigation (see lib/analytics.ts) — the automatic
+  // gtag.js pageview is disabled at init specifically so this one effect
+  // covers the first render and every later route change alike, including
+  // transitions between the signed-out and signed-in route trees below.
+  // No-op when GA was never initialized.
+  useEffect(() => {
+    trackPageView(location.pathname + location.search);
+  }, [location.pathname, location.search]);
 
   if (loading) {
     return (
