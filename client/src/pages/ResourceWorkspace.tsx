@@ -26,6 +26,8 @@ import {
 import QuestionListEditor from '../components/QuestionListEditor';
 import { RESOURCE_TYPES, RESOURCE_TYPE_META, LANGUAGES, GRADES, SUBJECTS } from '../config';
 import { ApiError } from '../api';
+import { useRetryCountdown } from '../hooks/useRetryCountdown';
+import { retryMessage } from '../lib/retryCountdown';
 import type { ExamPaperMeta, LibraryResource, ResourceType } from '../types';
 
 // How the print document should render an assessment.
@@ -128,6 +130,15 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
 
   // AI assist state.
   const [aiBusy, setAiBusy] = useState<AiActionId | null>(null);
+  // Every Gemini API key exhausted (see api.ts's ApiError.retryAt) — shown as
+  // a persistent inline message instead of the transient toast other AI
+  // action errors use (a toast auto-dismisses long before an hours-long
+  // cooldown ends), and auto-clears once the countdown reaches zero.
+  const [aiCooldownUntil, setAiCooldownUntil] = useState<number | null>(null);
+  const { remainingMs: aiCooldownRemainingMs, ready: aiCooldownReady } = useRetryCountdown(aiCooldownUntil);
+  useEffect(() => {
+    if (aiCooldownUntil != null && aiCooldownReady) setAiCooldownUntil(null);
+  }, [aiCooldownUntil, aiCooldownReady]);
   const [adaptOpen, setAdaptOpen] = useState(false);
   const [adaptGrade, setAdaptGrade] = useState('');
   const [suggestion, setSuggestion] = useState<string | null>(null);
@@ -364,7 +375,11 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
       setSuggestion(result.suggestion);
       setSuggestionStructured(result.structured ?? null);
     } catch (err) {
-      show(err instanceof ApiError ? err.message : 'AI action failed. Please try again.', 'error');
+      if (err instanceof ApiError && err.code === 'RATE_LIMITED' && err.retryAt != null) {
+        setAiCooldownUntil(err.retryAt);
+      } else {
+        show(err instanceof ApiError ? err.message : 'AI action failed. Please try again.', 'error');
+      }
     } finally {
       setAiBusy(null);
     }
@@ -620,6 +635,9 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
               <section className="workspace-ai" aria-label="AI assist">
                 <h2 className="workspace-ai-title">AI Assist</h2>
                 <p className="workspace-ai-hint">Generate a suggested revision — you preview and apply it yourself.</p>
+                {aiCooldownUntil != null && !aiCooldownReady && (
+                  <p className="workspace-ai-hint" role="alert">{retryMessage(aiCooldownRemainingMs)}</p>
+                )}
                 {aiAssistTip.visible && (
                   <OnboardingTip icon={Wand2} onDismiss={aiAssistTip.dismiss}>
                     AI Assist won&rsquo;t change your resource until you <strong>Apply</strong> a preview — and
@@ -635,7 +653,7 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
                         key={a.id}
                         type="button"
                         className="ai-action-btn"
-                        disabled={!!aiBusy}
+                        disabled={!!aiBusy || (aiCooldownUntil != null && !aiCooldownReady)}
                         onClick={() => (a.needsGrade ? setAdaptOpen((o) => !o) : runAction(a.id))}
                       >
                         {busy ? <Loader2 size={15} aria-hidden="true" className="spin" /> : <Icon size={15} aria-hidden="true" />}

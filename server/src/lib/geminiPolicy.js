@@ -65,6 +65,31 @@ function computeBackoffMs(attempt, opts = {}) {
   return Math.round(rng() * cappedBase);
 }
 
+// India Standard Time is a fixed UTC+5:30 offset year-round (no DST), so it
+// can be handled with plain arithmetic rather than a timezone library.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+/**
+ * The next moment that is `hour:minute` IST at or after `nowMs` (tomorrow's
+ * occurrence if `nowMs` is already at or past today's). Used for the Gemini
+ * key pool's daily quota reset (see geminiKeyPool.js) — Gemini's real daily
+ * quota resets at a fixed clock time, not N hours after each failure.
+ * @param {number} nowMs
+ * @param {{hour?: number, minute?: number}} [opts] IST hour/minute, 24h clock. Default 12:30.
+ * @returns {number} epoch ms of the next occurrence
+ */
+function nextDailyResetAt(nowMs, opts = {}) {
+  const { hour = 12, minute = 30 } = opts;
+  // Shift into IST, read the wall-clock date/time via the UTC accessors (the
+  // shifted ms value, read as UTC, IS the IST wall clock), then shift back.
+  const istNowMs = nowMs + IST_OFFSET_MS;
+  const istDate = new Date(istNowMs);
+  const istMidnightMs = Date.UTC(istDate.getUTCFullYear(), istDate.getUTCMonth(), istDate.getUTCDate());
+  let resetIstMs = istMidnightMs + hour * 60 * 60 * 1000 + minute * 60 * 1000;
+  if (resetIstMs <= istNowMs) resetIstMs += 24 * 60 * 60 * 1000;
+  return resetIstMs - IST_OFFSET_MS;
+}
+
 // Statuses that represent a transient upstream condition worth retrying.
 const RETRIABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 
@@ -112,4 +137,4 @@ function classifyGeminiError(error) {
   return { retriable: false, reason: 'non_retriable' };
 }
 
-module.exports = { parseRetryAfter, computeBackoffMs, classifyGeminiError, RETRIABLE_STATUS };
+module.exports = { parseRetryAfter, computeBackoffMs, classifyGeminiError, nextDailyResetAt, RETRIABLE_STATUS };

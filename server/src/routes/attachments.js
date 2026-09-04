@@ -132,7 +132,13 @@ function sendAiError(res, error, requestId) {
     return res.status(504).json({ error: 'The request took too long. Please try again.', code: 'TIMEOUT', requestId });
   }
   if (error.status === 429) {
-    return res.status(429).json({ error: 'The service is busy. Please try again shortly.', code: 'RATE_LIMITED', requestId });
+    const body = { error: 'The service is busy. Please try again shortly.', code: 'RATE_LIMITED', requestId };
+    // Set only when every Gemini API key is currently exhausted (see
+    // gemini.js's key-pool rotation) — the soonest any key recovers. Not to
+    // be confused with the separate per-user BUDGET_EXHAUSTED 429 below,
+    // which is unrelated to key exhaustion.
+    if (typeof error.retryAt === 'number') body.retryAt = new Date(error.retryAt).toISOString();
+    return res.status(429).json(body);
   }
   return res.status(502).json({ error: 'Failed to process the attachment. Please try again.', code: 'UPSTREAM_UNAVAILABLE', requestId });
 }

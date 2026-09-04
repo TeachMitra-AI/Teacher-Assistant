@@ -36,6 +36,8 @@ import {
   STRUCTURED_QUESTIONS_ENABLED,
 } from '../config';
 import { ApiError } from '../api';
+import { useRetryCountdown } from '../hooks/useRetryCountdown';
+import { retryMessage } from '../lib/retryCountdown';
 import type { AssessmentFormat, Difficulty, Question, QuestionType } from '../lib/resources';
 import type { ExamPaperMeta } from '../types';
 
@@ -149,6 +151,13 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
 
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
+  // Every Gemini API key exhausted (see api.ts's ApiError.retryAt) — shown
+  // and auto-clears in place of `error` while active; see the effect below.
+  const [retryAt, setRetryAt] = useState<number | null>(null);
+  const { remainingMs: retryRemainingMs, ready: retryReady } = useRetryCountdown(retryAt);
+  useEffect(() => {
+    if (retryAt != null && retryReady) setRetryAt(null);
+  }, [retryAt, retryReady]);
   // Synchronous twin of `generating`, checked and set before anything else in
   // handleGenerate. `generating` is React state: it is read from the closure
   // captured when THIS render happened, and `setGenerating(true)` only takes
@@ -351,6 +360,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
     generatingRef.current = true;
     setGenerating(true);
     setError('');
+    setRetryAt(null);
     const input: GenerateAssessmentInput = {
       format,
       grade: grade.trim() || undefined,
@@ -382,7 +392,11 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
       setStructuredDirty(false);
       setQuestionErrors({});
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not generate. Please try again.');
+      if (err instanceof ApiError && err.code === 'RATE_LIMITED' && err.retryAt != null) {
+        setRetryAt(err.retryAt);
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Could not generate. Please try again.');
+      }
     } finally {
       generatingRef.current = false;
       setGenerating(false);
@@ -617,13 +631,21 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
           </label>
 
           <div className="generator-actions">
-            <button type="submit" className="btn-primary generator-generate" disabled={generating || !topic.trim()}>
+            <button
+              type="submit"
+              className="btn-primary generator-generate"
+              disabled={generating || !topic.trim() || (retryAt != null && !retryReady)}
+            >
               {generating ? <Loader2 size={16} aria-hidden="true" className="spin" /> : <Sparkles size={16} aria-hidden="true" />}
               {generating ? 'Generating…' : content !== null ? 'Regenerate' : 'Generate'}
             </button>
           </div>
 
-          {error && <p className="auth-error generator-error">{error}</p>}
+          {retryAt != null && !retryReady ? (
+            <p className="auth-error generator-error">{retryMessage(retryRemainingMs)}</p>
+          ) : (
+            error && <p className="auth-error generator-error">{error}</p>
+          )}
         </form>
 
         {generating && content === null && (

@@ -227,7 +227,7 @@ describe('GeminiService reliability', () => {
     expect(metricsJson).not.toContain('A question');
     // Only metadata keys are present.
     expect(Object.keys(result.metrics).sort()).toEqual(
-      ['callsMade', 'continuations', 'correlationId', 'latencyMs', 'outcome', 'rateLimited', 'retries', 'safetyBlocked', 'timedOut'].sort()
+      ['callsMade', 'continuations', 'correlationId', 'keyRotations', 'latencyMs', 'outcome', 'rateLimited', 'retries', 'safetyBlocked', 'timedOut'].sort()
     );
   });
 });
