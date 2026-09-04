@@ -20,6 +20,7 @@
 const { selectTemplate, languageDirective, styleDirective } = require('./prompts');
 const { sanitizeOutput, MAX_OUTPUT_LENGTH } = require('./safety/outputGuard');
 const { parseRetryAfter, computeBackoffMs, classifyGeminiError } = require('./lib/geminiPolicy');
+const { GeminiKeyPool } = require('./lib/geminiKeyPool');
 
 const SAFETY_SETTINGS = [
   { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
@@ -60,7 +61,11 @@ function makeBudgetError() {
 
 class GeminiService {
   constructor(config) {
-    this.apiKey = config.apiKey;
+    // Either a pre-built, possibly-shared GeminiKeyPool (multi-key failover)
+    // or a single apiKey string, wrapped in a size-1 pool — the latter keeps
+    // single-key behavior (including every existing test) identical to
+    // before key rotation existed.
+    this.keyPool = config.keyPool ?? new GeminiKeyPool([config.apiKey]);
     this.endpoint = config.endpoint;
     this.timeoutMs = config.timeoutMs; // per-call timeout
     this.maxRetries = config.maxRetries; // retries per logical call
@@ -149,6 +154,7 @@ class GeminiService {
       callsMade: 0,
       retries: 0,
       continuations: 0,
+      keyRotations: 0,
       maxCalls: this.maxCallsPerRequest,
       deadline: this.now() + this.totalTimeoutMs,
       now: this.now,
@@ -164,6 +170,7 @@ class GeminiService {
       callsMade: tracker.callsMade,
       retries: tracker.retries,
       continuations: tracker.continuations,
+      keyRotations: tracker.keyRotations,
       latencyMs: extra.latencyMs,
       outcome: extra.outcome,
       timedOut: tracker.timedOut,
@@ -207,6 +214,11 @@ class GeminiService {
    */
   async makeRequest(requestBody, tracker) {
     let attempt = 0;
+    // Caps how many times a single logical call may hop to a different key
+    // before falling back to the normal backoff/retry path — one attempt per
+    // key in the pool is enough to try everything currently available.
+    let keyRotations = 0;
+    const maxKeyRotations = this.keyPool.size();
     for (;;) {
       if (tracker.callsMade >= tracker.maxCalls) throw makeBudgetError();
       const remaining = tracker.deadline - tracker.now();
@@ -216,6 +228,7 @@ class GeminiService {
       }
       const perCallTimeout = Math.min(this.timeoutMs, remaining);
 
+      const key = this.keyPool.getKey();
       tracker.callsMade += 1;
 
       let response;
@@ -224,13 +237,14 @@ class GeminiService {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-goog-api-key': this.apiKey,
+            'x-goog-api-key': key,
           },
           body: JSON.stringify(requestBody),
           signal: AbortSignal.timeout(perCallTimeout),
         });
       } catch (fetchError) {
-        // Network-level failure or per-call timeout (no HTTP status).
+        // Network-level failure or per-call timeout (no HTTP status) — not a
+        // key-specific problem, so no rotation, just the normal retry path.
         const { retriable, reason } = classifyGeminiError(fetchError);
         if (reason === 'timeout') tracker.timedOut = true;
         if (!retriable || attempt >= this.maxRetries || !this.hasCapacity(tracker)) throw fetchError;
@@ -249,6 +263,33 @@ class GeminiService {
 
         const { retriable, reason } = classifyGeminiError(err);
         if (reason === 'rate_limited') tracker.rateLimited = true;
+
+        if (reason === 'rate_limited' || reason === 'auth') {
+          const retryAfterMs = parseRetryAfter(
+            response.headers && typeof response.headers.get === 'function'
+              ? response.headers.get('retry-after')
+              : null,
+            tracker.now()
+          );
+          this.keyPool.reportFailure(key, err, { retryAfterMs });
+          // Soonest ANY key in the pool recovers, as of right now. Attached
+          // to every candidate error (not just whichever one is ultimately
+          // thrown) so that whichever error does propagate — once every key
+          // and the retry budget are exhausted — carries an accurate
+          // estimate for the route handler to hand back to the client.
+          err.retryAt = this.keyPool.nextAvailableAt();
+
+          // Another key is free right now: switch to it immediately — no
+          // backoff wait, no retry-budget consumed — so this is invisible to
+          // the caller. Only fall through to the backoff/retry path below
+          // once every key is exhausted.
+          if (keyRotations < maxKeyRotations && this.keyPool.hasAvailableKey() && this.hasCapacity(tracker)) {
+            keyRotations += 1;
+            tracker.keyRotations += 1;
+            continue;
+          }
+        }
+
         if (!retriable || attempt >= this.maxRetries || !this.hasCapacity(tracker)) throw err;
 
         const retryAfterMs = parseRetryAfter(
@@ -264,6 +305,7 @@ class GeminiService {
         continue;
       }
 
+      this.keyPool.reportSuccess(key);
       return await response.json();
     }
   }

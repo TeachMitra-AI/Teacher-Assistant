@@ -16,6 +16,7 @@ const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 
 const { GeminiService } = require('./gemini');
+const { GeminiKeyPool } = require('./lib/geminiKeyPool');
 const { LANGUAGE_NAMES } = require('./prompts');
 const { normalizeQuery, flagPossibleInjection } = require('./safety/inputGuard');
 const { parseIntEnv } = require('./lib/config');
@@ -97,14 +98,22 @@ function logAiEvent(level, event, meta = {}) {
 // ---- Configuration ---------------------------------------------------------
 
 const {
-  GEMINI_API_KEY,
   GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
   PORT = 3000,
   CORS_ORIGINS = '',
   RATE_LIMIT_WINDOW_MINUTES = '15',
 } = process.env;
 
-if (!GEMINI_API_KEY) {
+// One or more Gemini API keys, comma-separated, for automatic failover (see
+// lib/geminiKeyPool.js): if one key hits its rate limit/quota, requests
+// transparently switch to the next available key instead of erroring out.
+// A single key works exactly as before.
+const GEMINI_API_KEYS = (process.env.GEMINI_API_KEY || '')
+  .split(',')
+  .map((k) => k.trim())
+  .filter(Boolean);
+
+if (GEMINI_API_KEYS.length === 0) {
   console.error('FATAL: GEMINI_API_KEY is not set. Copy .env.example to .env and set it.');
   process.exit(1);
 }
@@ -149,8 +158,34 @@ const LLM_MAX_OUTPUT_TOKENS = parseIntEnv(process.env.LLM_MAX_OUTPUT_TOKENS, {
   name: 'LLM_MAX_OUTPUT_TOKENS', defaultValue: 8192, min: 256, max: 8192,
 });
 
+// Clock time (IST) a rate-limited/quota-exhausted Gemini API key resets at
+// — matching Gemini's own fixed daily quota reset, not N hours after each
+// individual failure (see lib/geminiPolicy.js's nextDailyResetAt). Default
+// 12:30 PM IST.
+const GEMINI_KEY_RESET_HOUR_IST = parseIntEnv(process.env.GEMINI_KEY_RESET_HOUR_IST, {
+  name: 'GEMINI_KEY_RESET_HOUR_IST', defaultValue: 12, min: 0, max: 23,
+});
+const GEMINI_KEY_RESET_MINUTE_IST = parseIntEnv(process.env.GEMINI_KEY_RESET_MINUTE_IST, {
+  name: 'GEMINI_KEY_RESET_MINUTE_IST', defaultValue: 30, min: 0, max: 59,
+});
+// A 401/403 (bad/revoked key) is a distinct failure mode from quota
+// exhaustion, so it stays duration-based rather than tied to the daily
+// reset — how long a key sits out of rotation after one, in milliseconds.
+const GEMINI_KEY_AUTH_COOLDOWN_MS = parseIntEnv(process.env.GEMINI_KEY_AUTH_COOLDOWN_MS, {
+  name: 'GEMINI_KEY_AUTH_COOLDOWN_MS', defaultValue: 3600000, min: 60000, max: 86400000,
+});
+
+// ONE shared pool for all three GeminiService instances below (coach,
+// router, attachments) — they draw against the same underlying Google
+// quota, so a key rate-limited on one must be skipped by the others too.
+const geminiKeyPool = new GeminiKeyPool(GEMINI_API_KEYS, {
+  resetHourIst: GEMINI_KEY_RESET_HOUR_IST,
+  resetMinuteIst: GEMINI_KEY_RESET_MINUTE_IST,
+  authCooldownMs: GEMINI_KEY_AUTH_COOLDOWN_MS,
+});
+
 const gemini = new GeminiService({
-  apiKey: GEMINI_API_KEY,
+  keyPool: geminiKeyPool,
   endpoint: GEMINI_ENDPOINT,
   timeoutMs: LLM_TIMEOUT_MS,
   totalTimeoutMs: LLM_TOTAL_TIMEOUT_MS,
@@ -243,7 +278,7 @@ const assistantBreaker = createRouterBreaker({
 });
 
 const geminiFast = new GeminiService({
-  apiKey: GEMINI_API_KEY,
+  keyPool: geminiKeyPool,
   endpoint: ASSISTANT_GEMINI_ENDPOINT,
   timeoutMs: ASSISTANT_LLM_TIMEOUT_MS,
   totalTimeoutMs: ASSISTANT_LLM_TOTAL_TIMEOUT_MS,
@@ -283,7 +318,7 @@ const ATTACHMENT_LLM_MAX_OUTPUT_TOKENS = parseIntEnv(process.env.ATTACHMENT_LLM_
 });
 
 const attachmentGemini = new GeminiService({
-  apiKey: GEMINI_API_KEY,
+  keyPool: geminiKeyPool,
   endpoint: ATTACHMENT_GEMINI_ENDPOINT,
   timeoutMs: ATTACHMENT_LLM_TIMEOUT_MS,
   totalTimeoutMs: ATTACHMENT_LLM_TOTAL_TIMEOUT_MS,
@@ -334,6 +369,11 @@ app.disable('x-powered-by');
 // router's Lesson Plan Workspace AI actions) without re-constructing it or
 // leaking the API key. Read via req.app.locals.gemini.
 app.locals.gemini = gemini;
+// The shared multi-key failover pool (lib/geminiKeyPool.js), used by gemini,
+// geminiFast, and attachmentGemini above. Exposed the same way for parity
+// with the rest of this file's "constructed once, injected explicitly"
+// pattern, and so tests/introspection can read pool status via describe().
+app.locals.geminiKeyPool = geminiKeyPool;
 // The routing instance, read by the assistant router as req.app.locals.geminiFast.
 // Kept a SEPARATE local rather than a field on `gemini` so that reaching for the
 // wrong one is a visibly wrong line of code rather than a subtle option.
@@ -954,7 +994,13 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
       return res.status(504).json({ error: 'The request timed out. Please try again.', code: 'TIMEOUT', requestId });
     }
     if (error.status === 429) {
-      return res.status(429).json({ error: 'The service is busy. Please try again shortly.', code: 'RATE_LIMITED', requestId });
+      const body = { error: 'The service is busy. Please try again shortly.', code: 'RATE_LIMITED', requestId };
+      // Set only when every Gemini API key is currently exhausted (see
+      // gemini.js's key-pool rotation) — the soonest any key recovers, so
+      // the client can show the teacher a "back in X" message instead of a
+      // dead end.
+      if (typeof error.retryAt === 'number') body.retryAt = new Date(error.retryAt).toISOString();
+      return res.status(429).json(body);
     }
     if (error.status === 401 || error.status === 403) {
       // Do not leak configuration details to the client.
