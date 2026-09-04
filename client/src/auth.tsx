@@ -161,12 +161,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback((c: LoginCredentials) => authenticate('/auth/login', c), [authenticate]);
 
-  // Registration deliberately never returns a session — the account starts
-  // pending, so there is nothing to sign in to yet.
+  // Registration creates an active account (server-side), then immediately
+  // signs the teacher in with the same credentials via authenticate() — so a
+  // future account that DOES come back pending/rejected (e.g. school policy
+  // changes) still gets the correct dedicated screen instead of a broken
+  // "signed in" state.
   const register = useCallback(async (c: RegisterCredentials): Promise<AuthOutcome> => {
     await api<{ status: string }>('/auth/register', { method: 'POST', body: c, auth: false });
-    return { kind: 'pending' };
-  }, []);
+    return authenticate('/auth/login', { email: c.email, password: c.password });
+  }, [authenticate]);
 
   // One call serves Google sign-up and Google sign-in, mirroring the single
   // server endpoint: passing a schoolCode makes it a sign-up.

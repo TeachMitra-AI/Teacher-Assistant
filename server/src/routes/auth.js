@@ -9,8 +9,11 @@
 // email happens to hold accounts at several schools, the client is asked to
 // choose one and re-submits with an explicit schoolId.
 //
-// Every new sign-up lands in `status: 'pending'` and gets no session until a
-// school_admin/super_admin approves it (see routes/admin.js).
+// New sign-ups are created `status: 'active'` and can sign in immediately.
+// statusGateError() below still enforces `pending`/`rejected` for any
+// existing account in one of those states (e.g. a manual admin action via
+// routes/admin.js) — the approval gate itself isn't removed, new accounts
+// just no longer start in it.
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { z } = require('zod');
@@ -216,10 +219,9 @@ function publicUser(user, school) {
 }
 
 // POST /api/auth/register — first-time teacher sign-up under a valid school
-// code. Deliberately issues NO session: the account is created `pending` and
-// cannot sign in until an admin approves it, so there is nothing to hand back
-// a token for. Fail-closed by construction — no JWT/authRequired changes were
-// needed to gate it.
+// code. Issues NO session itself: the account is created `active`, but this
+// endpoint only reports that status back — the client signs the teacher in
+// with a separate /auth/login call using the same credentials.
 router.post('/register', asyncHandler(async (req, res) => {
   const parsed = registerSchema.safeParse(req.body || {});
   if (!parsed.success) {
@@ -243,10 +245,10 @@ router.post('/register', asyncHandler(async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, 10);
   await prisma.user.create({
-    data: { schoolId: school.id, name, email, passwordHash, role: 'teacher', status: 'pending' },
+    data: { schoolId: school.id, name, email, passwordHash, role: 'teacher', status: 'active' },
   });
 
-  return res.status(201).json({ status: 'pending' });
+  return res.status(201).json({ status: 'active' });
 }));
 
 // POST /api/auth/login — returning teacher/admin sign-in with email +
@@ -398,11 +400,11 @@ router.post('/google', asyncHandler(async (req, res) => {
         email: identity.email,
         googleSub: identity.sub,
         role: 'teacher',
-        status: 'pending',
+        status: 'active',
       },
     });
 
-    return res.status(201).json({ status: 'pending' });
+    return res.status(201).json({ status: 'active' });
   }
 
   // ---- Sign-IN: no school code ----

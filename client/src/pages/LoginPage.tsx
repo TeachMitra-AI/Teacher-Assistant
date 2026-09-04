@@ -139,14 +139,14 @@ export default function LoginPage({ preferences }: { preferences: ReturnType<typ
         const credentials = { email: email.trim(), password };
         applyOutcome(await login(credentials), { via: 'password', ...credentials });
       } else {
+        const credentials = { email: email.trim(), password };
         applyOutcome(
           await register({
             schoolCode: schoolCode.trim(),
             name: name.trim(),
-            email: email.trim(),
-            password,
+            ...credentials,
           }),
-          null
+          { via: 'password', ...credentials }
         );
       }
     } catch (err) {
