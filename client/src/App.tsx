@@ -31,6 +31,8 @@ import ResourceWorkspace from './pages/ResourceWorkspace';
 import ClassroomPage from './pages/ClassroomPage';
 import AttendancePage from './pages/AttendancePage';
 import GeneratorPage from './pages/GeneratorPage';
+import TermsOfServicePage from './pages/TermsOfServicePage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import BottomNav from './components/BottomNav';
 
 function AppRoutes() {
@@ -64,6 +66,8 @@ function AppRoutes() {
         <Route path="/login" element={<LoginPage preferences={preferences} />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage preferences={preferences} />} />
         <Route path="/reset-password/:token" element={<ResetPasswordPage preferences={preferences} />} />
+        <Route path="/terms" element={<TermsOfServicePage />} />
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -91,6 +95,8 @@ function AppRoutes() {
       <Route path="/attendance" element={<AttendancePage preferences={preferences} />} />
       <Route path="/generator" element={<GeneratorPage preferences={preferences} />} />
       <Route path="/settings" element={<SettingsPage preferences={preferences} />} />
+      <Route path="/terms" element={<TermsOfServicePage />} />
+      <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route
         path="/admin"
         element={isAdmin ? <AdminPage preferences={preferences} /> : <Navigate to="/" replace />}
