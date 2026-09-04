@@ -39,6 +39,24 @@ describe('initGoogleAnalytics', () => {
     ).toBe(true);
   });
 
+  it('grants a default consent state BEFORE the config call, so gtag.js never withholds hits', () => {
+    initGoogleAnalytics();
+    const consentIndex = window.dataLayer.findIndex((entry) => entry[0] === 'consent');
+    const configIndex = window.dataLayer.findIndex((entry) => entry[0] === 'config');
+
+    expect(consentIndex).toBeGreaterThanOrEqual(0);
+    expect(configIndex).toBeGreaterThan(consentIndex);
+
+    const [, mode, params] = window.dataLayer[consentIndex] as [string, string, Record<string, string>];
+    expect(mode).toBe('default');
+    expect(params).toEqual({
+      ad_storage: 'granted',
+      analytics_storage: 'granted',
+      ad_user_data: 'granted',
+      ad_personalization: 'granted',
+    });
+  });
+
   it('never injects a second script tag on repeated calls', () => {
     initGoogleAnalytics();
     initGoogleAnalytics();
