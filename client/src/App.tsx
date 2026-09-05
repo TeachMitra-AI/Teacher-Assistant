@@ -14,6 +14,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { RouterProvider } from './assistant/RouterProvider';
 import { usePreferences } from './hooks/usePreferences';
 import { ADMIN_ROLES, GOOGLE_CLIENT_ID } from './config';
+import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
@@ -63,12 +64,13 @@ function AppRoutes() {
   if (!user) {
     return (
       <Routes>
+        <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage preferences={preferences} />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage preferences={preferences} />} />
         <Route path="/reset-password/:token" element={<ResetPasswordPage preferences={preferences} />} />
         <Route path="/terms" element={<TermsOfServicePage />} />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     );
   }
