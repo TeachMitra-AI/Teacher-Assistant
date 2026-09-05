@@ -6047,7 +6047,7 @@ th.attendance-reports-num-col .attendance-reports-sort-btn { flex-direction: row
 .attendance-weekday-chip.checked { background: var(--orange-soft); border-color: var(--orange); color: var(--orange); }
 
 /* ---- Home / Landing (public, signed-out "/") ------------------------------ */
-.home-page { min-height: 100vh; background: var(--bg); color: var(--text); }
+.home-page { min-height: 100vh; background: var(--bg); color: var(--text); overflow-x: hidden; }
 /* Smooth in-page anchor scrolling (navbar → #features etc.), scoped to only
    take effect while the home page is mounted — :has() on the root html
    element means the authenticated app's own scrolling is never affected. */
@@ -6072,15 +6072,24 @@ html:has(.home-page) { scroll-behavior: smooth; }
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 0 transparent;
+  transition: box-shadow 0.25s ease, background 0.25s ease;
 }
+/* Once scrolled past the hero, the bar "lifts" off the page with a soft
+   shadow instead of relying on the border alone for separation. */
+.home-header-bar--scrolled {
+  background: color-mix(in srgb, var(--bg) 96%, transparent);
+  box-shadow: 0 6px 20px rgba(20, 24, 33, 0.08);
+}
+[data-theme='dark'] .home-header-bar--scrolled { box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); }
 .home-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  max-width: 1120px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 1.1rem 1.5rem;
+  padding: 1.2rem 1.5rem;
 }
 .home-brand { display: flex; align-items: center; gap: 0.6rem; text-decoration: none; color: var(--text); flex-shrink: 0; }
 .home-brand-logo { width: 34px; height: 34px; border-radius: 10px; object-fit: cover; }
@@ -6088,17 +6097,50 @@ html:has(.home-page) { scroll-behavior: smooth; }
 
 .home-nav { display: flex; align-items: center; gap: 1.75rem; }
 .home-nav-link {
+  position: relative;
   font-size: 0.92rem;
   font-weight: 600;
   color: var(--text-muted);
   text-decoration: none;
+  padding-bottom: 3px;
   transition: color 0.12s ease;
 }
+.home-nav-link::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 100%;
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, var(--orange), var(--amber));
+  transition: right 0.2s ease;
+}
 .home-nav-link:hover { color: var(--text); }
+.home-nav-link:hover::after { right: 0; }
 
 .home-header-actions { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
 .home-header-cta { padding: 0.55rem 1.1rem; font-size: 0.9rem; }
 .home-mobile-toggle { display: none; }
+
+/* Theme toggle: sun/moon cross-fade + rotate instead of an instant icon
+   swap. Both icons are always in the DOM, stacked, and only one is visible
+   at a time via opacity/transform. */
+.home-theme-icon { position: relative; display: inline-flex; width: 18px; height: 18px; }
+.home-theme-icon-sun,
+.home-theme-icon-moon {
+  position: absolute;
+  inset: 0;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  opacity: 0;
+}
+.home-theme-icon-sun { transform: rotate(-90deg) scale(0.4); }
+.home-theme-icon-moon { transform: rotate(90deg) scale(0.4); }
+.home-theme-icon-sun.is-active,
+.home-theme-icon-moon.is-active { opacity: 1; transform: rotate(0deg) scale(1); }
+@media (prefers-reduced-motion: reduce) {
+  .home-theme-icon-sun, .home-theme-icon-moon { transition: opacity 0.15s ease; transform: none; }
+}
 
 .home-mobile-menu {
   display: flex;
@@ -6118,48 +6160,115 @@ html:has(.home-page) { scroll-behavior: smooth; }
 .home-mobile-menu .btn-outline,
 .home-mobile-menu .btn-primary { justify-content: center; margin-top: 0.75rem; }
 
-.home-hero {
-  max-width: 1120px;
-  margin: 0 auto;
-  padding: 3.5rem 1.5rem 4.5rem;
-  display: grid;
-  grid-template-columns: 1.1fr 1fr;
-  gap: 3rem;
-  align-items: center;
-  position: relative;
+/* ================= HERO ================= */
+/* Centered hero (was a 2-column split): a big statement headline over a
+   full-width product-preview panel, rather than text-left/visual-right.
+   Deliberately NOT `overflow: hidden` on .home-hero itself — nothing here
+   currently needs it, and clipping the section would cut off anything that
+   ever overlaps its bottom edge again. The glow/dot decoration gets its own
+   backdrop layer with its own clip instead. */
+.home-hero { position: relative; padding: 5rem 1.5rem 0; text-align: center; }
+/* The backdrop's own transform is set inline by HomePage.tsx's mousemove
+   handler (a subtle cursor-reactive parallax on the glow layer) — the
+   transition here is what makes that motion glide instead of snap, and
+   ..reduce collapses its duration same as everything else on this page. */
+.home-hero-backdrop { position: absolute; inset: 0; overflow: hidden; z-index: 0; pointer-events: none; transition: transform 0.35s ease-out; }
+.home-hero-glow-a,
+.home-hero-glow-b,
+.home-hero-glow-c { position: absolute; border-radius: 50%; filter: blur(90px); pointer-events: none; }
+.home-hero-glow-c {
+  width: 520px; height: 520px; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(255, 190, 130, 0.18), transparent 72%);
+  animation: home-glow-breathe 7s ease-in-out infinite;
 }
+[data-theme='dark'] .home-hero-glow-c { background: radial-gradient(circle, rgba(255, 190, 130, 0.2), transparent 72%); }
+.home-hero-glow-a {
+  width: 640px; height: 640px; top: -260px; left: 50%; transform: translateX(-72%);
+  background: radial-gradient(circle, rgba(255, 107, 53, 0.19), transparent 70%);
+  animation: home-glow-drift-a 9s ease-in-out infinite;
+}
+.home-hero-glow-b {
+  width: 560px; height: 560px; top: -180px; left: 50%; transform: translateX(18%);
+  background: radial-gradient(circle, rgba(247, 147, 30, 0.16), transparent 70%);
+  animation: home-glow-drift-b 11s ease-in-out infinite;
+}
+[data-theme='dark'] .home-hero-glow-a { background: radial-gradient(circle, rgba(255, 107, 53, 0.34), transparent 70%); }
+[data-theme='dark'] .home-hero-glow-b { background: radial-gradient(circle, rgba(247, 147, 30, 0.26), transparent 70%); }
+@keyframes home-glow-drift-a { 0%, 100% { transform: translateX(-72%) translateY(0) scale(1); } 50% { transform: translateX(-62%) translateY(55px) scale(1.18); } }
+@keyframes home-glow-drift-b { 0%, 100% { transform: translateX(18%) translateY(0) scale(1); } 50% { transform: translateX(8%) translateY(-50px) scale(1.16); } }
+@keyframes home-glow-breathe { 0%, 100% { opacity: 0.45; transform: translate(-50%, -50%) scale(1); } 50% { opacity: 1; transform: translate(-50%, -50%) scale(1.35); } }
+.home-hero-dots {
+  position: absolute; inset: 0; z-index: 0;
+  background-image: radial-gradient(rgba(0, 0, 0, 0.045) 1px, transparent 1px);
+  background-size: 26px 26px;
+  mask-image: linear-gradient(to bottom, black, transparent 78%);
+}
+[data-theme='dark'] .home-hero-dots { background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px); }
+.home-hero-inner { position: relative; z-index: 1; max-width: 760px; margin: 0 auto; }
 .home-kicker {
-  display: inline-block;
+  display: inline-flex; align-items: center; gap: 0.4rem;
   background: var(--orange-soft);
   color: var(--orange-dark);
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.02em;
-  padding: 0.35rem 0.8rem;
+  padding: 0.4rem 0.95rem;
   border-radius: 999px;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
+  animation: home-fade-up 0.7s ease-out both;
 }
 [data-theme='dark'] .home-kicker { color: var(--amber); }
-.home-hero-text h1 {
-  font-size: 2.75rem;
-  line-height: 1.15;
-  letter-spacing: -0.02em;
-  margin: 0 0 1.1rem;
-  background: linear-gradient(135deg, var(--text) 55%, var(--orange-dark));
+.home-hero-inner h1 {
+  font-size: clamp(2.3rem, 5vw, 3.7rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  margin: 0 0 1.3rem;
+  /* A soft highlight band sweeps across the heading on a loop (background-size
+     wider than the box + animated background-position) — the shimmer is what
+     makes this the first thing a visitor's eye is drawn to, not just a
+     static gradient. */
+  background: linear-gradient(100deg, var(--text) 38%, var(--orange-dark) 50%, var(--text) 62%);
+  background-size: 250% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  animation: home-fade-up 0.7s ease-out 0.1s both, home-h1-shimmer 5s ease-in-out infinite;
 }
-[data-theme='dark'] .home-hero-text h1 { background: linear-gradient(135deg, var(--text) 55%, var(--amber)); -webkit-background-clip: text; background-clip: text; }
-.home-hero-subtitle { font-size: 1.1rem; line-height: 1.65; color: var(--text-muted); max-width: 52ch; margin: 0 0 1.6rem; }
-.home-hero-cta { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-bottom: 1.6rem; }
-.home-cta-primary { display: inline-flex; align-items: center; gap: 0.5rem; }
+[data-theme='dark'] .home-hero-inner h1 { background: linear-gradient(100deg, var(--text) 38%, var(--amber) 50%, var(--text) 62%); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; }
+@keyframes home-h1-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .home-hero-inner h1 { animation: home-fade-up 0.7s ease-out 0.1s both; background-position: 50% 0; }
+}
+.home-hero-subtitle {
+  font-size: 1.15rem; line-height: 1.6; color: var(--text-muted); max-width: 46ch; margin: 0 auto 2rem;
+  animation: home-fade-up 0.7s ease-out 0.2s both;
+}
+.home-hero-cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.8rem; margin-bottom: 3rem; animation: home-fade-up 0.7s ease-out 0.3s both; }
+/* Scoped to .home-cta-primary (a homepage-only class), never to the bare
+   shared .btn-primary — that class is used app-wide (Login, Coach,
+   Settings...) and must not pick up homepage-specific flourishes. */
+.home-cta-primary { display: inline-flex; align-items: center; gap: 0.5rem; position: relative; overflow: hidden; }
+.home-cta-primary::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 40%;
+  background: linear-gradient(115deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  transform: skewX(-20deg);
+  transition: left 0.6s ease;
+}
+.home-cta-primary:hover::after { left: 130%; }
+@keyframes home-fade-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+
 .home-hero-points {
   list-style: none;
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 0.6rem;
-  margin: 0;
+  margin: 2.5rem 0 0;
   padding: 0;
 }
 .home-hero-points li {
@@ -6171,10 +6280,6 @@ html:has(.home-page) { scroll-behavior: smooth; }
   border-radius: 999px;
   padding: 0.4rem 0.8rem;
 }
-/* Teacher-facing benefits (languages, real-classroom fit) are the primary
-   sell — styled bolder, with an icon, and an orange-tinted border — so
-   "Powered by Google Gemini" (below, in .home-hero-tech-credit) reads as a
-   secondary technology credit rather than an equal, competing claim. */
 .home-hero-points-primary {
   display: inline-flex;
   align-items: center;
@@ -6185,57 +6290,78 @@ html:has(.home-page) { scroll-behavior: smooth; }
   font-weight: 700;
 }
 [data-theme='dark'] .home-hero-points-primary { color: var(--amber); }
-.home-hero-tech-credit {
-  margin: 0.75rem 0 0;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-}
 
+/* ---- hero product-preview panel (real QUICK_ACTIONS + real greeting) ---- */
+.home-hero-visual-wrap { position: relative; z-index: 1; max-width: 1040px; margin: 0 auto; padding: 0 1.5rem; margin-bottom: 4.5rem; }
 .home-hero-visual {
+  position: relative;
+  text-align: left;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: 0 4px 12px rgba(20, 24, 33, 0.08), 0 20px 48px rgba(20, 24, 33, 0.12);
-  padding: 1.4rem;
-  position: relative;
+  padding: 1.6rem 1.8rem 2rem;
+  animation: home-fade-up 0.7s ease-out 0.3s both;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
-[data-theme='dark'] .home-hero-visual { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 24px 56px rgba(0, 0, 0, 0.4); }
-.home-hero-visual-chrome { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 1.1rem; }
-.home-hero-visual-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border); }
+.home-hero-visual:hover { transform: translateY(-3px); }
+[data-theme='dark'] .home-hero-visual {
+  background: linear-gradient(165deg, #1f2430, #1b1f29);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 24px 56px rgba(0, 0, 0, 0.4);
+}
+.home-hero-visual-chrome { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 1.2rem; }
+/* macOS traffic-light window buttons — decorative chrome only, not
+   functional controls, hence the whole row stays aria-hidden. */
+.home-hero-visual-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+}
+.home-hero-visual-dot--red { background: #ff5f57; }
+.home-hero-visual-dot--yellow { background: #febc2e; }
+.home-hero-visual-dot--green { background: #28c840; }
 .home-hero-visual-chrome-label {
   margin-left: 0.5rem;
   font-size: 0.78rem;
   font-weight: 700;
   color: var(--text-muted);
 }
-.home-hero-visual-greeting { margin: 0 0 0.3rem; font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
-.home-hero-visual-label { margin: 0 0 1rem; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); }
-.home-hero-visual-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.home-hero-visual-greeting { margin: 0 0 0.3rem; font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; }
+.home-hero-visual-label { margin: 0 0 1.2rem; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); }
+.home-hero-visual-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
 .home-example-card {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.4rem;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 0.9rem;
+  padding: 1rem;
+  transition: border-color 0.2s ease, transform 0.2s ease;
 }
+.home-example-card:hover { border-color: var(--orange); transform: translateY(-2px); }
 .home-example-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border-radius: 9px;
   background: var(--orange-soft);
   color: var(--orange-dark);
 }
 [data-theme='dark'] .home-example-icon { color: var(--amber); }
-.home-example-title { font-size: 0.88rem; font-weight: 700; }
+.home-example-title { font-size: 0.86rem; font-weight: 700; }
 .home-example-desc { font-size: 0.78rem; color: var(--text-muted); line-height: 1.4; }
 
-.home-section { max-width: 1120px; margin: 0 auto; padding: 3.5rem 1.5rem; }
-.home-section > h2 { font-size: 1.75rem; letter-spacing: -0.01em; text-align: center; margin: 0 0 2rem; }
+@media (prefers-reduced-motion: reduce) {
+  .home-hero-glow-a, .home-hero-glow-b, .home-hero-glow-c { animation: none; }
+}
+
+/* ================= SECTIONS ================= */
+.home-section { max-width: 1120px; margin: 0 auto; padding: 5.5rem 1.5rem; }
+.home-section > h2 { font-size: clamp(1.7rem, 3vw, 2.15rem); letter-spacing: -0.015em; text-align: center; margin: 0 0 2.25rem; }
 .home-section--muted { background: var(--surface-2); border-radius: var(--radius); }
 
 .home-eyebrow {
@@ -6250,190 +6376,363 @@ html:has(.home-page) { scroll-behavior: smooth; }
 }
 [data-theme='dark'] .home-eyebrow { color: var(--amber); }
 
-.home-problem-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; }
-.home-problem-card {
+/* A small static icon above a section's eyebrow — same family as the FAQ
+   icon (.home-faq-icon) but deliberately NOT animated: only FAQ's flip
+   should stand out as the one section with real motion in its header,
+   everything else here just gets the visual identity. Centered by default;
+   .home-section-icon--left drops the centering for "Why SarasTech", whose
+   eyebrow lives in a left-aligned column, not a full-width centered one. */
+.home-section-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 1rem;
+  border-radius: 50%;
+  background: var(--orange-soft);
+  color: var(--orange-dark);
+}
+[data-theme='dark'] .home-section-icon { color: var(--amber); }
+.home-section-icon--left { margin: 0 0 1rem; position: relative; z-index: 1; }
+
+/* Scroll-driven reveal — pure CSS, no JS. Only engages where the browser
+   supports scroll-linked animations (@supports gate: currently
+   Chromium-based browsers); every other browser just shows the section at
+   its normal, fully-visible state via the base rule below. The explicit
+   reduced-motion disable is extra insurance beyond the sitewide
+   `*, *::before, *::after { animation-duration: 0.001ms !important }` rule
+   above, since a scroll-timeline-driven animation's "duration" isn't a
+   plain time value — same belt-and-suspenders approach already used for
+   .onboarding-tip and the attendance reports progress bar in this file. */
+.home-reveal { opacity: 1; }
+@supports (animation-timeline: view()) {
+  @keyframes home-reveal-in { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: translateY(0); } }
+  .home-reveal {
+    animation: home-reveal-in linear both;
+    animation-timeline: view();
+    animation-range: entry 0% cover 32%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-reveal { animation: none; opacity: 1; transform: none; }
+}
+
+/* ---- why sarastech (asymmetric: plain statement + highlight panel) ---- */
+.home-why-grid { display: grid; grid-template-columns: 0.85fr 1.15fr; gap: 3rem; align-items: center; }
+.home-why-copy { position: relative; }
+.home-why-watermark { position: absolute; top: -1.8rem; left: -0.5rem; width: 180px; height: 180px; color: var(--orange); opacity: 0.06; z-index: 0; pointer-events: none; }
+.home-why-label { position: relative; z-index: 1; font-size: 1.4rem; line-height: 1.4; color: var(--text-muted); font-weight: 500; }
+.home-why-panel {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--orange);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 2.25rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.home-why-panel:hover { transform: translateY(-3px); }
+[data-theme='dark'] .home-why-panel { background: linear-gradient(160deg, var(--surface), var(--surface-2)); }
+.home-why-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: var(--orange-soft);
+  color: var(--orange-dark);
+  margin-bottom: 1.1rem;
+}
+[data-theme='dark'] .home-why-icon { color: var(--amber); }
+.home-why-panel h3 { font-size: 1.35rem; letter-spacing: -0.01em; line-height: 1.3; margin: 0 0 0.8rem; }
+.home-why-panel p { font-size: 1rem; line-height: 1.65; color: var(--text-muted); margin: 0; }
+
+/* ---- features (one featured tile + 3 supporting tiles) ---- */
+.home-feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+.home-feature-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 1.75rem;
-}
-.home-problem-card--solution { border-color: var(--orange); }
-.home-problem-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: var(--orange-soft);
-  color: var(--orange-dark);
-  margin-bottom: 1rem;
-}
-[data-theme='dark'] .home-problem-icon { color: var(--amber); }
-.home-problem-card h3 { font-size: 1.1rem; margin: 0 0 0.5rem; }
-.home-problem-card p { font-size: 0.94rem; line-height: 1.6; color: var(--text-muted); margin: 0; }
-
-.home-feature-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; }
-.home-feature-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-top: 3px solid transparent;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 1.5rem;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 .home-feature-card:hover {
   transform: translateY(-3px);
   border-color: var(--orange);
-  border-top-color: var(--orange);
   box-shadow: 0 10px 24px rgba(20, 24, 33, 0.1);
 }
 [data-theme='dark'] .home-feature-card:hover { box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35); }
+.home-feature-card--featured { grid-column: 1 / -1; padding: 2.25rem; }
 .home-feature-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--orange), var(--amber));
-  color: #fff;
-  margin-bottom: 0.9rem;
+  background: var(--orange-soft);
+  color: var(--orange-dark);
+  margin-bottom: 1rem;
 }
+[data-theme='dark'] .home-feature-icon { color: var(--amber); }
+.home-feature-card--featured h3 { font-size: 1.3rem; }
 .home-feature-card h3 { font-size: 1.05rem; margin: 0 0 0.5rem; }
-.home-feature-card p { font-size: 0.92rem; line-height: 1.55; color: var(--text-muted); margin: 0; }
-.home-feature-note { text-align: center; font-size: 0.88rem; color: var(--text-muted); margin: 1.75rem 0 0; }
+.home-feature-card p { font-size: 0.92rem; line-height: 1.55; color: var(--text-muted); margin: 0; max-width: 60ch; }
+.home-feature-note { text-align: center; font-size: 0.88rem; color: var(--text-muted); margin: 2.25rem 0 0; }
 
-.home-steps { list-style: none; margin: 0; padding: 3rem 1.5rem 0; max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; position: relative; }
-.home-step {
-  text-align: center;
-  position: relative;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.75rem 1.5rem;
+/* ---- how it works (connected stepper) ---- */
+.home-steps {
+  list-style: none; margin: 0; padding: 0; max-width: 1120px; margin: 0 auto;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; position: relative;
 }
+.home-steps::before {
+  content: '';
+  position: absolute;
+  top: 26px;
+  left: 12%;
+  right: 12%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--orange) 15%, var(--amber) 50%, var(--orange) 85%, transparent);
+  opacity: 0.5;
+  z-index: 0;
+}
+.home-step { position: relative; z-index: 1; text-align: center; }
 .home-step-number {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--orange), var(--amber));
-  color: #fff;
-  font-weight: 700;
-  margin-bottom: 0.9rem;
-  position: relative;
-  z-index: 1;
+  background: var(--bg);
+  border: 2px solid var(--orange);
+  color: var(--orange-dark);
+  font-weight: 800;
+  font-size: 1.1rem;
+  margin-bottom: 1.2rem;
+  transition: box-shadow 0.2s ease, background 0.2s ease;
 }
-.home-step h3 { font-size: 1.02rem; margin: 0 0 0.4rem; }
-.home-step p { font-size: 0.9rem; line-height: 1.55; color: var(--text-muted); margin: 0; max-width: 32ch; margin-inline: auto; }
+[data-theme='dark'] .home-step-number { color: var(--amber); }
+.home-step:hover .home-step-number { background: var(--orange-soft); box-shadow: 0 0 0 6px var(--orange-soft); }
+.home-step h3 { font-size: 1.05rem; margin: 0 0 0.5rem; }
+.home-step p { font-size: 0.9rem; line-height: 1.55; color: var(--text-muted); margin: 0; max-width: 30ch; margin-inline: auto; }
 
+/* ---- made for india (statement + checklist panel) ---- */
+.home-audience-panel {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2.5rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2.5rem;
+  transition: border-color 0.2s ease;
+}
+.home-audience-panel:hover { border-color: var(--orange); }
 .home-audience-lead {
-  max-width: 62ch;
-  margin: 0 auto 1.75rem;
-  text-align: center;
-  font-size: 1.05rem;
-  line-height: 1.65;
-  color: var(--text);
+  margin: 0;
+  text-align: left;
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--text-muted);
 }
 .home-audience-list {
-  max-width: 68ch;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  gap: 1.3rem;
 }
-.home-audience-list li {
-  font-size: 0.98rem;
-  line-height: 1.65;
+.home-audience-list li { display: flex; gap: 0.9rem; align-items: flex-start; }
+.home-audience-check {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--orange-soft);
+  color: var(--orange-dark);
+  margin-top: 0.1rem;
+}
+[data-theme='dark'] .home-audience-check { color: var(--amber); }
+.home-audience-list p {
+  margin: 0;
+  font-size: 0.94rem;
+  line-height: 1.6;
   color: var(--text-muted);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 1rem 1.25rem;
 }
 
-.home-faq-list { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 0.75rem; }
-.home-faq-item {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0.2rem 1.1rem;
+/* ---- faq (flat divided list — was a bordered card per question) ---- */
+/* A small icon above the FAQ heading that periodically flips over, echoing
+   "an animated icon above the FAQ section" seen on
+   claude.com/product/claude-code — that one turns out to be a proprietary
+   multi-frame hand-drawn redraw animation (79 path segments), which isn't
+   something to copy; this is an original, much simpler equivalent: a real
+   3D Y-axis flip (not just a bob) plus a pulsing ring, in our own
+   orange/amber language. `perspective` has to live on the wrapper, not the
+   element being rotated, for the flip to read as 3D depth instead of a
+   flat horizontal squash. */
+.home-faq-icon-wrap { display: flex; justify-content: center; margin: 0 auto 1.2rem; perspective: 480px; }
+.home-faq-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--orange-soft);
+  color: var(--orange-dark);
+  animation: home-faq-icon-flip 4s ease-in-out infinite;
 }
-.home-faq-item[open] { border-color: var(--orange); }
+[data-theme='dark'] .home-faq-icon { color: var(--amber); }
+.home-faq-icon-ring {
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--orange);
+  animation: home-faq-ring-pulse 4s ease-in-out infinite;
+}
+/* Flips once (a full 360° so it lands back exactly at rest, no visible
+   jump), then holds for the rest of the cycle before flipping again —
+   reads as a periodic flip, not a constant spin. */
+@keyframes home-faq-icon-flip {
+  0%, 12% { transform: rotateY(0deg); }
+  40% { transform: rotateY(360deg); }
+  100% { transform: rotateY(360deg); }
+}
+@keyframes home-faq-ring-pulse { 0%, 100% { transform: scale(1); opacity: 0.5; } 50% { transform: scale(1.2); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .home-faq-icon, .home-faq-icon-ring { animation: none; }
+}
+.home-faq-list { max-width: 760px; margin: 0 auto; }
+.home-faq-item { border-top: 1px solid var(--border); transition: background 0.15s ease; }
+.home-faq-item:last-child { border-bottom: 1px solid var(--border); }
+.home-faq-item:hover { background: var(--surface-2); }
 .home-faq-question {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.95rem 0;
+  padding: 1.35rem 0.25rem;
   font-size: 0.98rem;
   font-weight: 600;
   cursor: pointer;
   list-style: none;
+  transition: color 0.15s ease;
 }
+.home-faq-question:hover { color: var(--orange-dark); }
+[data-theme='dark'] .home-faq-question:hover { color: var(--amber); }
 .home-faq-question::-webkit-details-marker { display: none; }
 .home-faq-chevron { flex-shrink: 0; color: var(--text-muted); transition: transform 0.15s ease; }
 .home-faq-item[open] .home-faq-chevron { transform: rotate(180deg); }
-.home-faq-answer { margin: 0 0 1.05rem; font-size: 0.92rem; line-height: 1.6; color: var(--text-muted); }
+.home-faq-answer { margin: 0 0 1.35rem; padding: 0 0.25rem; font-size: 0.92rem; line-height: 1.65; color: var(--text-muted); animation: home-fade-up 0.25s ease-out both; }
 
+/* ---- cta band (full-bleed — was a smaller rounded-rectangle inset) ---- */
 .home-cta-band {
-  max-width: 1120px;
-  margin: 0 auto 3rem;
-  padding: 3rem 1.5rem;
-  border-radius: var(--radius);
+  position: relative;
+  overflow: hidden;
+  padding: 4rem 1.5rem;
   text-align: center;
   color: #fff;
-  background: linear-gradient(135deg, var(--orange), var(--amber));
+  /* Deliberately darker than --orange/--amber (literal colors, not the
+     shared tokens — this must not affect anything else on the site): the
+     bright brand orange/amber measures ~2.3–2.8:1 for white text, below
+     WCAG AA even for large bold text. These two stops measure 5.0–6.0:1. */
+  background: linear-gradient(135deg, #a64622, #a16014);
 }
-.home-cta-band h2 { font-size: 1.6rem; margin: 0 0 0.6rem; }
-.home-cta-band p { margin: 0 0 1.5rem; color: rgba(255, 255, 255, 0.9); }
+.home-cta-band::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.08) 0 2px, transparent 2px 34px);
+}
+.home-cta-band::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 24% 20%, rgba(255, 255, 255, 0.2), transparent 55%);
+  pointer-events: none;
+}
+.home-cta-band-inner { position: relative; z-index: 1; max-width: 620px; margin: 0 auto; }
+.home-cta-band h2 { font-size: clamp(1.6rem, 3vw, 2rem); margin: 0 0 0.7rem; }
+.home-cta-band p { margin: 0 0 1.75rem; color: rgba(255, 255, 255, 0.96); }
 .home-cta-band .home-hero-cta { justify-content: center; margin-bottom: 0; }
-.home-cta-band .btn-primary { background: #fff; color: var(--orange-dark); }
+/* #c54c20, not --orange-dark (#e85a26) — the shared token only measures
+   3.55:1 on a white button background, below the 4.5:1 this text size needs. */
+.home-cta-band .btn-primary { background: #fff; color: #c54c20; }
 .home-cta-outline-inverse { border-color: rgba(255, 255, 255, 0.6); color: #fff; }
 .home-cta-outline-inverse:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); border-color: #fff; }
 
-.home-footer {
+/* ---- footer (real 3-column layout — was one thin centered row) ---- */
+.home-footer { border-top: 1px solid var(--border); }
+.home-footer-inner {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  color: var(--text-muted);
-  font-size: 0.85rem;
+  padding: 3.5rem 1.5rem 2rem;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 2.5rem;
 }
-.home-footer-logo { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; }
+.home-footer-brand-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.85rem; }
+.home-footer-logo { width: 24px; height: 24px; border-radius: 6px; object-fit: cover; }
+.home-footer-brand-row span { font-weight: 700; font-size: 1rem; }
+.home-footer-tagline { font-size: 0.88rem; line-height: 1.6; color: var(--text-muted); max-width: 30ch; margin: 0; }
+.home-footer-col h4 { font-size: 0.76rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin: 0 0 1rem; }
+.home-footer-col ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.7rem; }
+.home-footer-col ul a { color: var(--text); font-size: 0.9rem; text-decoration: none; }
+.home-footer-col ul a:hover { color: var(--orange-dark); }
+[data-theme='dark'] .home-footer-col ul a:hover { color: var(--amber); }
+.home-footer-bottom {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 1.5rem 1.5rem 2rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
 
 @media (max-width: 900px) {
-  .home-hero { grid-template-columns: 1fr; padding-bottom: 3rem; }
-  .home-feature-grid { grid-template-columns: repeat(2, 1fr); }
-  .home-problem-grid { grid-template-columns: 1fr; }
-  .home-steps { grid-template-columns: 1fr; gap: 2rem; }
-}
-
-@media (max-width: 780px) {
+  .home-why-grid, .home-audience-panel { grid-template-columns: 1fr; }
+  .home-hero-visual-grid { grid-template-columns: 1fr 1fr; }
+  .home-steps::before { display: none; }
+  .home-steps { grid-template-columns: 1fr; gap: 1.75rem; }
+  .home-footer-inner { grid-template-columns: 1fr; gap: 1.75rem; }
+  /* Was a separate 780px breakpoint — between 780-900px the header had
+     nowhere near enough room for the full nav (logo + 4 links + theme
+     toggle + Sign In + Get Started) on one line, and "Why SarasTech" /
+     "How It Works" wrapped to two lines. Folded into the same 900px
+     breakpoint everything else already collapses at. */
   .home-nav { display: none; }
   .home-desktop-only { display: none; }
   .home-mobile-toggle { display: inline-flex; }
 }
 
-@media (min-width: 781px) {
+@media (min-width: 901px) {
   .home-mobile-menu { display: none; }
 }
 
 @media (max-width: 640px) {
-  .home-hero-text h1 { font-size: 1.9rem; }
-  .home-hero-visual-grid { grid-template-columns: 1fr; }
+  .home-hero { padding-top: 3.5rem; }
+  .home-hero-glow-a, .home-hero-glow-b { width: 380px; height: 380px; }
+  .home-hero-visual { padding: 1.3rem 1.2rem 1.6rem; }
+  .home-hero-visual-grid { grid-template-columns: 1fr 1fr; gap: 0.7rem; }
   .home-feature-grid { grid-template-columns: 1fr; }
-  .home-section > h2 { font-size: 1.4rem; }
+  .home-why-watermark { display: none; }
+  .home-section { padding: 4rem 1.25rem; }
+  .home-why-panel, .home-audience-panel, .home-feature-card--featured { padding: 1.6rem; }
   .home-hero-cta, .home-cta-band .home-hero-cta { flex-direction: column; align-items: stretch; }
   .home-hero-cta .btn-primary, .home-hero-cta .btn-outline { justify-content: center; }
+}
+
+@media (max-width: 480px) {
+  .home-footer-inner { padding: 2.5rem 1.25rem 1.5rem; }
+  .home-footer-bottom { padding: 1.25rem 1.25rem 1.5rem; }
 }
