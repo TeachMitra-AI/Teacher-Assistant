@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { Mail, Lock, User, Eye, EyeOff, Sun, Moon, CircleAlert, ArrowLeft, Lightbulb, Languages, BookOpen } from 'lucide-react';
 import { useAuth } from '../auth';
@@ -25,7 +25,12 @@ type Attempt =
 
 export default function LoginPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
   const { login, register, loginWithGoogle } = useAuth();
-  const [mode, setMode] = useState<Mode>('login');
+  // The public landing page's "Start Teaching Smarter" CTA links here with
+  // ?mode=register so it opens straight into sign-up instead of sign-in.
+  // Read once on mount — this only sets the initial tab, not an ongoing sync,
+  // so switching tabs afterward behaves exactly as it always has.
+  const [searchParams] = useSearchParams();
+  const [mode, setMode] = useState<Mode>(searchParams.get('mode') === 'register' ? 'register' : 'login');
   const [view, setView] = useState<View>('form');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');

@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /forgot-password
+Disallow: /reset-password/
+Disallow: /library
+Disallow: /classroom
+Disallow: /attendance
+Disallow: /generator
+Disallow: /settings
+Disallow: /admin
+
+Sitemap: https://www.sarastech.co.in/sitemap.xml
