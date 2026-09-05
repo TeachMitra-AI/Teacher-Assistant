@@ -144,7 +144,12 @@ export default function ReportsPanel({ classId, className }: { classId: string; 
       </div>
 
       {loading && <p className="classroom-hint">Loading report…</p>}
-      {!loading && error && <p className="auth-error">{error}</p>}
+      {!loading && error && (
+        <div className="auth-error" role="alert">
+          {error}
+          <button type="button" className="btn-text" onClick={load}>Try again</button>
+        </div>
+      )}
 
       {!loading && !error && board && (
         <>

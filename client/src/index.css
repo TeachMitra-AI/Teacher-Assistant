@@ -2856,6 +2856,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   animation: auth-error-in 0.18s ease;
 }
 .auth-error svg { flex-shrink: 0; }
+/* Same idiom as .attendance-queued-banner .btn-text — a right-aligned
+   inline retry action on an error banner (Finding #6). */
+.auth-error .btn-text { margin-left: auto; flex-shrink: 0; font-size: 0.82rem; padding: 0.3rem 0.6rem; }
 [data-theme='dark'] .auth-error {
   color: #fca5a5;
   background: rgba(248, 113, 113, 0.12);

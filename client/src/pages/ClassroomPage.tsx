@@ -149,6 +149,7 @@ export default function ClassroomPage({ preferences }: { preferences: ReturnType
               onCreate={handleCreate}
               onUpdate={handleUpdate}
               onArchiveToggle={handleArchiveToggle}
+              onRetry={load}
             />
           </aside>
 

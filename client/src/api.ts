@@ -1,4 +1,5 @@
 import { API_BASE } from './config';
+import { fallbackErrorMessage } from './lib/apiErrorMessages';
 
 // Exported so auth.tsx's cross-tab 'storage' listener can recognize which
 // localStorage key is the identity-bearing one (see lib/authStorageSync.ts) —
@@ -130,7 +131,7 @@ export async function apiDownload(path: string): Promise<{ blob: Blob; filename:
   }
 
   if (!res.ok) {
-    let message = `Request failed (${res.status}).`;
+    let message = fallbackErrorMessage(res.status);
     try {
       const data = await res.json();
       if (data && typeof data.error === 'string') message = data.error;
@@ -161,7 +162,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
 
   if (!res.ok) {
     const body = data && typeof data === 'object' ? (data as Record<string, unknown>) : null;
-    const message = (body && typeof body.error === 'string' ? body.error : null) || `Request failed (${res.status}).`;
+    const message = (body && typeof body.error === 'string' ? body.error : null) || fallbackErrorMessage(res.status);
     const code = body && typeof body.code === 'string' ? body.code : undefined;
     const retryAtRaw = body && typeof body.retryAt === 'string' ? Date.parse(body.retryAt) : NaN;
     const retryAt = Number.isNaN(retryAtRaw) ? undefined : retryAtRaw;

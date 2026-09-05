@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   AreaChart, Area, PieChart, Pie, Cell,
@@ -24,21 +24,27 @@ export default function AdminPage({ preferences }: { preferences: ReturnType<typ
   const [data, setData] = useState<Analytics | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  // Preserves the effect's original unmount-safety (no setState after this
+  // page navigates away) now that `load` is also called directly by Retry.
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api<Analytics>('/admin/analytics');
+      if (mountedRef.current) setData(res);
+    } catch (err) {
+      if (mountedRef.current) setError(err instanceof ApiError ? err.message : 'Failed to load analytics');
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await api<Analytics>('/admin/analytics');
-        if (!cancelled) setData(res);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : 'Failed to load analytics');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+    load();
+  }, [load]);
 
   return (
     <div className="page">
@@ -49,7 +55,12 @@ export default function AdminPage({ preferences }: { preferences: ReturnType<typ
         <AdminTabs />
 
         {loading && <div className="response-loading"><div className="spinner" /><p>Loading analytics…</p></div>}
-        {error && <p className="auth-error">{error}</p>}
+        {error && (
+          <div className="auth-error" role="alert">
+            {error}
+            <button type="button" className="btn-text" onClick={load}>Try again</button>
+          </div>
+        )}
 
         {data && (
           <>
