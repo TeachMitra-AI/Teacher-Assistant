@@ -32,11 +32,15 @@ interface ComposerProps {
   textareaRef: RefObject<HTMLTextAreaElement>;
   classroomMode: boolean;
   onClassroomModeChange: (on: boolean) => void;
+  /** Set while every Gemini API key is exhausted (see hooks/useRetryCountdown.ts)
+   *  — shown in place of the attachment error, explaining why `loading` is
+   *  true for reasons beyond a normal in-flight request. */
+  cooldownMessage?: string;
 }
 
 export default function Composer({
   value, onChange, onSubmit, loading, voice, attachments, textareaRef,
-  classroomMode, onClassroomModeChange,
+  classroomMode, onClassroomModeChange, cooldownMessage,
 }: ComposerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -99,10 +103,16 @@ export default function Composer({
 
   return (
     <form className="composer" onSubmit={onSubmit}>
-      {attachments.error && (
+      {cooldownMessage ? (
         <p className="attachment-error" role="alert">
-          {attachments.error}
+          {cooldownMessage}
         </p>
+      ) : (
+        attachments.error && (
+          <p className="attachment-error" role="alert">
+            {attachments.error}
+          </p>
+        )
       )}
       <div className="composer-box">
         {/* Inside the box, above the text — a staged file reads as part of the

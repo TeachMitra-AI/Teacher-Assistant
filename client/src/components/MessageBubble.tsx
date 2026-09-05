@@ -9,6 +9,8 @@ import { useHelpSupport } from './HelpSupport';
 import { useToast } from './Toast';
 import { useAuth } from '../auth';
 import { resolveFeatureFlag } from '../lib/featureFlags';
+import { useRetryCountdown } from '../hooks/useRetryCountdown';
+import { retryMessage } from '../lib/retryCountdown';
 import { HELP_SUPPORT_ENABLED, LEARNING_REPRESENTATION_ENABLED } from '../config';
 import type { Turn } from '../types';
 
@@ -35,6 +37,9 @@ export default function MessageBubble({ turn, onFeedback, onRetry, onEdit }: Mes
     featureFlags?.learningRepresentationEnabled,
     LEARNING_REPRESENTATION_ENABLED
   );
+  // No-ops (ready stays true) unless this turn failed because every Gemini
+  // API key is currently exhausted (turn.retryAt — see api.ts's ApiError).
+  const { remainingMs: retryRemainingMs, ready: retryReady } = useRetryCountdown(turn.retryAt);
 
   // Editing an already-sent prompt. Local to
   // this bubble — the draft never touches `turn.query` until Save, so Cancel
@@ -188,8 +193,13 @@ export default function MessageBubble({ turn, onFeedback, onRetry, onEdit }: Mes
 
         {turn.status === 'error' && (
           <div className="message-bubble assistant-error" role="alert">
-            <span aria-hidden="true">⚠️</span> {turn.error}
-            <button type="button" className="btn-text retry-btn" onClick={() => onRetry(turn)}>Try again</button>
+            <span aria-hidden="true">⚠️</span> {turn.retryAt != null ? retryMessage(retryRemainingMs) : turn.error}
+            {/* Retrying while every key is still exhausted would just fail
+                the same way — the button reappears once retryReady flips
+                true (or immediately, for any other kind of error). */}
+            {retryReady && (
+              <button type="button" className="btn-text retry-btn" onClick={() => onRetry(turn)}>Try again</button>
+            )}
             {/* Only offered for a network failure — not for a validation/upstream
                 error a teacher can already act on themselves (see the design
                 doc's error-integration table). */}

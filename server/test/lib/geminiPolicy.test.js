@@ -2,6 +2,7 @@ const {
   parseRetryAfter,
   computeBackoffMs,
   classifyGeminiError,
+  nextDailyResetAt,
 } = require('../../src/lib/geminiPolicy');
 
 describe('geminiPolicy.parseRetryAfter', () => {
@@ -108,5 +109,38 @@ describe('geminiPolicy.classifyGeminiError', () => {
   test('null/undefined error is not retriable', () => {
     expect(classifyGeminiError(null)).toEqual({ retriable: false, reason: 'unknown' });
     expect(classifyGeminiError(undefined)).toEqual({ retriable: false, reason: 'unknown' });
+  });
+});
+
+describe('geminiPolicy.nextDailyResetAt', () => {
+  test('defaults to 12:30 PM IST — returns today\'s occurrence when still ahead', () => {
+    // 2026-09-04T20:07:00Z = 2026-09-05T01:37 IST — before 12:30 IST, so the
+    // next reset is later THAT SAME IST calendar day (Sep 5).
+    const now = Date.parse('2026-09-04T20:07:00Z');
+    expect(nextDailyResetAt(now)).toBe(Date.parse('2026-09-05T07:00:00.000Z')); // 12:30 IST Sep 5
+  });
+
+  test('rolls over to tomorrow once today\'s reset time has passed', () => {
+    // 2026-09-04T10:00:00Z = 2026-09-04T15:30 IST — already past 12:30 IST.
+    const now = Date.parse('2026-09-04T10:00:00Z');
+    expect(nextDailyResetAt(now)).toBe(Date.parse('2026-09-05T07:00:00.000Z')); // 12:30 IST Sep 5
+  });
+
+  test('one millisecond before the reset time still resolves to later today', () => {
+    // 2026-09-04T06:59:59.999Z = 2026-09-04T12:29:59.999 IST.
+    const now = Date.parse('2026-09-04T06:59:59.999Z');
+    expect(nextDailyResetAt(now)).toBe(Date.parse('2026-09-04T07:00:00.000Z')); // 12:30 IST Sep 4
+  });
+
+  test('exactly at the reset instant rolls to tomorrow (the window is [next, not now])', () => {
+    const now = Date.parse('2026-09-04T07:00:00.000Z'); // exactly 12:30 IST Sep 4
+    expect(nextDailyResetAt(now)).toBe(Date.parse('2026-09-05T07:00:00.000Z'));
+  });
+
+  test('honors a custom hour/minute', () => {
+    // Midnight IST reset: 2026-09-04T20:07:00Z = 2026-09-05T01:37 IST, already
+    // past that day's midnight, so the next occurrence is Sep 6 00:00 IST.
+    const now = Date.parse('2026-09-04T20:07:00Z');
+    expect(nextDailyResetAt(now, { hour: 0, minute: 0 })).toBe(Date.parse('2026-09-05T18:30:00.000Z'));
   });
 });

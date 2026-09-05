@@ -30,6 +30,8 @@ import { useOnboardingTip } from '../hooks/useOnboardingTip';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { useEdgeSwipeToOpen } from '../hooks/useSidebarSwipe';
 import { useHistoryOverrides } from '../hooks/useHistoryOverrides';
+import { useRetryCountdown } from '../hooks/useRetryCountdown';
+import { retryMessage } from '../lib/retryCountdown';
 import { api, ApiError } from '../api';
 // This page's ONLY import from the AI Action Router (milestone M6). Keeping the
 // coupling to a single line is what makes the feature deletable and what keeps
@@ -105,6 +107,15 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
 
   const [turns, setTurns] = useState<Turn[]>([]);
   const isSubmitting = turns.some((t) => t.status === 'pending');
+
+  // Every Gemini API key exhausted (see api.ts's ApiError.retryAt) — blocks
+  // sending until the soonest key recovers, then clears itself automatically
+  // (no auto-resend of what was typed; see the countdown effect below).
+  const [aiCooldownUntil, setAiCooldownUntil] = useState<number | null>(null);
+  const { remainingMs: aiCooldownRemainingMs, ready: aiCooldownReady } = useRetryCountdown(aiCooldownUntil);
+  useEffect(() => {
+    if (aiCooldownUntil != null && aiCooldownReady) setAiCooldownUntil(null);
+  }, [aiCooldownUntil, aiCooldownReady]);
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -255,7 +266,9 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to get a response. Please try again.';
       const errorIsNetwork = err instanceof ApiError && err.status === 0;
-      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message, errorIsNetwork } : t)));
+      const retryAt = err instanceof ApiError && err.code === 'RATE_LIMITED' ? err.retryAt : undefined;
+      if (retryAt != null) setAiCooldownUntil(retryAt);
+      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message, errorIsNetwork, retryAt } : t)));
     } finally {
       scrollToBottom();
     }
@@ -312,7 +325,9 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to get a response. Please try again.';
       const errorIsNetwork = err instanceof ApiError && err.status === 0;
-      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message, errorIsNetwork } : t)));
+      const retryAt = err instanceof ApiError && err.code === 'RATE_LIMITED' ? err.retryAt : undefined;
+      if (retryAt != null) setAiCooldownUntil(retryAt);
+      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message, errorIsNetwork, retryAt } : t)));
     } finally {
       scrollToBottom();
     }
@@ -729,12 +744,13 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                 value={query}
                 onChange={setQuery}
                 onSubmit={handleSubmit}
-                loading={isSubmitting || router.routing}
+                loading={isSubmitting || router.routing || (aiCooldownUntil != null && !aiCooldownReady)}
                 voice={voice}
                 attachments={attachments}
                 textareaRef={textareaRef}
                 classroomMode={classroomMode}
                 onClassroomModeChange={setClassroomModeOn}
+                cooldownMessage={aiCooldownUntil != null && !aiCooldownReady ? retryMessage(aiCooldownRemainingMs) : undefined}
               />
             </div>
           </div>

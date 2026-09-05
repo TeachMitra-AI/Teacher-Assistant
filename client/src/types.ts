@@ -297,6 +297,10 @@ export interface Turn {
   // than a server response — the one error category Phase 1 of Help &
   // Support offers a "Report" action on (see MessageBubble.tsx).
   errorIsNetwork?: boolean;
+  // Epoch ms — set only when this turn failed because every Gemini API key
+  // is currently exhausted (ApiError.retryAt). Drives the countdown message
+  // and the "Try again" button's disabled state in MessageBubble.tsx.
+  retryAt?: number;
   // Set only when this turn was submitted with attachments — routes it to
   // POST /api/coach/attachment instead of /api/coach (see
   // CoachPage.runTurnWithAttachments). All attachments on a turn were sent
