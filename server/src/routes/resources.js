@@ -9,6 +9,8 @@ const express = require('express');
 const { z } = require('zod');
 
 const { prisma } = require('../lib/db');
+const { asyncHandler } = require('../lib/asyncHandler');
+const { sendAiError } = require('../lib/sendAiError');
 const { authRequired } = require('../middleware/auth');
 const { languageDirective, LANGUAGE_NAMES } = require('../prompts');
 const { assessmentDocumentSchema, checkAgainstRequest, normalizeAssessmentMath, OPTION_LETTERS } = require('../lib/assessmentSchema');
@@ -762,24 +764,13 @@ function checkAssessmentActionResult(action, existingQuestions, responseQuestion
   return null;
 }
 
-// Map a GeminiService failure to the client-facing error contract (shared by
-// the ai-action and generate routes). Never leaks upstream error details.
-function sendAiError(res, error, requestId) {
-  if (error.code === 'INPUT_BLOCKED' || error.code === 'OUTPUT_BLOCKED') {
-    return res.status(422).json({ error: "This couldn't be processed — try adjusting your request.", code: 'SAFETY_BLOCKED', requestId });
-  }
-  if (error.code === 'DEADLINE_EXCEEDED' || error.name === 'TimeoutError' || error.name === 'AbortError') {
-    return res.status(504).json({ error: 'The request took too long. Please try again.', code: 'TIMEOUT', requestId });
-  }
-  if (error.status === 429) {
-    const body = { error: 'The service is busy. Please try again shortly.', code: 'RATE_LIMITED', requestId };
-    // Set only when every Gemini API key is currently exhausted (see
-    // gemini.js's key-pool rotation) — the soonest any key recovers.
-    if (typeof error.retryAt === 'number') body.retryAt = new Date(error.retryAt).toISOString();
-    return res.status(429).json(body);
-  }
-  return res.status(502).json({ error: 'Failed to generate content. Please try again.', code: 'UPSTREAM_UNAVAILABLE', requestId });
-}
+// Wording for this route file's Gemini-failure responses (ai-action and
+// generate routes) — passed into the shared sendAiError mapper (lib/) so the
+// RATE_LIMITED/TIMEOUT/UPSTREAM_AUTH logic itself lives in exactly one place.
+const AI_ERROR_MESSAGES = {
+  safetyBlockedMessage: "This couldn't be processed — try adjusting your request.",
+  upstreamUnavailableMessage: 'Failed to generate content. Please try again.',
+};
 
 // --- Structured Question Model (Generator v2) -------------------------------
 // See docs/generator-v2-plan.md. `Resource.structured` already holds a flat
@@ -867,7 +858,7 @@ async function findOwned(id, userId) {
 
 // GET /api/resources?type=&q=&sourceQueryId=&limit= — the caller's own library
 // (newest first).
-router.get('/resources', authRequired, async (req, res) => {
+router.get('/resources', authRequired, asyncHandler(async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
 
   const where = { userId: req.user.id };
@@ -898,10 +889,10 @@ router.get('/resources', authRequired, async (req, res) => {
   });
 
   res.json({ resources: rows.map(toDto) });
-});
+}));
 
 // POST /api/resources — save a new resource into the caller's library.
-router.post('/resources', authRequired, async (req, res) => {
+router.post('/resources', authRequired, asyncHandler(async (req, res) => {
   const parsed = createSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid resource.' });
@@ -991,17 +982,17 @@ router.post('/resources', authRequired, async (req, res) => {
   }
 
   res.status(201).json({ resource: toDto(created) });
-});
+}));
 
 // GET /api/resources/:id — a single owned resource (404 if missing or not yours).
-router.get('/resources/:id', authRequired, async (req, res) => {
+router.get('/resources/:id', authRequired, asyncHandler(async (req, res) => {
   const resource = await findOwned(req.params.id, req.user.id);
   if (!resource) return res.status(404).json({ error: 'Resource not found.' });
   res.json({ resource: toDto(resource) });
-});
+}));
 
 // PATCH /api/resources/:id — update an owned resource.
-router.patch('/resources/:id', authRequired, async (req, res) => {
+router.patch('/resources/:id', authRequired, asyncHandler(async (req, res) => {
   const parsed = updateSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid update.' });
@@ -1027,7 +1018,7 @@ router.patch('/resources/:id', authRequired, async (req, res) => {
   });
 
   res.json({ resource: toDto(updated) });
-});
+}));
 
 /**
  * Handles the four structured assessment AI-assist actions (Phase 4) — see
@@ -1203,7 +1194,7 @@ async function handleAssessmentAction(gemini, resource, action, requestId) {
 // owned resource. The suggestion is returned to the client for preview/apply
 // and is NEVER persisted here — saving stays an explicit PATCH. Ownership is
 // enforced exactly like every other route (404 for missing OR not-yours).
-router.post('/resources/:id/ai-action', authRequired, async (req, res) => {
+router.post('/resources/:id/ai-action', authRequired, asyncHandler(async (req, res) => {
   const requestId = crypto.randomUUID();
 
   const gemini = req.app.locals.gemini;
@@ -1225,7 +1216,7 @@ router.post('/resources/:id/ai-action', authRequired, async (req, res) => {
 
   if (ASSESSMENT_ACTIONS.includes(action)) {
     const result = await handleAssessmentAction(gemini, resource, action, requestId);
-    if (result.error) return sendAiError(res, result.error, requestId);
+    if (result.error) return sendAiError(res, result.error, requestId, AI_ERROR_MESSAGES);
     return res.status(result.status).json(result.body);
   }
 
@@ -1238,9 +1229,9 @@ router.post('/resources/:id/ai-action', authRequired, async (req, res) => {
     );
     return res.json({ suggestion: result.text, requestId });
   } catch (error) {
-    return sendAiError(res, error, requestId);
+    return sendAiError(res, error, requestId, AI_ERROR_MESSAGES);
   }
-});
+}));
 
 // POST /api/resources/generate — Quiz / Worksheet Generator. Builds a trusted
 // prompt from the validated config, asks Gemini for structured JSON question
@@ -1256,7 +1247,7 @@ router.post('/resources/:id/ai-action', authRequired, async (req, res) => {
 // Markdown-based approach had no equivalent check, so a malformed or
 // non-compliant response reached the teacher's preview looking "generated"
 // when it wasn't actually usable.
-router.post('/resources/generate', authRequired, async (req, res) => {
+router.post('/resources/generate', authRequired, asyncHandler(async (req, res) => {
   const requestId = crypto.randomUUID();
 
   const gemini = req.app.locals.gemini;
@@ -1294,7 +1285,7 @@ router.post('/resources/generate', authRequired, async (req, res) => {
         { correlationId: requestId }
       );
     } catch (error) {
-      return sendAiError(res, error, requestId);
+      return sendAiError(res, error, requestId, AI_ERROR_MESSAGES);
     }
 
     let raw;
@@ -1361,7 +1352,7 @@ router.post('/resources/generate', authRequired, async (req, res) => {
   // send back inside `structured` on save/edit (see tryReadStructuredQuestions).
   const structured = JSON.stringify({ instructions: docParsed.data.instructions, questions: docParsed.data.questions, schemaVersion: 2 });
   return res.json({ content, structured, requestId });
-});
+}));
 
 // POST /api/resources/generate-set — the four question-shaped artifacts in ONE
 // Gemini call (Classroom Mode, 2026-08-07).
@@ -1376,7 +1367,7 @@ router.post('/resources/generate', authRequired, async (req, res) => {
 // separate calls ever did. Here each artifact is normalized, LaTeX-checked and
 // schema-checked INDEPENDENTLY: the good ones are kept and returned, and only
 // the failed ones are re-requested, as a smaller set, on the next attempt.
-router.post('/resources/generate-set', authRequired, async (req, res) => {
+router.post('/resources/generate-set', authRequired, asyncHandler(async (req, res) => {
   const requestId = crypto.randomUUID();
 
   const gemini = req.app.locals.gemini;
@@ -1428,7 +1419,7 @@ router.post('/resources/generate-set', authRequired, async (req, res) => {
     } catch (error) {
       // A transport-level failure applies to everything still pending. Anything
       // already finished is still returned below rather than thrown away.
-      if (done.size === 0) return sendAiError(res, error, requestId);
+      if (done.size === 0) return sendAiError(res, error, requestId, AI_ERROR_MESSAGES);
       for (const item of pending) failures.set(item.format, 'Could not generate. Please try again.');
       pending = [];
       break;
@@ -1508,7 +1499,7 @@ router.post('/resources/generate-set', authRequired, async (req, res) => {
     })),
     requestId,
   });
-});
+}));
 
 // POST /api/resources/generate-lesson-plan — Classroom Mode P6.
 //
@@ -1517,7 +1508,7 @@ router.post('/resources/generate-set', authRequired, async (req, res) => {
 // lesson plan has no questions and no answer key, so it shares this route
 // file's generation MACHINERY (the LaTeX retry loop, the error mapping) while
 // keeping its own schema, prompt and renderer.
-router.post('/resources/generate-lesson-plan', authRequired, async (req, res) => {
+router.post('/resources/generate-lesson-plan', authRequired, asyncHandler(async (req, res) => {
   const requestId = crypto.randomUUID();
 
   const gemini = req.app.locals.gemini;
@@ -1546,7 +1537,7 @@ router.post('/resources/generate-lesson-plan', authRequired, async (req, res) =>
         { correlationId: requestId }
       );
     } catch (error) {
-      return sendAiError(res, error, requestId);
+      return sendAiError(res, error, requestId, AI_ERROR_MESSAGES);
     }
 
     let raw;
@@ -1597,15 +1588,15 @@ router.post('/resources/generate-lesson-plan', authRequired, async (req, res) =>
 
   const content = renderLessonPlanMarkdown(docParsed.data, config);
   return res.json({ content, requestId });
-});
+}));
 
 // DELETE /api/resources/:id — remove an owned resource.
-router.delete('/resources/:id', authRequired, async (req, res) => {
+router.delete('/resources/:id', authRequired, asyncHandler(async (req, res) => {
   const existing = await findOwned(req.params.id, req.user.id);
   if (!existing) return res.status(404).json({ error: 'Resource not found.' });
 
   await prisma.resource.delete({ where: { id: existing.id } });
   res.json({ success: true });
-});
+}));
 
 module.exports = router;

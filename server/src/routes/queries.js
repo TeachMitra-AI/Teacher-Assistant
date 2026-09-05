@@ -3,12 +3,13 @@ const express = require('express');
 const { z } = require('zod');
 
 const { prisma } = require('../lib/db');
+const { asyncHandler } = require('../lib/asyncHandler');
 const { authRequired } = require('../middleware/auth');
 
 const router = express.Router();
 
 // GET /api/queries — the signed-in user's own history (most recent first).
-router.get('/queries', authRequired, async (req, res) => {
+router.get('/queries', authRequired, asyncHandler(async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
   // EXPLICIT select, not the default "every column".
   //
@@ -56,7 +57,7 @@ router.get('/queries', authRequired, async (req, res) => {
   }));
 
   res.json({ queries });
-});
+}));
 
 const feedbackSchema = z.object({
   queryId: z.string().min(1),
@@ -64,7 +65,7 @@ const feedbackSchema = z.object({
 });
 
 // POST /api/feedback — thumbs up/down on a response.
-router.post('/feedback', authRequired, async (req, res) => {
+router.post('/feedback', authRequired, asyncHandler(async (req, res) => {
   const parsed = feedbackSchema.safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid feedback.' });
   const { queryId, rating } = parsed.data;
@@ -77,7 +78,7 @@ router.post('/feedback', authRequired, async (req, res) => {
 
   await prisma.feedback.create({ data: { queryId, userId: req.user.id, rating } });
   res.status(201).json({ success: true });
-});
+}));
 
 // Classroom Mode artifacts for ONE turn (D25).
 //
@@ -102,7 +103,7 @@ const artifactsSchema = z.object({
 });
 
 // GET /api/queries/:id/classroom-artifacts — owner only.
-router.get('/queries/:id/classroom-artifacts', authRequired, async (req, res) => {
+router.get('/queries/:id/classroom-artifacts', authRequired, asyncHandler(async (req, res) => {
   const row = await prisma.query.findUnique({
     where: { id: req.params.id },
     select: { userId: true, classroomArtifacts: true },
@@ -116,14 +117,14 @@ router.get('/queries/:id/classroom-artifacts', authRequired, async (req, res) =>
   }
 
   res.json({ artifacts: row.classroomArtifacts ? safeParse(row.classroomArtifacts) : {} });
-});
+}));
 
 // PUT /api/queries/:id/classroom-artifacts — owner only.
 //
 // Replaces the whole map rather than merging: the client always sends every
 // artifact it currently holds for the turn, so a merge would resurrect one the
 // teacher regenerated into a failure.
-router.put('/queries/:id/classroom-artifacts', authRequired, async (req, res) => {
+router.put('/queries/:id/classroom-artifacts', authRequired, asyncHandler(async (req, res) => {
   const parsed = artifactsSchema.safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid artifacts payload.' });
 
@@ -145,12 +146,12 @@ router.put('/queries/:id/classroom-artifacts', authRequired, async (req, res) =>
     data: { classroomArtifacts: json },
   });
   res.json({ success: true });
-});
+}));
 
 // DELETE /api/queries — clear the signed-in user's entire history.
 // NOTE: declared before the "/queries/:id" route so "/queries" is not captured
 // as an :id param.
-router.delete('/queries', authRequired, async (req, res) => {
+router.delete('/queries', authRequired, asyncHandler(async (req, res) => {
   const userId = req.user.id;
   // Feedback has a required FK to Query (no cascade in the schema), so remove
   // the related feedback first, then the queries — both in one transaction.
@@ -159,10 +160,10 @@ router.delete('/queries', authRequired, async (req, res) => {
     prisma.query.deleteMany({ where: { userId } }),
   ]);
   res.json({ success: true, deleted: deleted.count });
-});
+}));
 
 // DELETE /api/queries/:id — remove a single history entry (owner only).
-router.delete('/queries/:id', authRequired, async (req, res) => {
+router.delete('/queries/:id', authRequired, asyncHandler(async (req, res) => {
   const { id } = req.params;
   const query = await prisma.query.findUnique({ where: { id } });
   if (!query) return res.status(404).json({ error: 'Query not found.' });
@@ -175,7 +176,7 @@ router.delete('/queries/:id', authRequired, async (req, res) => {
     prisma.query.delete({ where: { id } }),
   ]);
   res.json({ success: true });
-});
+}));
 
 const MAX_TITLE = 200;
 
@@ -198,7 +199,7 @@ const patchQuerySchema = z
 // Same ownership check as DELETE /queries/:id above, on purpose: this and
 // DELETE are the two ways a teacher mutates one history row, and a stricter
 // or looser check here would be a silent inconsistency between them.
-router.patch('/queries/:id', authRequired, async (req, res) => {
+router.patch('/queries/:id', authRequired, asyncHandler(async (req, res) => {
   const parsed = patchQuerySchema.safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid request.' });
 
@@ -222,7 +223,7 @@ router.patch('/queries/:id', authRequired, async (req, res) => {
     select: { id: true, title: true, pinned: true },
   });
   res.json({ success: true, id: updated.id, title: updated.title, pinned: updated.pinned });
-});
+}));
 
 function safeParse(json) {
   try {

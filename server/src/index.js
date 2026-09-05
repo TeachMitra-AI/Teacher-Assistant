@@ -21,6 +21,7 @@ const { LANGUAGE_NAMES } = require('./prompts');
 const { normalizeQuery, flagPossibleInjection } = require('./safety/inputGuard');
 const { parseIntEnv } = require('./lib/config');
 const { prisma } = require('./lib/db');
+const { sendAiError } = require('./lib/sendAiError');
 const { authRequired } = require('./middleware/auth');
 const authRouter = require('./routes/auth');
 const dataRouter = require('./routes/queries');
@@ -976,40 +977,17 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
       }
     }
 
-    // Safety blocks: Gemini's own filters blocked the input or generated
-    // output — an expected, occasional outcome, not a system failure.
-    if (error.code === 'INPUT_BLOCKED' || error.code === 'OUTPUT_BLOCKED') {
-      return res.status(422).json({
-        error: "This question couldn't be processed — try rephrasing it.",
-        code: 'SAFETY_BLOCKED',
-        requestId,
-      });
-    }
-    // Overall time budget exhausted (retries + continuations took too long).
-    if (error.code === 'DEADLINE_EXCEEDED') {
-      return res.status(504).json({ error: 'The request took too long. Please try again.', code: 'TIMEOUT', requestId });
-    }
-    // Per-call timeout that ultimately failed (no overall-deadline error).
-    if (error.name === 'TimeoutError' || error.name === 'AbortError' || String(error.message).includes('timeout')) {
-      return res.status(504).json({ error: 'The request timed out. Please try again.', code: 'TIMEOUT', requestId });
-    }
-    if (error.status === 429) {
-      const body = { error: 'The service is busy. Please try again shortly.', code: 'RATE_LIMITED', requestId };
-      // Set only when every Gemini API key is currently exhausted (see
-      // gemini.js's key-pool rotation) — the soonest any key recovers, so
-      // the client can show the teacher a "back in X" message instead of a
-      // dead end.
-      if (typeof error.retryAt === 'number') body.retryAt = new Date(error.retryAt).toISOString();
-      return res.status(429).json(body);
-    }
-    if (error.status === 401 || error.status === 403) {
-      // Do not leak configuration details to the client.
-      return res.status(502).json({ error: 'Upstream authentication error. Please contact the administrator.', code: 'UPSTREAM_AUTH', requestId });
-    }
-    // Everything else (upstream 5xx exhausted, network failure, budget
-    // exhaustion, malformed response) → generic upstream failure. Status 502
-    // preserved for backward compatibility; `code` distinguishes the cause.
-    return res.status(502).json({ error: 'Failed to generate a response. Please try again.', code: 'UPSTREAM_UNAVAILABLE', requestId });
+    // RATE_LIMITED/TIMEOUT/UPSTREAM_AUTH/UPSTREAM_UNAVAILABLE mapping lives in
+    // lib/sendAiError.js (shared with routes/resources.js and
+    // routes/attachments.js). /coach distinguishes DEADLINE_EXCEEDED (overall
+    // budget exhausted) from a per-call timeout with two different messages —
+    // every other caller uses one message for both.
+    return sendAiError(res, error, requestId, {
+      safetyBlockedMessage: "This question couldn't be processed — try rephrasing it.",
+      deadlineExceededMessage: 'The request took too long. Please try again.',
+      timeoutMessage: 'The request timed out. Please try again.',
+      upstreamUnavailableMessage: 'Failed to generate a response. Please try again.',
+    });
   }
 });
 

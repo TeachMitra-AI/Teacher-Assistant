@@ -24,6 +24,7 @@ const express = require('express');
 const multer = require('multer');
 
 const { asyncHandler } = require('../lib/asyncHandler');
+const { sendAiError } = require('../lib/sendAiError');
 const { authRequired } = require('../middleware/auth');
 const { readAttachmentFlags } = require('../lib/flags');
 const { validateAttachmentBatch } = require('../lib/fileValidation');
@@ -119,29 +120,14 @@ function handleMulterError(err, req, res, next) {
   return next(err);
 }
 
-// Same mapping shape as routes/resources.js's sendAiError — kept as its own
-// small copy rather than a shared import, matching how index.js's /coach
-// handler already has its own independent copy of this same mapping. Three
-// near-identical copies already exist in this codebase; unifying them is a
-// pre-existing refactor this feature does not need to take on.
-function sendAiError(res, error, requestId) {
-  if (error.code === 'INPUT_BLOCKED' || error.code === 'OUTPUT_BLOCKED') {
-    return res.status(422).json({ error: "This couldn't be processed — try rephrasing your question.", code: 'SAFETY_BLOCKED', requestId });
-  }
-  if (error.code === 'DEADLINE_EXCEEDED' || error.name === 'TimeoutError' || error.name === 'AbortError') {
-    return res.status(504).json({ error: 'The request took too long. Please try again.', code: 'TIMEOUT', requestId });
-  }
-  if (error.status === 429) {
-    const body = { error: 'The service is busy. Please try again shortly.', code: 'RATE_LIMITED', requestId };
-    // Set only when every Gemini API key is currently exhausted (see
-    // gemini.js's key-pool rotation) — the soonest any key recovers. Not to
-    // be confused with the separate per-user BUDGET_EXHAUSTED 429 below,
-    // which is unrelated to key exhaustion.
-    if (typeof error.retryAt === 'number') body.retryAt = new Date(error.retryAt).toISOString();
-    return res.status(429).json(body);
-  }
-  return res.status(502).json({ error: 'Failed to process the attachment. Please try again.', code: 'UPSTREAM_UNAVAILABLE', requestId });
-}
+// Wording for this route's Gemini-failure responses, passed into the shared
+// sendAiError mapper (lib/) — the RATE_LIMITED/TIMEOUT/UPSTREAM_AUTH mapping
+// logic itself (previously copy-pasted here, in routes/resources.js, and in
+// index.js's /coach handler) now lives in exactly one place.
+const AI_ERROR_MESSAGES = {
+  safetyBlockedMessage: "This couldn't be processed — try rephrasing your question.",
+  upstreamUnavailableMessage: 'Failed to process the attachment. Please try again.',
+};
 
 router.post(
   '/coach/attachment',
@@ -239,7 +225,7 @@ router.post(
         message: error.message,
         ...(error.metrics || {}),
       });
-      return sendAiError(res, error, requestId);
+      return sendAiError(res, error, requestId, AI_ERROR_MESSAGES);
     }
   })
 );
