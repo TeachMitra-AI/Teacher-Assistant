@@ -23,6 +23,7 @@ const { z } = require('zod');
 
 const { prisma } = require('../lib/db');
 const { asyncHandler } = require('../lib/asyncHandler');
+const { isUniqueConstraintError } = require('../lib/prismaErrors');
 const { sendPasswordResetEmail } = require('../lib/email');
 // Called through the module object rather than destructured, so the one
 // function that reaches out to Google stays substitutable from a test without
@@ -117,6 +118,12 @@ const loginSchema = z.object({
 // One wording for every "we won't say which part was wrong" outcome: unknown
 // email, wrong password, or a Google-only account with no local password.
 const INVALID_CREDENTIALS = 'Incorrect email or password.';
+
+// Shared by /register and /google's sign-up branch, both for their normal
+// check-then-create conflict AND for the P2002 a concurrent duplicate
+// registration can still race into (Finding #4) — same outcome either way,
+// so the wording must stay identical between the two paths.
+const EMAIL_ALREADY_REGISTERED = 'An account with this email already exists at this school. Please sign in instead.';
 
 const RESPONSE_STYLES = ['balanced', 'concise', 'detailed', 'step_by_step', 'practical'];
 
@@ -260,15 +267,23 @@ router.post('/register', asyncHandler(async (req, res) => {
     where: { schoolId_email: { schoolId: school.id, email } },
   });
   if (existing) {
-    return res.status(409).json({
-      error: 'An account with this email already exists at this school. Please sign in instead.',
-    });
+    return res.status(409).json({ error: EMAIL_ALREADY_REGISTERED });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  await prisma.user.create({
-    data: { schoolId: school.id, name, email, passwordHash, role: 'teacher', status: 'active' },
-  });
+  try {
+    await prisma.user.create({
+      data: { schoolId: school.id, name, email, passwordHash, role: 'teacher', status: 'active' },
+    });
+  } catch (err) {
+    // Two concurrent registrations for the same email at the same school can
+    // both pass the findUnique check above before either creates — the loser
+    // hits the schoolId_email unique constraint here instead (Finding #4).
+    if (isUniqueConstraintError(err)) {
+      return res.status(409).json({ error: EMAIL_ALREADY_REGISTERED });
+    }
+    throw err;
+  }
 
   return res.status(201).json({ status: 'active' });
 }));
@@ -418,24 +433,34 @@ router.post('/google', asyncHandler(async (req, res) => {
       },
     });
     if (existing) {
-      return res.status(409).json({
-        error: 'An account with this email already exists at this school. Please sign in instead.',
-      });
+      return res.status(409).json({ error: EMAIL_ALREADY_REGISTERED });
     }
 
-    await prisma.user.create({
-      data: {
-        schoolId: school.id,
-        // Google's profile name is a reasonable default, but the sign-up form's
-        // value wins when present. Falls back to the local part of the address
-        // so `name` is never blank.
-        name: name || identity.name || identity.email.split('@')[0],
-        email: identity.email,
-        googleSub: identity.sub,
-        role: 'teacher',
-        status: 'active',
-      },
-    });
+    try {
+      await prisma.user.create({
+        data: {
+          schoolId: school.id,
+          // Google's profile name is a reasonable default, but the sign-up form's
+          // value wins when present. Falls back to the local part of the address
+          // so `name` is never blank.
+          name: name || identity.name || identity.email.split('@')[0],
+          email: identity.email,
+          googleSub: identity.sub,
+          role: 'teacher',
+          status: 'active',
+        },
+      });
+    } catch (err) {
+      // Same race as /register above: two concurrent sign-ups for the same
+      // email at the same school can both pass the findFirst check before
+      // either creates (Finding #4). googleSub has no unique constraint of
+      // its own (only an index), so this can only ever be the email side of
+      // schoolId_email.
+      if (isUniqueConstraintError(err)) {
+        return res.status(409).json({ error: EMAIL_ALREADY_REGISTERED });
+      }
+      throw err;
+    }
 
     return res.status(201).json({ status: 'active' });
   }

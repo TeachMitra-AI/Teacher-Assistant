@@ -17,6 +17,7 @@ interface ClassListProps {
   onCreate: (input: CreateClassInput) => Promise<boolean>;
   onUpdate: (id: string, input: UpdateClassInput) => Promise<boolean>;
   onArchiveToggle: (cls: SchoolClass) => Promise<boolean>;
+  onRetry: () => void;
 }
 
 const FORM_DEFAULTS = { name: '', grade: '', section: '', feeAmount: '' };
@@ -33,6 +34,7 @@ export default function ClassList({
   onCreate,
   onUpdate,
   onArchiveToggle,
+  onRetry,
 }: ClassListProps) {
   const [form, setForm] = useState(FORM_DEFAULTS);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -126,7 +128,12 @@ export default function ClassList({
       </label>
 
       {loading && <p className="classroom-hint">Loading your classes…</p>}
-      {!loading && error && <p className="auth-error">{error}</p>}
+      {!loading && error && (
+        <div className="auth-error" role="alert">
+          {error}
+          <button type="button" className="btn-text" onClick={onRetry}>Try again</button>
+        </div>
+      )}
 
       {!loading && !error && visible.length === 0 && (
         <div className="classroom-empty">

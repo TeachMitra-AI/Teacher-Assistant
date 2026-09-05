@@ -92,6 +92,44 @@ describe('Device tokens (Phase 7b)', () => {
       expect(row.platform).toBe('android');
     });
 
+    // Finding #4: Prisma's upsert is update-then-insert-on-miss, not atomic —
+    // two concurrent registrations of the SAME token can both miss the
+    // update and both attempt the insert branch, so the loser hits P2002 on
+    // the unique `token` column. Simulated directly (real concurrency would
+    // be flaky); the route should retry through to success, not 500.
+    //
+    // Plain save/reassign/restore rather than vi.spyOn: spying on this
+    // Prisma Client's model delegate methods does not restore cleanly in
+    // this environment (mockRestore() leaves the method undefined for the
+    // rest of the file) — see docs/ERROR_HANDLING_AUDIT.md #4.
+    test('a P2002 unique-constraint race on the insert branch still succeeds (retries through to the update branch)', async () => {
+      const originalUpsert = prisma.deviceToken.upsert;
+      const p2002 = new Error('Unique constraint failed on the fields: (`token`)');
+      p2002.code = 'P2002';
+      let callCount = 0;
+      prisma.deviceToken.upsert = (...args) => {
+        callCount += 1;
+        if (callCount === 1) return Promise.reject(p2002);
+        return originalUpsert.apply(prisma.deviceToken, args);
+      };
+
+      const token = 'ExponentPushToken[race-condition]';
+      try {
+        const res = await as(teacherAToken)(
+          request(app).post('/api/notifications/device-tokens').send({ token, platform: 'android' })
+        );
+
+        expect(res.status).toBe(201);
+        expect(JSON.stringify(res.body)).not.toMatch(/P2002|Unique constraint/);
+        expect(callCount).toBe(2);
+      } finally {
+        prisma.deviceToken.upsert = originalUpsert;
+      }
+
+      const row = await prisma.deviceToken.findUnique({ where: { token } });
+      expect(row.userId).toBe(fx.teacherA.id);
+    });
+
     test('re-registering the SAME token under a different caller reassigns ownership (upsert, not duplicate)', async () => {
       const shared = 'ExponentPushToken[shared-device]';
       const first = await as(teacherAToken)(
@@ -145,6 +183,37 @@ describe('Device tokens (Phase 7b)', () => {
         request(app).delete(`/api/notifications/device-tokens/${encodeURIComponent('ExponentPushToken[never-existed]')}`)
       );
       expect(res.status).toBe(404);
+    });
+
+    // Finding #4: a concurrent delete (e.g. the same logout firing twice)
+    // between the ownership check and the delete call means the row is
+    // already gone by the time delete() runs, throwing P2025. Simulated
+    // directly (real concurrency would be flaky); should 404 like the
+    // ordinary not-found case, not 500.
+    //
+    // Plain save/reassign/restore rather than vi.spyOn: spying on this
+    // Prisma Client's model delegate methods does not restore cleanly in
+    // this environment (mockRestore() leaves the method undefined for the
+    // rest of the file) — see docs/ERROR_HANDLING_AUDIT.md #4.
+    test('a P2025 record-not-found race on delete() is still a 404, not a 500', async () => {
+      const token = 'ExponentPushToken[delete-race]';
+      await as(teacherAToken)(request(app).post('/api/notifications/device-tokens').send({ token, platform: 'android' }));
+
+      const originalDelete = prisma.deviceToken.delete;
+      const p2025 = new Error('An operation failed because it depends on one or more records that were required but not found.');
+      p2025.code = 'P2025';
+      prisma.deviceToken.delete = async () => { throw p2025; };
+
+      try {
+        const res = await as(teacherAToken)(
+          request(app).delete(`/api/notifications/device-tokens/${encodeURIComponent(token)}`)
+        );
+
+        expect(res.status).toBe(404);
+        expect(JSON.stringify(res.body)).not.toMatch(/P2025|operation failed/);
+      } finally {
+        prisma.deviceToken.delete = originalDelete;
+      }
     });
   });
 

@@ -11,6 +11,7 @@ const { z } = require('zod');
 
 const { prisma } = require('../lib/db');
 const { asyncHandler } = require('../lib/asyncHandler');
+const { isUniqueConstraintError, isRecordNotFoundError } = require('../lib/prismaErrors');
 const { authRequired, requireRole } = require('../middleware/auth');
 const { readNotificationsFlags, readMobilePushFlags } = require('../lib/flags');
 const { ADMIN_SENDABLE_TYPES } = require('../lib/notificationTypes');
@@ -158,12 +159,26 @@ router.post(
       return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid device token.' });
     }
     const { token, platform } = parsed.data;
-
-    const row = await prisma.deviceToken.upsert({
+    const upsertArgs = {
       where: { token },
       update: { userId: req.user.id, platform, lastSeenAt: new Date() },
       create: { userId: req.user.id, token, platform },
-    });
+    };
+
+    let row;
+    try {
+      row = await prisma.deviceToken.upsert(upsertArgs);
+    } catch (err) {
+      // Prisma's upsert is update-then-insert-on-miss, not atomic: two
+      // concurrent registrations of the SAME token can both miss the update
+      // and both attempt the insert branch — the loser hits the unique
+      // constraint on `token` here (Finding #4). The winner's row already
+      // reflects a registration of this exact token, so retrying resolves
+      // through the update branch instead of surfacing a spurious 500 for
+      // what is, from the caller's perspective, a successful registration.
+      if (!isUniqueConstraintError(err)) throw err;
+      row = await prisma.deviceToken.upsert(upsertArgs);
+    }
 
     res.status(201).json({ id: row.id });
   })
@@ -183,7 +198,15 @@ router.delete(
     if (!existing || existing.userId !== req.user.id) {
       return res.status(404).json({ error: 'Device token not found.' });
     }
-    await prisma.deviceToken.delete({ where: { token: req.params.token } });
+    try {
+      await prisma.deviceToken.delete({ where: { token: req.params.token } });
+    } catch (err) {
+      // A concurrent delete (e.g. the same logout firing twice) between the
+      // check above and this delete means the row is already gone — same
+      // outcome as the not-found check above (Finding #4).
+      if (!isRecordNotFoundError(err)) throw err;
+      return res.status(404).json({ error: 'Device token not found.' });
+    }
     res.json({ success: true });
   })
 );

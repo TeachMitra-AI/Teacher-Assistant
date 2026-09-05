@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { ApiError } from '../api';
 import { fetchLearningRepresentation } from '../lib/learningRepresentation';
 import LearningRepresentationDisplay from './LearningRepresentationDisplay';
+import { ErrorBoundary } from './ErrorBoundary';
 import type { LearningRepresentationData, LearningRepresentationType } from '../types';
 
 type PanelState =
@@ -57,7 +58,17 @@ export default function LearningRepresentationPanel({ query, answer }: LearningR
     // Surfaced during Phase D2 review.
     return (
       <div className="lr-panel lr-panel-shown" role="status" aria-live="polite">
-        <LearningRepresentationDisplay representation={state.representation} data={state.data} />
+        {/* Isolates a malformed AI payload to this one card (Finding #7) —
+            without this, a shape the view components don't defensively check
+            for (e.g. a missing `series` array) throws during render and takes
+            down the whole page via App.tsx's root ErrorBoundary, wiping every
+            other turn in the conversation along with it. resetKey={state.data}
+            means a later, different representation is never blocked by an
+            earlier one's error — moot today (this branch's data never changes
+            after being set), but keeps the boundary correct if that changes. */}
+        <ErrorBoundary fallback={<p className="lr-note">Could not display this content.</p>} resetKey={state.data}>
+          <LearningRepresentationDisplay representation={state.representation} data={state.data} />
+        </ErrorBoundary>
       </div>
     );
   }

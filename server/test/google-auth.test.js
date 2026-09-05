@@ -219,6 +219,37 @@ describe('Google sign-in', () => {
       expect(second.status).toBe(409);
     });
 
+    // Finding #4: a concurrent second sign-up can pass the findFirst check
+    // above before either request creates, so the actual duplicate is only
+    // caught when prisma.user.create() throws P2002. Simulated directly
+    // since triggering it via real concurrency would be flaky. googleSub has
+    // no unique constraint of its own, so this is always the email side.
+    //
+    // Plain save/reassign/restore rather than vi.spyOn: spying on this
+    // Prisma Client's model delegate methods does not restore cleanly in
+    // this environment (mockRestore() leaves prisma.user.create undefined
+    // for the rest of the file) — see docs/ERROR_HANDLING_AUDIT.md #4.
+    test('a P2002 unique-constraint race on create() is still a 409, not a 500', async () => {
+      const originalCreate = prisma.user.create;
+      const p2002 = new Error('Unique constraint failed on the fields: (`schoolId`,`email`)');
+      p2002.code = 'P2002';
+      prisma.user.create = async () => { throw p2002; };
+
+      try {
+        googleIdentity({ sub: 'goog-race-1', email: 'goog-race@example.com' });
+        const res = await http.post('/api/auth/google').send({
+          idToken: 'a'.repeat(40),
+          schoolCode: fx.schoolA.code,
+        });
+
+        expect(res.status).toBe(409);
+        expect(res.body.error).toMatch(/already/i);
+        expect(JSON.stringify(res.body)).not.toMatch(/P2002|Unique constraint/);
+      } finally {
+        prisma.user.create = originalCreate;
+      }
+    });
+
     test('a Google email that already has a PASSWORD account at that school is a 409, not a silent link', async () => {
       googleIdentity({ sub: 'goog-collide-1', email: fx.teacherA.email });
       const res = await http.post('/api/auth/google').send({

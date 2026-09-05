@@ -130,7 +130,12 @@ export default function LibraryPage({ preferences }: { preferences: ReturnType<t
           <div className="response-loading"><div className="spinner" /><p>Loading your library…</p></div>
         )}
 
-        {!loading && error && <p className="auth-error">{error}</p>}
+        {!loading && error && (
+          <div className="auth-error" role="alert">
+            {error}
+            <button type="button" className="btn-text" onClick={load}>Try again</button>
+          </div>
+        )}
 
         {!loading && !error && items.length === 0 && (
           <div className="library-empty">

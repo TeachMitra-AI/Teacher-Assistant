@@ -261,6 +261,37 @@ describe('auth', () => {
       expect(res.body.error).toMatch(/already/i);
     });
 
+    // Finding #4: a concurrent second registration can pass the findUnique
+    // check above before either request creates, so the actual duplicate is
+    // only caught when prisma.user.create() throws P2002. Simulated directly
+    // since triggering it via real concurrency would be flaky.
+    //
+    // Plain save/reassign/restore rather than vi.spyOn: spying on this
+    // Prisma Client's model delegate methods does not restore cleanly in
+    // this environment (mockRestore() leaves prisma.user.create undefined
+    // for the rest of the file) — see docs/ERROR_HANDLING_AUDIT.md #4.
+    test('a P2002 unique-constraint race on create() is still a 409, not a 500', async () => {
+      const originalCreate = prisma.user.create;
+      const p2002 = new Error('Unique constraint failed on the fields: (`schoolId`,`email`)');
+      p2002.code = 'P2002';
+      prisma.user.create = async () => { throw p2002; };
+
+      try {
+        const res = await http.post('/api/auth/register').send({
+          schoolCode: fx.schoolA.code,
+          name: 'Racing Registration',
+          email: 'auth-race-condition@example.com',
+          password: 'a-good-password',
+        });
+
+        expect(res.status).toBe(409);
+        expect(res.body.error).toMatch(/already/i);
+        expect(JSON.stringify(res.body)).not.toMatch(/P2002|Unique constraint/);
+      } finally {
+        prisma.user.create = originalCreate;
+      }
+    });
+
     test('the SAME name at the same school is fine — name is no longer the identity key', async () => {
       const res = await http.post('/api/auth/register').send({
         schoolCode: fx.schoolA.code,

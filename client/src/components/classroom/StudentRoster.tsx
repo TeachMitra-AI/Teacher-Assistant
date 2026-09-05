@@ -146,7 +146,12 @@ export default function StudentRoster({ classId, className }: { classId: string;
       </label>
 
       {loading && <p className="classroom-hint">Loading roster…</p>}
-      {!loading && error && <p className="auth-error">{error}</p>}
+      {!loading && error && (
+        <div className="auth-error" role="alert">
+          {error}
+          <button type="button" className="btn-text" onClick={load}>Try again</button>
+        </div>
+      )}
 
       {!loading && !error && (
         <div className="table-wrap">

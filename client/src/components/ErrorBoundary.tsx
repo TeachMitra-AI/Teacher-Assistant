@@ -28,7 +28,18 @@ function CrashFallback() {
   );
 }
 
-interface Props { children: ReactNode }
+interface Props {
+  children: ReactNode;
+  /** Replaces the default full-page CrashFallback — for a boundary isolating
+   *  one card/section rather than the whole app (Finding #6/#7). Omit to get
+   *  today's full-page behavior unchanged (see App.tsx's root usage). */
+  fallback?: ReactNode;
+  /** When this changes (by reference) after an error was caught, the error
+   *  is cleared and children get a fresh mount attempt — so a stale error
+   *  from old data never permanently blocks a later, valid one. Unused
+   *  (and inert) unless a caller passes it. */
+  resetKey?: unknown;
+}
 interface State { hasError: boolean }
 
 // Must be mounted INSIDE HelpSupportProvider (see App.tsx) so CrashFallback's
@@ -49,8 +60,14 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error('[app] uncaught_render_error', error.message);
   }
 
+  componentDidUpdate(prevProps: Props) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false });
+    }
+  }
+
   render() {
-    if (this.state.hasError) return <CrashFallback />;
+    if (this.state.hasError) return this.props.fallback ?? <CrashFallback />;
     return this.props.children;
   }
 }
