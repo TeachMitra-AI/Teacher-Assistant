@@ -15,6 +15,12 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE": "https://teacher-assistant-production-d3a4.up.railway.app/api",
+        "EXPO_PUBLIC_STRUCTURED_QUESTIONS_ENABLED": "true",
+        "EXPO_PUBLIC_NOTIFICATIONS_ENABLED": "true",
+        "EXPO_PUBLIC_MOBILE_PUSH_ENABLED": "true"
       }
     },
     "production": {
