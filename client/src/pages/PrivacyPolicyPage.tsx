@@ -2,6 +2,7 @@ import {
   Lock, Database, Settings2, Sparkles, ShieldCheck, Clock, GraduationCap, UserCheck, RefreshCw, Mail,
 } from 'lucide-react';
 import LegalLayout, { LegalSection } from '../components/LegalLayout';
+import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
 const TOC = [
   { id: 'collect', label: 'Information we collect' },
@@ -16,6 +17,13 @@ const TOC = [
 ];
 
 export default function PrivacyPolicyPage() {
+  useDocumentMeta({
+    title: 'Privacy Policy — SarasTech Teacher Assistant',
+    description:
+      "What the SarasTech Teacher Assistant collects, why, and how it's protected — account data, AI processing, data retention, and your rights and choices.",
+    canonical: 'https://www.sarastech.co.in/privacy',
+  });
+
   return (
     <LegalLayout
       icon={Lock}

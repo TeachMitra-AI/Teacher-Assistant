@@ -2,6 +2,7 @@ import {
   ScrollText, UserCheck, Building2, Sparkles, ShieldAlert, Award, UserX, RefreshCw, Mail,
 } from 'lucide-react';
 import LegalLayout, { LegalSection } from '../components/LegalLayout';
+import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
 const TOC = [
   { id: 'agreement', label: 'Agreement to these terms' },
@@ -16,6 +17,13 @@ const TOC = [
 ];
 
 export default function TermsOfServicePage() {
+  useDocumentMeta({
+    title: 'Terms of Service — SarasTech Teacher Assistant',
+    description:
+      'The rules for using the SarasTech Teacher Assistant — accounts, school-scoped access, AI-generated content, acceptable use, and content ownership, in plain language.',
+    canonical: 'https://www.sarastech.co.in/terms',
+  });
+
   return (
     <LegalLayout
       icon={ScrollText}
