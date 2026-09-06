@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider, useAuth } from './auth';
@@ -18,23 +18,28 @@ import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
-import CoachPage from './pages/CoachPage';
-import AdminPage from './pages/AdminPage';
-import ManagePage from './pages/ManagePage';
-import AdminSupportPage from './pages/AdminSupportPage';
-import AdminSupportTicketPage from './pages/AdminSupportTicketPage';
-import AdminSettingsPage from './pages/AdminSettingsPage';
-import AdminNotificationsPage from './pages/AdminNotificationsPage';
-import SettingsPage from './pages/SettingsPage';
-import LibraryPage from './pages/LibraryPage';
-import ResourceView from './pages/ResourceView';
-import ResourceWorkspace from './pages/ResourceWorkspace';
-import ClassroomPage from './pages/ClassroomPage';
-import AttendancePage from './pages/AttendancePage';
-import GeneratorPage from './pages/GeneratorPage';
 import TermsOfServicePage from './pages/TermsOfServicePage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import BottomNav from './components/BottomNav';
+
+// Authenticated-only pages are never rendered for a signed-out visitor, and
+// pull in most of the app's heavy dependencies (recharts, socket.io-client,
+// KaTeX, etc.) transitively — loading them on demand keeps the signed-out
+// bundle serving "/", "/terms", "/privacy", and "/login" lightweight.
+const CoachPage = lazy(() => import('./pages/CoachPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const ManagePage = lazy(() => import('./pages/ManagePage'));
+const AdminSupportPage = lazy(() => import('./pages/AdminSupportPage'));
+const AdminSupportTicketPage = lazy(() => import('./pages/AdminSupportTicketPage'));
+const AdminSettingsPage = lazy(() => import('./pages/AdminSettingsPage'));
+const AdminNotificationsPage = lazy(() => import('./pages/AdminNotificationsPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const LibraryPage = lazy(() => import('./pages/LibraryPage'));
+const ResourceView = lazy(() => import('./pages/ResourceView'));
+const ResourceWorkspace = lazy(() => import('./pages/ResourceWorkspace'));
+const ClassroomPage = lazy(() => import('./pages/ClassroomPage'));
+const AttendancePage = lazy(() => import('./pages/AttendancePage'));
+const GeneratorPage = lazy(() => import('./pages/GeneratorPage'));
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -83,6 +88,13 @@ function AppRoutes() {
 
   return (
     <>
+      <Suspense
+        fallback={
+          <div className="app-loading">
+            <div className="spinner" />
+          </div>
+        }
+      >
       <Routes>
       <Route path="/" element={<CoachPage preferences={preferences} />} />
       <Route path="/library" element={<LibraryPage preferences={preferences} />} />
@@ -131,6 +143,7 @@ function AppRoutes() {
       />
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
       <BottomNav />
     </>
   );

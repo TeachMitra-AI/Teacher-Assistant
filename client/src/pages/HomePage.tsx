@@ -22,6 +22,8 @@ import {
   Check,
 } from 'lucide-react';
 import { usePreferences } from '../hooks/usePreferences';
+import { useDocumentMeta } from '../hooks/useDocumentMeta';
+import { useJsonLd } from '../hooks/useJsonLd';
 import { QUICK_ACTIONS } from '../config';
 import { getWelcomeGreeting } from '../lib/welcome';
 
@@ -34,6 +36,11 @@ import { getWelcomeGreeting } from '../lib/welcome';
 // The hero's product preview renders the real QUICK_ACTIONS config and the
 // real lib/welcome.ts greeting logic — the same data and function the
 // signed-in Coach welcome screen uses — rather than a fabricated screenshot.
+
+const SITE_URL = 'https://www.sarastech.co.in/';
+const HOME_TITLE = 'SarasTech — AI Teaching Assistant for Indian Classrooms | Lesson Plans & Worksheets';
+const HOME_DESCRIPTION =
+  'AI-powered coaching, lesson plans, worksheets, and quizzes for Indian teachers — instant classroom guidance in English or your regional language.';
 
 const NAV_LINKS = [
   { href: '#why-sarastech', label: 'Why SarasTech' },
@@ -123,8 +130,53 @@ const FAQS = [
   },
 ];
 
+// FAQPage's Question/Answer entries are derived from FAQS above — the same
+// array the FAQ section renders — so the structured data can never drift
+// from what's actually on the page.
+const STRUCTURED_DATA = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      name: 'SarasTech',
+      url: SITE_URL,
+      logo: `${SITE_URL}logo.png`,
+    },
+    {
+      '@type': 'WebSite',
+      name: HOME_TITLE,
+      url: SITE_URL,
+    },
+    {
+      '@type': 'SoftwareApplication',
+      name: HOME_TITLE,
+      description: HOME_DESCRIPTION,
+      url: SITE_URL,
+      applicationCategory: 'EducationalApplication',
+      operatingSystem: 'Web',
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: FAQS.map((faq) => ({
+        '@type': 'Question',
+        name: faq.question,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: faq.answer,
+        },
+      })),
+    },
+  ],
+};
+
 export default function HomePage() {
   const { theme, toggleTheme } = usePreferences();
+  useDocumentMeta({
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+    canonical: SITE_URL,
+  });
+  useJsonLd(STRUCTURED_DATA);
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = () => setMenuOpen(false);
 
@@ -177,7 +229,7 @@ export default function HomePage() {
       <div className={`home-header-bar${headerScrolled ? ' home-header-bar--scrolled' : ''}`}>
         <header className="home-header">
           <Link to="/" className="home-brand">
-            <img src="/logo.png" alt="SarasTech" className="home-brand-logo" />
+            <img src="/logo.png" alt="SarasTech" className="home-brand-logo" width={34} height={34} />
             <span className="home-brand-name">SarasTech</span>
           </Link>
 
@@ -458,7 +510,7 @@ export default function HomePage() {
         <div className="home-footer-inner">
           <div className="home-footer-col">
             <div className="home-footer-brand-row">
-              <img src="/logo.png" alt="" className="home-footer-logo" />
+              <img src="/logo.png" alt="" className="home-footer-logo" width={24} height={24} />
               <span>SarasTech</span>
             </div>
             <p className="home-footer-tagline">An AI teaching assistant built for everyday classroom work in India.</p>
