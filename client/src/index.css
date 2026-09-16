@@ -2975,6 +2975,74 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   .btn-spinner { animation-duration: 1.4s; }
 }
 
+/* ---- Auth modal (components/AuthModal.tsx) ---------------------------- */
+.auth-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(226, 232, 240, 0.55);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  z-index: 1800;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.auth-modal-overlay.show { opacity: 1; pointer-events: auto; }
+.auth-modal-sheet {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  /* Below 640px this fills the entire screen edge-to-edge (see the
+     border-radius/box-shadow reset just below) — matching the real /login
+     page's full-screen appearance instead of reading as a partial-height
+     sheet with visible backdrop around it. The min-width:640px query below
+     switches it back to a capped-height floating card once there's enough
+     room to show it as an actual overlay rather than a takeover. */
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow-y: auto;
+  /* Register's longer form regularly exceeds max-height on short/mobile
+     viewports, so this scrolls internally — but a bottom sheet reads as a
+     single scrollable surface, not a page with its own scrollbar chrome, so
+     the scrollbar is hidden while staying fully scrollable (wheel, touch,
+     and keyboard scrolling are all unaffected by hiding the indicator). */
+  scrollbar-width: none;
+  /* Overrides .auth-card's `justify-content: center` (shared below): centering
+     an overflowing flex container splits the overflow evenly above and below,
+     and scrollTop can never go negative — so with center alignment the top of
+     the form (the logo, brand, and tabs) was pushed above the scrollable area
+     and permanently unreachable. flex-start keeps all the overflow at the
+     bottom, where scrolling actually reaches it. */
+  justify-content: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+  transform: translateY(100%);
+  transition: transform 0.24s ease;
+}
+.auth-modal-sheet::-webkit-scrollbar { display: none; }
+.auth-modal-overlay.show .auth-modal-sheet { transform: translateY(0); }
+.auth-modal-close { position: absolute; top: 0.8rem; right: 0.8rem; z-index: 1; }
+@media (min-width: 640px) {
+  .auth-modal-overlay { align-items: center; }
+  .auth-modal-sheet {
+    height: auto;
+    max-height: 80vh;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    transform: translateY(16px) scale(0.98);
+    opacity: 0;
+  }
+  .auth-modal-overlay.show .auth-modal-sheet { transform: translateY(0) scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-modal-overlay, .auth-modal-sheet { transition: none; }
+}
+
 /* ---- Toast ----------------------------------------------------------------
    A compact, bordered surface card — the same subtle tint-on-neutral
    language the app already uses for status/state (.status-pill,
@@ -6327,33 +6395,226 @@ html:has(.home-page) { scroll-behavior: smooth; }
   font-weight: 700;
   color: var(--text-muted);
 }
-.home-hero-visual-greeting { margin: 0 0 0.3rem; font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; }
-.home-hero-visual-label { margin: 0 0 1.2rem; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); }
-.home-hero-visual-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
-.home-example-card {
+/* Sidebar column — mirrors Sidebar.tsx's new-chat/recents/account structure,
+   and is a genuinely functioning nav: New chat and each Recent item are real
+   buttons that swap what the chat column shows (see HomePage.tsx). Tall
+   enough (min-height on .home-hero-visual-body below) to read like an actual
+   app window, not a cramped teaser. */
+.home-hero-visual-body { display: flex; gap: 1.2rem; align-items: stretch; min-height: 420px; }
+.home-hero-visual-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 1rem;
-  transition: border-color 0.2s ease, transform 0.2s ease;
+  gap: 0.3rem;
+  width: 172px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding-right: 1.1rem;
 }
-.home-example-card:hover { border-color: var(--orange); transform: translateY(-2px); }
-.home-example-icon {
+/* Collapsed to a bare rail — same idea as Sidebar.tsx's own
+   .sidebar:not(.sidebar-open), which hides everything but the toggle. */
+.home-hero-visual-sidebar--collapsed {
+  width: 40px;
+  align-items: center;
+  padding-right: 0;
+}
+/* Same shape as Sidebar.tsx's own .sidebar-brand-row: logo + "SarasTech" /
+   "Teacher Assistant" on the left, search + collapse actions on the right. */
+.home-hero-visual-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding-bottom: 0.6rem;
+  margin-bottom: 0.2rem;
+  border-bottom: 1px solid var(--border);
+}
+.home-hero-visual-brand-id { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+.home-hero-visual-brand-actions { display: flex; align-items: center; gap: 0.25rem; flex-shrink: 0; }
+.home-hero-visual-icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: inherit;
+}
+.home-hero-visual-icon-btn:hover { background: var(--surface-2); color: var(--text); }
+/* The search icon is a <span>, not a <button> — decorative only, so it gets
+   no pointer cursor or hover feedback (nothing happens on click). */
+span.home-hero-visual-icon-btn { cursor: default; }
+span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted); }
+.home-hero-visual-icon-btn:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.home-hero-visual-brand-logo {
+  display: block;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.home-hero-visual-brand-text { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.home-hero-visual-brand-title { font-size: 0.8rem; font-weight: 700; letter-spacing: -0.01em; }
+.home-hero-visual-brand-sub {
+  font-size: 0.6rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.home-hero-visual-newchat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--orange), var(--orange-dark));
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.6rem;
+  margin-bottom: 0.2rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+.home-hero-visual-newchat:hover { filter: brightness(1.06); }
+.home-hero-visual-sidebar-label {
+  margin-top: 0.3rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.home-hero-visual-sidebar-item {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.4rem;
+  margin: 0 -0.4rem;
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.home-hero-visual-sidebar-item:hover { background: var(--surface-2); color: var(--text); }
+.home-hero-visual-sidebar-item[aria-current='true'] {
   background: var(--orange-soft);
   color: var(--orange-dark);
+  font-weight: 600;
 }
-[data-theme='dark'] .home-example-icon { color: var(--amber); }
-.home-example-title { font-size: 0.86rem; font-weight: 700; }
-.home-example-desc { font-size: 0.78rem; color: var(--text-muted); line-height: 1.4; }
+[data-theme='dark'] .home-hero-visual-sidebar-item[aria-current='true'] { color: var(--amber); }
+.home-hero-visual-newchat:focus-visible,
+.home-hero-visual-sidebar-item:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.home-hero-visual-sidebar-user {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+.home-hero-visual-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--orange-soft);
+  color: var(--orange-dark);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+[data-theme='dark'] .home-hero-visual-avatar { color: var(--amber); }
+
+/* Chat column — same shapes as .user-bubble and .composer-box on the real
+   Coach page, and genuinely interactive: .home-hero-visual-messages grows to
+   fill the tall panel (see min-height above) and pushes the composer to the
+   bottom, same as a real chat view regardless of how short the exchange is. */
+.home-hero-visual-chat { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.65rem; }
+.home-hero-visual-messages { flex: 1; display: flex; flex-direction: column; gap: 0.65rem; }
+.home-hero-visual-empty { margin: auto 0 0; font-size: 0.85rem; color: var(--text-muted); }
+.home-hero-visual-msg { margin: 0; font-size: 0.85rem; line-height: 1.5; padding: 0.65rem 0.85rem; max-width: 92%; }
+.home-hero-visual-msg--user {
+  align-self: flex-end;
+  background: var(--surface-2);
+  border-radius: 14px 14px 3px 14px;
+  color: var(--text);
+}
+.home-hero-visual-msg--ai {
+  align-self: flex-start;
+  border: 1px solid var(--border);
+  border-radius: 14px 14px 14px 3px;
+  color: var(--text);
+}
+/* Two rows — the message, then the controls beneath it — same shape as
+   .composer-box, not a single-row pill. The text row is a real <input> now
+   (see HomePage.tsx), so it's reset to look like plain composer text until
+   focused. */
+.home-hero-visual-composer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 0.6rem 0.7rem 0.55rem;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+}
+.home-hero-visual-composer:focus-within { border-color: var(--orange); box-shadow: 0 0 0 3px var(--orange-soft); }
+.home-hero-visual-composer-text {
+  width: 100%;
+  background: none;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  font-size: 0.78rem;
+  color: var(--text);
+}
+.home-hero-visual-composer-text::placeholder { color: var(--text-muted); }
+.home-hero-visual-composer-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.home-hero-visual-composer-controls { display: flex; align-items: center; gap: 0.5rem; color: var(--text-muted); }
+.home-hero-visual-mode-pill {
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+}
+.home-hero-visual-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: var(--orange);
+  color: #fff;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.home-hero-visual-send:hover { background: var(--orange-dark); }
+.home-hero-visual-send:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
   .home-hero-glow-a, .home-hero-glow-b, .home-hero-glow-c { animation: none; }
@@ -6690,6 +6951,20 @@ html:has(.home-page) { scroll-behavior: smooth; }
 .home-footer-col ul a { color: var(--text); font-size: 0.9rem; text-decoration: none; }
 .home-footer-col ul a:hover { color: var(--orange-dark); }
 [data-theme='dark'] .home-footer-col ul a:hover { color: var(--amber); }
+/* Sign In opens the auth modal rather than navigating, so it's a <button>
+   among Terms/Privacy's <a> tags — reset to read identically to them. */
+.home-footer-link-btn {
+  color: var(--text);
+  font-size: 0.9rem;
+  text-decoration: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+.home-footer-link-btn:hover { color: var(--orange-dark); }
+[data-theme='dark'] .home-footer-link-btn:hover { color: var(--amber); }
 .home-footer-bottom {
   max-width: 1120px;
   margin: 0 auto;
@@ -6701,7 +6976,10 @@ html:has(.home-page) { scroll-behavior: smooth; }
 
 @media (max-width: 900px) {
   .home-why-grid, .home-audience-panel { grid-template-columns: 1fr; }
-  .home-hero-visual-grid { grid-template-columns: 1fr 1fr; }
+  .home-hero-visual-sidebar { width: 145px; }
+  /* Redeclared after the rule above so the collapsed rail still wins at this
+     width — same selector specificity, and source order is the tiebreaker. */
+  .home-hero-visual-sidebar--collapsed { width: 40px; }
   .home-steps::before { display: none; }
   .home-steps { grid-template-columns: 1fr; gap: 1.75rem; }
   .home-footer-inner { grid-template-columns: 1fr; gap: 1.75rem; }
@@ -6723,7 +7001,11 @@ html:has(.home-page) { scroll-behavior: smooth; }
   .home-hero { padding-top: 3.5rem; }
   .home-hero-glow-a, .home-hero-glow-b { width: 380px; height: 380px; }
   .home-hero-visual { padding: 1.3rem 1.2rem 1.6rem; }
-  .home-hero-visual-grid { grid-template-columns: 1fr 1fr; gap: 0.7rem; }
+  /* Sidebar+chat is a tight fit below 640px — same call the real Coach page
+     makes on mobile (collapse the sidebar behind a toggle), so this preview
+     just drops it and lets the sample conversation take the full width. */
+  .home-hero-visual-sidebar { display: none; }
+  .home-hero-visual-msg { max-width: 100%; }
   .home-feature-grid { grid-template-columns: 1fr; }
   .home-why-watermark { display: none; }
   .home-section { padding: 4rem 1.25rem; }
