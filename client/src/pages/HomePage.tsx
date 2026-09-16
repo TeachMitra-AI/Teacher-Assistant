@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -20,12 +20,17 @@ import {
   ClipboardCheck,
   Library,
   Check,
+  Plus,
+  Mic,
+  ArrowUp,
+  Search,
+  PanelLeft,
 } from 'lucide-react';
 import { usePreferences } from '../hooks/usePreferences';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 import { useJsonLd } from '../hooks/useJsonLd';
-import { QUICK_ACTIONS } from '../config';
-import { getWelcomeGreeting } from '../lib/welcome';
+import AuthModal from '../components/AuthModal';
+import type { Mode } from '../components/AuthForm';
 
 // Public marketing landing page shown at "/" to signed-out visitors (see
 // App.tsx's logged-out route tree). Signed-in visitors never see this — "/"
@@ -33,9 +38,14 @@ import { getWelcomeGreeting } from '../lib/welcome';
 // type, and lesson-plan-structure claim named here is cross-checked against
 // config.ts, lessonPlanSchema.js, and the relevant page components — no
 // invented stats, pricing, testimonials, user counts, or unverified claims.
-// The hero's product preview renders the real QUICK_ACTIONS config and the
-// real lib/welcome.ts greeting logic — the same data and function the
-// signed-in Coach welcome screen uses — rather than a fabricated screenshot.
+// The hero's product-preview panel mocks up the real Coach layout (sidebar +
+// conversation + composer, see pages/CoachPage.tsx and components/Sidebar)
+// and is genuinely interactive — you can click a Recent item to switch which
+// illustrative exchange is shown, or type your own question and send it —
+// rather than a static screenshot. Every scripted exchange is hand-written
+// and factually correct (not a live API capture, since this is a static
+// marketing page), and a typed message gets a canned "sign in to try it for
+// real" reply instead of a fabricated AI answer.
 
 const SITE_URL = 'https://www.sarastech.co.in/';
 const HOME_TITLE = 'SarasTech — AI Teaching Assistant for Indian Classrooms | Lesson Plans & Worksheets';
@@ -97,11 +107,48 @@ const CLASSROOM_FACTS = [
   'Coaching and generated resources work in English plus 9 Indian languages and Hinglish, so language isn’t a barrier to getting help.',
 ];
 
-// Real, deterministic greeting logic from lib/welcome.ts — the same function
-// the signed-in Coach welcome screen calls. Shown here with a generic
-// placeholder name (no user is signed in yet) so the hero preview reflects
-// actual product behaviour rather than a static, fabricated screenshot.
-const PREVIEW_GREETING = getWelcomeGreeting('Teacher');
+type PreviewMessage = { role: 'user' | 'ai'; text: string };
+type PreviewScenario = { id: string; title: string; messages: PreviewMessage[] };
+
+// Three sample exchanges for the hero preview's clickable "Recent" list —
+// illustrative, not live API captures (this is a static marketing page), but
+// each answer is factually correct, matching the "no unverified claims" bar
+// for this page.
+const PREVIEW_SCENARIOS: PreviewScenario[] = [
+  {
+    id: 'photosynthesis',
+    title: 'Explain photosynthesis to Grade 5',
+    messages: [
+      { role: 'user', text: 'How do I explain photosynthesis to my Grade 5 class?' },
+      {
+        role: 'ai',
+        text: 'Think of a leaf as a tiny kitchen: sunlight is the stove, water from the roots and carbon dioxide from the air are the ingredients, and chlorophyll — what makes leaves green — does the cooking. The result is sugar for the plant to grow on, and oxygen released for us to breathe.',
+      },
+    ],
+  },
+  {
+    id: 'fractions',
+    title: 'Grade 4 fractions worksheet',
+    messages: [
+      { role: 'user', text: 'Can you put together a short worksheet on adding fractions for Grade 4?' },
+      {
+        role: 'ai',
+        text: 'Here’s a 6-question starter, easiest to hardest: like denominators first (e.g. 1/4 + 2/4), then unlike (1/3 + 1/6), ending on one word problem about sharing a chocolate bar. A full worksheet with an answer key is ready to generate once you sign in.',
+      },
+    ],
+  },
+  {
+    id: 'monsoon',
+    title: 'Classroom activity for monsoon season',
+    messages: [
+      { role: 'user', text: 'Suggest a hands-on classroom activity about the monsoon.' },
+      {
+        role: 'ai',
+        text: 'Try a simple rain-gauge activity: mark a clear jar in centimetres, place it outside, and have students log daily readings on a class chart — then discuss which day had the most rainfall and why.',
+      },
+    ],
+  },
+];
 
 const FAQS = [
   {
@@ -180,6 +227,65 @@ export default function HomePage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = () => setMenuOpen(false);
 
+  // Sign In / Get Started open the auth form in a pop-up over this page
+  // instead of navigating to the full /login route — see components/AuthModal.
+  // Opening pushes a history entry so the browser's Back button closes the
+  // modal (and lands back on this page) instead of skipping past it and
+  // leaving the site entirely — the modal otherwise never touches history.
+  const [authMode, setAuthMode] = useState<Mode | null>(null);
+  const openAuth = (mode: Mode) => {
+    if (authMode === null) {
+      window.history.pushState({ authModal: true }, '');
+    }
+    setAuthMode(mode);
+  };
+  const closeAuth = () => {
+    setAuthMode(null);
+    if (window.history.state?.authModal) {
+      window.history.back();
+    }
+  };
+
+  useEffect(() => {
+    const handlePopState = () => setAuthMode(null);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Hero product-preview panel — genuinely interactive, matching how
+  // claude.com/product/claude-code's own demo panel works: clicking a Recent
+  // item swaps in that scripted exchange, "New chat" clears back to empty,
+  // and typing a real question and sending it appends your message plus a
+  // canned "sign in to try it for real" reply (their equivalent replies
+  // "To try Claude, download it here." — never a fabricated AI answer).
+  const [previewScenarioId, setPreviewScenarioId] = useState<string | null>(PREVIEW_SCENARIOS[0].id);
+  const [previewDraft, setPreviewDraft] = useState('');
+  const [previewSent, setPreviewSent] = useState<string[]>([]);
+  const previewScenario = PREVIEW_SCENARIOS.find((s) => s.id === previewScenarioId) ?? null;
+
+  // Collapse — real behaviour matching Sidebar.tsx's own collapse-to-rail:
+  // hides everything but the rail toggle, same as .sidebar:not(.sidebar-open).
+  // The search icon next to it is decorative only (not wired up).
+  const [previewSidebarOpen, setPreviewSidebarOpen] = useState(true);
+
+  function selectPreviewScenario(id: string) {
+    setPreviewScenarioId(id);
+    setPreviewSent([]);
+    setPreviewDraft('');
+  }
+  function startPreviewChat() {
+    setPreviewScenarioId(null);
+    setPreviewSent([]);
+    setPreviewDraft('');
+  }
+  function submitPreviewDraft(e: FormEvent) {
+    e.preventDefault();
+    const text = previewDraft.trim();
+    if (!text) return;
+    setPreviewSent((sent) => [...sent, text]);
+    setPreviewDraft('');
+  }
+
   // Header picks up a shadow once the page has scrolled past the hero, so the
   // sticky bar visually "lifts" off the content instead of just sitting flush
   // against a border the whole time. Passive listener, no rAF needed — this
@@ -254,12 +360,16 @@ export default function HomePage() {
                 <Moon size={18} className={`home-theme-icon-moon${theme === 'dark' ? '' : ' is-active'}`} />
               </span>
             </button>
-            <Link to="/login" className="btn-text home-desktop-only">
+            <button type="button" className="btn-text home-desktop-only" onClick={() => openAuth('login')}>
               Sign In
-            </Link>
-            <Link to="/login?mode=register" className="btn-primary home-header-cta home-desktop-only">
+            </button>
+            <button
+              type="button"
+              className="btn-primary home-header-cta home-desktop-only"
+              onClick={() => openAuth('register')}
+            >
               Get Started
-            </Link>
+            </button>
             <button
               type="button"
               className="icon-btn home-mobile-toggle"
@@ -280,12 +390,26 @@ export default function HomePage() {
                 {link.label}
               </a>
             ))}
-            <Link to="/login" className="btn-outline" onClick={closeMenu}>
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => {
+                closeMenu();
+                openAuth('login');
+              }}
+            >
               Sign In
-            </Link>
-            <Link to="/login?mode=register" className="btn-primary" onClick={closeMenu}>
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => {
+                closeMenu();
+                openAuth('register');
+              }}
+            >
               Get Started
-            </Link>
+            </button>
           </nav>
         )}
       </div>
@@ -310,13 +434,13 @@ export default function HomePage() {
               language.
             </p>
             <div className="home-hero-cta">
-              <Link to="/login?mode=register" className="btn-primary home-cta-primary">
+              <button type="button" className="btn-primary home-cta-primary" onClick={() => openAuth('register')}>
                 Get Started
                 <ArrowRight size={18} aria-hidden="true" />
-              </Link>
-              <Link to="/login" className="btn-outline">
+              </button>
+              <button type="button" className="btn-outline" onClick={() => openAuth('login')}>
                 Sign In
-              </Link>
+              </button>
             </div>
           </div>
 
@@ -328,21 +452,134 @@ export default function HomePage() {
                 <span className="home-hero-visual-dot home-hero-visual-dot--green" />
                 <span className="home-hero-visual-chrome-label">SarasTech Coach</span>
               </div>
-              <p className="home-hero-visual-greeting">{PREVIEW_GREETING.greeting}</p>
-              <p className="home-hero-visual-label">Things teachers ask every day</p>
-              <div className="home-hero-visual-grid">
-                {QUICK_ACTIONS.map((action) => {
-                  const Icon = action.icon;
-                  return (
-                    <div className="home-example-card" key={action.label}>
-                      <span className="home-example-icon" aria-hidden="true">
-                        <Icon size={18} strokeWidth={2} />
+              <div className="home-hero-visual-body">
+                {/* Real nav, not decorative — mirrors Sidebar.tsx's new-chat
+                    action and recent-threads list, and actually switches which
+                    scripted exchange the panel shows on the right. */}
+                <aside
+                  className={`home-hero-visual-sidebar${previewSidebarOpen ? '' : ' home-hero-visual-sidebar--collapsed'}`}
+                >
+                  {previewSidebarOpen ? (
+                    <>
+                      {/* Mirrors Sidebar.tsx's own brand row: logo + "SarasTech"
+                          / "Teacher Assistant" text on the left, search and
+                          collapse actions on the right. The collapse button is
+                          real (shrinks this to a rail, same as
+                          .sidebar:not(.sidebar-open)); search is decorative
+                          only, matching neither real search nor a fabricated
+                          one. */}
+                      <div className="home-hero-visual-brand">
+                        <span className="home-hero-visual-brand-id">
+                          <img src="/logo.png" alt="" className="home-hero-visual-brand-logo" />
+                          <span className="home-hero-visual-brand-text">
+                            <strong className="home-hero-visual-brand-title">SarasTech</strong>
+                            <span className="home-hero-visual-brand-sub">Teacher Assistant</span>
+                          </span>
+                        </span>
+                        <span className="home-hero-visual-brand-actions">
+                          <span className="home-hero-visual-icon-btn" aria-hidden="true">
+                            <Search size={12} strokeWidth={2.4} />
+                          </span>
+                          <button
+                            type="button"
+                            className="home-hero-visual-icon-btn"
+                            onClick={() => setPreviewSidebarOpen(false)}
+                            aria-label="Collapse sidebar"
+                          >
+                            <PanelLeft size={12} strokeWidth={2.4} />
+                          </button>
+                        </span>
+                      </div>
+                      <button type="button" className="home-hero-visual-newchat" onClick={startPreviewChat}>
+                        <Plus size={13} strokeWidth={2.4} aria-hidden="true" />
+                        New chat
+                      </button>
+                      <span className="home-hero-visual-sidebar-label">Recent</span>
+                      {PREVIEW_SCENARIOS.map((scenario) => (
+                        <button
+                          type="button"
+                          key={scenario.id}
+                          className="home-hero-visual-sidebar-item"
+                          aria-current={previewScenarioId === scenario.id ? 'true' : undefined}
+                          onClick={() => selectPreviewScenario(scenario.id)}
+                        >
+                          {scenario.title}
+                        </button>
+                      ))}
+                      <span className="home-hero-visual-sidebar-user">
+                        <span className="home-hero-visual-avatar">T</span>
+                        Teacher
                       </span>
-                      <span className="home-example-title">{action.label}</span>
-                      <span className="home-example-desc">{action.description}</span>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="home-hero-visual-icon-btn"
+                      onClick={() => setPreviewSidebarOpen(true)}
+                      aria-label="Expand sidebar"
+                    >
+                      <PanelLeft size={13} strokeWidth={2.4} />
+                    </button>
+                  )}
+                </aside>
+                <div className="home-hero-visual-chat">
+                  <div className="home-hero-visual-messages">
+                    {previewScenario ? (
+                      previewScenario.messages.map((message, i) => (
+                        <p className={`home-hero-visual-msg home-hero-visual-msg--${message.role}`} key={i}>
+                          {message.text}
+                        </p>
+                      ))
+                    ) : (
+                      previewSent.length === 0 && (
+                        <p className="home-hero-visual-empty">Type a question below to see SarasTech Coach in action.</p>
+                      )
+                    )}
+                    {/* Mirrors claude.com/product/claude-code's own demo panel:
+                        sending your own message there replies "To try Claude,
+                        download it here." instead of a fabricated AI answer —
+                        this is that same mechanism, with a real sign-in link,
+                        and (like theirs) every message you send gets its own
+                        reply, not just the first one. */}
+                    {previewSent.flatMap((text, i) => [
+                      <p className="home-hero-visual-msg home-hero-visual-msg--user" key={`sent-${i}`}>
+                        {text}
+                      </p>,
+                      <p className="home-hero-visual-msg home-hero-visual-msg--ai" key={`reply-${i}`}>
+                        To try SarasTech,{' '}
+                        <button type="button" className="auth-link" onClick={() => openAuth('login')}>
+                          sign in here
+                        </button>
+                        .
+                      </p>,
+                    ])}
+                  </div>
+                  {/* Mirrors Composer.tsx's real two-row shape and exact copy
+                      ("Ask anything about teaching…", "Assistant Mode") — and,
+                      unlike the old static version, this input actually works. */}
+                  <form className="home-hero-visual-composer" onSubmit={submitPreviewDraft}>
+                    <input
+                      className="home-hero-visual-composer-text"
+                      type="text"
+                      value={previewDraft}
+                      onChange={(e) => setPreviewDraft(e.target.value)}
+                      placeholder="Ask anything about teaching…"
+                      aria-label="Try SarasTech Coach — ask a classroom question"
+                    />
+                    <div className="home-hero-visual-composer-row">
+                      <span className="home-hero-visual-composer-controls">
+                        <Plus size={14} strokeWidth={2.4} aria-hidden="true" />
+                        <span className="home-hero-visual-mode-pill">Assistant Mode</span>
+                      </span>
+                      <span className="home-hero-visual-composer-controls">
+                        <Mic size={14} strokeWidth={2.4} aria-hidden="true" />
+                        <button type="submit" className="home-hero-visual-send" aria-label="Send">
+                          <ArrowUp size={14} strokeWidth={2.8} />
+                        </button>
+                      </span>
                     </div>
-                  );
-                })}
+                  </form>
+                </div>
               </div>
             </div>
           </div>
@@ -494,13 +731,17 @@ export default function HomePage() {
               answer — in your language.
             </p>
             <div className="home-hero-cta">
-              <Link to="/login?mode=register" className="btn-primary home-cta-primary">
+              <button type="button" className="btn-primary home-cta-primary" onClick={() => openAuth('register')}>
                 Get Started
                 <ArrowRight size={18} aria-hidden="true" />
-              </Link>
-              <Link to="/login" className="btn-outline home-cta-outline-inverse">
+              </button>
+              <button
+                type="button"
+                className="btn-outline home-cta-outline-inverse"
+                onClick={() => openAuth('login')}
+              >
                 Sign In
-              </Link>
+              </button>
             </div>
           </div>
         </section>
@@ -536,7 +777,9 @@ export default function HomePage() {
             <h4>Account &amp; Legal</h4>
             <ul>
               <li>
-                <Link to="/login">Sign In</Link>
+                <button type="button" className="home-footer-link-btn" onClick={() => openAuth('login')}>
+                  Sign In
+                </button>
               </li>
               <li>
                 <Link to="/terms">Terms of Service</Link>
@@ -549,6 +792,8 @@ export default function HomePage() {
         </div>
         <div className="home-footer-bottom">© {new Date().getFullYear()} SarasTech</div>
       </footer>
+
+      <AuthModal open={authMode !== null} mode={authMode ?? 'login'} theme={theme} onClose={closeAuth} />
     </div>
   );
 }
