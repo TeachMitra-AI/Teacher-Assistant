@@ -1,7 +1,10 @@
-// Prerenders the public SEO routes ("/", "/terms", "/privacy") to static
-// HTML after `vite build`, so a crawler that doesn't execute JS still gets
-// real page content instead of the empty `<div id="root">` shell. Run as
-// part of `npm run build` (see package.json), never on its own.
+// Prerenders the public SEO routes ("/", "/terms", "/privacy", plus every tool
+// and guide page in src/seo/pages.ts) to static HTML after `vite build`, so a
+// crawler that doesn't execute JS still gets real page content instead of the
+// empty `<div id="root">` shell. Also writes dist/sitemap.xml (from the same
+// registry, so it can't drift from the pages) and dist/404.html (served with a
+// real 404 status for unknown URLs — see vercel.json). Run as part of
+// `npm run build` (see package.json), never on its own.
 //
 // Deliberately dependency-free beyond what's already installed: Vite's own
 // `ssrLoadModule` (the documented way to import app TSX from a plain Node
@@ -12,12 +15,12 @@
 // script never duplicates any of that content; it only captures what the
 // real components already produce.
 //
-// Only the three public, signed-out routes are prerendered — HomePage,
-// TermsOfServicePage, and PrivacyPolicyPage are rendered standalone (wrapped
-// in just a BrowserRouter, not the full App/AuthProvider/GoogleOAuthProvider
-// tree), since none of that authenticated-app plumbing is needed to render
-// their content and pulling it in would risk real network/script side
-// effects during a build.
+// Only the public, signed-out routes are prerendered — HomePage,
+// TermsOfServicePage, PrivacyPolicyPage and the ContentPage template are
+// rendered standalone (wrapped in just a BrowserRouter, not the full
+// App/AuthProvider/GoogleOAuthProvider tree), since none of that
+// authenticated-app plumbing is needed to render their content and pulling it
+// in would risk real network/script side effects during a build.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,7 +40,7 @@ const clientRoot = path.resolve(__dirname, '..');
 const distDir = path.join(clientRoot, 'dist');
 const SITE_ORIGIN = 'https://www.sarastech.co.in';
 
-const ROUTES = [
+const BASE_ROUTES = [
   { urlPath: '/', component: '/src/pages/HomePage.tsx', outFile: 'index.html' },
   { urlPath: '/terms', component: '/src/pages/TermsOfServicePage.tsx', outFile: 'terms/index.html' },
   { urlPath: '/privacy', component: '/src/pages/PrivacyPolicyPage.tsx', outFile: 'privacy/index.html' },
@@ -102,7 +105,20 @@ async function main() {
     appType: 'custom',
   });
 
-  for (const route of ROUTES) {
+  const { CONTENT_PAGES, SITEMAP_ENTRIES } = await vite.ssrLoadModule('/src/seo/pages.ts');
+  const { buildSitemapXml } = await vite.ssrLoadModule('/src/seo/sitemap.ts');
+
+  const routes = [
+    ...BASE_ROUTES,
+    ...CONTENT_PAGES.map((page) => ({
+      urlPath: page.path,
+      component: '/src/pages/ContentPage.tsx',
+      props: { page },
+      outFile: `${page.path.slice(1)}/index.html`,
+    })),
+  ];
+
+  for (const route of routes) {
     const dom = new JSDOM(shellHtml, {
       url: `${SITE_ORIGIN}${route.urlPath}`,
       pretendToBeVisual: true,
@@ -114,7 +130,7 @@ async function main() {
     const reactRoot = createRoot(container);
 
     await act(async () => {
-      reactRoot.render(React.createElement(BrowserRouter, null, React.createElement(Page)));
+      reactRoot.render(React.createElement(BrowserRouter, null, React.createElement(Page, route.props)));
     });
 
     const outPath = path.join(distDir, route.outFile);
@@ -128,7 +144,29 @@ async function main() {
     dom.window.close();
   }
 
+  await writeFile(path.join(distDir, 'sitemap.xml'), buildSitemapXml(SITEMAP_ENTRIES), 'utf8');
+  console.log(`Wrote dist/sitemap.xml (${SITEMAP_ENTRIES.length} URLs)`);
+
+  await write404(shellHtml);
+
   await vite.close();
+}
+
+// dist/404.html: the untouched app shell with noindex, no canonical and a
+// neutral title. Vercel serves it with a real 404 status for any URL that
+// isn't a static file or a listed app route (vercel.json), so unknown URLs no
+// longer answer 200 with the home page's HTML (a soft 404). A visitor with
+// JavaScript still gets the SPA, which redirects unknown paths to "/" exactly
+// as before — only the HTTP status changes.
+async function write404(shellHtml) {
+  const dom = new JSDOM(shellHtml);
+  const { document } = dom.window;
+  document.title = 'Page not found — SarasTech';
+  document.head.querySelector('link[rel="canonical"]')?.remove();
+  document.head.querySelector('meta[name="robots"]')?.setAttribute('content', 'noindex');
+  await writeFile(path.join(distDir, '404.html'), `<!doctype html>\n${document.documentElement.outerHTML}\n`, 'utf8');
+  console.log('Wrote dist/404.html');
+  dom.window.close();
 }
 
 main().catch((err) => {

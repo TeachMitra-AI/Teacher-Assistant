@@ -1,5 +1,13 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/login", "destination": "/index.html" },
+    { "source": "/forgot-password", "destination": "/index.html" },
+    { "source": "/reset-password/:token", "destination": "/index.html" },
+    { "source": "/library/:path*", "destination": "/index.html" },
+    { "source": "/classroom", "destination": "/index.html" },
+    { "source": "/attendance", "destination": "/index.html" },
+    { "source": "/generator", "destination": "/index.html" },
+    { "source": "/settings", "destination": "/index.html" },
+    { "source": "/admin/:path*", "destination": "/index.html" }
   ]
 }

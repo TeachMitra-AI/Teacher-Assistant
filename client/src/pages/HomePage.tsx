@@ -25,18 +25,22 @@ import {
   ArrowUp,
   Search,
   PanelLeft,
+  Compass,
 } from 'lucide-react';
 import { usePreferences } from '../hooks/usePreferences';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 import { useJsonLd } from '../hooks/useJsonLd';
 import AuthModal from '../components/AuthModal';
 import type { Mode } from '../components/AuthForm';
+import { FooterSeoColumns } from '../components/PublicSiteChrome';
+import { buildHomeGraph } from '../seo/schema';
+import { GUIDE_PAGES, TOOL_PAGES } from '../seo/pages';
 
 // Public marketing landing page shown at "/" to signed-out visitors (see
 // App.tsx's logged-out route tree). Signed-in visitors never see this — "/"
-// still resolves to CoachPage for them. Every capability, language, classroom
-// type, and lesson-plan-structure claim named here is cross-checked against
-// config.ts, lessonPlanSchema.js, and the relevant page components — no
+// still resolves to CoachPage for them. Every capability, language, and
+// classroom type named here is cross-checked against config.ts, the server
+// prompts, and the relevant page components — no
 // invented stats, pricing, testimonials, user counts, or unverified claims.
 // The hero's product-preview panel mocks up the real Coach layout (sidebar +
 // conversation + composer, see pages/CoachPage.tsx and components/Sidebar)
@@ -48,9 +52,13 @@ import type { Mode } from '../components/AuthForm';
 // real" reply instead of a fabricated AI answer.
 
 const SITE_URL = 'https://www.sarastech.co.in/';
-const HOME_TITLE = 'SarasTech — AI Teaching Assistant for Indian Classrooms | Lesson Plans & Worksheets';
+// Title kept under ~60 characters so Google shows it whole instead of rewriting
+// it; the old one (90+ chars) was truncated in results. Leads with the brand
+// (people search "SarasTech" / "Saras Tech") and the head term it can honestly
+// compete on.
+const HOME_TITLE = 'SarasTech — AI Teaching Assistant for Teachers in India';
 const HOME_DESCRIPTION =
-  'AI-powered coaching, lesson plans, worksheets, and quizzes for Indian teachers — instant classroom guidance in English or your regional language.';
+  'SarasTech is an AI teaching assistant for Indian teachers: get lesson plans, worksheets and quizzes with answer keys, in English or your regional language.';
 
 const NAV_LINKS = [
   { href: '#why-sarastech', label: 'Why SarasTech' },
@@ -102,7 +110,7 @@ const STEPS = [
 ];
 
 const CLASSROOM_FACTS = [
-  'Lesson plans follow the standard NCERT / B.Ed.-style structure used in Indian schools — objectives, teaching-learning material, a blackboard summary, and recap questions included.',
+  'Guidance for the realities of Indian schools — foundational literacy and numeracy (FLN), teaching aids made from everyday local materials, and printable resources you can edit to match your school’s format.',
   'Built for how classrooms actually run here — single-teacher, multi-grade, and mixed-ability setups, not just one-grade-one-teacher classrooms.',
   'Coaching and generated resources work in English plus 9 Indian languages and Hinglish, so language isn’t a barrier to getting help.',
 ];
@@ -152,6 +160,11 @@ const PREVIEW_SCENARIOS: PreviewScenario[] = [
 
 const FAQS = [
   {
+    question: 'What is SarasTech?',
+    answer:
+      'SarasTech (also written Saras Tech) is an AI teaching assistant for teachers in India. It combines an AI classroom coach with a worksheet, quiz, and question-paper generator, plus a personal library and editor for the resources you keep.',
+  },
+  {
     question: 'What can SarasTech do for me as a teacher?',
     answer:
       'Ask any classroom question and get instant, grade- and subject-specific coaching, generate lesson plans, worksheets, and quizzes with an answer key, and save everything to your own teaching library.',
@@ -175,46 +188,25 @@ const FAQS = [
     question: 'Is my saved material private to me?',
     answer: 'Yes. Your resources and history are tied to your own account, so only you can see and edit them.',
   },
+  {
+    question: 'Is SarasTech aligned with NCERT, CBSE, or my state board?',
+    answer:
+      'SarasTech creates content from the grade, subject, and topic you give it. It is not tied to any board’s official syllabus or a specific textbook, so check what it generates against your own curriculum before using it.',
+  },
+  {
+    question: 'Can the AI make mistakes?',
+    answer:
+      'Yes. AI-generated lesson ideas, questions, and answer keys can contain errors, so treat every result as a draft. Review it, edit it in the built-in editor, and check answer keys yourself before it reaches students.',
+  },
 ];
 
-// FAQPage's Question/Answer entries are derived from FAQS above — the same
-// array the FAQ section renders — so the structured data can never drift
-// from what's actually on the page.
-const STRUCTURED_DATA = {
-  '@context': 'https://schema.org',
-  '@graph': [
-    {
-      '@type': 'Organization',
-      name: 'SarasTech',
-      url: SITE_URL,
-      logo: `${SITE_URL}logo.png`,
-    },
-    {
-      '@type': 'WebSite',
-      name: HOME_TITLE,
-      url: SITE_URL,
-    },
-    {
-      '@type': 'SoftwareApplication',
-      name: HOME_TITLE,
-      description: HOME_DESCRIPTION,
-      url: SITE_URL,
-      applicationCategory: 'EducationalApplication',
-      operatingSystem: 'Web',
-    },
-    {
-      '@type': 'FAQPage',
-      mainEntity: FAQS.map((faq) => ({
-        '@type': 'Question',
-        name: faq.question,
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: faq.answer,
-        },
-      })),
-    },
-  ],
-};
+// Organization / WebSite / WebPage / WebApplication / FAQPage graph (see
+// seo/schema.ts). FAQPage's Question/Answer entries are derived from FAQS above —
+// the same array the FAQ section renders — so the structured data can never
+// drift from what's actually on the page. Google no longer shows FAQ rich
+// results (retired May 2026); the markup is harmless, valid, and read by other
+// consumers, so it stays.
+const STRUCTURED_DATA = buildHomeGraph({ title: HOME_TITLE, description: HOME_DESCRIPTION, faqs: FAQS });
 
 export default function HomePage() {
   const { theme, toggleTheme } = usePreferences();
@@ -652,6 +644,35 @@ export default function HomePage() {
           </p>
         </section>
 
+        {/* Crawlable, descriptive internal links to every public tool and guide
+            page (seo/pages.ts) — the home page is the strongest page on the
+            site, so this is where their internal linking starts. */}
+        <section className="home-section" id="explore" aria-labelledby="home-explore-heading">
+          <div className="home-section-icon" aria-hidden="true">
+            <Compass size={24} strokeWidth={1.8} />
+          </div>
+          <span className="home-eyebrow">Explore</span>
+          <h2 id="home-explore-heading">Lesson Plans, Worksheets, Quizzes and More</h2>
+          <div className="seo-related-grid seo-related-grid--wide">
+            {TOOL_PAGES.map((page) => (
+              <Link key={page.path} to={page.path} className="seo-related-card">
+                <span className="seo-related-kind">Tool</span>
+                <strong>{page.navLabel}</strong>
+                <span>{page.teaser}</span>
+              </Link>
+            ))}
+          </div>
+          <h3 className="seo-guides-heading">Guides for teachers</h3>
+          <ul className="seo-guide-links">
+            {GUIDE_PAGES.map((page) => (
+              <li key={page.path}>
+                <Link to={page.path}>{page.navLabel}</Link>
+                <span>{page.teaser}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+
         <section className="home-section home-section--muted" id="how-it-works" aria-labelledby="home-steps-heading">
           <div className="home-section-icon" aria-hidden="true">
             <Workflow size={24} strokeWidth={1.8} />
@@ -773,6 +794,7 @@ export default function HomePage() {
               </li>
             </ul>
           </div>
+          <FooterSeoColumns />
           <div className="home-footer-col">
             <h4>Account &amp; Legal</h4>
             <ul>

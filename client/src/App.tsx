@@ -20,7 +20,10 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import TermsOfServicePage from './pages/TermsOfServicePage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import ContentPage from './pages/ContentPage';
+import { CONTENT_PAGES } from './seo/pages';
 import BottomNav from './components/BottomNav';
+import ScrollToTop from './components/ScrollToTop';
 
 // Authenticated-only pages are never rendered for a signed-out visitor, and
 // pull in most of the app's heavy dependencies (recharts, socket.io-client,
@@ -75,6 +78,10 @@ function AppRoutes() {
         <Route path="/reset-password/:token" element={<ResetPasswordPage preferences={preferences} />} />
         <Route path="/terms" element={<TermsOfServicePage />} />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        {/* Public tool/guide pages — the same registry (seo/pages.ts) the prerender and sitemap read. */}
+        {CONTENT_PAGES.map((page) => (
+          <Route key={page.path} path={page.path} element={<ContentPage page={page} />} />
+        ))}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     );
@@ -111,6 +118,11 @@ function AppRoutes() {
       <Route path="/settings" element={<SettingsPage preferences={preferences} />} />
       <Route path="/terms" element={<TermsOfServicePage />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
+      {/* The same public pages for a signed-in visitor (e.g. arriving from a
+          search result), with the call to action pointing at the real feature. */}
+      {CONTENT_PAGES.map((page) => (
+        <Route key={page.path} path={page.path} element={<ContentPage page={page} signedIn />} />
+      ))}
       <Route
         path="/admin"
         element={isAdmin ? <AdminPage preferences={preferences} /> : <Navigate to="/" replace />}
@@ -173,6 +185,7 @@ export default function App() {
   // than nested inside, since neither depends on the other.
   const tree = (
     <BrowserRouter>
+      <ScrollToTop />
       <AuthProvider>
         <ToastProvider>
           <NotificationProvider>

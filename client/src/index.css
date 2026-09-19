@@ -6939,7 +6939,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   margin: 0 auto;
   padding: 3.5rem 1.5rem 2rem;
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr;
+  grid-template-columns: 1.4fr repeat(4, 1fr);
   gap: 2.5rem;
 }
 .home-footer-brand-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.85rem; }
@@ -6982,7 +6982,8 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   .home-hero-visual-sidebar--collapsed { width: 40px; }
   .home-steps::before { display: none; }
   .home-steps { grid-template-columns: 1fr; gap: 1.75rem; }
-  .home-footer-inner { grid-template-columns: 1fr; gap: 1.75rem; }
+  .home-footer-inner { grid-template-columns: 1fr 1fr; gap: 1.75rem; }
+  .home-footer-inner .home-footer-col:first-child { grid-column: 1 / -1; }
   /* Was a separate 780px breakpoint — between 780-900px the header had
      nowhere near enough room for the full nav (logo + 4 links + theme
      toggle + Sign In + Get Started) on one line, and "Why SarasTech" /
@@ -7015,6 +7016,89 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 }
 
 @media (max-width: 480px) {
-  .home-footer-inner { padding: 2.5rem 1.25rem 1.5rem; }
+  .home-footer-inner { padding: 2.5rem 1.25rem 1.5rem; grid-template-columns: 1fr; }
   .home-footer-bottom { padding: 1.25rem 1.25rem 1.5rem; }
+}
+
+/* ---- Public tool & guide pages (pages/ContentPage.tsx) ----
+   Sits on top of the landing page's .home-* header/footer/CTA/FAQ styles; only
+   the article layout, tables, notes and link cards are new here. */
+.seo-article { max-width: 820px; margin: 0 auto; padding: 3rem 1.5rem 1rem; }
+.seo-hero { padding-bottom: 1rem; }
+.seo-hero .home-eyebrow { text-align: left; }
+.seo-hero h1 { font-size: clamp(1.9rem, 4.2vw, 2.65rem); line-height: 1.15; letter-spacing: -0.02em; margin: 0.2rem 0 1rem; }
+.seo-intro { font-size: 1.1rem; line-height: 1.65; color: var(--text-muted); margin: 0 0 1.5rem; max-width: 68ch; }
+.seo-hero-cta { margin-bottom: 1rem; }
+.seo-meta { font-size: 0.82rem; color: var(--text-muted); margin: 0; }
+
+.seo-breadcrumb ol { list-style: none; display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0 0 1.5rem; padding: 0; font-size: 0.85rem; color: var(--text-muted); }
+.seo-breadcrumb li + li::before { content: '/'; margin-right: 0.4rem; opacity: 0.6; }
+.seo-breadcrumb a { color: var(--text-muted); text-decoration: none; }
+.seo-breadcrumb a:hover { color: var(--text); text-decoration: underline; }
+
+.seo-toc { margin: 1.5rem 0 0.5rem; padding: 1.1rem 1.25rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.seo-toc-label { display: block; font-size: 0.76rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.6rem; }
+.seo-toc ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+.seo-toc a { color: var(--text); text-decoration: none; font-size: 0.93rem; }
+.seo-toc a:hover { color: var(--orange-dark); text-decoration: underline; }
+[data-theme='dark'] .seo-toc a:hover { color: var(--amber); }
+
+.seo-section { padding-top: 2.25rem; scroll-margin-top: 84px; }
+.seo-section h2 { font-size: clamp(1.35rem, 2.6vw, 1.65rem); line-height: 1.25; letter-spacing: -0.01em; margin: 0 0 1rem; }
+.seo-section h3 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; }
+.seo-section p, .seo-section li { font-size: 1rem; line-height: 1.7; }
+.seo-section p { margin: 0 0 1rem; max-width: 72ch; }
+.seo-section ul, .seo-section ol { margin: 0 0 1.25rem; padding-left: 1.3rem; max-width: 72ch; }
+.seo-section li { margin-bottom: 0.55rem; }
+.seo-section a { color: var(--orange-dark); text-underline-offset: 2px; }
+[data-theme='dark'] .seo-section a { color: var(--amber); }
+.seo-section .home-faq-list { max-width: none; }
+.seo-section .home-faq-question { font-size: 1rem; }
+.seo-section .home-faq-answer { font-size: 0.97rem; }
+
+.seo-table-wrap { overflow-x: auto; margin: 0 0 1.5rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.seo-table { width: 100%; border-collapse: collapse; font-size: 0.93rem; }
+.seo-table caption { text-align: left; padding: 0.8rem 1rem; font-weight: 700; border-bottom: 1px solid var(--border); }
+.seo-table th, .seo-table td { padding: 0.7rem 1rem; text-align: left; vertical-align: top; line-height: 1.55; border-bottom: 1px solid var(--border); }
+.seo-table thead th { background: var(--surface-2); font-size: 0.8rem; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-muted); }
+.seo-table tbody th { font-weight: 700; white-space: nowrap; }
+.seo-table tbody tr:last-child th, .seo-table tbody tr:last-child td { border-bottom: none; }
+@media (max-width: 640px) {
+  .seo-table tbody th { white-space: normal; min-width: 7.5rem; }
+  .seo-table td { min-width: 12rem; }
+}
+
+.seo-note { display: flex; gap: 0.8rem; align-items: flex-start; margin: 0 0 1.5rem; padding: 1rem 1.15rem; border-radius: var(--radius-sm); background: var(--orange-soft); border: 1px solid rgba(255, 107, 53, 0.3); max-width: 72ch; }
+.seo-note svg { flex-shrink: 0; margin-top: 0.15rem; color: var(--orange-dark); }
+[data-theme='dark'] .seo-note svg { color: var(--amber); }
+.seo-note p { margin: 0.25rem 0 0; font-size: 0.97rem; }
+
+.seo-steps { list-style: none; counter-reset: seo-step; padding-left: 0; }
+.seo-steps li { counter-increment: seo-step; position: relative; padding-left: 2.6rem; }
+.seo-steps li::before { content: counter(seo-step); position: absolute; left: 0; top: 0.05rem; display: inline-flex; align-items: center; justify-content: center; width: 1.85rem; height: 1.85rem; border-radius: 50%; background: var(--orange-soft); color: var(--orange-dark); font-weight: 700; font-size: 0.9rem; }
+[data-theme='dark'] .seo-steps li::before { color: var(--amber); }
+
+/* Link cards — used for "Keep exploring" on content pages and the home page's Explore section. */
+.seo-related { padding-top: 3rem; padding-bottom: 3.5rem; }
+.seo-related-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.1rem; max-width: 1040px; margin: 0 auto; }
+.seo-related-grid--wide { grid-template-columns: repeat(4, 1fr); }
+.seo-related-card { display: flex; flex-direction: column; gap: 0.35rem; padding: 1.25rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); color: var(--text); text-decoration: none; transition: transform 0.15s ease, border-color 0.15s ease; }
+.seo-related-card:hover { transform: translateY(-2px); border-color: var(--orange); }
+.seo-related-card strong { font-size: 1.02rem; }
+.seo-related-card span:last-child { font-size: 0.9rem; line-height: 1.5; color: var(--text-muted); }
+.seo-related-kind { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--orange-dark); }
+[data-theme='dark'] .seo-related-kind { color: var(--amber); }
+.seo-guides-heading { text-align: center; font-size: 1.05rem; margin: 2.25rem 0 0.9rem; }
+.seo-guide-links { list-style: none; margin: 0 auto; padding: 0; max-width: 760px; display: grid; gap: 0.7rem; }
+.seo-guide-links li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.9rem; padding-bottom: 0.7rem; border-bottom: 1px solid var(--border); }
+.seo-guide-links a { font-weight: 700; color: var(--orange-dark); text-underline-offset: 2px; }
+[data-theme='dark'] .seo-guide-links a { color: var(--amber); }
+.seo-guide-links span { font-size: 0.9rem; color: var(--text-muted); }
+@media (max-width: 900px) {
+  .seo-related-grid--wide { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .seo-article { padding: 2rem 1.25rem 0.5rem; }
+  .seo-related-grid, .seo-related-grid--wide { grid-template-columns: 1fr; }
+  .seo-hero-cta .btn-primary { width: 100%; justify-content: center; }
 }
