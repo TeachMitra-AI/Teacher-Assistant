@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Pressable, Modal, Image, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Compass, Settings as SettingsIcon, CircleHelp, LogOut } from 'lucide-react-native';
+import { Compass, Settings as SettingsIcon, CircleHelp, Info, LogOut } from 'lucide-react-native';
 import { ThemedText } from './ThemedText';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../auth/AuthContext';
@@ -10,10 +10,14 @@ import { navigationRef } from '../navigation/navigationRef';
 import { ROLE_LABELS, API_BASE } from '../config';
 
 // Native port of the web's `.profile-dropdown` (client/src/components/
-// ProfileMenu.tsx) — Getting started / Settings / Need Help? / Sign out,
-// same items, order, and handlers regardless of `variant`; only the trigger
-// and the menu's own positioning differ, same "one place owning the
-// account-menu state" reasoning as the web version. 'header' (default) is
+// ProfileMenu.tsx) — Getting started / Settings / Need Help? / Learn more /
+// Sign out, same items, order, and handlers regardless of `variant`; only
+// the trigger and the menu's own positioning differ, same "one place owning
+// the account-menu state" reasoning as the web version. "Learn more" pushes
+// its own screen (LearnMoreScreen.tsx) with the Terms of Service / Privacy
+// Policy links, rather than the web's hover/click flyout — there's no hover
+// equivalent on touch, and a full screen reads better than a nested popover
+// on a small screen. 'header' (default) is
 // the small circular avatar in Header.tsx's top-right corner (every tab
 // except Coach, which has no profile control there — see Header.tsx's
 // variant="coach" branch). 'sidebar' is the HistorySidebar.tsx footer row
@@ -77,7 +81,7 @@ export function ProfileAvatar({ variant = 'header' }: ProfileAvatarProps) {
   if (!user) return null;
   const label = user.displayName || user.name;
 
-  function go(screen: 'GettingStarted' | 'Settings' | 'HelpSupport') {
+  function go(screen: 'GettingStarted' | 'Settings' | 'HelpSupport' | 'LearnMore') {
     setOpen(false);
     if (navigationRef.isReady()) navigationRef.navigate(screen);
   }
@@ -87,6 +91,7 @@ export function ProfileAvatar({ variant = 'header' }: ProfileAvatarProps) {
       <MenuRow icon={Compass} label="Getting started" onPress={() => go('GettingStarted')} />
       <MenuRow icon={SettingsIcon} label="Settings" onPress={() => go('Settings')} />
       <MenuRow icon={CircleHelp} label="Need Help?" onPress={() => go('HelpSupport')} />
+      <MenuRow icon={Info} label="Learn more" onPress={() => go('LearnMore')} />
       <View style={[styles.divider, { backgroundColor: colors.border }]} />
       <MenuRow
         icon={LogOut}

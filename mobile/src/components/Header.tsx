@@ -7,6 +7,7 @@ import { NotificationBell } from './NotificationBell';
 import { ProfileAvatar } from './ProfileMenu';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, shadow } from '../theme/tokens';
+import { navigationRef } from '../navigation/navigationRef';
 
 interface HeaderProps {
   /** 'coach' swaps the profile avatar for the teaching-context filter icon,
@@ -32,7 +33,9 @@ interface HeaderProps {
 // — app icon + name on the left (Coach: the chat-history sidebar toggle
 // instead, matching TopBar hiding its own brand block there), theme toggle +
 // notification bell + either the profile avatar or (Coach only) the
-// teaching-context filter icon on the right. Used as every tab root screen's
+// teaching-context filter icon on the right. The brand block navigates to
+// the Coach tab on press, matching the web's brand `<Link to="/">` (App.tsx
+// routes "/" to CoachPage for a signed-in user). Used as every tab root screen's
 // custom `header` (see each stack's options), replacing the native stack
 // header so this exact layout is what renders instead of a bare title bar.
 export function Header({ variant = 'default', onMenuPress, onContextPress, contextActiveCount = 0 }: HeaderProps) {
@@ -59,10 +62,19 @@ export function Header({ variant = 'default', onMenuPress, onContextPress, conte
             <PanelLeft size={18} color={colors.text} />
           </Pressable>
         ) : (
-          <>
-            <Image source={require('../../assets/logo.png')} style={styles.logo} />
-            <ThemedText style={styles.title}>SarasTech</ThemedText>
-          </>
+          <Pressable
+            onPress={() => navigationRef.isReady() && navigationRef.navigate('CoachTab')}
+            accessibilityRole="button"
+            accessibilityLabel="SarasTech — go to Coach"
+            style={styles.brand}
+          >
+            {({ pressed }) => (
+              <>
+                <Image source={require('../../assets/logo.png')} style={styles.logo} />
+                <ThemedText style={[styles.title, pressed && { color: colors.orange }]}>SarasTech</ThemedText>
+              </>
+            )}
+          </Pressable>
         )}
       </View>
 
@@ -111,6 +123,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   left: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
   logo: { width: 30, height: 30, borderRadius: 8 },
   title: { fontWeight: '700', fontSize: 16, flexShrink: 1 },
   right: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
