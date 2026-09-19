@@ -35,6 +35,7 @@ export default defineConfig({
     include: [
       'src/assistant/**/*.test.ts',
       'src/lib/**/*.test.ts',
+      'src/seo/**/*.test.ts',
       'src/pages/**/*.test.tsx',
       'src/components/**/*.test.tsx',
     ],
