@@ -9,6 +9,7 @@ import { AdminScreen } from '../screens/admin/AdminScreen';
 import { AdminSupportTicketScreen } from '../screens/admin/support/AdminSupportTicketScreen';
 import { HelpSupportScreen } from '../screens/HelpSupportScreen';
 import { GettingStartedScreen } from '../screens/GettingStartedScreen';
+import { LearnMoreScreen } from '../screens/LearnMoreScreen';
 import { useStackScreenOptions } from './useStackScreenOptions';
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
@@ -44,6 +45,7 @@ export function AppNavigator() {
           current internal view (menu/bug/feedback/contact/success). */}
       <Stack.Screen name="HelpSupport" component={HelpSupportScreen} options={{ title: 'Need Help?' }} />
       <Stack.Screen name="GettingStarted" component={GettingStartedScreen} options={{ title: 'Getting started' }} />
+      <Stack.Screen name="LearnMore" component={LearnMoreScreen} options={{ title: 'Learn more' }} />
     </Stack.Navigator>
   );
 }

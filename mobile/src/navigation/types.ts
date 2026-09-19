@@ -92,4 +92,5 @@ export type AppStackParamList = {
   AdminSupportTicket: { id: string };
   HelpSupport: undefined;
   GettingStarted: undefined;
+  LearnMore: undefined;
 };
