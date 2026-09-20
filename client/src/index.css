@@ -6934,11 +6934,13 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 
 /* ---- "Follow SarasTech" social strip (components/SocialLinks.tsx) ----
    Deliberately smaller than the CTA band above it: one short heading, one
-   line of copy, three pill links. Link text stays --text (not the orange) —
+   line of copy, a row of pill links (six at ~720px natural width, so the inner
+   cap is 800px to keep them on one line on desktop; they still wrap on narrow
+   screens). Link text stays --text (not the orange) —
    --orange-dark only measures 3.55:1 on white; orange is reserved for the icon,
    border and focus ring, which need 3:1. */
 .home-social { padding: 2.75rem 1.5rem; text-align: center; }
-.home-social-inner { max-width: 620px; margin: 0 auto; }
+.home-social-inner { max-width: 800px; margin: 0 auto; }
 .home-social h2 { font-size: 1.15rem; letter-spacing: -0.01em; margin: 0 0 0.4rem; }
 .home-social p { margin: 0 0 1.25rem; font-size: 0.92rem; color: var(--text-muted); }
 .home-social-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; }

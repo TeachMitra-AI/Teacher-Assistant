@@ -114,6 +114,32 @@ function breadcrumbNode(page: ContentPageData) {
 // breadcrumb.
 export function buildContentPageGraph(page: ContentPageData) {
   const url = absoluteUrl(page.path);
+
+  // The About page is the one place besides the home page that defines the
+  // Organization, using the very same node (same @id, name, alternateName and
+  // sameAs) so the two can never disagree. The AboutPage points at it by @id.
+  if (page.kind === 'about') {
+    return {
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'AboutPage',
+          '@id': `${url}#webpage`,
+          url,
+          name: page.title,
+          description: page.description,
+          inLanguage: 'en-IN',
+          dateModified: page.updated,
+          isPartOf: { '@type': 'WebSite', name: SITE_NAME, url: `${SITE_ORIGIN}/` },
+          about: { '@id': ORGANIZATION_ID },
+          mainEntity: { '@id': ORGANIZATION_ID },
+        },
+        organizationNode,
+        breadcrumbNode(page),
+      ],
+    };
+  }
+
   const publisher = { '@type': 'Organization', name: SITE_NAME, url: `${SITE_ORIGIN}/`, logo: { '@type': 'ImageObject', url: LOGO_URL } };
 
   const main =
