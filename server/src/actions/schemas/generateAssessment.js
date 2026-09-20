@@ -95,6 +95,25 @@ const NEW_QUESTION_TYPES = ['descriptive', 'fill_blank', 'match'];
 // ROUTABLE_FORMATS already documents, not a plain constant edit.
 const ROUTABLE_QUESTION_TYPES = ['mcq', 'true_false', 'short_answer', 'mixed'];
 
+// A teacher can now tick more than one specific type (issue #95) — the paper
+// then draws only from the types picked, instead of Gemini choosing freely as
+// 'mixed' does. Accepting BOTH a bare string (every existing caller: the
+// router, Classroom Mode presets, an old/cached client) and a non-empty array
+// keeps this widening purely additive — nothing that already sends a single
+// value needs to change. 'mixed' stays what it always was, a REQUEST-only
+// "let the model choose" modifier, so it cannot be combined with a specific
+// list: that combination has no coherent meaning (mix freely AND stick to
+// exactly these types are contradictory instructions to hand the model).
+const questionTypeSchema = z
+  .union([z.enum(QUESTION_TYPES), z.array(z.enum(QUESTION_TYPES)).min(1).max(QUESTION_TYPES.length)])
+  .refine(
+    (value) => {
+      const types = Array.isArray(value) ? value : [value];
+      return !(types.includes('mixed') && types.length > 1);
+    },
+    { message: '"mixed" cannot be combined with other question types.' }
+  );
+
 // Question-count bounds. MAX_QUESTIONS is also enforced outside this schema, by
 // the `more_questions` AI-assist action in routes/resources.js, so that adding
 // questions to an existing assessment cannot quietly exceed a limit the original
@@ -117,15 +136,24 @@ const generateAssessmentSchema = z
     subject: z.string().trim().max(MAX_META).optional(),
     topic: z.string().trim().min(1).max(MAX_TOPIC),
     difficulty: z.enum(DIFFICULTIES),
-    questionType: z.enum(QUESTION_TYPES),
+    questionType: questionTypeSchema,
     questionCount: z.number().int().min(MIN_QUESTIONS).max(MAX_QUESTIONS),
     language: z.string().trim().max(MAX_LANGUAGE).optional(),
     instructions: z.string().trim().max(MAX_INSTRUCTIONS).optional(),
   })
   .strict();
 
+// The one place that knows a validated `questionType` may be a bare string or
+// an array — every consumer (the gating check and the prompt builder in
+// routes/resources.js) normalizes through this instead of repeating the
+// Array.isArray check.
+function normalizeQuestionTypes(questionType) {
+  return Array.isArray(questionType) ? questionType : [questionType];
+}
+
 module.exports = {
   generateAssessmentSchema,
+  normalizeQuestionTypes,
   FORMATS,
   ROUTABLE_FORMATS,
   DIFFICULTIES,

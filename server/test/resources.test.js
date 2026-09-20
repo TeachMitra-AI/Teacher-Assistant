@@ -1038,6 +1038,83 @@ describe('My Library — /api/resources', () => {
         expect(res.body.content).toContain('3. Explain concept 3.');
       });
 
+      // Issue #95: a teacher can tick more than one specific question type
+      // instead of only ever picking one or "Mixed".
+      describe('multi-select question types (issue #95)', () => {
+        test('accepts an array of specific types and allows a response mixing only those types', async () => {
+          const doc = {
+            instructions: 'Answer everything.',
+            questions: [mockMcqQuestion(1), mockTrueFalseQuestion(2), mockMcqQuestion(3)],
+          };
+          mockGeminiFetch([geminiSuccess(JSON.stringify(doc))]);
+          const res = await generate(teacherAToken, {
+            ...validConfig, questionType: ['mcq', 'true_false'], questionCount: 3,
+          });
+          expect(res.status).toBe(200);
+          expect(res.body.content).toContain('1. Question 1?');
+          expect(res.body.content).toMatch(/2\. Statement 2\. — \(True \/ False\)/);
+        });
+
+        test('narrows the response schema sent to Gemini to exactly the selected types', async () => {
+          // The root cause of a real bug (issue #95 follow-up): the schema
+          // used to always allow all 6 concrete types regardless of the
+          // request, so a multi-select generation relied purely on Gemini
+          // FOLLOWING a natural-language instruction to stay within the
+          // selected types — which it did not always do, surfacing to a
+          // teacher as "The generated content did not match your request."
+          // on a multi-select generation a single-select one would not have
+          // hit. The schema itself must now forbid any other type.
+          const doc = {
+            instructions: 'Answer everything.',
+            questions: [mockMcqQuestion(1), mockTrueFalseQuestion(2), mockMcqQuestion(3)],
+          };
+          const { calls } = mockGeminiFetch([geminiSuccess(JSON.stringify(doc))]);
+          await generate(teacherAToken, { ...validConfig, questionType: ['mcq', 'true_false'], questionCount: 3 });
+          const sentSchema = calls[0].body.generationConfig.responseSchema;
+          expect(sentSchema.properties.questions.items.properties.type.enum).toEqual(['mcq', 'true_false']);
+        });
+
+        test('"mixed" leaves the response schema allowing all 6 concrete types', async () => {
+          const { calls } = mockGeminiFetch([geminiSuccess(JSON.stringify({
+            instructions: 'Answer everything.',
+            questions: [mockMcqQuestion(1), mockTrueFalseQuestion(2), mockMcqQuestion(3)],
+          }))]);
+          await generate(teacherAToken, { ...validConfig, questionType: 'mixed', questionCount: 3 });
+          const sentSchema = calls[0].body.generationConfig.responseSchema;
+          expect(sentSchema.properties.questions.items.properties.type.enum).toEqual([
+            'mcq', 'true_false', 'short_answer', 'descriptive', 'fill_blank', 'match',
+          ]);
+        });
+
+        test('rejects a response containing a type outside the selected list', async () => {
+          const doc = {
+            instructions: 'Answer everything.',
+            questions: [mockMcqQuestion(1), mockShortAnswerQuestion(2), mockMcqQuestion(3)],
+          };
+          mockGeminiFetch([geminiSuccess(JSON.stringify(doc))]);
+          const res = await generate(teacherAToken, {
+            ...validConfig, questionType: ['mcq', 'true_false'], questionCount: 3,
+          });
+          expect(res.status).toBe(502);
+          expect(res.body.code).toBe('INVALID_AI_RESPONSE');
+        });
+
+        test('rejects an empty question type array', async () => {
+          const res = await generate(teacherAToken, { ...validConfig, questionType: [] });
+          expect(res.status).toBe(400);
+        });
+
+        test('rejects "mixed" combined with a specific type', async () => {
+          const res = await generate(teacherAToken, { ...validConfig, questionType: ['mixed', 'mcq'] });
+          expect(res.status).toBe(400);
+        });
+
+        test('rejects an array containing an invalid type', async () => {
+          const res = await generate(teacherAToken, { ...validConfig, questionType: ['mcq', 'crossword'] });
+          expect(res.status).toBe(400);
+        });
+      });
+
       test('rejects a response cut off mid-JSON (truncation is not spliced/continued for structured output)', async () => {
         // A response that reports MAX_TOKENS with a truncated JSON body.
         // generateContent() skips its continuation loop when responseSchema
@@ -1137,6 +1214,22 @@ describe('My Library — /api/resources', () => {
           delete process.env.STRUCTURED_QUESTIONS_ENABLED;
           const { mock } = mockGeminiFetch([geminiSuccess('should never be called')]);
           const res = await generate(teacherAToken, { ...validConfig, questionType: 'descriptive' });
+          expect(res.status).toBe(503);
+          expect(res.body.code).toBe('STRUCTURED_QUESTIONS_DISABLED');
+          expect(mock).not.toHaveBeenCalled();
+        } finally {
+          if (saved === undefined) delete process.env.STRUCTURED_QUESTIONS_ENABLED;
+          else process.env.STRUCTURED_QUESTIONS_ENABLED = saved;
+        }
+      });
+
+      test('rejects an array containing a new question type with 503 STRUCTURED_QUESTIONS_DISABLED when the flag is off', async () => {
+        let saved;
+        try {
+          saved = process.env.STRUCTURED_QUESTIONS_ENABLED;
+          delete process.env.STRUCTURED_QUESTIONS_ENABLED;
+          const { mock } = mockGeminiFetch([geminiSuccess('should never be called')]);
+          const res = await generate(teacherAToken, { ...validConfig, questionType: ['mcq', 'descriptive'] });
           expect(res.status).toBe(503);
           expect(res.body.code).toBe('STRUCTURED_QUESTIONS_DISABLED');
           expect(mock).not.toHaveBeenCalled();

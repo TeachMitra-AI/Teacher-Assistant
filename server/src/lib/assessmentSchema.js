@@ -356,10 +356,19 @@ function checkAgainstRequest(doc, { questionCount, questionType }) {
   if (doc.questions.length !== questionCount) {
     return `Expected exactly ${questionCount} questions, got ${doc.questions.length}.`;
   }
-  if (questionType !== 'mixed') {
-    const wrongType = doc.questions.find((q) => q.type !== questionType);
+  // A teacher may now tick more than one specific type (issue #95) —
+  // questionType is then an array, and every question just needs to be ONE
+  // of them, not all the same one. A single value (the pre-#95 shape, still
+  // what every non-multi-select caller sends) keeps the original "every
+  // question matches exactly this type" check.
+  const types = Array.isArray(questionType) ? questionType : [questionType];
+  if (!types.includes('mixed')) {
+    const wrongType = doc.questions.find((q) => !types.includes(q.type));
     if (wrongType) {
-      return `Expected every question to be "${questionType}", got "${wrongType.type}".`;
+      // Single-type request: identical wording to before this array support
+      // existed. Genuine multi-select gets the "one of" phrasing instead.
+      const expected = types.length === 1 ? `"${types[0]}"` : `one of "${types.join(', ')}"`;
+      return `Expected every question to be ${expected}, got "${wrongType.type}".`;
     }
   }
   return null;

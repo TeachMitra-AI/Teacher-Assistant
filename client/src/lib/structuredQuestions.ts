@@ -21,6 +21,7 @@ import type {
   McqQuestion,
   Question,
   QuestionType,
+  QuestionTypeSelection,
   ShortAnswerQuestion,
   StructuredAssessmentDocument,
   TrueFalseQuestion,
@@ -153,6 +154,15 @@ export function toWireQuestion(q: Question): Record<string, unknown> {
   }
 }
 
+/** Reads a stored `questionType` back as a single value or a non-empty array of them (issue #95) — anything else (wrong element types, an empty array) is dropped, same "malformed round-trips to undefined" convention as every other field here. */
+function parseQuestionTypeSelection(value: unknown): QuestionTypeSelection | undefined {
+  if (typeof value === 'string') return value as QuestionType;
+  if (Array.isArray(value) && value.length > 0 && value.every((v) => typeof v === 'string')) {
+    return value as QuestionType[];
+  }
+  return undefined;
+}
+
 /**
  * Parses `Resource.structured` (a JSON string) into a
  * StructuredAssessmentDocument, or null for anything that isn't
@@ -184,7 +194,7 @@ export function parseStructuredDocument(structuredStr: string | null | undefined
     grade: typeof r.grade === 'string' ? r.grade : undefined,
     subject: typeof r.subject === 'string' ? r.subject : undefined,
     difficulty: typeof r.difficulty === 'string' ? (r.difficulty as StructuredAssessmentDocument['difficulty']) : undefined,
-    questionType: typeof r.questionType === 'string' ? (r.questionType as QuestionType) : undefined,
+    questionType: parseQuestionTypeSelection(r.questionType),
     questionCount: typeof r.questionCount === 'number' ? r.questionCount : undefined,
     examMeta: r.examMeta,
   };

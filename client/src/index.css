@@ -4838,6 +4838,76 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .generator-format-label { display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 700; font-size: 0.95rem; }
 .generator-format-hint { font-size: 0.78rem; color: var(--text-muted); }
 
+.generator-type-select { position: relative; }
+.generator-type-select-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.92rem;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+.generator-type-select-btn:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+.generator-type-select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.generator-type-select-caret { flex-shrink: 0; color: var(--text-muted); }
+.generator-type-popover {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 20;
+  /* Sized to fit its own longest label — like a native <select>'s dropdown,
+     which never wraps or clips an option to the closed control's width —
+     rather than being locked to the (often much narrower) trigger button. */
+  width: max-content;
+  min-width: 100%;
+  max-width: min(15rem, calc(100vw - 2rem));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 0.4rem;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.generator-type-option {
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.55rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.generator-type-option:hover { background: var(--surface-2); }
+/* Undoes .ws-field input's width:100%/padding/background/border (meant for
+   text and number inputs) — without this, the checkbox becomes an
+   invisible flex item that fills the leftover row width, so its native
+   glyph renders centered inside that box instead of flush left, and every
+   row with a different label length ends up with its checkbox visibly at a
+   different x position. */
+.generator-type-option input[type="checkbox"] {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+}
+.generator-type-option.disabled { opacity: 0.45; cursor: not-allowed; }
+.generator-type-divider { height: 1px; background: var(--border); margin: 0.35rem 0.2rem; }
+
 .generator-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));

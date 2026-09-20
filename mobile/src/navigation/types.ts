@@ -6,7 +6,7 @@
 // password-reset open question, and Phase 7b's push-notification `link`
 // field all eventually target routes by these names).
 import type { NavigatorScreenParams } from '@react-navigation/native';
-import type { AssessmentFormat, Difficulty, QuestionType } from '../api/resources';
+import type { AssessmentFormat, Difficulty, QuestionTypeSelection } from '../api/resources';
 
 // Signed-out route tree (§26 Phase 3), mirrors App.tsx's own signed-out
 // route set on web ('/login', '/forgot-password'). No 'reset-password'
@@ -68,7 +68,7 @@ export type GeneratorStackParamList = {
     subject: string;
     topic: string;
     difficulty: Difficulty;
-    questionType: QuestionType;
+    questionType: QuestionTypeSelection;
     questionCount: number;
     language: string;
     content: string;
