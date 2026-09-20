@@ -33,6 +33,7 @@ import { useJsonLd } from '../hooks/useJsonLd';
 import AuthModal from '../components/AuthModal';
 import type { Mode } from '../components/AuthForm';
 import { FooterSeoColumns } from '../components/PublicSiteChrome';
+import { SocialLinks } from '../components/SocialLinks';
 import { buildHomeGraph } from '../seo/schema';
 import { GUIDE_PAGES, TOOL_PAGES } from '../seo/pages';
 
@@ -766,6 +767,8 @@ export default function HomePage() {
             </div>
           </div>
         </section>
+
+        <SocialLinks />
       </main>
 
       <footer className="home-footer">

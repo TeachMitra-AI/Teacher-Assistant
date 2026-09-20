@@ -6932,6 +6932,40 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 .home-cta-outline-inverse { border-color: rgba(255, 255, 255, 0.6); color: #fff; }
 .home-cta-outline-inverse:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); border-color: #fff; }
 
+/* ---- "Follow SarasTech" social strip (components/SocialLinks.tsx) ----
+   Deliberately smaller than the CTA band above it: one short heading, one
+   line of copy, three pill links. Link text stays --text (not the orange) —
+   --orange-dark only measures 3.55:1 on white; orange is reserved for the icon,
+   border and focus ring, which need 3:1. */
+.home-social { padding: 2.75rem 1.5rem; text-align: center; }
+.home-social-inner { max-width: 620px; margin: 0 auto; }
+.home-social h2 { font-size: 1.15rem; letter-spacing: -0.01em; margin: 0 0 0.4rem; }
+.home-social p { margin: 0 0 1.25rem; font-size: 0.92rem; color: var(--text-muted); }
+.home-social-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; }
+.home-social-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+.home-social-link svg { color: var(--orange-dark); flex-shrink: 0; }
+[data-theme='dark'] .home-social-link svg { color: var(--amber); }
+.home-social-link:hover { border-color: var(--orange); background: var(--orange-soft); transform: translateY(-1px); }
+.home-social-link:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .home-social-link { transition: none; }
+  .home-social-link:hover { transform: none; }
+}
+
 /* ---- footer (real 3-column layout — was one thin centered row) ---- */
 .home-footer { border-top: 1px solid var(--border); }
 .home-footer-inner {
@@ -7010,6 +7044,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   .home-feature-grid { grid-template-columns: 1fr; }
   .home-why-watermark { display: none; }
   .home-section { padding: 4rem 1.25rem; }
+  .home-social { padding: 2.25rem 1.25rem; }
   .home-why-panel, .home-audience-panel, .home-feature-card--featured { padding: 1.6rem; }
   .home-hero-cta, .home-cta-band .home-hero-cta { flex-direction: column; align-items: stretch; }
   .home-hero-cta .btn-primary, .home-hero-cta .btn-outline { justify-content: center; }

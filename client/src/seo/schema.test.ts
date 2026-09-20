@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { buildContentPageGraph, buildHomeGraph } from './schema';
 import { CONTENT_PAGES, GUIDE_PAGES, TOOL_PAGES } from './pages';
-import { SITE_ORIGIN } from './site';
+import { SITE_ORIGIN, SOCIAL_PROFILES } from './site';
 
 type Node = Record<string, unknown> & { '@type': string };
 
@@ -22,6 +22,21 @@ describe('home page structured data', () => {
     expect(site.name).toBe('SarasTech');
     expect(site.alternateName).toEqual(expect.arrayContaining(['Saras Tech', 'SarasTech Teacher Assistant']));
     expect(site.url).toBe(`${SITE_ORIGIN}/`);
+  });
+
+  test('has exactly one Organization and one WebSite node', () => {
+    const count = (type: string) => nodes(graph).filter((n) => n['@type'] === type).length;
+    expect(count('Organization')).toBe(1);
+    expect(count('WebSite')).toBe(1);
+  });
+
+  test('Organization lists the official social profiles in sameAs', () => {
+    expect(byType('Organization').sameAs).toEqual([
+      'https://www.linkedin.com/company/sarastechai/',
+      'https://www.instagram.com/sarastechai/',
+      'https://x.com/SarasTechAI',
+    ]);
+    expect(byType('Organization').sameAs).toEqual(SOCIAL_PROFILES.map((p) => p.url));
   });
 
   test('describes the product by name, not by the page title', () => {
