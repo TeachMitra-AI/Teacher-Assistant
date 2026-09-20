@@ -35,7 +35,7 @@ import type { Mode } from '../components/AuthForm';
 import { FooterSeoColumns } from '../components/PublicSiteChrome';
 import { SocialLinks } from '../components/SocialLinks';
 import { buildHomeGraph } from '../seo/schema';
-import { GUIDE_PAGES, TOOL_PAGES } from '../seo/pages';
+import { ABOUT_PAGE, GUIDE_PAGES, TOOL_PAGES } from '../seo/pages';
 
 // Public marketing landing page shown at "/" to signed-out visitors (see
 // App.tsx's logged-out route tree). Signed-in visitors never see this — "/"
@@ -163,7 +163,7 @@ const FAQS = [
   {
     question: 'What is SarasTech?',
     answer:
-      'SarasTech (also written Saras Tech) is an AI teaching assistant for teachers in India. It combines an AI classroom coach with a worksheet, quiz, and question-paper generator, plus a personal library and editor for the resources you keep.',
+      'SarasTech, also known as SarasTech AI (and sometimes written Saras Tech), is an AI teaching assistant for teachers in India. It combines an AI classroom coach with a worksheet, quiz, and question-paper generator, plus a personal library and editor for the resources you keep.',
   },
   {
     question: 'What can SarasTech do for me as a teacher?',
@@ -423,8 +423,8 @@ export default function HomePage() {
             </span>
             <h1 id="home-hero-heading">Your AI Teaching Assistant for Everyday Classrooms</h1>
             <p className="home-hero-subtitle">
-              Ask a question, get a classroom-ready lesson plan, worksheet, or quiz — in English or your regional
-              language.
+              With SarasTech AI, ask a question and get a classroom-ready lesson plan, worksheet, or quiz — in English
+              or your regional language.
             </p>
             <div className="home-hero-cta">
               <button type="button" className="btn-primary home-cta-primary" onClick={() => openAuth('register')}>
@@ -805,6 +805,9 @@ export default function HomePage() {
                 <button type="button" className="home-footer-link-btn" onClick={() => openAuth('login')}>
                   Sign In
                 </button>
+              </li>
+              <li>
+                <Link to={ABOUT_PAGE.path}>About SarasTech</Link>
               </li>
               <li>
                 <Link to="/terms">Terms of Service</Link>

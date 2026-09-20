@@ -47,6 +47,29 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772" />
     </svg>
   ),
+  youtube: (
+    <svg {...svgProps}>
+      <path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17" />
+      <path d="m10 15 5-3-5-3z" />
+    </svg>
+  ),
+  substack: (
+    <svg {...svgProps}>
+      <line x1="4" y1="4" x2="20" y2="4" />
+      <line x1="4" y1="9" x2="20" y2="9" />
+      <path d="M4 13h16v8l-8-5-8 5z" />
+    </svg>
+  ),
+  reddit: (
+    <svg {...svgProps}>
+      <ellipse cx="12" cy="14" rx="8" ry="6" />
+      <circle cx="9" cy="13" r="1" />
+      <circle cx="15" cy="13" r="1" />
+      <path d="M9.5 16.5c1.5 1 3.5 1 5 0" />
+      <path d="M12 8l1-5 4 1" />
+      <circle cx="18" cy="4.5" r="1.3" />
+    </svg>
+  ),
 };
 
 export function SocialLinks() {

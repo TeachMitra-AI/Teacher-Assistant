@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Sun, Moon, Menu, X } from 'lucide-react';
 import type { Mode } from './AuthForm';
-import { GUIDE_PAGES, TOOL_PAGES } from '../seo/pages';
+import { ABOUT_PAGE, GUIDE_PAGES, TOOL_PAGES } from '../seo/pages';
 
 // Header and footer shared by the public tool/guide pages
 // (pages/ContentPage.tsx). Deliberately reuses the landing page's `.home-*`
@@ -178,6 +178,9 @@ export function PublicFooter({ signedIn, onOpenAuth }: { signedIn: boolean; onOp
                 </button>
               </li>
             )}
+            <li>
+              <Link to={ABOUT_PAGE.path}>About SarasTech</Link>
+            </li>
             <li>
               <Link to="/terms">Terms of Service</Link>
             </li>

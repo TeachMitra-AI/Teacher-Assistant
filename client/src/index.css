@@ -7004,11 +7004,13 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 
 /* ---- "Follow SarasTech" social strip (components/SocialLinks.tsx) ----
    Deliberately smaller than the CTA band above it: one short heading, one
-   line of copy, three pill links. Link text stays --text (not the orange) —
+   line of copy, a row of pill links (six at ~720px natural width, so the inner
+   cap is 800px to keep them on one line on desktop; they still wrap on narrow
+   screens). Link text stays --text (not the orange) —
    --orange-dark only measures 3.55:1 on white; orange is reserved for the icon,
    border and focus ring, which need 3:1. */
 .home-social { padding: 2.75rem 1.5rem; text-align: center; }
-.home-social-inner { max-width: 620px; margin: 0 auto; }
+.home-social-inner { max-width: 800px; margin: 0 auto; }
 .home-social h2 { font-size: 1.15rem; letter-spacing: -0.01em; margin: 0 0 0.4rem; }
 .home-social p { margin: 0 0 1.25rem; font-size: 0.92rem; color: var(--text-muted); }
 .home-social-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; }
@@ -7034,6 +7036,32 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 @media (prefers-reduced-motion: reduce) {
   .home-social-link { transition: none; }
   .home-social-link:hover { transform: none; }
+}
+
+/* Mobile: icon-only round buttons in one centered row. The platform name stays in
+   the DOM — visually hidden rather than display:none — and every link keeps its
+   aria-label ("SarasTech on LinkedIn"), so screen readers and crawlers still get
+   it. Six 44px targets + 8px gaps = 304px, which fits a 360px screen (320px of
+   content width); the 359px rule shrinks them so six still fit a 320px screen. */
+@media (max-width: 640px) {
+  .home-social-list { gap: 0.5rem; }
+  .home-social-link { position: relative; width: 44px; padding: 0; justify-content: center; }
+  .home-social-link > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+@media (max-width: 359px) {
+  .home-social-list { gap: 0.4rem; }
+  .home-social-link { width: 40px; min-height: 40px; }
 }
 
 /* ---- footer (real 3-column layout — was one thin centered row) ---- */

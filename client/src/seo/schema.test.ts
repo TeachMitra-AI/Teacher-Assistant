@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { buildContentPageGraph, buildHomeGraph } from './schema';
-import { CONTENT_PAGES, GUIDE_PAGES, TOOL_PAGES } from './pages';
+import { ABOUT_PAGE, CONTENT_PAGES, GUIDE_PAGES, TOOL_PAGES } from './pages';
 import { SITE_ORIGIN, SOCIAL_PROFILES } from './site';
 
 type Node = Record<string, unknown> & { '@type': string };
@@ -20,7 +20,9 @@ describe('home page structured data', () => {
   test('WebSite carries the short brand name and alternate spellings for Google site names', () => {
     const site = byType('WebSite');
     expect(site.name).toBe('SarasTech');
-    expect(site.alternateName).toEqual(expect.arrayContaining(['Saras Tech', 'SarasTech Teacher Assistant']));
+    expect(site.alternateName).toEqual(
+      expect.arrayContaining(['SarasTech AI', 'Saras Tech', 'SarasTech Teacher Assistant']),
+    );
     expect(site.url).toBe(`${SITE_ORIGIN}/`);
   });
 
@@ -30,11 +32,20 @@ describe('home page structured data', () => {
     expect(count('WebSite')).toBe(1);
   });
 
-  test('Organization lists the official social profiles in sameAs', () => {
+  test('Organization is named SarasTech, with SarasTech AI as an alternate name only', () => {
+    const org = byType('Organization');
+    expect(org.name).toBe('SarasTech');
+    expect(org.alternateName).toEqual(['SarasTech AI', 'Saras Tech', 'SarasTech Teacher Assistant']);
+  });
+
+  test('Organization lists the six official social profiles in sameAs, existing three first', () => {
     expect(byType('Organization').sameAs).toEqual([
       'https://www.linkedin.com/company/sarastechai/',
       'https://www.instagram.com/sarastechai/',
       'https://x.com/SarasTechAI',
+      'https://www.youtube.com/@SarasTechAI',
+      'https://substack.com/@sarastechai',
+      'https://www.reddit.com/user/SarasTechAI/',
     ]);
     expect(byType('Organization').sameAs).toEqual(SOCIAL_PROFILES.map((p) => p.url));
   });
@@ -66,6 +77,20 @@ describe('home page structured data', () => {
   });
 });
 
+describe('official social profiles config', () => {
+  test('ids are unique and every URL is a distinct, exact https profile URL with no query or fragment', () => {
+    expect(new Set(SOCIAL_PROFILES.map((p) => p.id)).size).toBe(SOCIAL_PROFILES.length);
+    expect(new Set(SOCIAL_PROFILES.map((p) => p.url)).size).toBe(SOCIAL_PROFILES.length);
+    for (const { url, name } of SOCIAL_PROFILES) {
+      expect(url, name).toMatch(/^https:\/\/[^/?#\s]+\/[^?#\s]+$/);
+    }
+  });
+
+  test('covers exactly the platforms the brand owns', () => {
+    expect(SOCIAL_PROFILES.map((p) => p.id)).toEqual(['linkedin', 'instagram', 'x', 'youtube', 'substack', 'reddit']);
+  });
+});
+
 describe('content page structured data', () => {
   test('tool pages are a WebPage about the product; guides are an Article with dates', () => {
     for (const page of TOOL_PAGES) {
@@ -88,6 +113,33 @@ describe('content page structured data', () => {
       expect(crumb.itemListElement[0].item).toBe(`${SITE_ORIGIN}/`);
       expect(crumb.itemListElement[crumb.itemListElement.length - 1].item).toBe(`${SITE_ORIGIN}${page.path}`);
       crumb.itemListElement.forEach((c, i) => expect(c.position).toBe(i + 1));
+    }
+  });
+
+  test('the About page is an AboutPage about the same Organization the home page defines', () => {
+    const home = buildHomeGraph({ title: 'T', description: 'D', faqs: [] });
+    const homeOrg = nodes(home).find((n) => n['@type'] === 'Organization')!;
+
+    const graph = buildContentPageGraph(ABOUT_PAGE);
+    expect(nodes(graph).map((n) => n['@type'])).toEqual(['AboutPage', 'Organization', 'BreadcrumbList']);
+
+    const org = nodes(graph).find((n) => n['@type'] === 'Organization')!;
+    expect(org).toEqual(homeOrg); // identical node: same @id, name, alternateName, sameAs
+    expect(org.name).toBe('SarasTech');
+    expect(org.sameAs).toEqual(SOCIAL_PROFILES.map((p) => p.url));
+
+    const about = nodes(graph).find((n) => n['@type'] === 'AboutPage')!;
+    expect(about.url).toBe(`${SITE_ORIGIN}/about`);
+    expect(about.about).toEqual({ '@id': org['@id'] });
+    expect(about.mainEntity).toEqual({ '@id': org['@id'] });
+  });
+
+  test('every @id reference in the About graph resolves inside the graph', () => {
+    const graph = buildContentPageGraph(ABOUT_PAGE);
+    const json = JSON.stringify(graph);
+    const ids = new Set(nodes(graph).map((n) => n['@id']).filter(Boolean));
+    for (const ref of json.matchAll(/\{"@id":"([^"]+)"\}/g)) {
+      expect(ids.has(ref[1]), `dangling reference ${ref[1]}`).toBe(true);
     }
   });
 

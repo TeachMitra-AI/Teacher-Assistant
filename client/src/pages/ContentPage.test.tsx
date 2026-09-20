@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ContentPage from './ContentPage';
-import { CONTENT_PAGES } from '../seo/pages';
-import { absoluteUrl } from '../seo/site';
+import { ABOUT_PAGE, CONTENT_PAGES } from '../seo/pages';
+import { absoluteUrl, SOCIAL_PROFILES } from '../seo/site';
 
 // jsdom has no matchMedia; usePreferences reads it for the initial theme.
 beforeEach(() => {
@@ -127,5 +127,32 @@ describe('ContentPage', () => {
     const links = screen.getAllByRole('link', { name: new RegExp(page.appLabel) });
     expect(links[0]).toHaveAttribute('href', page.appPath);
     expect(screen.queryByRole('button', { name: /Get Started/ })).toBeNull();
+  });
+});
+
+describe('About page', () => {
+  test('lists the official profiles as crawlable external links and is linked from the footer', () => {
+    const { container } = renderPage(ABOUT_PAGE);
+
+    const article = container.querySelector('article')!;
+    for (const profile of SOCIAL_PROFILES) {
+      const link = article.querySelector<HTMLAnchorElement>(`a[href="${profile.url}"]`);
+      expect(link, `${profile.name} link`).not.toBeNull();
+      expect(link!.rel).toContain('noopener');
+      expect(link).toHaveTextContent(`SarasTech on ${profile.name}`);
+    }
+
+    const footer = container.querySelector('footer')!;
+    expect(within(footer).getByRole('link', { name: 'About SarasTech' })).toHaveAttribute('href', '/about');
+  });
+
+  test('emits an AboutPage + Organization graph whose Organization keeps SarasTech as its name', () => {
+    renderPage(ABOUT_PAGE);
+    const script = document.head.querySelector('script[type="application/ld+json"]')!;
+    const graph = JSON.parse(script.textContent ?? '') as { '@graph': { '@type': string; name?: string; alternateName?: string[] }[] };
+    const org = graph['@graph'].find((n) => n['@type'] === 'Organization')!;
+    expect(org.name).toBe('SarasTech');
+    expect(org.alternateName).toContain('SarasTech AI');
+    expect(graph['@graph'].some((n) => n['@type'] === 'AboutPage')).toBe(true);
   });
 });
