@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎓 TeachMitra AI
+# 🎓 SarasTech AI
 
 ### An AI-Powered Teaching Companion, Built for Every Classroom
 
@@ -30,14 +30,14 @@
 
 1. [At a Glance](#1-at-a-glance)
 2. [Executive Summary](#2-executive-summary)
-3. [Why TeachMitra AI?](#3-why-teachmitra-ai)
+3. [Why SarasTech AI?](#3-why-sarastech-ai)
 4. [The Problem](#4-the-problem)
 5. [Our Vision](#5-our-vision)
 6. [Who It's For](#6-who-its-for)
 7. [Core Features](#7-core-features)
 8. [AI Question Paper Generation — A Closer Look](#8-ai-question-paper-generation--a-closer-look)
 9. [The User Journey](#9-the-user-journey)
-10. [How TeachMitra AI Compares](#10-how-teachmitra-ai-compares)
+10. [How SarasTech AI Compares](#10-how-sarastech-ai-compares)
 11. [Real-World Use Cases](#11-real-world-use-cases)
 12. [Social Impact](#12-social-impact)
 13. [Scalability](#13-scalability)
@@ -56,7 +56,7 @@
 
 | | |
 |---|---|
-| 🏷️ **Product Name** | TeachMitra AI *(also referred to internally as "Teacher Assistant / शिक्षक सहायक")* |
+| 🏷️ **Product Name** | SarasTech AI *(also referred to internally as "Teacher Assistant / शिक्षक सहायक")* |
 | 🗂️ **Category** | AI-Powered EdTech · Teacher Productivity Platform |
 | 👥 **Target Users** | School teachers, school administrators, coaching institutes, NGOs, education departments |
 | 📈 **Current Status** | ✅ Fully working product — usable end-to-end today |
@@ -71,7 +71,7 @@
 
 > *A two-minute read that captures the entire product.*
 
-**TeachMitra AI is a web-based teaching companion.** It gives every teacher two things that are
+**SarasTech AI is a web-based teaching companion.** It gives every teacher two things that are
 usually hard to get: **instant, specific classroom guidance**, and a **ready-to-print exam-paper
 generator** that produces properly formatted quizzes and worksheets — with correct Mathematics
 notation, a school letterhead, and a separate answer key — in under a minute.
@@ -87,7 +87,7 @@ generate a complete quiz or worksheet on any topic, in any subject, for any grad
 edited before it's ever used, and printed as a polished exam paper.
 
 > **💡 Key Takeaway**
-> TeachMitra AI is not a general chatbot repurposed for education — it is purpose-built for the
+> SarasTech AI is not a general chatbot repurposed for education — it is purpose-built for the
 > classroom: it understands grades, subjects, exam formatting, and answer-key discipline by
 > design, without the teacher needing to explain any of that themselves.
 
@@ -100,13 +100,13 @@ a clear, honestly-labelled roadmap for what comes next.
 
 ---
 
-## 3. Why TeachMitra AI?
+## 3. Why SarasTech AI?
 
 <table>
 <tr><td width="33%" valign="top">
 
 ### ⚡ Instant, Not Eventual
-Classroom help usually arrives late — if it arrives at all. TeachMitra AI responds in seconds, at
+Classroom help usually arrives late — if it arrives at all. SarasTech AI responds in seconds, at
 the exact moment a teacher needs it.
 
 </td><td width="33%" valign="top">
@@ -183,7 +183,7 @@ less time lost to repetitive paperwork, and — ultimately — better learning o
 
 ## 6. Who It's For
 
-TeachMitra AI is purpose-built primarily for **school teachers**, with an account structure
+SarasTech AI is purpose-built primarily for **school teachers**, with an account structure
 directly aligned to national education priorities such as **NEP 2020** and **NIPUN Bharat**
 (India's foundational literacy and numeracy mission). Teachers sign in under a **school**, and
 school leaders, resource persons, and administrators each get a view scoped to their
@@ -272,7 +272,7 @@ plans a targeted training session.
 
 ## 8. AI Question Paper Generation — A Closer Look
 
-This is TeachMitra AI's flagship capability: a dedicated **Quiz & Worksheet Generator**.
+This is SarasTech AI's flagship capability: a dedicated **Quiz & Worksheet Generator**.
 
 ### 🧾 The Workflow
 
@@ -352,9 +352,9 @@ flowchart TD
 
 ---
 
-## 10. How TeachMitra AI Compares
+## 10. How SarasTech AI Compares
 
-| Dimension | 📄 Traditional Method | 💬 Generic AI Chatbot | 🎓 TeachMitra AI |
+| Dimension | 📄 Traditional Method | 💬 Generic AI Chatbot | 🎓 SarasTech AI |
 |---|---|---|---|
 | Paper matches exact topic/grade | Rarely — searched, not made-to-order | Depends entirely on how well the teacher writes the prompt | ✅ Always — built from the exact fields chosen |
 | Answer key discipline | Manual, error-prone | Not designed to separate answer keys at all | ✅ Structurally separated Student/Teacher versions |
@@ -365,7 +365,7 @@ flowchart TD
 | Built for school structure (multi-teacher, multi-school) | N/A | Not designed for this at all | ✅ Teacher, School Admin, Resource Person, and Super Admin roles built in |
 
 > **💡 Key Takeaway:** A generic AI chatbot can write *something* about any topic if prompted well
-> enough. TeachMitra AI is purpose-built for the classroom — exam formatting, answer-key
+> enough. SarasTech AI is purpose-built for the classroom — exam formatting, answer-key
 > discipline, and school structure are built in, not left to the teacher to construct through
 > clever prompting.
 
@@ -534,7 +534,7 @@ teacher needs right now. AI generates something tailored, on demand.
 **2. Why not just use a general AI chatbot?**
 A general chatbot doesn't know classroom conventions — exam formatting, answer-key discipline,
 grade-appropriate language — unless the teacher manually explains all of that every time.
-TeachMitra AI builds all of that in automatically.
+SarasTech AI builds all of that in automatically.
 
 **3. How accurate is the AI's content?**
 The AI drafts the content, but nothing is used until the teacher reviews it. The system also
@@ -598,7 +598,7 @@ the underlying idea — instant, contextual teaching support and paper generatio
 teachers face similar challenges.
 
 **18. How is this different from a question bank website?**
-A question bank gives you existing questions to search through. TeachMitra AI creates new
+A question bank gives you existing questions to search through. SarasTech AI creates new
 questions matched exactly to your topic, grade, and difficulty, and formats the entire paper for
 you.
 
@@ -618,7 +618,7 @@ in one large jump.
 
 ### 🎤 Elevator Pitch (30 Seconds)
 
-> "TeachMitra AI is an AI teaching companion for school teachers. It answers classroom questions
+> "SarasTech AI is an AI teaching companion for school teachers. It answers classroom questions
 > instantly, in the teacher's own language, and generates ready-to-print quizzes and worksheets —
 > complete with a school letterhead, properly formatted Mathematics, and a separate answer key —
 > in under a minute. It's built for how Indian schools are actually organized, it's ready to use
@@ -630,12 +630,12 @@ in one large jump.
 
 > "Every teacher, at some point, faces a moment where they need help right now — a tricky concept
 > to explain, a difficult classroom to manage, or a test to prepare for tomorrow — and there's
-> often no one available to ask. TeachMitra AI is an AI-powered teaching companion that solves
+> often no one available to ask. SarasTech AI is an AI-powered teaching companion that solves
 > exactly that. A teacher can ask a classroom question in their own language, by typing or
 > speaking, and get a detailed, practical answer in seconds — not generic advice, but specific
 > teaching methods and activities suited to their exact grade and subject.
 >
-> Beyond day-to-day coaching, TeachMitra AI includes a dedicated Quiz and Worksheet Generator. A
+> Beyond day-to-day coaching, SarasTech AI includes a dedicated Quiz and Worksheet Generator. A
 > teacher picks a subject, types in any topic or chapter, sets the difficulty and number of
 > questions, and gets a complete, correctly formatted exam paper in under a minute — including
 > properly rendered Mathematics, a professional exam letterhead with the school's details, and a
@@ -658,7 +658,7 @@ in one large jump.
 > they're stuck manually writing questions, formatting a paper, and keeping the answer key
 > separate — an hour or more of repetitive work, often done after school hours.
 >
-> TeachMitra AI was built to close that gap. At its core is an AI Teacher Coach: a teacher types or
+> SarasTech AI was built to close that gap. At its core is an AI Teacher Coach: a teacher types or
 > speaks a question about their classroom — in any of ten supported languages, including a natural
 > Hindi-English mix — and gets back a structured, practical answer: teaching methods, examples,
 > classroom activities, and things to watch out for. It's context-aware — it knows the grade,
@@ -734,7 +734,7 @@ in one large jump.
 
 | Item | Details |
 |---|---|
-| 🏷️ **Product Name** | TeachMitra AI *(also referred to internally as "Teacher Assistant / शिक्षक सहायक")* |
+| 🏷️ **Product Name** | SarasTech AI *(also referred to internally as "Teacher Assistant / शिक्षक सहायक")* |
 | 🗂️ **Category** | AI-Powered EdTech · Teacher Productivity Platform |
 | 💻 **Platform** | Cloud-based web application; installable on phones, tablets, and computers |
 | 🤖 **AI Engine** | Powered by a modern generative AI model (Google Gemini) |
@@ -752,6 +752,6 @@ in one large jump.
 
 <div align="center">
 
-*End of Document — TeachMitra AI Product & Investment Brief*
+*End of Document — SarasTech AI Product & Investment Brief*
 
 </div>

@@ -4247,6 +4247,13 @@ Phase 14), and a signing keystore — **let EAS Build manage the keystore**
 manually-managed local keystore, consistent with the "minimize local
 machine dependencies" reasoning in §7.
 
+> **Note (2026-09-20) — package name pending / superseded.** The `com.teachmitra.assistant`
+> recommendation above, in the iOS example just below, and in §29 question 2 is the original
+> placeholder from before the SarasTech rebranding. The product is now **SarasTech / SarasTech AI**,
+> so treat the old ID as *pending review, not final*: the Android package name is still an open
+> decision and has not been changed. Changing it has Play Store, signing, Google Sign-In and
+> push-notification implications, so decide it before the first store release.
+
 **iOS** (later phase, §26 Phase 15): bundle identifier (mirror the Android
 package name convention, e.g. `com.teachmitra.assistant`), an Apple
 Developer Program membership (`UNKNOWN — VERIFY DURING IMPLEMENTATION` —
