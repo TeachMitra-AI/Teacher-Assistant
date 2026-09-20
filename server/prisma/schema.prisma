@@ -100,6 +100,9 @@ model User {
   teacherAttendances     TeacherAttendance[]
   attendanceReviews      TeacherAttendanceReview[]
   attendanceActivityLogs TeacherAttendanceActivityLog[]
+  // Billing (docs/payment-implementation-phases.md, Phase 1) — paid plans this
+  // teacher holds. Empty for every free (Teacher Basic) user.
+  subscriptions          Subscription[]
 
   // A teacher's email is unique within a school. The same email may hold
   // accounts at more than one school, which is why sign-in looks up by email
@@ -796,4 +799,34 @@ model TeacherAttendanceActivityLog {
 
   @@index([schoolId, createdAt])
   @@index([userId, createdAt])
+}
+
+// A paid plan a teacher holds (Billing, Phase 1 — see
+// docs/payment-implementation-phases.md). "Teacher Basic" is the ABSENCE of a
+// row, so free users never need one. One running row per user is enforced in
+// code (Prisma cannot express "unique among active rows"), inside a
+// transaction — see routes/adminSubscriptions.js.
+//
+// Expiry is never stored: a row with status "active" is running while
+// now < endsAt, in its grace period until endsAt + BILLING_GRACE_DAYS, and
+// over after that (lib/entitlements.js decides). `startsAt` is a record only.
+// `grantedById` is a soft reference to the acting admin (not a FK — mirrors
+// SystemSetting.updatedById); the durable audit trail is the Event row the
+// same write also creates.
+model Subscription {
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  planKey     String // teacher_pro (closed list in lib/plans.js)
+  status      String   @default("active") // active | revoked
+  source      String   @default("manual") // manual | gateway (gateway arrives with the payment phase)
+  startsAt    DateTime
+  endsAt      DateTime
+  grantedById String?
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([endsAt])
 }

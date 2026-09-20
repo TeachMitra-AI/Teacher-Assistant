@@ -564,6 +564,40 @@ function readTeacherAttendanceFlags(env, { warn = console.warn } = {}) {
   };
 }
 
+// ---- Billing (Teacher Basic / Teacher Pro) ----------------------------------
+//
+// See docs/payment-implementation-phases.md (Phase 1). Same shape and same
+// "default OFF" reasoning as every flag above. MASTER SWITCH: when false,
+//   - GET /api/auth/me carries no `billing` key at all (the response is exactly
+//     what it was before billing existed), and
+//   - every /api/admin/subscriptions/* route answers 503.
+// Nothing else in the app reads it in Phase 1 — no route is blocked or limited
+// by a plan yet.
+//
+// Only the master switch lives here. The numbers (grace days, the free plan's
+// limits, the exempt roles) are read by lib/plans.js's readBillingConfig, next
+// to the plan list they describe.
+
+const BILLING_FLAG_DEFAULTS = Object.freeze({
+  enabled: false,
+});
+
+/**
+ * Read the Billing feature's global flags from an environment object.
+ * @param {Record<string, string|undefined>} env
+ * @param {{warn?: (msg: string) => void}} [opts]
+ * @returns {{enabled: boolean}}
+ */
+function readBillingFlags(env, { warn = console.warn } = {}) {
+  return {
+    enabled: parseBoolEnv(env.BILLING_ENABLED, {
+      name: 'BILLING_ENABLED',
+      defaultValue: BILLING_FLAG_DEFAULTS.enabled,
+      warn,
+    }),
+  };
+}
+
 module.exports = {
   parseBoolEnv,
   parseListEnv,
@@ -588,4 +622,6 @@ module.exports = {
   MOBILE_PUSH_FLAG_DEFAULTS,
   readTeacherAttendanceFlags,
   TEACHER_ATTENDANCE_FLAG_DEFAULTS,
+  readBillingFlags,
+  BILLING_FLAG_DEFAULTS,
 };

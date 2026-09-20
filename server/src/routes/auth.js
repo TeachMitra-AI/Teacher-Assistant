@@ -32,6 +32,9 @@ const googleAuth = require('../lib/googleAuth');
 const { getEffectiveFeatureFlags } = require('../lib/systemSettings');
 const { readTeacherAttendanceFlags } = require('../lib/flags');
 const { logTeacherAttendanceActivity } = require('../lib/teacherAttendanceActivityLog');
+// Billing (Phase 1): only GET /me uses this, and it returns null unless
+// BILLING_ENABLED is on.
+const { getBillingSummaryForMe } = require('../lib/entitlements');
 
 // Teacher Attendance's own activity log (decision §1.10 in
 // docs/feature-teacher-attendance-implementation-plan.md) — "login is not
@@ -741,7 +744,15 @@ router.get('/me', authRequired, asyncHandler(async (req, res) => {
     include: { school: true, profilePicture: { select: { updatedAt: true } } },
   });
   if (!user) return res.status(404).json({ error: 'User not found.' });
-  return res.json({ user: publicUser(user, user.school), featureFlags: await getEffectiveFeatureFlags() });
+  const body = { user: publicUser(user, user.school), featureFlags: await getEffectiveFeatureFlags() };
+  // Billing (Phase 1, display only): a SEPARATE key beside `user`, never inside
+  // it — publicUser() is shared by login, refresh and Google sign-in, which
+  // must not change. With billing off (the default) this is null and the
+  // response is exactly what it was before billing existed. A billing error
+  // also gives null, so it can never take /me down.
+  const billing = await getBillingSummaryForMe(prisma, user);
+  if (billing) body.billing = billing;
+  return res.json(body);
 }));
 
 // PATCH /api/auth/me — update the caller's own display name and/or preferences.

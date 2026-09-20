@@ -49,6 +49,9 @@ const supportRouter = require('./routes/support');
 // for why access is modeled differently here).
 const adminSupportRouter = require('./routes/adminSupport');
 const adminSettingsRouter = require('./routes/adminSettings');
+// Billing (docs/payment-implementation-phases.md, Phase 1) — super_admin-only
+// hand-granting of Teacher Pro. Inert (503) unless BILLING_ENABLED is on.
+const adminSubscriptionsRouter = require('./routes/adminSubscriptions');
 // Notification System — a sibling feature, same "fail at boot on a malformed
 // module" reasoning as every router above. See docs/notification-system-plan.md.
 const notificationsRouter = require('./routes/notifications');
@@ -1010,6 +1013,10 @@ app.use('/api/admin/support', adminSupportRouter);
 // Admin Settings > Feature Management — same "no dedicated rate limiter"
 // reasoning as adminSupportRouter above.
 app.use('/api/admin/feature-flags', adminSettingsRouter);
+// Billing — same "no dedicated rate limiter" reasoning as the two admin routers
+// above: authRequired + requireRole('super_admin') gate every route in it, and
+// with BILLING_ENABLED unset (the default) every response is a 503.
+app.use('/api/admin/subscriptions', adminSubscriptionsRouter);
 
 // AI Action Router. Mounted alongside the existing routers — after them, before
 // the global error handler — so no existing route's middleware chain changes.
