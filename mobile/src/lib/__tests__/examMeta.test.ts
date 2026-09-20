@@ -6,6 +6,7 @@ const baseUser: User = {
   name: 'Demo Teacher',
   email: 'teacher@example.com',
   role: 'teacher',
+  createdAt: '2026-01-01T00:00:00.000Z',
   preferences: {},
   school: { id: 's1', name: 'Govt Primary School, Rampur', code: 'RAMPUR01' },
 };

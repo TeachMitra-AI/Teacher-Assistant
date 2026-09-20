@@ -75,6 +75,16 @@ export const ATTACHMENT_TRAY_VISIBLE_COUNT = 3;
 // VITE_CLASSROOM_MODE_ENABLED. See docs/classroom-mode.md.
 export const CLASSROOM_MODE_ENABLED = process.env.EXPO_PUBLIC_CLASSROOM_MODE_ENABLED === 'true';
 
+// ---- Teacher Attendance ------------------------------------------------------
+//
+// Client-side gate, same "not the real kill switch" caveat as every flag in
+// this file: the server's TEACHER_ATTENDANCE_ENABLED (+ its allowed-school-
+// codes rollout filter) is the immediately-effective one — every
+// /api/teacher-attendance/* route 503s regardless of this flag. When false
+// (the default), the Attendance tab is never rendered in the bottom nav —
+// "zero new UI" default. Mirrors the web client's VITE_TEACHER_ATTENDANCE_ENABLED.
+export const TEACHER_ATTENDANCE_ENABLED = process.env.EXPO_PUBLIC_TEACHER_ATTENDANCE_ENABLED === 'true';
+
 // --- Phase 5 (Library) ---
 // Ported from client/src/config.ts. Same closed vocabularies, same server
 // counterpart (server/src/routes/resources.js's RESOURCE_TYPES) — kept in

@@ -49,6 +49,12 @@
           "microphonePermission": "Teacher Assistant needs access to your microphone so you can ask a Coach question by voice.",
           "speechRecognitionPermission": "Teacher Assistant needs speech recognition access to turn your voice into text for a Coach question."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Teacher Assistant needs your location to confirm you're at school when you check in or out."
+        }
       ]
     ],
     "extra": {

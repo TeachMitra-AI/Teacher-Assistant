@@ -1,13 +1,15 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useIsFocused } from '@react-navigation/native';
-import { Sparkles, Library, GraduationCap, FileQuestion } from 'lucide-react-native';
+import { Sparkles, Library, GraduationCap, ClipboardCheck, FileQuestion } from 'lucide-react-native';
 import type { MainTabParamList } from './types';
 import { CoachStack } from './stacks/CoachStack';
 import { LibraryStack } from './stacks/LibraryStack';
 import { ClassroomStack } from './stacks/ClassroomStack';
+import { AttendanceStack } from './stacks/AttendanceStack';
 import { GeneratorStack } from './stacks/GeneratorStack';
 import { useTheme } from '../theme/ThemeContext';
+import { TEACHER_ATTENDANCE_ENABLED } from '../config';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -28,13 +30,16 @@ function GeneratorTabScreen() {
   return isFocused ? <GeneratorStack /> : null;
 }
 
-// 4 tabs, in the same order as the web's client/src/components/BottomNav.tsx
-// (Coach, Library, Classroom, Generator) — web-UI-parity pass. The previous
-// 5th "More" tab (Notifications/Settings/Sessions/Admin/HelpSupport) has
-// been removed: the web has no such tab, reaching those destinations
-// instead through the header's notification bell and profile avatar
-// (Header.tsx, AppNavigator.tsx) which this app now mirrors. Icons are the
-// same lucide set BottomNav.tsx already uses.
+// In the same order as the web's client/src/components/BottomNav.tsx
+// (Coach, Library, Classroom, Attendance, Generator) — web-UI-parity pass.
+// AttendanceTab is conditionally rendered, mirroring BottomNav.tsx's own
+// TEACHER_ATTENDANCE_ENABLED filter — a disabled flag means no tab at all,
+// not a tab that 503s when tapped. The previous 5th "More" tab
+// (Notifications/Settings/Sessions/Admin/HelpSupport) has been removed: the
+// web has no such tab, reaching those destinations instead through the
+// header's notification bell and profile avatar (Header.tsx,
+// AppNavigator.tsx) which this app now mirrors. Icons are the same lucide
+// set BottomNav.tsx already uses.
 export function MainTabs() {
   const { colors } = useTheme();
 
@@ -62,6 +67,13 @@ export function MainTabs() {
         component={ClassroomStack}
         options={{ title: 'Classroom', tabBarIcon: ({ color, size }) => <GraduationCap color={color} size={size} /> }}
       />
+      {TEACHER_ATTENDANCE_ENABLED && (
+        <Tab.Screen
+          name="AttendanceTab"
+          component={AttendanceStack}
+          options={{ title: 'Attendance', tabBarIcon: ({ color, size }) => <ClipboardCheck color={color} size={size} /> }}
+        />
+      )}
       <Tab.Screen
         name="GeneratorTab"
         component={GeneratorTabScreen}

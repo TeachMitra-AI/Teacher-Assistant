@@ -80,6 +80,7 @@ export interface User {
   email: string;
   displayName?: string | null;
   role: Role;
+  createdAt: string;
   preferences: TeacherPreferences;
   school: School;
   // A path relative to the API root (like every path passed to api()), e.g.
@@ -650,6 +651,189 @@ export interface ClassAnalytics {
     totalCollected: number;
     totalExpected: number;
   };
+}
+
+// ---- Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md) ----
+//
+// A teacher's OWN attendance (check-in/check-out at school), reviewed by
+// their school's Principal (role = school_admin) — NOT the Classroom
+// Management AttendanceStatus/AttendanceRosterEntry above, which is a
+// teacher marking THEIR STUDENTS present/absent. Mirrors client/src/types.ts's
+// identically-named section verbatim.
+export type TeacherAttendanceStatus =
+  | 'present'
+  | 'half_day'
+  | 'absent'
+  | 'on_leave'
+  | 'on_duty'
+  | 'pending_regularization'
+  | 'flagged_review';
+
+// A teacher's own view — no raw GPS/device evidence fields, see the
+// server's attendanceToDto doc comment.
+export interface TeacherAttendanceDto {
+  id: string;
+  date: string; // "YYYY-MM-DD"
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  status: TeacherAttendanceStatus;
+  lateMinutes: number | null;
+  earlyDepartureMinutes: number | null;
+  workingMinutes: number | null;
+  shortfallMinutes: number | null;
+  leaveOrDutyCategory: string | null;
+  leaveOrDutyReason: string | null;
+  reviewReason: string | null;
+}
+
+// A Principal's per-day detail view of one teacher's record — includes the
+// raw evidence a correction decision needs.
+export interface TeacherAttendanceDetailDto extends TeacherAttendanceDto {
+  teacher?: { id: string; name: string; email: string };
+  checkInLat: number | null;
+  checkInLon: number | null;
+  checkInAccuracyMeters: number | null;
+  checkInDistanceMeters: number | null;
+  checkInDeviceId: string | null;
+  checkOutLat: number | null;
+  checkOutLon: number | null;
+  checkOutAccuracyMeters: number | null;
+  checkOutDistanceMeters: number | null;
+  checkOutDeviceId: string | null;
+}
+
+export type TeacherAttendanceReviewAction =
+  | 'approve'
+  | 'correct_checkin'
+  | 'correct_checkout'
+  | 'mark_on_leave'
+  | 'mark_on_duty'
+  | 'reject';
+
+export interface TeacherAttendanceReviewInput {
+  action: TeacherAttendanceReviewAction;
+  reason: string;
+  correctedCheckInAt?: string;
+  correctedCheckOutAt?: string;
+  leaveOrDutyCategory?: string;
+}
+
+// A school's own attendance settings (school_admin only).
+export interface SchoolAttendanceConfigDto {
+  id: string;
+  schoolId: string;
+  openTime: string;
+  closeTime: string;
+  checkinWindowStart: string;
+  checkinWindowEnd: string;
+  weeklyOffDays: string; // comma-separated 0=Sunday..6=Saturday, e.g. "0" or "0,6"
+  lateGraceMinutes: number;
+  halfDayThresholdPercent: number;
+  fullDayGraceMinutes: number;
+  geofenceLat: number;
+  geofenceLon: number;
+  geofenceRadiusMeters: number;
+  repeatPatternThreshold: number;
+  repeatPatternWindowDays: number;
+  reminderMinutesBeforeClose: number;
+  reminderMinutesAfterClose: number;
+  createdAt: string;
+}
+
+export interface SchoolAttendanceConfigInput {
+  openTime: string;
+  closeTime: string;
+  checkinWindowStart: string;
+  checkinWindowEnd: string;
+  weeklyOffDays?: string;
+  lateGraceMinutes?: number;
+  halfDayThresholdPercent?: number;
+  fullDayGraceMinutes?: number;
+  geofenceLat: number;
+  geofenceLon: number;
+  geofenceRadiusMeters?: number;
+  repeatPatternThreshold?: number;
+  repeatPatternWindowDays?: number;
+  reminderMinutesBeforeClose?: number;
+  reminderMinutesAfterClose?: number;
+}
+
+export interface SchoolHolidayDto {
+  id: string;
+  schoolId: string;
+  date: string; // "YYYY-MM-DD"
+  reason: string;
+  source: 'department' | 'principal_emergency';
+}
+
+export interface CreateHolidayInput {
+  date: string;
+  reason: string;
+}
+
+export interface TeacherAttendanceSummary {
+  present: number;
+  absent: number;
+  late: number;
+  half_day: number;
+  on_leave: number;
+  on_duty: number;
+  flagged_review: number;
+  pending_regularization: number;
+}
+
+export interface SchoolHistoryTeacherSummary {
+  id: string;
+  name: string;
+  email: string;
+  summary: TeacherAttendanceSummary;
+}
+
+export interface SchoolHistoryPage {
+  month: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  teachers: SchoolHistoryTeacherSummary[];
+}
+
+export interface TeacherAttendanceDetailPage {
+  month: string;
+  teacher: { id: string; name: string; email: string; createdAt: string };
+  records: TeacherAttendanceDetailDto[];
+}
+
+export interface TeacherAttendanceActivityLogEntry {
+  id: string;
+  userId: string;
+  userName: string | null;
+  performedBy: string | null;
+  action: string;
+  result: string | null;
+  distanceMeters: number | null;
+  createdAt: string;
+}
+
+export interface TeacherAttendanceActivityLogPage {
+  days: number;
+  page: number;
+  pageSize: number;
+  total: number;
+  entries: TeacherAttendanceActivityLogEntry[];
+}
+
+export interface TeacherAttendanceTodaySummary {
+  date: string;
+  nonWorkingDay: NonWorkingDayInfo | null;
+  present: number;
+  late: number;
+  missingCheckout: number;
+  absent: number;
+}
+
+export interface NonWorkingDayInfo {
+  code: 'WEEKLY_OFF_DAY' | 'HOLIDAY';
+  message: string;
 }
 
 // A saved item in the teacher's personal library. Mirrors the server DTO
