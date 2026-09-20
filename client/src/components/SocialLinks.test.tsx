@@ -22,6 +22,9 @@ describe('SocialLinks', () => {
     ['SarasTech on LinkedIn', 'https://www.linkedin.com/company/sarastechai/', 'LinkedIn'],
     ['SarasTech on Instagram', 'https://www.instagram.com/sarastechai/', 'Instagram'],
     ['SarasTech on X', 'https://x.com/SarasTechAI', 'X'],
+    ['SarasTech on YouTube', 'https://www.youtube.com/@SarasTechAI', 'YouTube'],
+    ['SarasTech on Substack', 'https://substack.com/@sarastechai', 'Substack'],
+    ['SarasTech on Reddit', 'https://www.reddit.com/user/SarasTechAI/', 'Reddit'],
   ])('%s is a crawlable external <a> with visible text', (label, href, visibleText) => {
     render(<SocialLinks />);
 
@@ -37,12 +40,12 @@ describe('SocialLinks', () => {
   });
 
   test('a profile without a bespoke icon still renders as a working link', () => {
-    // Guards the "add YouTube later" path: config-only additions must not break.
-    SOCIAL_PROFILES_MUTABLE.push({ id: 'youtube', name: 'YouTube', url: 'https://www.youtube.com/@example' });
+    // Guards the "add another platform later" path: config-only additions must not break.
+    SOCIAL_PROFILES_MUTABLE.push({ id: 'facebook', name: 'Facebook', url: 'https://www.facebook.com/example' });
     try {
       render(<SocialLinks />);
-      const link = screen.getByRole('link', { name: 'SarasTech on YouTube' });
-      expect(link).toHaveAttribute('href', 'https://www.youtube.com/@example');
+      const link = screen.getByRole('link', { name: 'SarasTech on Facebook' });
+      expect(link).toHaveAttribute('href', 'https://www.facebook.com/example');
       expect(link.querySelector('svg')).toBeInTheDocument();
     } finally {
       SOCIAL_PROFILES_MUTABLE.pop();

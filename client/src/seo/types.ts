@@ -24,7 +24,10 @@ export interface FaqItem {
   answer: string;
 }
 
-export type PageKind = 'tool' | 'guide';
+// 'about' is the company/entity page (seo/content/aboutSarasTech.ts). It reuses
+// this template but is neither a tool nor a guide, so it sits outside
+// TOOL_PAGES / GUIDE_PAGES and gets its own structured data (AboutPage).
+export type PageKind = 'tool' | 'guide' | 'about';
 
 export interface ContentPageData {
   kind: PageKind;

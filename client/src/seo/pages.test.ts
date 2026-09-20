@@ -2,9 +2,9 @@ import { describe, expect, test } from 'vitest';
 import robotsTxt from '../../public/robots.txt?raw';
 import vercelConfig from '../../vercel.json';
 import appSource from '../App.tsx?raw';
-import { CONTENT_PAGES, SITEMAP_ENTRIES, TOOL_PAGES, GUIDE_PAGES } from './pages';
+import { ABOUT_PAGE, CONTENT_PAGES, SITEMAP_ENTRIES, TOOL_PAGES, GUIDE_PAGES } from './pages';
 import { buildSitemapXml } from './sitemap';
-import { SITE_ORIGIN } from './site';
+import { SITE_ORIGIN, SOCIAL_PROFILES } from './site';
 import type { ContentBlock } from './types';
 
 const KNOWN_STATIC_PATHS = ['/', '/terms', '/privacy'];
@@ -109,6 +109,32 @@ describe('public content page registry', () => {
         expect(stripped, `${page.path} matches ${pattern}`).not.toMatch(pattern);
       }
     }
+  });
+});
+
+describe('About page', () => {
+  test('is a registered, routable page that is neither a tool nor a guide', () => {
+    expect(ABOUT_PAGE.path).toBe('/about');
+    expect(CONTENT_PAGES).toContain(ABOUT_PAGE);
+    expect(TOOL_PAGES).not.toContain(ABOUT_PAGE);
+    expect(GUIDE_PAGES).not.toContain(ABOUT_PAGE);
+    expect(SITEMAP_ENTRIES.map((e) => e.path)).toContain('/about');
+  });
+
+  test('names the product "SarasTech AI" in its title, H1 and intro, with SarasTech as the brand', () => {
+    expect(ABOUT_PAGE.title).toContain('SarasTech AI');
+    expect(ABOUT_PAGE.h1).toContain('SarasTech AI');
+    expect(ABOUT_PAGE.intro).toContain('SarasTech AI');
+    expect(ABOUT_PAGE.intro).toContain('SarasTech for short');
+  });
+
+  test('links every official social profile, straight from the shared SOCIAL_PROFILES list', () => {
+    const text = ABOUT_PAGE.sections.flatMap((s) => allBlockText(s.blocks)).join('\n');
+    for (const profile of SOCIAL_PROFILES) expect(text).toContain(`](${profile.url})`);
+  });
+
+  test('links to the product pages it describes', () => {
+    expect(ABOUT_PAGE.related).toEqual(expect.arrayContaining(['/ai-lesson-plan-generator', '/ai-worksheet-generator', '/ai-quiz-generator']));
   });
 });
 
