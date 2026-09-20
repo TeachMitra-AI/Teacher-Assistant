@@ -6968,6 +6968,32 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   .home-social-link:hover { transform: none; }
 }
 
+/* Mobile: icon-only round buttons in one centered row. The platform name stays in
+   the DOM — visually hidden rather than display:none — and every link keeps its
+   aria-label ("SarasTech on LinkedIn"), so screen readers and crawlers still get
+   it. Six 44px targets + 8px gaps = 304px, which fits a 360px screen (320px of
+   content width); the 359px rule shrinks them so six still fit a 320px screen. */
+@media (max-width: 640px) {
+  .home-social-list { gap: 0.5rem; }
+  .home-social-link { position: relative; width: 44px; padding: 0; justify-content: center; }
+  .home-social-link > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+@media (max-width: 359px) {
+  .home-social-list { gap: 0.4rem; }
+  .home-social-link { width: 40px; min-height: 40px; }
+}
+
 /* ---- footer (real 3-column layout — was one thin centered row) ---- */
 .home-footer { border-top: 1px solid var(--border); }
 .home-footer-inner {
