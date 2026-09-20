@@ -6,6 +6,7 @@ import {
   PRODUCT_NAME,
   LOGO_URL,
   DEFAULT_OG_IMAGE,
+  SOCIAL_PROFILES,
   absoluteUrl,
 } from './site';
 
@@ -27,6 +28,7 @@ export const organizationNode = {
   alternateName: SITE_ALTERNATE_NAMES,
   url: `${SITE_ORIGIN}/`,
   logo: { '@type': 'ImageObject', url: LOGO_URL, width: 512, height: 512 },
+  sameAs: SOCIAL_PROFILES.map((profile) => profile.url),
 };
 
 // The application itself. Named after the product, not the page <title> (the
