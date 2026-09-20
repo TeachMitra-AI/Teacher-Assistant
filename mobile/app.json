@@ -39,21 +39,21 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Teacher Assistant needs access to your photos so you can set a profile picture.",
-          "cameraPermission": "Teacher Assistant needs access to your camera so you can attach a photo to a Coach question."
+          "photosPermission": "SarasTech needs access to your photos so you can set a profile picture.",
+          "cameraPermission": "SarasTech needs access to your camera so you can attach a photo to a Coach question."
         }
       ],
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Teacher Assistant needs access to your microphone so you can ask a Coach question by voice.",
-          "speechRecognitionPermission": "Teacher Assistant needs speech recognition access to turn your voice into text for a Coach question."
+          "microphonePermission": "SarasTech needs access to your microphone so you can ask a Coach question by voice.",
+          "speechRecognitionPermission": "SarasTech needs speech recognition access to turn your voice into text for a Coach question."
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Teacher Assistant needs your location to confirm you're at school when you check in or out."
+          "locationAlwaysAndWhenInUsePermission": "SarasTech needs your location to confirm you're at school when you check in or out."
         }
       ]
     ],

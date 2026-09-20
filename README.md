@@ -1,4 +1,6 @@
-# Teacher Assistant 👨‍🏫
+# SarasTech 👨‍🏫
+
+**SarasTech AI** is an AI teaching assistant for teachers and classrooms in India: a classroom coach plus lesson plan, worksheet and quiz generators, in English, Hindi and other Indian languages.
 
 > **शिक्षक सहायक** — An AI-powered just-in-time coaching assistant and teaching-resource
 > workspace for Indian government school teachers.
