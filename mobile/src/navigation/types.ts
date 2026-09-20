@@ -41,6 +41,17 @@ export type LibraryStackParamList = {
   ResourceEdit: { resourceId: string };
 };
 
+// Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md)
+// — a teacher's OWN attendance (check-in/check-out at school), NOT the
+// Classroom Management stack's student attendance above. One root screen
+// (AttendanceHome) hosts a segmented sub-tab switcher — Check In/History for
+// everyone, Reports/Activity Log/Settings for school_admin only — the same
+// "small tab switcher over a full child screen-component" shape
+// AdminScreen.tsx already uses, rather than five separate pushed screens.
+export type AttendanceStackParamList = {
+  AttendanceHome: undefined;
+};
+
 // GeneratorResult's params are the generate response plus the request
 // snapshot needed to build the save payload (docs/generator-v2-plan.md) —
 // passed as route params rather than shared state, since the Form and Result
@@ -65,13 +76,15 @@ export type GeneratorStackParamList = {
   };
 };
 
-// 4 tabs, matching client/src/components/BottomNav.tsx's order exactly
-// (Coach, Library, Classroom, Generator) — see MainTabs.tsx's header comment
-// for why the previous 5th "More" tab was removed in the web-parity pass.
+// Matches client/src/components/BottomNav.tsx's order exactly (Coach,
+// Library, Classroom, Attendance, Generator) — see MainTabs.tsx's header
+// comment for why the previous 5th "More" tab was removed in the web-parity
+// pass, and for AttendanceTab's own TEACHER_ATTENDANCE_ENABLED gating.
 export type MainTabParamList = {
   CoachTab: NavigatorScreenParams<CoachStackParamList>;
   LibraryTab: NavigatorScreenParams<LibraryStackParamList>;
   ClassroomTab: NavigatorScreenParams<ClassroomStackParamList>;
+  AttendanceTab: NavigatorScreenParams<AttendanceStackParamList>;
   GeneratorTab: NavigatorScreenParams<GeneratorStackParamList>;
 };
 
