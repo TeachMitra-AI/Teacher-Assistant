@@ -126,3 +126,100 @@ describe('GeneratorPage — legacy fallback (STRUCTURED_QUESTIONS_ENABLED off)',
     confirmSpy.mockRestore();
   });
 });
+
+// Issue #95: a teacher can tick more than one specific question type,
+// via a dropdown checklist, instead of only ever picking one or "Mixed".
+describe('GeneratorPage — question type multi-select dropdown (issue #95)', () => {
+  function openQuestionTypeDropdown(user: ReturnType<typeof userEvent.setup>) {
+    return user.click(screen.getByRole('button', { name: 'Question type' }));
+  }
+
+  test('the default single selection is still sent as a bare value, matching pre-existing behavior', async () => {
+    const user = userEvent.setup();
+    mockedResources.generateAssessment.mockResolvedValue({ content: '# Quiz\n\n1. Q?', requestId: 'r1' });
+    renderPage();
+
+    expect(screen.getByRole('button', { name: 'Question type' })).toHaveTextContent('Multiple Choice');
+    await fillAndGenerate(user);
+    await waitFor(() => expect(mockedResources.generateAssessment).toHaveBeenCalled());
+    expect(mockedResources.generateAssessment.mock.calls[0][0].questionType).toBe('mcq');
+  });
+
+  test('ticking a second type sends both as an array, and the closed button summarizes both', async () => {
+    const user = userEvent.setup();
+    mockedResources.generateAssessment.mockResolvedValue({ content: '# Quiz\n\n1. Q?', requestId: 'r1' });
+    renderPage();
+
+    await openQuestionTypeDropdown(user);
+    await user.click(screen.getByRole('checkbox', { name: 'True / False' }));
+    expect(screen.getByRole('button', { name: 'Question type' })).toHaveTextContent('Multiple Choice, True / False');
+
+    await fillAndGenerate(user);
+    await waitFor(() => expect(mockedResources.generateAssessment).toHaveBeenCalled());
+    expect(mockedResources.generateAssessment.mock.calls[0][0].questionType).toEqual(['mcq', 'true_false']);
+  });
+
+  test('ticking "Mixed" disables every other row in the checklist', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await openQuestionTypeDropdown(user);
+    await user.click(screen.getByRole('checkbox', { name: 'Mixed' }));
+    expect(screen.getByRole('checkbox', { name: 'Multiple Choice' })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'True / False' })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'Mixed' })).not.toBeDisabled();
+  });
+
+  test('a disabled row cannot be ticked while "Mixed" is active', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await openQuestionTypeDropdown(user);
+    await user.click(screen.getByRole('checkbox', { name: 'Mixed' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Short Answer (SAQ)' })); // disabled — no-op
+    expect(screen.getByRole('checkbox', { name: 'Mixed' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Short Answer (SAQ)' })).not.toBeChecked();
+  });
+
+  test('turning "Mixed" back off starts a fresh, empty selection', async () => {
+    const user = userEvent.setup();
+    mockedResources.generateAssessment.mockResolvedValue({ content: '# Quiz\n\n1. Q?', requestId: 'r1' });
+    renderPage();
+
+    await openQuestionTypeDropdown(user);
+    await user.click(screen.getByRole('checkbox', { name: 'Mixed' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Mixed' })); // toggling it off clears the selection
+    expect(screen.getByRole('button', { name: /generate/i })).toBeDisabled();
+
+    await user.click(screen.getByRole('checkbox', { name: 'Short Answer (SAQ)' }));
+    await fillAndGenerate(user);
+
+    await waitFor(() => expect(mockedResources.generateAssessment).toHaveBeenCalled());
+    expect(mockedResources.generateAssessment.mock.calls[0][0].questionType).toBe('short_answer');
+  });
+
+  test('deselecting the only selected type disables Generate until one is picked again', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.type(screen.getByLabelText('Topic (required)'), 'Fractions');
+    await openQuestionTypeDropdown(user);
+
+    // "Multiple Choice" is the default single selection — untick it.
+    await user.click(screen.getByRole('checkbox', { name: 'Multiple Choice' }));
+    expect(screen.getByRole('button', { name: /generate/i })).toBeDisabled();
+
+    await user.click(screen.getByRole('checkbox', { name: 'True / False' }));
+    expect(screen.getByRole('button', { name: /generate/i })).not.toBeDisabled();
+  });
+
+  test('clicking outside closes the checklist popover', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await openQuestionTypeDropdown(user);
+    expect(screen.getByRole('checkbox', { name: 'True / False' })).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('Topic (required)'));
+    expect(screen.queryByRole('checkbox', { name: 'True / False' })).not.toBeInTheDocument();
+  });
+});

@@ -86,8 +86,13 @@ describe('GeneratorFormScreen', () => {
     await fireEvent.press(screen.getByLabelText('Difficulty'));
     await fireEvent.press(screen.getByText('Hard'));
 
+    // Question type is a dropdown checklist (issue #95, multi-select) —
+    // deselect the default "Multiple Choice" and pick "Match the Following"
+    // instead.
     await fireEvent.press(screen.getByLabelText('Question type'));
-    await fireEvent.press(screen.getByText('Match the Following'));
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'Multiple Choice' }));
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'Match the Following' }));
+    await fireEvent.press(screen.getByText('Done'));
 
     await fireEvent.press(screen.getByLabelText('Language'));
     await fireEvent.press(screen.getByText('हिंदी'));
@@ -171,6 +176,72 @@ describe('GeneratorFormScreen', () => {
 
     await waitFor(() => expect(screen.getByText('Could not generate. Please try again.')).toBeTruthy());
     expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  // Issue #95: a teacher can tick more than one specific question type
+  // instead of only ever picking one or "Mixed".
+  describe('question type multi-select', () => {
+    it('the closed dropdown field shows the default selection', async () => {
+      await renderScreen();
+      expect(screen.getByLabelText('Question type')).toHaveTextContent('Multiple Choice');
+    });
+
+    it('ticking a second type sends both as an array, and the closed field summarizes both', async () => {
+      generateAssessment.mockResolvedValueOnce({ content: 'c', structured: undefined, requestId: 'r1' });
+      await renderScreen();
+
+      await fireEvent.changeText(screen.getByLabelText('Topic *'), 'Fractions');
+      await fireEvent.press(screen.getByLabelText('Question type'));
+      await fireEvent.press(screen.getByRole('checkbox', { name: 'True / False' }));
+      await fireEvent.press(screen.getByText('Done'));
+      expect(screen.getByLabelText('Question type')).toHaveTextContent('Multiple Choice, True / False');
+
+      await fireEvent.press(screen.getByText('Generate'));
+      await waitFor(() => expect(generateAssessment).toHaveBeenCalledWith(expect.objectContaining({
+        questionType: ['mcq', 'true_false'],
+      })));
+    });
+
+    it('ticking "Mixed" disables every other row in the checklist', async () => {
+      await renderScreen();
+      await fireEvent.press(screen.getByLabelText('Question type'));
+      await fireEvent.press(screen.getByRole('checkbox', { name: 'Mixed' }));
+
+      expect(screen.getByRole('checkbox', { name: 'Multiple Choice' }).props.accessibilityState?.disabled).toBe(true);
+      expect(screen.getByRole('checkbox', { name: 'True / False' }).props.accessibilityState?.disabled).toBe(true);
+      expect(screen.getByRole('checkbox', { name: 'Mixed' }).props.accessibilityState?.disabled).toBeFalsy();
+    });
+
+    it('a disabled row cannot be ticked while "Mixed" is active', async () => {
+      await renderScreen();
+      await fireEvent.press(screen.getByLabelText('Question type'));
+      await fireEvent.press(screen.getByRole('checkbox', { name: 'Mixed' }));
+      await fireEvent.press(screen.getByRole('checkbox', { name: 'Short Answer (SAQ)' })); // disabled — no-op
+
+      expect(screen.getByRole('checkbox', { name: 'Mixed' }).props.accessibilityState?.checked).toBe(true);
+      expect(screen.getByRole('checkbox', { name: 'Short Answer (SAQ)' }).props.accessibilityState?.checked).toBe(false);
+    });
+
+    it('deselecting the only selected type disables Generate until one is picked again', async () => {
+      await renderScreen();
+      await fireEvent.changeText(screen.getByLabelText('Topic *'), 'Fractions');
+      await fireEvent.press(screen.getByLabelText('Question type'));
+
+      // "Multiple Choice" is the default single selection — untick it.
+      await fireEvent.press(screen.getByRole('checkbox', { name: 'Multiple Choice' }));
+      await fireEvent.press(screen.getByText('Done'));
+      await fireEvent.press(screen.getByText('Generate'));
+      await waitFor(() => expect(generateAssessment).not.toHaveBeenCalled());
+
+      await fireEvent.press(screen.getByLabelText('Question type'));
+      await fireEvent.press(screen.getByRole('checkbox', { name: 'True / False' }));
+      await fireEvent.press(screen.getByText('Done'));
+      generateAssessment.mockResolvedValueOnce({ content: 'c', structured: undefined, requestId: 'r1' });
+      await fireEvent.press(screen.getByText('Generate'));
+      await waitFor(() => expect(generateAssessment).toHaveBeenCalledWith(expect.objectContaining({
+        questionType: 'true_false',
+      })));
+    });
   });
 
   it('shows a loading state while generating (Button swaps its label for a spinner)', async () => {

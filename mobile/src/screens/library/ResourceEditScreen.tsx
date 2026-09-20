@@ -20,7 +20,7 @@ import { spacing, radius, paper } from '../../theme/tokens';
 import { useAuth } from '../../auth/AuthContext';
 import {
   getResource, updateResource, runAiAction, type AiActionId,
-  type AssessmentFormat, type Difficulty, type Question, type QuestionType,
+  type AssessmentFormat, type Difficulty, type Question, type QuestionTypeSelection,
 } from '../../api/resources';
 import { ApiError } from '../../api/client';
 import { RESOURCE_TYPES, RESOURCE_TYPE_META, GRADES, SUBJECTS, LANGUAGES } from '../../config';
@@ -89,7 +89,7 @@ export function ResourceEditScreen({ route, navigation }: Props) {
   const [docInstructionsBaseline, setDocInstructionsBaseline] = useState('');
   const [structuredConfig, setStructuredConfig] = useState<{
     format?: AssessmentFormat; topic?: string; grade?: string; subject?: string; difficulty?: Difficulty;
-    questionType?: QuestionType; questionCount?: number;
+    questionType?: QuestionTypeSelection; questionCount?: number;
   }>({});
   const [questionErrors, setQuestionErrors] = useState<Record<string, string>>({});
 

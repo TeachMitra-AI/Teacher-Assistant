@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  FileQuestion, ClipboardList, Sparkles, Loader2, Pencil, Eye, Save, ArrowRight, Ticket, House,
+  FileQuestion, ClipboardList, Sparkles, Loader2, Pencil, Eye, Save, ArrowRight, Ticket, House, ChevronDown,
   type LucideIcon,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
@@ -13,6 +13,7 @@ import { useToast } from '../components/Toast';
 import { useAuth } from '../auth';
 import { usePreferences } from '../hooks/usePreferences';
 import { useOnboardingTip } from '../hooks/useOnboardingTip';
+import { useDismissable } from '../hooks/useDismissable';
 import { formatResponse } from '../lib/format';
 import { stripAssessmentPreamble } from '../lib/assessment';
 import { buildInitialExamMeta } from '../lib/examMeta';
@@ -38,7 +39,7 @@ import {
 import { ApiError } from '../api';
 import { useRetryCountdown } from '../hooks/useRetryCountdown';
 import { retryMessage } from '../lib/retryCountdown';
-import type { AssessmentFormat, Difficulty, Question, QuestionType } from '../lib/resources';
+import type { AssessmentFormat, Difficulty, Question, QuestionType, QuestionTypeSelection } from '../lib/resources';
 import type { ExamPaperMeta } from '../types';
 
 // Display label per format. A map rather than a ternary: with three formats a
@@ -74,6 +75,13 @@ function defaultTitle(format: AssessmentFormat, topic: string, grade: string): s
 function clampQuestionCount(n: number): number {
   if (Number.isNaN(n)) return QUESTION_COUNT_MIN;
   return Math.min(QUESTION_COUNT_MAX, Math.max(QUESTION_COUNT_MIN, n));
+}
+
+// Collapses the picker's array back to a bare value when only one type is
+// selected — the single-select request/prompt the server has always seen
+// (see buildGeneratorPrompt's own "types.length === 1" branch server-side).
+function questionTypePayload(types: QuestionType[]): QuestionTypeSelection {
+  return types.length === 1 ? types[0] : types;
 }
 
 // The form's own starting values, in one place because two things now need
@@ -130,7 +138,20 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
   const [subject, setSubject] = useState(FORM_DEFAULTS.subject);
   const [topic, setTopic] = useState(FORM_DEFAULTS.topic);
   const [difficulty, setDifficulty] = useState<Difficulty>(FORM_DEFAULTS.difficulty);
-  const [questionType, setQuestionType] = useState<QuestionType>(FORM_DEFAULTS.questionType);
+  // Issue #95: a teacher can tick more than one specific type via the
+  // dropdown below. The array can go empty (deselecting the last ticked
+  // type) — handleGenerate validates that the same way it validates a blank
+  // topic — and collapses back to a bare value on submit when only one is
+  // picked, so the request/prompt/validation the server sees for that
+  // overwhelmingly common case is byte-for-byte what it always was (see
+  // buildGeneratorPrompt's own "types.length === 1" branch).
+  const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([FORM_DEFAULTS.questionType]);
+  // Whether the question-type checklist popover is open — closed on an
+  // outside click or Escape, same shared behavior as every other popover in
+  // the app (ClassroomModeMenu, ProfileMenu).
+  const [questionTypeOpen, setQuestionTypeOpen] = useState(false);
+  const questionTypeRef = useRef<HTMLDivElement>(null);
+  useDismissable(questionTypeOpen, questionTypeRef, () => setQuestionTypeOpen(false));
   const [questionCount, setQuestionCount] = useState<number>(FORM_DEFAULTS.questionCount);
   // The number input's own displayed text, kept separate from `questionCount`
   // so a teacher can freely clear/retype it (e.g. clearing "10" to type "25")
@@ -243,7 +264,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
     if (values.subject !== undefined) setSubject(values.subject);
     if (values.topic !== undefined) setTopic(values.topic);
     if (values.difficulty !== undefined) setDifficulty(values.difficulty);
-    if (values.questionType !== undefined) setQuestionType(values.questionType);
+    if (values.questionType !== undefined) setQuestionTypes([values.questionType]);
     if (values.questionCount !== undefined) setQuestionCount(values.questionCount);
     if (values.language !== undefined) setLanguage(values.language);
 
@@ -300,6 +321,32 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
     setLowConfidence((prev) => prev.filter((f) => f !== field));
   }
 
+  // Toggles one question type on/off (issue #95) inside the checklist
+  // popover. "Mixed" is exclusive with every other type — ticking it clears/
+  // replaces the whole selection, and it's the only row left enabled while
+  // it's active (see the disabled prop in the popover below); ticking a
+  // specific type while "Mixed" is active starts a fresh, non-mixed
+  // selection instead of appending to it. The result can go empty
+  // (unticking the last one) — handleGenerate validates that the same way
+  // it already validates a blank topic, rather than the picker silently
+  // refusing to let the last one go.
+  function toggleQuestionType(value: QuestionType) {
+    setQuestionTypes((prev) => {
+      if (value === 'mixed') return prev.includes('mixed') ? [] : ['mixed'];
+      if (prev.includes(value)) return prev.filter((t) => t !== value);
+      if (prev.includes('mixed')) return [value];
+      return [...prev, value];
+    });
+    noteEdit('questionType');
+  }
+
+  // What the closed dropdown button shows — the selected labels joined, or a
+  // placeholder once every type has been unticked (handleGenerate is what
+  // actually blocks submitting that state, same as a blank topic).
+  const questionTypeSummary = questionTypes.length === 0
+    ? 'Select question types'
+    : questionTypes.map((t) => QUESTION_TYPES.find((q) => q.value === t)?.label ?? t).join(', ');
+
   // "Clear AI fields".
   function handleClearAiFields() {
     const toReset = Object.entries(provenance)
@@ -312,7 +359,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
       if (field === 'subject') setSubject(FORM_DEFAULTS.subject);
       if (field === 'topic') setTopic(FORM_DEFAULTS.topic);
       if (field === 'difficulty') setDifficulty(FORM_DEFAULTS.difficulty);
-      if (field === 'questionType') setQuestionType(FORM_DEFAULTS.questionType);
+      if (field === 'questionType') setQuestionTypes([FORM_DEFAULTS.questionType]);
       if (field === 'questionCount') setQuestionCount(FORM_DEFAULTS.questionCount);
       if (field === 'language') setLanguage(FORM_DEFAULTS.language);
     }
@@ -342,6 +389,10 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
       show('Please enter a topic', 'error');
       return;
     }
+    if (questionTypes.length === 0) {
+      show('Please select at least one question type', 'error');
+      return;
+    }
     if (content !== null && (contentDirty || structuredDirty)) {
       const ok = window.confirm('Regenerating will replace your edited preview. Continue?');
       if (!ok) return;
@@ -367,7 +418,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
       subject: subject.trim() || undefined,
       topic: topic.trim(),
       difficulty,
-      questionType,
+      questionType: questionTypePayload(questionTypes),
       questionCount: count,
       language,
       instructions: instructions.trim() || undefined,
@@ -429,6 +480,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
 
     setSaving(true);
     try {
+      const questionType = questionTypePayload(questionTypes);
       const structuredPayload = structuredQuestions !== null
         ? buildStructuredPayload({
             instructions: docInstructions,
@@ -579,9 +631,51 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
                 Question type
                 <FieldNote source={provenance.questionType} uncertain={lowConfidence.includes('questionType')} />
               </span>
-              <select value={questionType} onChange={(e) => { setQuestionType(e.target.value as QuestionType); noteEdit('questionType'); }}>
-                {QUESTION_TYPES.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}
-              </select>
+              <div className="generator-type-select" ref={questionTypeRef}>
+                <button
+                  type="button"
+                  className="generator-type-select-btn"
+                  aria-haspopup="listbox"
+                  aria-expanded={questionTypeOpen}
+                  aria-label="Question type"
+                  onClick={() => setQuestionTypeOpen((o) => !o)}
+                >
+                  <span className="generator-type-select-value">{questionTypeSummary}</span>
+                  <ChevronDown size={14} aria-hidden="true" className="generator-type-select-caret" />
+                </button>
+                {questionTypeOpen && (
+                  <div className="generator-type-popover" role="listbox" aria-label="Question type" aria-multiselectable="true">
+                    {QUESTION_TYPES.filter((q) => q.value !== 'mixed').map((q) => {
+                      const active = questionTypes.includes(q.value);
+                      // "Mixed" is exclusive — while it's ticked, every other
+                      // row is disabled rather than hidden, so a teacher can
+                      // still see what they'd be picking from without it
+                      // doing anything until they untick Mixed.
+                      const disabled = questionTypes.includes('mixed');
+                      return (
+                        <label key={q.value} className={`generator-type-option${disabled ? ' disabled' : ''}`}>
+                          <input
+                            type="checkbox"
+                            checked={active}
+                            disabled={disabled}
+                            onChange={() => toggleQuestionType(q.value)}
+                          />
+                          {q.label}
+                        </label>
+                      );
+                    })}
+                    <div className="generator-type-divider" />
+                    <label className="generator-type-option">
+                      <input
+                        type="checkbox"
+                        checked={questionTypes.includes('mixed')}
+                        onChange={() => toggleQuestionType('mixed')}
+                      />
+                      Mixed
+                    </label>
+                  </div>
+                )}
+              </div>
             </label>
             <label className="ws-field">
               <span className="ws-label">
@@ -634,7 +728,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
             <button
               type="submit"
               className="btn-primary generator-generate"
-              disabled={generating || !topic.trim() || (retryAt != null && !retryReady)}
+              disabled={generating || !topic.trim() || questionTypes.length === 0 || (retryAt != null && !retryReady)}
             >
               {generating ? <Loader2 size={16} aria-hidden="true" className="spin" /> : <Sparkles size={16} aria-hidden="true" />}
               {generating ? 'Generating…' : content !== null ? 'Regenerate' : 'Generate'}

@@ -119,13 +119,20 @@ export type Difficulty = 'easy' | 'medium' | 'hard';
 export type QuestionType =
   | 'mcq' | 'true_false' | 'short_answer' | 'descriptive' | 'fill_blank' | 'match' | 'mixed';
 
+// A teacher can tick more than one specific type (issue #95) — the server's
+// generateAssessmentSchema accepts a bare QuestionType (the pre-#95 shape,
+// still what a single selection sends) OR a non-empty array of them. 'mixed'
+// can never appear alongside another type — see the server schema's refine.
+// Mirrors client/src/lib/resources.ts's QuestionTypeSelection exactly.
+export type QuestionTypeSelection = QuestionType | QuestionType[];
+
 export interface GenerateAssessmentInput {
   format: AssessmentFormat;
   grade?: string;
   subject?: string;
   topic: string;
   difficulty: Difficulty;
-  questionType: QuestionType;
+  questionType: QuestionTypeSelection;
   questionCount: number;
   language?: string;
   instructions?: string;
@@ -209,7 +216,7 @@ export interface StructuredAssessmentDocument {
   grade?: string;
   subject?: string;
   difficulty?: Difficulty;
-  questionType?: QuestionType;
+  questionType?: QuestionTypeSelection;
   questionCount?: number;
   // Opaque here — screens own the real ExamPaperMeta type and merge it back
   // in; this module only needs to round-trip it.

@@ -158,6 +158,18 @@ describe('checkAgainstRequest', () => {
     const mixedDoc = { instructions: 'Go.', questions: [validMcq(), validTrueFalse(), validShortAnswer()] };
     expect(checkAgainstRequest(mixedDoc, { questionCount: 3, questionType: 'mixed' })).toBeNull();
   });
+
+  // Issue #95 — questionType may now be an array of specific types.
+  test('returns null when every question is one of a selected array of types', () => {
+    const mixedDoc = { instructions: 'Go.', questions: [validMcq(), validTrueFalse(), validMcq()] };
+    expect(checkAgainstRequest(mixedDoc, { questionCount: 3, questionType: ['mcq', 'true_false'] })).toBeNull();
+  });
+
+  test('flags a question outside a selected array of types', () => {
+    const mixedDoc = { instructions: 'Go.', questions: [validMcq(), validShortAnswer(), validMcq()] };
+    const err = checkAgainstRequest(mixedDoc, { questionCount: 3, questionType: ['mcq', 'true_false'] });
+    expect(err).toMatch(/Expected every question to be one of "mcq, true_false", got "short_answer"/);
+  });
 });
 
 // The mangled inputs below are written with real JS escapes so they contain the

@@ -42,6 +42,7 @@ const { MAX_META, MAX_LANGUAGE } = require('../lib/resourceFields');
 // enforces the same ceiling the original generation request was held to.
 const {
   generateAssessmentSchema, QUESTION_TYPES: REQUEST_QUESTION_TYPES, NEW_QUESTION_TYPES, MAX_QUESTIONS,
+  normalizeQuestionTypes,
 } = require('../actions/schemas/generateAssessment');
 const { generateAssessmentSetSchema } = require('../actions/schemas/generateAssessmentSet');
 // Structured Question Model (Generator v2) — see docs/generator-v2-plan.md.
@@ -238,6 +239,25 @@ const QUESTION_TYPE_CONTENT_RULES = {
   mixed: 'Use a sensible mix of question types (multiple-choice, true/false, short-answer, descriptive, fill-in-the-blank, and matching) appropriate to the topic.',
 };
 
+// Short human-readable name per type, used only to describe a MULTI-select
+// request (a teacher who ticked more than one specific type) — a single
+// selection keeps using QUESTION_TYPE_CONTENT_RULES's full sentence above,
+// unchanged. 'mixed' is absent: the schema's refine forbids combining it with
+// any other type, so it never appears in a multi-type list.
+const QUESTION_TYPE_LABELS = {
+  mcq: 'multiple-choice',
+  true_false: 'true/false',
+  short_answer: 'short-answer',
+  descriptive: 'descriptive',
+  fill_blank: 'fill-in-the-blank',
+  match: 'match-the-following',
+};
+
+// The 6 real per-question types a document can contain — 'mixed' is a
+// REQUEST-only modifier (see QUESTION_TYPES's own comment in the schema
+// module), never a value Gemini can put in a question's own "type" field.
+const CONCRETE_QUESTION_TYPES = ['mcq', 'true_false', 'short_answer', 'descriptive', 'fill_blank', 'match'];
+
 // Boot-time assertion, same discipline as lib/assessmentFormats.js's own
 // FORMAT_META check: a question type with no content rule would silently
 // fall through to `undefined` in the prompt rather than failing loudly.
@@ -288,7 +308,7 @@ const ASSESSMENT_RESPONSE_SCHEMA = {
       items: {
         type: 'OBJECT',
         properties: {
-          type: { type: 'STRING', enum: ['mcq', 'true_false', 'short_answer', 'descriptive', 'fill_blank', 'match'] },
+          type: { type: 'STRING', enum: CONCRETE_QUESTION_TYPES },
           text: { type: 'STRING' },
           options: { type: 'ARRAY', items: { type: 'STRING' } },
           correctOptionIndex: { type: 'INTEGER' },
@@ -312,6 +332,46 @@ const ASSESSMENT_RESPONSE_SCHEMA = {
   required: ['instructions', 'questions'],
 };
 
+// Narrows ASSESSMENT_RESPONSE_SCHEMA's per-question `type` enum to exactly
+// `typeEnum` — used ONLY by the single-generate endpoint (issue #95), whose
+// request can restrict which types Gemini may use. Every other caller of
+// ASSESSMENT_RESPONSE_SCHEMA (the batched set, the 4 AI-assist actions)
+// keeps the base object, unnarrowed, unaffected by this.
+//
+// WHY THIS MATTERS: before this, the schema handed to Gemini always allowed
+// all 6 concrete types regardless of the request — the "use only these
+// types" instruction lived purely in the prompt's natural-language text
+// (QUESTION_TYPE_CONTENT_RULES for a single type, or the multi-select
+// sentence in buildGeneratorPrompt below). A single-type request is one
+// simple instruction the model follows reliably in practice; the newer
+// multi-select instruction ("use only these N types, distributed across the
+// questions") is a harder one, and the model would sometimes emit a type
+// outside the requested set — which checkAgainstRequest (lib/
+// assessmentSchema.js) then correctly rejected as a contract violation,
+// surfacing to the teacher as "The generated content did not match your
+// request" on a multi-select generation that a single-select one would not
+// have hit. Restricting the schema's enum turns "please use only these
+// types" into a constraint Gemini's structured output cannot violate,
+// instead of one it can merely fail to follow.
+function buildAssessmentResponseSchema(typeEnum) {
+  return {
+    ...ASSESSMENT_RESPONSE_SCHEMA,
+    properties: {
+      ...ASSESSMENT_RESPONSE_SCHEMA.properties,
+      questions: {
+        ...ASSESSMENT_RESPONSE_SCHEMA.properties.questions,
+        items: {
+          ...ASSESSMENT_RESPONSE_SCHEMA.properties.questions.items,
+          properties: {
+            ...ASSESSMENT_RESPONSE_SCHEMA.properties.questions.items.properties,
+            type: { type: 'STRING', enum: typeEnum },
+          },
+        },
+      },
+    },
+  };
+}
+
 function buildGeneratorPrompt(config) {
   const {
     format, grade, subject, topic, difficulty, questionType, questionCount, language, instructions,
@@ -320,6 +380,19 @@ function buildGeneratorPrompt(config) {
   // Structured variant — this prompt returns JSON against ASSESSMENT_RESPONSE_SCHEMA.
   const languageLine = `- ${languageDirective(lang, { structured: true })}\n`;
   const meta = formatMeta(format);
+
+  // A teacher who ticked exactly one type (the overwhelmingly common case,
+  // and everything every caller before issue #95 ever sent) gets the exact
+  // same two lines as before — byte-for-byte — so this change cannot alter
+  // behavior it wasn't asked to touch. Only a genuine multi-select produces
+  // the "use only these types" phrasing.
+  const types = normalizeQuestionTypes(questionType);
+  const questionTypeLine = types.length === 1
+    ? types[0]
+    : `a mix of ${types.map((t) => QUESTION_TYPE_LABELS[t]).join(', ')} (distribute these across the ${questionCount} questions at your discretion)`;
+  const questionTypeContentRule = types.length === 1
+    ? QUESTION_TYPE_CONTENT_RULES[types[0]]
+    : `Use ONLY these question types, mixing them across the ${questionCount} questions at your discretion: ${types.map((t) => QUESTION_TYPE_LABELS[t]).join(', ')}. Every question must be one of these selected types — follow the field-filling rules below for whichever type you use for each question.`;
 
   const systemInstruction = `You are an expert Indian government school teacher writing exactly ${questionCount} ${meta.noun} questions.
 
@@ -330,12 +403,12 @@ SPECIFICATION (follow exactly):
 - Grade: ${grade || 'Not specified'}
 - Subject: ${subject || 'Not specified'}
 - Difficulty: ${difficulty}
-- Question type: ${questionType}
+- Question type: ${questionTypeLine}
 - Number of questions: exactly ${questionCount}
 
 Return ONLY the question content as structured data. Do NOT return a title, a document, Markdown, headings, or any page layout — the application builds the printed page itself from your structured answer, so your only job is the question content.
 
-- ${QUESTION_TYPE_CONTENT_RULES[questionType]}
+- ${questionTypeContentRule}
 - "text" is the question text only — never include a question number or option letters inside it.
 ${QUESTION_TYPE_FIELD_RULES}
 - Do NOT let any question's "text" or "options" reveal or hint at its own answer.
@@ -350,7 +423,12 @@ The topic and any extra instructions are provided next as delimited user content
     + (instructions ? `\nAdditional instructions: ${instructions}` : '')
     + '\n```';
 
-  return { systemInstruction, userText, responseSchema: ASSESSMENT_RESPONSE_SCHEMA };
+  // 'mixed' still leaves Gemini free to choose among all 6 concrete types;
+  // one or more specific types narrows the schema to exactly those (see
+  // buildAssessmentResponseSchema's own comment for why this needs to be a
+  // hard schema constraint and not just the prompt text above).
+  const responseTypeEnum = types.includes('mixed') ? CONCRETE_QUESTION_TYPES : types;
+  return { systemInstruction, userText, responseSchema: buildAssessmentResponseSchema(responseTypeEnum) };
 }
 
 /**
@@ -1265,7 +1343,8 @@ router.post('/resources/generate', authRequired, asyncHandler(async (req, res) =
   // types are gated independently of the existing 4 — an old/cached client
   // requesting one while the flag is off gets a clear 503, never a silent
   // accept. mcq/true_false/short_answer/mixed work unconditionally.
-  if (NEW_QUESTION_TYPES.includes(config.questionType) && !readStructuredQuestionsFlags(process.env).enabled) {
+  if (normalizeQuestionTypes(config.questionType).some((t) => NEW_QUESTION_TYPES.includes(t))
+    && !readStructuredQuestionsFlags(process.env).enabled) {
     return res.status(503).json({
       error: 'This question type is not available yet.',
       code: 'STRUCTURED_QUESTIONS_DISABLED',
