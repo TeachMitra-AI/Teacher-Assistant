@@ -91,6 +91,17 @@ export function buildHomeGraph(args: {
   };
 }
 
+function faqPageNode(faqs: ContentPageData['faqs']) {
+  return {
+    '@type': 'FAQPage',
+    mainEntity: faqs.map((faq) => ({
+      '@type': 'Question',
+      name: faq.question,
+      acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+    })),
+  };
+}
+
 function breadcrumbNode(page: ContentPageData) {
   // Mirrors the visible breadcrumb in ContentPage. There is no /guides index
   // page, so guides sit directly under Home rather than under a made-up parent.
@@ -135,6 +146,7 @@ export function buildContentPageGraph(page: ContentPageData) {
           mainEntity: { '@id': ORGANIZATION_ID },
         },
         organizationNode,
+        faqPageNode(page.faqs),
         breadcrumbNode(page),
       ],
     };
