@@ -121,7 +121,7 @@ describe('content page structured data', () => {
     const homeOrg = nodes(home).find((n) => n['@type'] === 'Organization')!;
 
     const graph = buildContentPageGraph(ABOUT_PAGE);
-    expect(nodes(graph).map((n) => n['@type'])).toEqual(['AboutPage', 'Organization', 'BreadcrumbList']);
+    expect(nodes(graph).map((n) => n['@type'])).toEqual(['AboutPage', 'Organization', 'FAQPage', 'BreadcrumbList']);
 
     const org = nodes(graph).find((n) => n['@type'] === 'Organization')!;
     expect(org).toEqual(homeOrg); // identical node: same @id, name, alternateName, sameAs
@@ -132,6 +132,15 @@ describe('content page structured data', () => {
     expect(about.url).toBe(`${SITE_ORIGIN}/about`);
     expect(about.about).toEqual({ '@id': org['@id'] });
     expect(about.mainEntity).toEqual({ '@id': org['@id'] });
+  });
+
+  test('the About page FAQPage mirrors its own visible FAQ content exactly', () => {
+    const graph = buildContentPageGraph(ABOUT_PAGE);
+    const faq = nodes(graph).find((n) => n['@type'] === 'FAQPage')! as unknown as {
+      mainEntity: { name: string; acceptedAnswer: { text: string } }[];
+    };
+    expect(faq.mainEntity.map((q) => q.name)).toEqual(ABOUT_PAGE.faqs.map((f) => f.question));
+    expect(faq.mainEntity.map((q) => q.acceptedAnswer.text)).toEqual(ABOUT_PAGE.faqs.map((f) => f.answer));
   });
 
   test('every @id reference in the About graph resolves inside the graph', () => {
