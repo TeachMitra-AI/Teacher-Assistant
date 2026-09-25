@@ -2,8 +2,9 @@ import type { ReactNode } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { SITE_NAME, SOCIAL_PROFILES } from '../seo/site';
 
-// "Follow SarasTech" — the compact social section between the home page's final
-// CTA and the footer. The profiles come from SOCIAL_PROFILES (seo/site.ts), the
+// "Follow SarasTech" — the compact row of social icon links in the home page
+// footer's brand column (it used to be its own section between the final CTA and
+// the footer). The profiles come from SOCIAL_PROFILES (seo/site.ts), the
 // same list that feeds Organization `sameAs`, so adding a platform is a data
 // change there plus, optionally, an icon here. lucide-react ships no brand
 // icons, hence the small inline SVGs (24x24 stroke, matching lucide's style).
@@ -77,7 +78,6 @@ export function SocialLinks() {
     <section className="home-social" id="follow" aria-labelledby="home-social-heading">
       <div className="home-social-inner">
         <h2 id="home-social-heading">Follow {SITE_NAME}</h2>
-        <p>Stay connected for teaching tips, AI tools, and classroom ideas.</p>
         <ul className="home-social-list">
           {SOCIAL_PROFILES.map((profile) => (
             <li key={profile.id}>
@@ -87,6 +87,7 @@ export function SocialLinks() {
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label={`${SITE_NAME} on ${profile.name}`}
+                title={profile.name}
               >
                 {ICONS[profile.id] ?? <ExternalLink size={18} aria-hidden="true" />}
                 <span>{profile.name}</span>

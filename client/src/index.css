@@ -5,6 +5,14 @@
   --orange-dark: #e85a26;
   --orange-soft: rgba(255, 107, 53, 0.1);
   --amber: #f7931e;
+  /* Text-safe orange for small type on light surfaces (eyebrows, links): the
+     brand --orange-dark measures only ~3.5:1 there; this measures 4.8-5.2:1. */
+  --accent-text: #c2410c;
+  /* One deep brand pair for surfaces that carry white text (closing CTA band,
+     announcement bar) - the same orange/amber hues as the brand, dark enough
+     for 5:1 with white, instead of one-off desaturated browns. */
+  --brand-deep-a: #c2410c;
+  --brand-deep-b: #b45309;
 
   --bg: #f5f6f8;
   --surface: #ffffff;
@@ -66,6 +74,7 @@
   --border: #2c313d;
   --text: #e8eaef;
   --text-muted: #a1a8b6;
+  --accent-text: var(--amber);
   --orange-soft: rgba(255, 107, 53, 0.16);
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 8px 22px rgba(0, 0, 0, 0.35);
   --sk-base: #232833;
@@ -6190,6 +6199,8 @@ th.attendance-reports-num-col .attendance-reports-sort-btn { flex-direction: row
    (so it scrolled away with the page). `clip` hides the same overflow without
    creating a scroll container. `hidden` stays as the fallback for browsers
    that predate `clip`. */
+.home-page h1, .home-page h2, .home-page h3 { text-wrap: balance; }
+.home-page p { text-wrap: pretty; }
 .home-page { min-height: 100vh; background: var(--bg); color: var(--text); overflow-x: hidden; overflow-x: clip; }
 /* Smooth in-page anchor scrolling (navbar → #features etc.), scoped to only
    take effect while the home page is mounted — :has() on the root html
@@ -6312,7 +6323,7 @@ html:has(.home-page) { scroll-behavior: smooth; }
    currently needs it, and clipping the section would cut off anything that
    ever overlaps its bottom edge again. The glow/dot decoration gets its own
    backdrop layer with its own clip instead. */
-.home-hero { position: relative; padding: 5rem 1.5rem 0; text-align: center; }
+.home-hero { position: relative; padding: 3.5rem 1.5rem 0; text-align: center; }
 /* The backdrop's own transform is set inline by HomePage.tsx's mousemove
    handler (a subtle cursor-reactive parallax on the glow layer) — the
    transition here is what makes that motion glide instead of snap, and
@@ -6353,7 +6364,7 @@ html:has(.home-page) { scroll-behavior: smooth; }
 .home-kicker {
   display: inline-flex; align-items: center; gap: 0.4rem;
   background: var(--orange-soft);
-  color: var(--orange-dark);
+  color: var(--accent-text);
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -6368,43 +6379,18 @@ html:has(.home-page) { scroll-behavior: smooth; }
   line-height: 1.08;
   letter-spacing: -0.03em;
   margin: 0 0 1.3rem;
-  /* A soft highlight band sweeps across the heading on a loop (background-size
-     wider than the box + animated background-position) — the shimmer is what
-     makes this the first thing a visitor's eye is drawn to, not just a
-     static gradient. */
-  background: linear-gradient(100deg, var(--text) 38%, var(--orange-dark) 50%, var(--text) 62%);
-  background-size: 250% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: home-fade-up 0.7s ease-out 0.1s both, home-h1-shimmer 5s ease-in-out infinite;
-}
-[data-theme='dark'] .home-hero-inner h1 { background: linear-gradient(100deg, var(--text) 38%, var(--amber) 50%, var(--text) 62%); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; }
-@keyframes home-h1-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -100% 0; } }
-@media (prefers-reduced-motion: reduce) {
-  .home-hero-inner h1 { animation: home-fade-up 0.7s ease-out 0.1s both; background-position: 50% 0; }
+  color: var(--text);
+  animation: home-fade-up 0.7s ease-out 0.1s both;
 }
 .home-hero-subtitle {
   font-size: 1.15rem; line-height: 1.6; color: var(--text-muted); max-width: 46ch; margin: 0 auto 2rem;
   animation: home-fade-up 0.7s ease-out 0.2s both;
 }
-.home-hero-cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.8rem; margin-bottom: 3rem; animation: home-fade-up 0.7s ease-out 0.3s both; }
+.home-hero-cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.8rem; margin-bottom: 2.25rem; animation: home-fade-up 0.7s ease-out 0.3s both; }
 /* Scoped to .home-cta-primary (a homepage-only class), never to the bare
    shared .btn-primary — that class is used app-wide (Login, Coach,
    Settings...) and must not pick up homepage-specific flourishes. */
-.home-cta-primary { display: inline-flex; align-items: center; gap: 0.5rem; position: relative; overflow: hidden; }
-.home-cta-primary::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -60%;
-  width: 40%;
-  background: linear-gradient(115deg, transparent, rgba(255, 255, 255, 0.45), transparent);
-  transform: skewX(-20deg);
-  transition: left 0.6s ease;
-}
-.home-cta-primary:hover::after { left: 130%; }
+.home-cta-primary { display: inline-flex; align-items: center; gap: 0.5rem; }
 @keyframes home-fade-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 
 .home-hero-points {
@@ -6413,7 +6399,7 @@ html:has(.home-page) { scroll-behavior: smooth; }
   flex-wrap: wrap;
   justify-content: center;
   gap: 0.6rem;
-  margin: 2.5rem 0 0;
+  margin: 1.5rem 0 0;
   padding: 0;
 }
 .home-hero-points li {
@@ -6429,7 +6415,7 @@ html:has(.home-page) { scroll-behavior: smooth; }
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  color: var(--orange-dark);
+  color: var(--accent-text);
   background: var(--orange-soft);
   border-color: var(--orange);
   font-weight: 700;
@@ -6437,7 +6423,7 @@ html:has(.home-page) { scroll-behavior: smooth; }
 [data-theme='dark'] .home-hero-points-primary { color: var(--amber); }
 
 /* ---- hero product-preview panel (real QUICK_ACTIONS + real greeting) ---- */
-.home-hero-visual-wrap { position: relative; z-index: 1; max-width: 1040px; margin: 0 auto; padding: 0 1.5rem; margin-bottom: 4.5rem; }
+.home-hero-visual-wrap { position: relative; z-index: 1; max-width: 1040px; margin: 0 auto; padding: 0 1.5rem; margin-bottom: 1.5rem; }
 .home-hero-visual {
   position: relative;
   text-align: left;
@@ -6591,7 +6577,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 .home-hero-visual-sidebar-item:hover { background: var(--surface-2); color: var(--text); }
 .home-hero-visual-sidebar-item[aria-current='true'] {
   background: var(--orange-soft);
-  color: var(--orange-dark);
+  color: var(--accent-text);
   font-weight: 600;
 }
 [data-theme='dark'] .home-hero-visual-sidebar-item[aria-current='true'] { color: var(--amber); }
@@ -6616,7 +6602,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   height: 22px;
   border-radius: 50%;
   background: var(--orange-soft);
-  color: var(--orange-dark);
+  color: var(--accent-text);
   font-size: 0.68rem;
   font-weight: 700;
 }
@@ -6698,8 +6684,8 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 }
 
 /* ================= SECTIONS ================= */
-.home-section { max-width: 1120px; margin: 0 auto; padding: 5.5rem 1.5rem; }
-.home-section > h2 { font-size: clamp(1.7rem, 3vw, 2.15rem); letter-spacing: -0.015em; text-align: center; margin: 0 0 2.25rem; }
+.home-section { max-width: 1120px; margin: 0 auto; padding: 4rem 1.5rem; }
+.home-section > h2 { font-size: clamp(1.7rem, 3vw, 2.15rem); letter-spacing: -0.015em; text-align: center; margin: 0 0 1.75rem; }
 .home-section--muted { background: var(--surface-2); border-radius: var(--radius); }
 
 .home-eyebrow {
@@ -6709,7 +6695,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--orange-dark);
+  color: var(--accent-text);
   margin-bottom: 0.6rem;
 }
 [data-theme='dark'] .home-eyebrow { color: var(--amber); }
@@ -6759,7 +6745,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   height: 46px;
   border-radius: 12px;
   background: var(--orange-soft);
-  color: var(--orange-dark);
+  color: var(--accent-text);
   margin-bottom: 1.1rem;
 }
 [data-theme='dark'] .home-why-icon { color: var(--amber); }
@@ -6782,23 +6768,41 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   box-shadow: 0 10px 24px rgba(20, 24, 33, 0.1);
 }
 [data-theme='dark'] .home-feature-card:hover { box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35); }
-.home-feature-card--featured { grid-column: 1 / -1; padding: 2.25rem; }
+.home-feature-card--featured {
+  grid-column: 1 / -1;
+  padding: 2.25rem;
+  background: linear-gradient(120deg, var(--surface) 45%, var(--orange-soft));
+}
+/* Same orange gradient tile as the primary "New chat" button, so the icons read
+   as brand marks instead of pale outlines. */
 .home-feature-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  background: var(--orange-soft);
-  color: var(--orange-dark);
-  margin-bottom: 1rem;
+  width: 48px;
+  height: 48px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, var(--orange), var(--orange-dark));
+  color: #fff;
+  box-shadow: 0 6px 14px rgba(232, 90, 38, 0.28);
+  margin-bottom: 1.1rem;
 }
-[data-theme='dark'] .home-feature-icon { color: var(--amber); }
-.home-feature-card--featured h3 { font-size: 1.3rem; }
-.home-feature-card h3 { font-size: 1.05rem; margin: 0 0 0.5rem; }
-.home-feature-card p { font-size: 0.92rem; line-height: 1.55; color: var(--text-muted); margin: 0; max-width: 60ch; }
-.home-feature-note { text-align: center; font-size: 0.88rem; color: var(--text-muted); margin: 2.25rem 0 0; }
+.home-feature-card--featured .home-feature-icon { width: 54px; height: 54px; border-radius: 15px; }
+.home-feature-card--featured h3 { font-size: 1.5rem; letter-spacing: -0.015em; }
+.home-feature-card h3 { font-size: 1.15rem; letter-spacing: -0.01em; margin: 0 0 0.5rem; }
+.home-feature-card p { font-size: 0.95rem; line-height: 1.6; color: var(--text-muted); margin: 0; max-width: 60ch; }
+/* Short chips under a card's copy, using the product's own labels. */
+.home-feature-chips { list-style: none; display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 1.1rem 0 0; padding: 0; }
+.home-feature-chips li {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+}
+.home-feature-note { text-align: center; font-size: 0.88rem; color: var(--text-muted); margin: 1.75rem 0 0; }
 
 /* ---- how it works (connected stepper) ---- */
 .home-steps {
@@ -6826,7 +6830,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   border-radius: 50%;
   background: var(--bg);
   border: 2px solid var(--orange);
-  color: var(--orange-dark);
+  color: var(--accent-text);
   font-weight: 800;
   font-size: 1.1rem;
   margin-bottom: 1.2rem;
@@ -6864,7 +6868,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   height: 26px;
   border-radius: 50%;
   background: var(--orange-soft);
-  color: var(--orange-dark);
+  color: var(--accent-text);
   margin-top: 0.1rem;
 }
 [data-theme='dark'] .home-audience-check { color: var(--amber); }
@@ -6895,7 +6899,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   height: 64px;
   border-radius: 50%;
   background: var(--orange-soft);
-  color: var(--orange-dark);
+  color: var(--accent-text);
   animation: home-faq-icon-flip 4s ease-in-out infinite;
 }
 [data-theme='dark'] .home-faq-icon { color: var(--amber); }
@@ -6934,7 +6938,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   list-style: none;
   transition: color 0.15s ease;
 }
-.home-faq-question:hover { color: var(--orange-dark); }
+.home-faq-question:hover { color: var(--accent-text); }
 [data-theme='dark'] .home-faq-question:hover { color: var(--amber); }
 .home-faq-question::-webkit-details-marker { display: none; }
 .home-faq-chevron { flex-shrink: 0; color: var(--text-muted); transition: transform 0.15s ease; }
@@ -6945,14 +6949,12 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 .home-cta-band {
   position: relative;
   overflow: hidden;
-  padding: 4rem 1.5rem;
+  padding: 3.25rem 1.5rem;
   text-align: center;
   color: #fff;
-  /* Deliberately darker than --orange/--amber (literal colors, not the
-     shared tokens — this must not affect anything else on the site): the
-     bright brand orange/amber measures ~2.3–2.8:1 for white text, below
-     WCAG AA even for large bold text. These two stops measure 5.0–6.0:1. */
-  background: linear-gradient(135deg, #a64622, #a16014);
+  /* The bright brand orange/amber measures ~2.3-2.8:1 for white text, below
+     WCAG AA even for large bold text; the deep pair measures ~5:1. */
+  background: linear-gradient(135deg, var(--brand-deep-a), var(--brand-deep-b));
 }
 .home-cta-band::before {
   content: '';
@@ -6971,72 +6973,60 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 .home-cta-band h2 { font-size: clamp(1.6rem, 3vw, 2rem); margin: 0 0 0.7rem; }
 .home-cta-band p { margin: 0 0 1.75rem; color: rgba(255, 255, 255, 0.96); }
 .home-cta-band .home-hero-cta { justify-content: center; margin-bottom: 0; }
-/* #c54c20, not --orange-dark (#e85a26) — the shared token only measures
-   3.55:1 on a white button background, below the 4.5:1 this text size needs. */
-.home-cta-band .btn-primary { background: #fff; color: #c54c20; }
+/* --accent-text, not --orange-dark: the latter only measures 3.55:1 on a white
+   button background, below the 4.5:1 this text size needs. */
+.home-cta-band .btn-primary { background: #fff; color: var(--accent-text); }
 .home-cta-outline-inverse { border-color: rgba(255, 255, 255, 0.6); color: #fff; }
 .home-cta-outline-inverse:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); border-color: #fff; }
 
-/* ---- "Follow SarasTech" social strip (components/SocialLinks.tsx) ----
-   Deliberately smaller than the CTA band above it: one short heading, one
-   line of copy, a row of pill links (six at ~720px natural width, so the inner
-   cap is 800px to keep them on one line on desktop; they still wrap on narrow
-   screens). Link text stays --text (not the orange) —
-   --orange-dark only measures 3.55:1 on white; orange is reserved for the icon,
-   border and focus ring, which need 3:1. */
-.home-social { padding: 2.75rem 1.5rem; text-align: center; }
-.home-social-inner { max-width: 800px; margin: 0 auto; }
-.home-social h2 { font-size: 1.15rem; letter-spacing: -0.01em; margin: 0 0 0.4rem; }
-.home-social p { margin: 0 0 1.25rem; font-size: 0.92rem; color: var(--text-muted); }
-.home-social-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; }
+/* ---- "Follow SarasTech" links (components/SocialLinks.tsx) ----
+   Lives in the footer's brand column now, as a row of round icon buttons. The
+   platform name stays in the DOM - visually hidden rather than display:none -
+   and every link keeps its aria-label ("SarasTech on LinkedIn"), so screen
+   readers and crawlers still get it. The heading reuses the footer column-title
+   look. Six 36px targets + 8px gaps = 256px (40px = 280px on tablet/mobile, which still fits a 320px screen). Icon
+   colour is --accent-text; orange is otherwise only used for the border and
+   focus ring, which need 3:1. */
+.home-social { margin-top: 1.5rem; }
+.home-social h2 { font-size: 0.76rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin: 0 0 0.75rem; }
+.home-social-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+/* .home-footer-col ul (a vertical link list) would otherwise win on specificity. */
+.home-footer-col .home-social-list { flex-direction: row; gap: 0.5rem; }
 .home-social-link {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  min-height: 44px;
-  padding: 0 1.1rem;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 50%;
   background: var(--surface);
   color: var(--text);
-  font-size: 0.9rem;
-  font-weight: 600;
   text-decoration: none;
   transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
-.home-social-link svg { color: var(--orange-dark); flex-shrink: 0; }
+.home-social-link > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.home-social-link svg { color: var(--accent-text); flex-shrink: 0; }
 [data-theme='dark'] .home-social-link svg { color: var(--amber); }
 .home-social-link:hover { border-color: var(--orange); background: var(--orange-soft); transform: translateY(-1px); }
 .home-social-link:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+@media (max-width: 900px) { .home-social-link { width: 40px; height: 40px; } }
+@media (max-width: 359px) { .home-social-link { width: 36px; height: 36px; } }
 @media (prefers-reduced-motion: reduce) {
   .home-social-link { transition: none; }
   .home-social-link:hover { transform: none; }
-}
-
-/* Mobile: icon-only round buttons in one centered row. The platform name stays in
-   the DOM — visually hidden rather than display:none — and every link keeps its
-   aria-label ("SarasTech on LinkedIn"), so screen readers and crawlers still get
-   it. Six 44px targets + 8px gaps = 304px, which fits a 360px screen (320px of
-   content width); the 359px rule shrinks them so six still fit a 320px screen. */
-@media (max-width: 640px) {
-  .home-social-list { gap: 0.5rem; }
-  .home-social-link { position: relative; width: 44px; padding: 0; justify-content: center; }
-  .home-social-link > span {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    padding: 0;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    clip-path: inset(50%);
-    white-space: nowrap;
-    border: 0;
-  }
-}
-@media (max-width: 359px) {
-  .home-social-list { gap: 0.4rem; }
-  .home-social-link { width: 40px; min-height: 40px; }
 }
 
 /* ---- footer (real 3-column layout — was one thin centered row) ---- */
@@ -7046,7 +7036,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   margin: 0 auto;
   padding: 3.5rem 1.5rem 2rem;
   display: grid;
-  grid-template-columns: 1.4fr repeat(4, 1fr);
+  grid-template-columns: 1.6fr repeat(4, 1fr);
   gap: 2.5rem;
 }
 .home-footer-brand-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.85rem; }
@@ -7056,7 +7046,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 .home-footer-col h4 { font-size: 0.76rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin: 0 0 1rem; }
 .home-footer-col ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.7rem; }
 .home-footer-col ul a { color: var(--text); font-size: 0.9rem; text-decoration: none; }
-.home-footer-col ul a:hover { color: var(--orange-dark); }
+.home-footer-col ul a:hover { color: var(--accent-text); }
 [data-theme='dark'] .home-footer-col ul a:hover { color: var(--amber); }
 /* Sign In opens the auth modal rather than navigating, so it's a <button>
    among Terms/Privacy's <a> tags — reset to read identically to them. */
@@ -7070,7 +7060,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   font-family: inherit;
   cursor: pointer;
 }
-.home-footer-link-btn:hover { color: var(--orange-dark); }
+.home-footer-link-btn:hover { color: var(--accent-text); }
 [data-theme='dark'] .home-footer-link-btn:hover { color: var(--amber); }
 .home-footer-bottom {
   max-width: 1120px;
@@ -7115,8 +7105,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   .home-hero-visual-sidebar { display: none; }
   .home-hero-visual-msg { max-width: 100%; }
   .home-feature-grid { grid-template-columns: 1fr; }
-  .home-section { padding: 4rem 1.25rem; }
-  .home-social { padding: 2.25rem 1.25rem; }
+  .home-section { padding: 2.75rem 1.25rem; }
   .home-why-panel, .home-feature-card--featured { padding: 1.6rem; }
   .home-hero-cta, .home-cta-band .home-hero-cta { flex-direction: column; align-items: stretch; }
   .home-hero-cta .btn-primary, .home-hero-cta .btn-outline { justify-content: center; }
@@ -7147,7 +7136,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 .seo-toc-label { display: block; font-size: 0.76rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.6rem; }
 .seo-toc ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
 .seo-toc a { color: var(--text); text-decoration: none; font-size: 0.93rem; }
-.seo-toc a:hover { color: var(--orange-dark); text-decoration: underline; }
+.seo-toc a:hover { color: var(--accent-text); text-decoration: underline; }
 [data-theme='dark'] .seo-toc a:hover { color: var(--amber); }
 
 .seo-section { padding-top: 2.25rem; scroll-margin-top: 84px; }
@@ -7157,7 +7146,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 .seo-section p { margin: 0 0 1rem; max-width: 72ch; }
 .seo-section ul, .seo-section ol { margin: 0 0 1.25rem; padding-left: 1.3rem; max-width: 72ch; }
 .seo-section li { margin-bottom: 0.55rem; }
-.seo-section a { color: var(--orange-dark); text-underline-offset: 2px; }
+.seo-section a { color: var(--accent-text); text-underline-offset: 2px; }
 [data-theme='dark'] .seo-section a { color: var(--amber); }
 .seo-section .home-faq-list { max-width: none; }
 .seo-section .home-faq-question { font-size: 1rem; }
@@ -7176,13 +7165,13 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 }
 
 .seo-note { display: flex; gap: 0.8rem; align-items: flex-start; margin: 0 0 1.5rem; padding: 1rem 1.15rem; border-radius: var(--radius-sm); background: var(--orange-soft); border: 1px solid rgba(255, 107, 53, 0.3); max-width: 72ch; }
-.seo-note svg { flex-shrink: 0; margin-top: 0.15rem; color: var(--orange-dark); }
+.seo-note svg { flex-shrink: 0; margin-top: 0.15rem; color: var(--accent-text); }
 [data-theme='dark'] .seo-note svg { color: var(--amber); }
 .seo-note p { margin: 0.25rem 0 0; font-size: 0.97rem; }
 
 .seo-steps { list-style: none; counter-reset: seo-step; padding-left: 0; }
 .seo-steps li { counter-increment: seo-step; position: relative; padding-left: 2.6rem; }
-.seo-steps li::before { content: counter(seo-step); position: absolute; left: 0; top: 0.05rem; display: inline-flex; align-items: center; justify-content: center; width: 1.85rem; height: 1.85rem; border-radius: 50%; background: var(--orange-soft); color: var(--orange-dark); font-weight: 700; font-size: 0.9rem; }
+.seo-steps li::before { content: counter(seo-step); position: absolute; left: 0; top: 0.05rem; display: inline-flex; align-items: center; justify-content: center; width: 1.85rem; height: 1.85rem; border-radius: 50%; background: var(--orange-soft); color: var(--accent-text); font-weight: 700; font-size: 0.9rem; }
 [data-theme='dark'] .seo-steps li::before { color: var(--amber); }
 
 /* Link cards — used for "Keep exploring" on content pages and the home page's Explore section. */
@@ -7193,12 +7182,12 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 .seo-related-card:hover { transform: translateY(-2px); border-color: var(--orange); }
 .seo-related-card strong { font-size: 1.02rem; }
 .seo-related-card span:last-child { font-size: 0.9rem; line-height: 1.5; color: var(--text-muted); }
-.seo-related-kind { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--orange-dark); }
+.seo-related-kind { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--accent-text); }
 [data-theme='dark'] .seo-related-kind { color: var(--amber); }
 .seo-guides-heading { text-align: center; font-size: 1.05rem; margin: 2.25rem 0 0.9rem; }
 .seo-guide-links { list-style: none; margin: 0 auto; padding: 0; max-width: 760px; display: grid; gap: 0.7rem; }
 .seo-guide-links li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.9rem; padding-bottom: 0.7rem; border-bottom: 1px solid var(--border); }
-.seo-guide-links a { font-weight: 700; color: var(--orange-dark); text-underline-offset: 2px; }
+.seo-guide-links a { font-weight: 700; color: var(--accent-text); text-underline-offset: 2px; }
 [data-theme='dark'] .seo-guide-links a { color: var(--amber); }
 .seo-guide-links span { font-size: 0.9rem; color: var(--text-muted); }
 @media (max-width: 900px) {
@@ -7211,10 +7200,10 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 }
 
 /* Announcement bar (components/AnnouncementBar.tsx) — a slim, non-sticky strip
-   above the home header. Same literal dark gradient as .home-cta-band so white
-   text keeps AA contrast (the bright brand orange does not). */
+   above the home header. Same deep brand pair as .home-cta-band so white text
+   keeps AA contrast (the bright brand orange does not). */
 .home-announcement {
-  background: linear-gradient(135deg, #a64622, #a16014);
+  background: linear-gradient(135deg, var(--brand-deep-a), var(--brand-deep-b));
   color: #fff;
 }
 .home-announcement-inner {
@@ -7253,28 +7242,44 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
    so it doesn't repeat the other sections. No store badge or download link
    until a real listing exists. */
 .home-android-card {
-  display: flex; align-items: center; gap: 1.5rem;
-  background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 1.75rem 2rem;
+  position: relative;
+  overflow: hidden;
+  display: flex; align-items: center; gap: 1.75rem;
+  background: linear-gradient(120deg, var(--orange-soft), transparent 55%), var(--surface);
+  border: 1px solid var(--orange);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 2.25rem 2.5rem;
+}
+.home-android-card::before {
+  content: '';
+  position: absolute;
+  top: -80px; right: -60px;
+  width: 260px; height: 260px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--orange-soft), transparent 70%);
+  pointer-events: none;
 }
 .home-android-icon {
+  position: relative;
   flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-  width: 56px; height: 56px; border-radius: 16px;
-  background: var(--orange-soft); color: var(--orange-dark);
+  width: 64px; height: 64px; border-radius: 18px;
+  background: linear-gradient(135deg, var(--orange), var(--orange-dark));
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(232, 90, 38, 0.3);
 }
-[data-theme='dark'] .home-android-icon { color: var(--amber); }
-.home-android-copy { flex: 1; min-width: 0; }
+.home-android-copy { position: relative; flex: 1; min-width: 0; }
 .home-android-eyebrow {
-  display: block; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--orange-dark); margin-bottom: 0.35rem;
+  display: inline-block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--accent-text);
+  background: var(--orange-soft); border-radius: 999px; padding: 0.25rem 0.7rem; margin-bottom: 0.6rem;
 }
-[data-theme='dark'] .home-android-eyebrow { color: var(--amber); }
-.home-android-copy h2 { font-size: 1.35rem; letter-spacing: -0.01em; line-height: 1.3; margin: 0 0 0.4rem; }
-.home-android-copy p { margin: 0; font-size: 1rem; line-height: 1.6; color: var(--text-muted); }
-.home-android-cta { flex-shrink: 0; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
-#android { padding-top: 2rem; padding-bottom: 2rem; }
+.home-android-copy h2 { font-size: clamp(1.4rem, 2.4vw, 1.75rem); letter-spacing: -0.015em; line-height: 1.25; margin: 0 0 0.5rem; }
+.home-android-copy p { margin: 0; font-size: 1rem; line-height: 1.6; color: var(--text-muted); max-width: 52ch; }
+.home-android-cta { position: relative; flex-shrink: 0; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; }
+#android { padding-top: 2.5rem; padding-bottom: 2.5rem; }
 @media (max-width: 768px) {
-  .home-android-card { flex-direction: column; align-items: flex-start; padding: 1.5rem; gap: 1rem; }
+  .home-android-card { flex-direction: column; align-items: flex-start; padding: 1.75rem 1.5rem; gap: 1.1rem; }
   .home-android-cta { align-self: stretch; min-height: 44px; }
 }
 
@@ -7317,7 +7322,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 .home-how {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 400px);
-  gap: 3.5rem;
+  gap: 3rem;
   align-items: center;
   max-width: 960px;
   margin: 0 auto;
@@ -7357,18 +7362,18 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 .home-head h2 { font-size: clamp(1.7rem, 3vw, 2.15rem); letter-spacing: -0.015em; line-height: 1.2; margin: 0; }
 .home-why-copy .home-eyebrow { text-align: left; }
 
-#explore { padding-block: 3.5rem; }
+#explore { padding-block: 3rem; }
 #explore .seo-related-grid, #explore .seo-guide-links { max-width: none; margin: 0; }
 #explore .seo-related-card { box-shadow: none; }
 #explore .seo-guides-heading { text-align: left; margin-top: 2rem; }
 
 .home-how-main { min-width: 0; }
-.home-how-main .home-head { margin-bottom: 2.25rem; }
+.home-how-main .home-head { margin-bottom: 1.75rem; }
 
 .home-audience {
   display: grid;
   grid-template-columns: minmax(0, 480px) minmax(0, 1fr);
-  gap: 4rem;
+  gap: 3rem;
   align-items: center;
 }
 .home-audience-copy { min-width: 0; }
@@ -7377,7 +7382,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 .home-faq-layout {
   display: grid;
   grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
-  gap: 4rem;
+  gap: 3rem;
   align-items: start;
 }
 .home-faq-layout .home-head { margin-bottom: 0; }
