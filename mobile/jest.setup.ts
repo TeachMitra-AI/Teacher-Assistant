@@ -30,6 +30,20 @@ jest.mock('expo-sharing', () => ({
   shareAsync: jest.fn().mockResolvedValue(undefined),
 }));
 
+// react-native-webview backs components/FormattedHtmlView.tsx's on-screen
+// KaTeX rendering (any Coach/Generator text containing LaTeX math renders as
+// one WebView loaded with lib/formatHtml.ts's HTML) — the real native view
+// manager doesn't exist under the Jest test renderer. A plain <View> stand-in
+// is enough for every test that renders such content without asserting on
+// the WebView's own load/measure behavior.
+jest.mock('react-native-webview', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const MockWebView = (props: Record<string, unknown>) =>
+    React.createElement(View, { testID: 'mock-webview', style: props.style });
+  return { __esModule: true, default: MockWebView };
+});
+
 // expo-file-system/legacy backs lib/exportPdf.ts's write-base64-to-cache
 // step (a real, on-device bug fix — see that file's own comment for why
 // this writes fresh bytes rather than reading printToFileAsync's own file).

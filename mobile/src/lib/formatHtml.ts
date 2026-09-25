@@ -3,14 +3,8 @@
 // expo-print for a resource's PDF export (mobile/src/lib/buildResourcePdfHtml.ts).
 // On-screen viewing/editing renders through MarkdownText (lib/formatMarkdown.ts)
 // instead, same split Phase 4 established for Coach.
-//
-// Deliberately NOT ported: LaTeX math rendering (renderMathSegments/KaTeX) —
-// same open risk/deferral as Phase 4 (docs/mobile-app-plan.md §28): a
-// resource containing $...$/$$...$$ math exports with the literal delimiters
-// rather than typeset math. Everything else (headings, pipe tables, MCQ
-// option layout, numbered/bulleted lists, bold, paragraphs) is a faithful
-// port since the exam-paper print layout depends on it (§26 Phase 5's own
-// risk note).
+import { renderMathSegments } from './math';
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -22,6 +16,12 @@ function escapeHtml(text: string): string {
 
 export function formatResponseHtml(raw: string): string {
   let text = escapeHtml(raw);
+
+  // Math ($...$/$$...$$ LaTeX, see lib/math.ts) is rendered FIRST, before any
+  // other Markdown-subset transform below — those operate on line patterns
+  // (^#, ^\d+\., **bold**) and literal LaTeX (backslashes, braces, ^ and _)
+  // could otherwise collide with them or get mangled before KaTeX ever sees it.
+  text = renderMathSegments(text);
 
   // Headings (# through ######).
   text = text.replace(/^(#{1,6})\s+(.+)$/gm, (_m, hashes: string, content: string) => {

@@ -25,12 +25,14 @@
     "expo-speech-recognition": "~57.0.0",
     "expo-status-bar": "~57.0.1",
     "expo-web-browser": "~57.0.2",
+    "katex": "^0.16.47",
     "lucide-react-native": "^1.33.0",
     "react": "19.2.3",
     "react-native": "0.86.2",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
+    "react-native-webview": "13.16.1",
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {

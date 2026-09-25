@@ -295,6 +295,7 @@ const MATH_NOTATION_RULES = `- MATH NOTATION: write ALL mathematics in PLAIN NOT
   fractions "$5/9$", "$(a+b)/(c+d)$" · powers "$x^2$", "$x^(n+1)$" · roots "$sqrt(16)$", "$cbrt(8)$"
   multiply "$2 times 3$" · divide "$10 div 2$" · degrees "$45 deg$" · percent "$25%$"
   trig/logs "$sin(x)$", "$cos(2 theta)$", "$cosec(x)$", "$log(100)$", "$ln(x)$"
+  integrals "$integral(x^2, x)$" (indefinite) · "$integral(0, 2, x^2, x)$" (definite, bounds first) — the LAST argument is always the variable of integration
   symbols "$pi$", "$theta$", "$alpha$" · comparisons "$x >= 5$", "$a != b$" · absolute value "$|x|$"
   A BACKSLASH IS NEVER CORRECT. Writing "\\\\\\\\frac{5}{9}" or "\\\\\\\\sin" is WRONG — write "$5/9$" and "$sin(x)$".
   Put ONLY the mathematical expression between the $ delimiters — never a word. "25% of 80" is written as "$25%$ of 80", not "$25% of 80$".`;
