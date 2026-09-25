@@ -6709,26 +6709,6 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 }
 [data-theme='dark'] .home-eyebrow { color: var(--amber); }
 
-/* A small static icon above a section's eyebrow — same family as the FAQ
-   icon (.home-faq-icon) but deliberately NOT animated: only FAQ's flip
-   should stand out as the one section with real motion in its header,
-   everything else here just gets the visual identity. Centered by default;
-   .home-section-icon--left drops the centering for "Why SarasTech", whose
-   eyebrow lives in a left-aligned column, not a full-width centered one. */
-.home-section-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 52px;
-  height: 52px;
-  margin: 0 auto 1rem;
-  border-radius: 50%;
-  background: var(--orange-soft);
-  color: var(--orange-dark);
-}
-[data-theme='dark'] .home-section-icon { color: var(--amber); }
-.home-section-icon--left { margin: 0 0 1rem; position: relative; z-index: 1; }
-
 /* Scroll-driven reveal — pure CSS, no JS. Only engages where the browser
    supports scroll-linked animations (@supports gate: currently
    Chromium-based browsers); every other browser just shows the section at
@@ -6853,18 +6833,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 .home-step h3 { font-size: 1.05rem; margin: 0 0 0.5rem; }
 .home-step p { font-size: 0.9rem; line-height: 1.55; color: var(--text-muted); margin: 0; max-width: 30ch; margin-inline: auto; }
 
-/* ---- made for india (statement + checklist panel) ---- */
-.home-audience-panel {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 2.5rem;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2.5rem;
-  transition: border-color 0.2s ease;
-}
-.home-audience-panel:hover { border-color: var(--orange); }
+/* ---- made for india (real Hindi answer beside statement + checklist) ---- */
 .home-audience-lead {
   margin: 0;
   text-align: left;
@@ -7109,7 +7078,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 }
 
 @media (max-width: 900px) {
-  .home-why-grid, .home-audience-panel { grid-template-columns: 1fr; }
+  .home-why-grid { grid-template-columns: 1fr; }
   .home-hero-visual-sidebar { width: 145px; }
   /* Redeclared after the rule above so the collapsed rail still wins at this
      width — same selector specificity, and source order is the tiebreaker. */
@@ -7145,7 +7114,7 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   .home-why-watermark { display: none; }
   .home-section { padding: 4rem 1.25rem; }
   .home-social { padding: 2.25rem 1.25rem; }
-  .home-why-panel, .home-audience-panel, .home-feature-card--featured { padding: 1.6rem; }
+  .home-why-panel, .home-feature-card--featured { padding: 1.6rem; }
   .home-hero-cta, .home-cta-band .home-hero-cta { flex-direction: column; align-items: stretch; }
   .home-hero-cta .btn-primary, .home-hero-cta .btn-outline { justify-content: center; }
 }
@@ -7305,3 +7274,119 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   .home-android-card { flex-direction: column; align-items: flex-start; padding: 1.5rem; gap: 1rem; }
   .home-android-cta { align-self: stretch; min-height: 44px; }
 }
+
+/* ---- real product screenshots (components/ProductShot.tsx) ----
+   Framed captures of the running product. The frame background is --bg, the
+   same surface the app itself sits on, so the bottom fade of a clamped
+   capture blends into the capture rather than into a mismatched panel. */
+.product-shot-figure { margin: 0; min-width: 0; }
+.product-shot {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.product-shot-img { display: block; width: 100%; height: auto; }
+.product-shot-img--dark { display: none; }
+[data-theme='dark'] .product-shot-img--light { display: none; }
+[data-theme='dark'] .product-shot-img--dark { display: block; }
+.product-shot--fade::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 96px;
+  background: linear-gradient(to bottom, transparent, var(--bg));
+  pointer-events: none;
+}
+.product-shot-caption { margin-top: 0.7rem; font-size: 0.8rem; color: var(--text-muted); text-align: center; }
+
+/* Features: the featured Coach card pairs its copy with a real answer. */
+.home-feature-card--featured {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 400px);
+  gap: 2.25rem;
+  align-items: center;
+}
+
+/* How It Works: steps become a vertical timeline beside a real worksheet. */
+.home-how {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 400px);
+  gap: 3.5rem;
+  align-items: center;
+  max-width: 960px;
+  margin: 0 auto;
+}
+.home-steps.home-steps--stacked { grid-template-columns: 1fr; gap: 2rem; margin: 0; max-width: none; }
+.home-steps--stacked::before {
+  display: block;
+  top: 26px;
+  bottom: 26px;
+  left: 25px;
+  right: auto;
+  width: 2px;
+  height: auto;
+  background: linear-gradient(180deg, var(--orange), var(--amber));
+  opacity: 0.35;
+}
+.home-steps--stacked .home-step { display: grid; grid-template-columns: 52px 1fr; column-gap: 1.25rem; text-align: left; align-items: start; }
+.home-steps--stacked .home-step-number { grid-row: 1 / span 2; margin-bottom: 0; }
+.home-steps--stacked .home-step h3 { margin: 0.3rem 0 0.35rem; }
+.home-steps--stacked .home-step p { max-width: 38ch; margin-inline: 0; }
+
+/* Made for India: the Hindi answer sits under the lead paragraph. */
+@media (max-width: 900px) {
+  .home-feature-card--featured { grid-template-columns: 1fr; gap: 1.75rem; }
+  .home-how { grid-template-columns: 1fr; gap: 2.25rem; }
+  .home-how .product-shot-figure { width: 100%; max-width: 440px; margin: 0 auto; }
+}
+
+/* ---- section variety ----
+   Features keeps the page's one centered header. Every other section gets a
+   composition that fits its job instead of icon -> eyebrow -> centered heading:
+   Why = statement + card, Explore = compact left-aligned index, How It Works =
+   header + timeline beside a real worksheet, Made for India = real Hindi answer
+   beside the copy, FAQ = title on the left, questions on the right. */
+.home-head { text-align: left; margin-bottom: 1.75rem; }
+.home-head .home-eyebrow { text-align: left; }
+.home-head h2 { font-size: clamp(1.7rem, 3vw, 2.15rem); letter-spacing: -0.015em; line-height: 1.2; margin: 0; }
+.home-why-copy .home-eyebrow { position: relative; z-index: 1; text-align: left; }
+
+#explore { padding-block: 3.5rem; }
+#explore .seo-related-grid, #explore .seo-guide-links { max-width: none; margin: 0; }
+#explore .seo-related-card { box-shadow: none; }
+#explore .seo-guides-heading { text-align: left; margin-top: 2rem; }
+
+.home-how-main { min-width: 0; }
+.home-how-main .home-head { margin-bottom: 2.25rem; }
+
+.home-audience {
+  display: grid;
+  grid-template-columns: minmax(0, 480px) minmax(0, 1fr);
+  gap: 4rem;
+  align-items: center;
+}
+.home-audience-copy { min-width: 0; }
+.home-audience-copy .home-audience-lead { margin-bottom: 1.6rem; }
+
+.home-faq-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+  gap: 4rem;
+  align-items: start;
+}
+.home-faq-layout .home-head { margin-bottom: 0; }
+.home-faq-layout .home-faq-list { max-width: none; margin: 0; }
+
+@media (max-width: 900px) {
+  .home-audience { grid-template-columns: 1fr; gap: 2.25rem; }
+  .home-audience-copy { order: -1; }
+  .home-audience .product-shot-figure { width: 100%; max-width: 440px; margin: 0 auto; }
+  .home-faq-layout { grid-template-columns: 1fr; gap: 1.5rem; }
+  .home-head { margin-bottom: 1.5rem; }
+}
+
+/* FAQ icon sits above the eyebrow in the side-title column, so left-align it there. */
+.home-head .home-faq-icon-wrap { justify-content: flex-start; margin-left: 0; }
