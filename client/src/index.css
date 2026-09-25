@@ -6193,7 +6193,9 @@ html:has(.home-page) { scroll-behavior: smooth; }
 #why-sarastech,
 #features,
 #how-it-works,
-#faq { scroll-margin-top: 84px; }
+#faq,
+#android,
+#follow { scroll-margin-top: 84px; }
 /* .btn-primary/.btn-outline/.btn-text are button styles used elsewhere only on
    <button> elements (which have no underline to begin with) — this page is
    the only place they're applied to <Link>s, so the reset is scoped here
@@ -7234,4 +7236,72 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   .seo-article { padding: 2rem 1.25rem 0.5rem; }
   .seo-related-grid, .seo-related-grid--wide { grid-template-columns: 1fr; }
   .seo-hero-cta .btn-primary { width: 100%; justify-content: center; }
+}
+
+/* Announcement bar (components/AnnouncementBar.tsx) — a slim, non-sticky strip
+   above the home header. Same literal dark gradient as .home-cta-band so white
+   text keeps AA contrast (the bright brand orange does not). */
+.home-announcement {
+  background: linear-gradient(135deg, #a64622, #a16014);
+  color: #fff;
+}
+.home-announcement-inner {
+  max-width: 1120px; margin: 0 auto; padding: 0.55rem 1rem;
+  display: flex; align-items: center; justify-content: center; gap: 0.65rem;
+  min-height: 44px;
+}
+.home-announcement-icon { flex-shrink: 0; }
+.home-announcement-text { margin: 0; font-size: 0.9rem; font-weight: 600; line-height: 1.35; }
+.home-announcement-short { display: none; }
+.home-announcement-link {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 0.3rem;
+  color: #fff; font-size: 0.9rem; font-weight: 700; text-decoration: underline; text-underline-offset: 3px;
+  white-space: nowrap;
+}
+.home-announcement-link:hover { text-decoration-thickness: 2px; }
+.home-announcement-link:focus-visible,
+.home-announcement-close:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 4px; }
+.home-announcement-close {
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; margin-left: 0.25rem; border: 0; border-radius: 50%;
+  background: transparent; color: #fff; cursor: pointer;
+}
+.home-announcement-close:hover { background: rgba(255, 255, 255, 0.18); }
+@media (max-width: 640px) {
+  .home-announcement-inner { justify-content: flex-start; padding: 0.4rem 0.5rem 0.4rem 0.9rem; gap: 0.5rem; }
+  .home-announcement-text { font-size: 0.85rem; }
+  .home-announcement-full { display: none; }
+  .home-announcement-short { display: inline; }
+  .home-announcement-text { flex: 1; min-width: 0; }
+  .home-announcement-close { width: 44px; height: 44px; margin-left: 0; }
+}
+
+/* "Android app coming soon" — a horizontal announcement card before the FAQ.
+   Deliberately a left-aligned row, not another centered eyebrow/heading stack,
+   so it doesn't repeat the other sections. No store badge or download link
+   until a real listing exists. */
+.home-android-card {
+  display: flex; align-items: center; gap: 1.5rem;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 1.75rem 2rem;
+}
+.home-android-icon {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  width: 56px; height: 56px; border-radius: 16px;
+  background: var(--orange-soft); color: var(--orange-dark);
+}
+[data-theme='dark'] .home-android-icon { color: var(--amber); }
+.home-android-copy { flex: 1; min-width: 0; }
+.home-android-eyebrow {
+  display: block; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--orange-dark); margin-bottom: 0.35rem;
+}
+[data-theme='dark'] .home-android-eyebrow { color: var(--amber); }
+.home-android-copy h2 { font-size: 1.35rem; letter-spacing: -0.01em; line-height: 1.3; margin: 0 0 0.4rem; }
+.home-android-copy p { margin: 0; font-size: 1rem; line-height: 1.6; color: var(--text-muted); }
+.home-android-cta { flex-shrink: 0; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+#android { padding-top: 2rem; padding-bottom: 2rem; }
+@media (max-width: 768px) {
+  .home-android-card { flex-direction: column; align-items: flex-start; padding: 1.5rem; gap: 1rem; }
+  .home-android-cta { align-self: stretch; min-height: 44px; }
 }
