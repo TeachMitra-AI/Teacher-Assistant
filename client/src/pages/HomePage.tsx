@@ -10,10 +10,6 @@ import {
   Sparkles,
   ChevronDown,
   CircleHelp,
-  Zap,
-  Wand2,
-  Workflow,
-  MapPin,
   GraduationCap,
   MessageCircleQuestion,
   Languages,
@@ -25,7 +21,6 @@ import {
   ArrowUp,
   Search,
   PanelLeft,
-  Compass,
   Smartphone,
 } from 'lucide-react';
 import { usePreferences } from '../hooks/usePreferences';
@@ -36,6 +31,7 @@ import type { Mode } from '../components/AuthForm';
 import { FooterSeoColumns } from '../components/PublicSiteChrome';
 import { SocialLinks } from '../components/SocialLinks';
 import { AnnouncementBar } from '../components/AnnouncementBar';
+import { ProductShot } from '../components/ProductShot';
 import { buildHomeGraph } from '../seo/schema';
 import { ABOUT_PAGE, GUIDE_PAGES, TOOL_PAGES } from '../seo/pages';
 
@@ -600,9 +596,6 @@ export default function HomePage() {
           <div className="home-why-grid">
             <div className="home-why-copy home-reveal">
               <Clock className="home-why-watermark" aria-hidden="true" size={180} strokeWidth={1} />
-              <div className="home-section-icon home-section-icon--left" aria-hidden="true">
-                <Zap size={24} strokeWidth={1.8} />
-              </div>
               <span className="home-eyebrow">Why SarasTech</span>
               <h2 className="home-why-label" id="home-problem-heading">
                 Building a lesson plan, worksheet, or quiz from scratch — or finding guidance in your own language —
@@ -623,9 +616,6 @@ export default function HomePage() {
         </section>
 
         <section className="home-section" id="features" aria-labelledby="home-features-heading">
-          <div className="home-section-icon" aria-hidden="true">
-            <Wand2 size={24} strokeWidth={1.8} />
-          </div>
           <span className="home-eyebrow">Features</span>
           <h2 id="home-features-heading">AI Tools for Teachers, Built Into One Assistant</h2>
           <div className="home-feature-grid">
@@ -637,11 +627,26 @@ export default function HomePage() {
                   className={`home-feature-card home-reveal${isFeatured ? ' home-feature-card--featured' : ''}`}
                   key={feature.title}
                 >
-                  <span className="home-feature-icon" aria-hidden="true">
-                    <Icon size={22} strokeWidth={1.8} />
-                  </span>
-                  <h3>{feature.title}</h3>
-                  <p>{feature.description}</p>
+                  <div className="home-feature-copy">
+                    <span className="home-feature-icon" aria-hidden="true">
+                      <Icon size={22} strokeWidth={1.8} />
+                    </span>
+                    <h3>{feature.title}</h3>
+                    <p>{feature.description}</p>
+                  </div>
+                  {/* A real Coach answer (public/product/coach-en-*.png) fills what
+                      used to be the featured card's empty right half. */}
+                  {isFeatured && (
+                    <ProductShot
+                      name="coach-en"
+                      alt="SarasTech Coach suggesting a hands-on fractions activity for Grade 4, tagged Class 3-5 and Mathematics"
+                      width={480}
+                      height={540}
+                      caption="A real answer from SarasTech Coach"
+                      fade
+                      maxHeight={360}
+                    />
+                  )}
                 </article>
               );
             })}
@@ -656,11 +661,10 @@ export default function HomePage() {
             page (seo/pages.ts) — the home page is the strongest page on the
             site, so this is where their internal linking starts. */}
         <section className="home-section" id="explore" aria-labelledby="home-explore-heading">
-          <div className="home-section-icon" aria-hidden="true">
-            <Compass size={24} strokeWidth={1.8} />
+          <div className="home-head">
+            <span className="home-eyebrow">Explore</span>
+            <h2 id="home-explore-heading">Lesson Plans, Worksheets, Quizzes and More</h2>
           </div>
-          <span className="home-eyebrow">Explore</span>
-          <h2 id="home-explore-heading">Lesson Plans, Worksheets, Quizzes and More</h2>
           <div className="seo-related-grid seo-related-grid--wide">
             {TOOL_PAGES.map((page) => (
               <Link key={page.path} to={page.path} className="seo-related-card">
@@ -682,45 +686,67 @@ export default function HomePage() {
         </section>
 
         <section className="home-section home-section--muted" id="how-it-works" aria-labelledby="home-steps-heading">
-          <div className="home-section-icon" aria-hidden="true">
-            <Workflow size={24} strokeWidth={1.8} />
+          <div className="home-how">
+            <div className="home-how-main">
+              <div className="home-head">
+                <span className="home-eyebrow">How It Works</span>
+                <h2 id="home-steps-heading">From Question to Classroom-Ready Resource</h2>
+              </div>
+              <ol className="home-steps home-steps--stacked">
+                {STEPS.map((step, index) => (
+                  <li className="home-step home-reveal" key={step.title}>
+                    <span className="home-step-number" aria-hidden="true">
+                      {index + 1}
+                    </span>
+                    <h3>{step.title}</h3>
+                    <p>{step.description}</p>
+                  </li>
+                ))}
+              </ol>
+            </div>
+            {/* A real generated worksheet (Generator → Preview). */}
+            <ProductShot
+              name="generator-worksheet"
+              alt="A Class 3-5 Science worksheet on parts of a plant, generated by SarasTech, with a multiple-choice question and its correct answer marked"
+              width={464}
+              height={678}
+              caption="A worksheet generated in SarasTech"
+            />
           </div>
-          <span className="home-eyebrow">How It Works</span>
-          <h2 id="home-steps-heading">From Question to Classroom-Ready Resource</h2>
-          <ol className="home-steps">
-            {STEPS.map((step, index) => (
-              <li className="home-step home-reveal" key={step.title}>
-                <span className="home-step-number" aria-hidden="true">
-                  {index + 1}
-                </span>
-                <h3>{step.title}</h3>
-                <p>{step.description}</p>
-              </li>
-            ))}
-          </ol>
         </section>
 
         <section className="home-section" aria-labelledby="home-audience-heading">
-          <div className="home-section-icon" aria-hidden="true">
-            <MapPin size={24} strokeWidth={1.8} />
-          </div>
-          <span className="home-eyebrow">Made for India</span>
-          <h2 id="home-audience-heading">Built for Real Indian Classrooms</h2>
-          <div className="home-audience-panel home-reveal">
-            <p className="home-audience-lead">
-              Practical AI support for everyday teaching — from lesson planning and classroom activities to
-              assessments and teaching resources, with support for multiple Indian languages.
-            </p>
-            <ul className="home-audience-list">
-              {CLASSROOM_FACTS.map((fact) => (
-                <li key={fact}>
-                  <span className="home-audience-check" aria-hidden="true">
-                    <Check size={14} strokeWidth={2.4} />
-                  </span>
-                  <p>{fact}</p>
-                </li>
-              ))}
-            </ul>
+          <div className="home-audience home-reveal">
+            {/* A real Hindi answer — the language claim, shown instead of told. */}
+            <ProductShot
+              name="coach-hi"
+              alt="SarasTech Coach explaining the water cycle for Class 5 in Hindi, in Devanagari script"
+              width={480}
+              height={540}
+              caption="A real SarasTech Coach answer in Hindi (हिंदी)"
+              fade
+              maxHeight={440}
+            />
+            <div className="home-audience-copy">
+              <div className="home-head">
+                <span className="home-eyebrow">Made for India</span>
+                <h2 id="home-audience-heading">Built for Real Indian Classrooms</h2>
+              </div>
+              <p className="home-audience-lead">
+                Practical AI support for everyday teaching — from lesson planning and classroom activities to
+                assessments and teaching resources, with support for multiple Indian languages.
+              </p>
+              <ul className="home-audience-list">
+                {CLASSROOM_FACTS.map((fact) => (
+                  <li key={fact}>
+                    <span className="home-audience-check" aria-hidden="true">
+                      <Check size={14} strokeWidth={2.4} />
+                    </span>
+                    <p>{fact}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         </section>
 
@@ -744,30 +770,34 @@ export default function HomePage() {
         </section>
 
         <section className="home-section" id="faq" aria-labelledby="home-faq-heading">
-          <div className="home-faq-icon-wrap">
-            <div className="home-faq-icon" aria-hidden="true">
-              <span className="home-faq-icon-ring" />
-              <CircleHelp size={28} strokeWidth={1.8} />
+          <div className="home-faq-layout">
+            <div className="home-head">
+              <div className="home-faq-icon-wrap">
+                <div className="home-faq-icon" aria-hidden="true">
+                  <span className="home-faq-icon-ring" />
+                  <CircleHelp size={28} strokeWidth={1.8} />
+                </div>
+              </div>
+              <span className="home-eyebrow">FAQ</span>
+              <h2 id="home-faq-heading">Frequently Asked Questions</h2>
             </div>
-          </div>
-          <span className="home-eyebrow">FAQ</span>
-          <h2 id="home-faq-heading">Frequently Asked Questions</h2>
-          <div className="home-faq-list home-reveal">
-            {/* name= makes these a native, browser-managed exclusive accordion
-                (HTML Living Standard) — opening one collapses whichever other
-                one was open, with no React state and no risk of the toggle
-                event's own feedback loop (setting `open` programmatically
-                fires another native "toggle" event, which made a React-state
-                version of this close everything). */}
-            {FAQS.map((faq) => (
-              <details className="home-faq-item" key={faq.question} name="home-faq">
-                <summary className="home-faq-question">
-                  <span>{faq.question}</span>
-                  <ChevronDown className="home-faq-chevron" size={18} aria-hidden="true" />
-                </summary>
-                <p className="home-faq-answer">{faq.answer}</p>
-              </details>
-            ))}
+            <div className="home-faq-list home-reveal">
+              {/* name= makes these a native, browser-managed exclusive accordion
+                  (HTML Living Standard) — opening one collapses whichever other
+                  one was open, with no React state and no risk of the toggle
+                  event's own feedback loop (setting `open` programmatically
+                  fires another native "toggle" event, which made a React-state
+                  version of this close everything). */}
+              {FAQS.map((faq) => (
+                <details className="home-faq-item" key={faq.question} name="home-faq">
+                  <summary className="home-faq-question">
+                    <span>{faq.question}</span>
+                    <ChevronDown className="home-faq-chevron" size={18} aria-hidden="true" />
+                  </summary>
+                  <p className="home-faq-answer">{faq.answer}</p>
+                </details>
+              ))}
+            </div>
           </div>
         </section>
 
