@@ -20,9 +20,10 @@
 // corrupt — and this module turns it into LaTeX deterministically, in code we
 // can unit-test rather than hope about.
 //
-// SCOPE: school maths. Fractions, powers, roots, trig, logs, the Greek letters
-// that appear in Indian school textbooks, comparison operators, degrees. Not a
-// general computer-algebra parser, and deliberately not one.
+// SCOPE: school maths. Fractions, powers, roots, trig, logs, indefinite and
+// definite integrals, the Greek letters that appear in Indian school
+// textbooks, comparison operators, degrees. Not a general computer-algebra
+// parser, and deliberately not one.
 //
 // SAFETY CONTRACT — the most important part of this file:
 //   1. Input that already contains a backslash is LaTeX. Returned UNCHANGED.
@@ -269,6 +270,34 @@ function parse(tokens) {
         return { kind: 'root', degree: lower === 'cbrt' ? '3' : null, inner };
       }
 
+      // integral(expr, var) — indefinite — or integral(lower, upper, expr,
+      // var) — definite. The last argument must be the bare differential
+      // variable ("x", "t"); everything before it is comma-separated
+      // sub-expressions parsed the same way any other argument is.
+      if (lower === 'integral' && at('punct', '(')) {
+        eat();
+        const args = [comparison()];
+        if (args[0] === null) return null;
+        while (at('punct', ',')) {
+          eat();
+          const arg = comparison();
+          if (arg === null) return null;
+          args.push(arg);
+        }
+        if (!expect('punct', ')')) return null;
+
+        const varNode = args[args.length - 1];
+        if (varNode.kind !== 'var') return null;
+
+        if (args.length === 2) {
+          return { kind: 'integral', lower: null, upper: null, integrand: args[0], variable: varNode.value };
+        }
+        if (args.length === 4) {
+          return { kind: 'integral', lower: args[0], upper: args[1], integrand: args[2], variable: varNode.value };
+        }
+        return null;
+      }
+
       if (FUNCTIONS[lower] && at('punct', '(')) {
         eat();
         const inner = comparison();
@@ -327,6 +356,10 @@ function emit(node) {
       // braces already group, and "\frac{(a+b)}{2}" prints ugly brackets a
       // teacher would not write on a blackboard.
       return `\\frac{${emitUnwrapped(node.num)}}{${emitUnwrapped(node.den)}}`;
+    case 'integral': {
+      const bounds = node.lower ? `_{${emit(node.lower)}}^{${emit(node.upper)}}` : '';
+      return `\\int${bounds} ${emit(node.integrand)}\\, d${node.variable}`;
+    }
     default: return null;
   }
 }

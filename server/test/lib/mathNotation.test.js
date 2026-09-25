@@ -29,6 +29,8 @@ describe('toLatex — the notation a teacher would actually write', () => {
     ['|x|', '\\left|x\\right|'],
     ['25%', '25\\%'],
     ['x^2 + 2x + 1', 'x^{2} + 2x + 1'],
+    ['integral(x^2, x)', '\\int x^{2}\\, dx'],
+    ['integral(0, 2, x^2, x)', '\\int_{0}^{2} x^{2}\\, dx'],
   ];
 
   for (const [input, expected] of cases) {
@@ -46,6 +48,42 @@ describe('toLatex — the notation a teacher would actually write', () => {
   // A bare % starts a LaTeX comment and would swallow the rest of the line.
   test('escapes percent so it cannot comment out the expression', () => {
     expect(toLatex('25%')).toContain('\\%');
+  });
+});
+
+describe('toLatex — integrals', () => {
+  test('indefinite integral — last argument is the differential variable', () => {
+    expect(toLatex('integral(x^2, x)')).toBe('\\int x^{2}\\, dx');
+  });
+
+  test('definite integral — bounds come before the integrand and variable', () => {
+    expect(toLatex('integral(0, 2, x^2, x)')).toBe('\\int_{0}^{2} x^{2}\\, dx');
+  });
+
+  test('an integrand can itself be any parseable expression, including a function call', () => {
+    expect(toLatex('integral(sin(x), x)')).toBe('\\int \\sin(x)\\, dx');
+  });
+
+  // The constant of integration is ordinary addition once the integral
+  // itself is a valid atom — no special-casing needed.
+  test('"+ C" after an indefinite integral is plain addition', () => {
+    expect(toLatex('integral(x^2, x) + C')).toBe('\\int x^{2}\\, dx + C');
+  });
+
+  test('bounds can themselves be expressions, e.g. a symbol', () => {
+    expect(toLatex('integral(0, pi, sin(x), x)')).toBe('\\int_{0}^{\\pi} \\sin(x)\\, dx');
+  });
+
+  // Never guess: only exactly 2 (indefinite) or 4 (definite) arguments are a
+  // shape this module understands, and the final argument must be a bare
+  // single-letter variable, not another expression.
+  test('rejects a variable-of-integration that is not a bare single letter', () => {
+    expect(toLatex('integral(x^2, x+1)')).toBeNull();
+  });
+
+  test('rejects an argument count that is neither 2 nor 4', () => {
+    expect(toLatex('integral(0, 1, 2, x^2, x)')).toBeNull();
+    expect(toLatex('integral(x)')).toBeNull();
   });
 });
 
@@ -120,6 +158,15 @@ describe('convertMathSegments', () => {
     expect(convertMathSegments('The $apples$ here')).toBe('The $apples$ here');
   });
 
+  // A real MCQ shape: an indefinite integral in the question stem, a
+  // definite one in an option — the case that motivated adding integral
+  // support (a class 11/12 calculus quiz otherwise had no way to write one).
+  test('converts both an indefinite and a definite integral in the same document', () => {
+    expect(
+      convertMathSegments('Evaluate $integral(x^2, x)$. Answer: $integral(0, 2, x, x)$.')
+    ).toBe('Evaluate $\\int x^{2}\\, dx$. Answer: $\\int_{0}^{2} x\\, dx$.');
+  });
+
   test('text with no math is returned unchanged', () => {
     expect(convertMathSegments('Explain what a fraction is.')).toBe('Explain what a fraction is.');
   });
@@ -138,6 +185,7 @@ describe('convertMathSegments output actually renders in KaTeX', () => {
   const inputs = [
     '5/9', '(a+b)/(c+d)', 'x^(n+1)', 'sqrt(16)', 'cbrt(8)', '45 deg',
     '3pi', 'cos(2 theta)', 'cosec(x)', '2 times 3', 'x >= 5', '|x|', '25%',
+    'integral(x^2, x)', 'integral(0, 2, x^2, x)', 'integral(x^2, x) + C',
   ];
 
   for (const input of inputs) {

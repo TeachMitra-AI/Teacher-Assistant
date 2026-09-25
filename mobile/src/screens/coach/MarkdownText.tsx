@@ -1,15 +1,30 @@
 // Renders the block structure lib/formatMarkdown.ts parses out of a Coach
 // answer (or the Generator/Library legacy-markdown preview) as native
-// Text/View — the RN analogue of client/src/lib/format.ts's HTML string (see
-// that file's own doc comment for what is deliberately not ported: LaTeX
-// math).
+// Text/View — the RN analogue of client/src/lib/format.ts's HTML string.
+//
+// Text containing LaTeX math ($...$/$$...$$) skips this native block parser
+// entirely and renders through components/FormattedHtmlView.tsx instead — a
+// single WebView loaded with lib/formatHtml.ts's HTML output (the exact same
+// pipeline mobile/src/lib/buildResourcePdfHtml.ts already uses for PDF
+// export, and functionally the same as client/src/lib/format.ts on web).
+// An earlier version extracted math into this native block structure and
+// rendered one WebView per expression; on a real exam paper (dozens of
+// expressions across question stems and MCQ options) that meant 50+
+// concurrent WebViews each loading their own ~370KB embedded-font CSS
+// payload, and Android's native WebView visually floats above sibling views
+// regardless of RN layout order — many expressions rendered blank and
+// unrelated text visibly overlapped. One WebView for the whole block avoids
+// both problems; math-free text (the common case for most Coach answers)
+// still renders through the fast native path below.
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, type TextStyle, type StyleProp } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, type TextStyle } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
 import { spacing, radius } from '../../theme/tokens';
 import { parseMarkdownBlocks, type InlineSegment, type MarkdownBlock } from '../../lib/formatMarkdown';
+import { containsMath } from '../../lib/math';
+import { FormattedHtmlView } from '../../components/FormattedHtmlView';
 
-function Inline({ segments, style }: { segments: InlineSegment[]; style: StyleProp<TextStyle> }) {
+function Inline({ segments, style }: { segments: InlineSegment[]; style: TextStyle | TextStyle[] }) {
   return (
     <Text style={style}>
       {segments.map((seg, i) => (
@@ -103,6 +118,11 @@ function Table({
 
 export function MarkdownText({ text }: { text: string }) {
   const { colors } = useTheme();
+
+  if (containsMath(text)) {
+    return <FormattedHtmlView text={text} colors={colors} />;
+  }
+
   const blocks = parseMarkdownBlocks(text);
   // .response-body's line-height: 1.7 on paragraphs (UI_REFINED.md §10.3).
   const bodyStyle = { color: colors.text, fontSize: 15, lineHeight: 25 };
@@ -119,7 +139,7 @@ export function MarkdownText({ text }: { text: string }) {
               {block.items.map((item, j) => (
                 <View key={j} style={styles.listRow}>
                   <Text style={[bodyStyle, styles.marker, block.ordered && styles.markerBold]}>
-                    {block.ordered ? `${j + 1}.` : '•'}
+                    {block.ordered ? `${block.numbers?.[j] ?? j + 1}.` : '•'}
                   </Text>
                   <Inline segments={item} style={{ ...bodyStyle, flexShrink: 1 }} />
                 </View>

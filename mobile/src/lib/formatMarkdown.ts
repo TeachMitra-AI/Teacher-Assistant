@@ -11,10 +11,18 @@
 // path) so the Generator's legacy/fallback preview and Coach chat both match
 // web's table/option rendering.
 //
-// Deliberately NOT ported: LaTeX math ($...$/$$...$$ via KaTeX) — flagged as
-// an open risk in docs/mobile-app-plan.md §26 Phase 4/§28, deferred per that
-// section's own "ship without math rendering first if necessary" guidance
-// rather than guessed at here.
+// LaTeX math ($...$/$$...$$ via KaTeX) is NOT handled by this parser: text
+// containing math is rendered by components/FormattedHtmlView.tsx instead
+// (lib/formatHtml.ts's HTML pipeline in a single autosizing WebView) — see
+// screens/coach/MarkdownText.tsx's own comment for why. An earlier attempt
+// extracted math into this native block structure and rendered one WebView
+// per expression; on a real exam paper (dozens of expressions across
+// question stems and MCQ options) that meant 50+ concurrent WebViews each
+// loading their own ~370KB embedded-font CSS payload, and Android's native
+// WebView visually floats above sibling views regardless of RN layout order
+// — many expressions rendered blank and unrelated text visibly overlapped.
+// One WebView for the whole block, reusing the exact HTML/CSS the PDF export
+// already uses, avoids both problems.
 
 export interface InlineSegment {
   text: string;
@@ -24,13 +32,19 @@ export interface InlineSegment {
 export type MarkdownBlock =
   | { type: 'heading'; level: number; segments: InlineSegment[] }
   | { type: 'paragraph'; segments: InlineSegment[] }
-  | { type: 'list'; ordered: boolean; items: InlineSegment[][] }
+  // `numbers` carries each ordered item's LITERAL source number (e.g. a
+  // numbered question immediately followed by MCQ options — its own
+  // extracted 'options' block, see extractStructuralBlocks — ends up in a
+  // separate single-item list block from the next question; array-index
+  // numbering would show "1." for every one of them). Undefined for
+  // unordered (bulleted) lists, which have no per-item number to preserve.
+  | { type: 'list'; ordered: boolean; items: InlineSegment[][]; numbers?: string[] }
   | { type: 'options'; items: { letter: string; segments: InlineSegment[] }[] }
   | { type: 'subpart'; letter: string; segments: InlineSegment[] }
   | { type: 'table'; header: string[]; rows: string[][] };
 
 const HEADING_RE = /^(#{1,6})\s+(.+)$/;
-const NUMBERED_RE = /^\d+\.\s+(.+)$/;
+const NUMBERED_RE = /^(\d+)\.\s+(.+)$/;
 const BULLETED_RE = /^[•\-*]\s+(.+)$/;
 
 // Strict pipe-table shape: header row, dash separator row, then body rows —
@@ -145,6 +159,7 @@ export function parseMarkdownBlocks(raw: string): MarkdownBlock[] {
 
   let paragraphLines: string[] = [];
   let listItems: string[] = [];
+  let listNumbers: string[] = [];
   let listOrdered = false;
 
   function flushParagraph() {
@@ -155,8 +170,14 @@ export function parseMarkdownBlocks(raw: string): MarkdownBlock[] {
 
   function flushList() {
     if (listItems.length === 0) return;
-    blocks.push({ type: 'list', ordered: listOrdered, items: listItems.map((item) => parseInline(item)) });
+    blocks.push({
+      type: 'list',
+      ordered: listOrdered,
+      items: listItems.map((item) => parseInline(item)),
+      numbers: listOrdered ? listNumbers : undefined,
+    });
     listItems = [];
+    listNumbers = [];
   }
 
   for (const rawLine of lines) {
@@ -189,7 +210,8 @@ export function parseMarkdownBlocks(raw: string): MarkdownBlock[] {
       flushParagraph();
       if (listItems.length > 0 && !listOrdered) flushList();
       listOrdered = true;
-      listItems.push(numbered[1]);
+      listNumbers.push(numbered[1]);
+      listItems.push(numbered[2]);
       continue;
     }
 

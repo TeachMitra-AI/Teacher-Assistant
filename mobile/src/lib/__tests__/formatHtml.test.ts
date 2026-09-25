@@ -49,4 +49,17 @@ describe('formatResponseHtml', () => {
     const html = formatResponseHtml('Para one.\n\nPara two.');
     expect(html).toBe('<p>Para one.</p><p>Para two.</p>');
   });
+
+  // lib/math.ts's own tests cover KaTeX rendering itself — these just check
+  // it's wired into the pipeline ahead of the other transforms.
+  it('renders inline $...$ math as KaTeX markup', () => {
+    const html = formatResponseHtml('The area is $A = \\pi r^2$ exactly.');
+    expect(html).toContain('class="katex"');
+    expect(html).not.toContain('$A = \\pi r^2$');
+  });
+
+  it('renders block $$...$$ math in display mode', () => {
+    const html = formatResponseHtml('$$x = \\frac{-b}{2a}$$');
+    expect(html).toContain('class="katex-display"');
+  });
 });

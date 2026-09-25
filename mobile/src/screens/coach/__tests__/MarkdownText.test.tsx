@@ -39,4 +39,39 @@ describe('MarkdownText', () => {
     expect(screen.getByText('First')).toBeTruthy();
     expect(screen.getByText('Second')).toBeTruthy();
   });
+
+  // A numbered question followed by MCQ options ends up in its own
+  // single-item list block, separate from the next question's block (see
+  // lib/formatMarkdown.ts's extractStructuralBlocks) — without the literal
+  // source number, every such block rendered "1." (array position instead
+  // of source order), so a real quiz mixing question types showed "1." for
+  // every question after the first.
+  it('numbers questions by their literal source number, not by array position, when MCQ options split them into separate blocks', async () => {
+    await renderText(
+      '1. Which is a primary color?\nA. Red\nB. Green\nC. Blue\nD. Yellow\n\n2. Name a secondary color.'
+    );
+    expect(screen.getByText('1.')).toBeTruthy();
+    expect(screen.getByText('2.')).toBeTruthy();
+  });
+
+  // react-native-webview is mocked to a plain <View testID="mock-webview">
+  // in jest.setup.ts. Text containing LaTeX math bypasses the native block
+  // parser above entirely and renders as ONE WebView loaded with
+  // lib/formatHtml.ts's HTML (components/FormattedHtmlView.tsx) — see that
+  // file's own comment for why one WebView per expression (an earlier
+  // version) doesn't hold up on a real exam paper. KaTeX's actual rendering
+  // is covered directly by lib/__tests__/math.test.ts and
+  // lib/__tests__/formatHtml.test.ts; these just check the routing.
+  describe('LaTeX math', () => {
+    it('routes math-containing text to a single WebView instead of the native block tree', async () => {
+      await renderText('A. $x^2$\nB. $x^3$\nC. $x^4$\nD. $x^5$');
+      expect(screen.getAllByTestId('mock-webview')).toHaveLength(1);
+    });
+
+    it('still routes math-free text through the native block tree', async () => {
+      await renderText('1. What is 2+2?\nA. 3\nB. 4\nC. 5\nD. 6');
+      expect(screen.queryByTestId('mock-webview')).toBeNull();
+      expect(screen.getByText(/A\.\s*3/)).toBeTruthy();
+    });
+  });
 });

@@ -7,6 +7,7 @@
 import { formatResponseHtml } from './formatHtml';
 import { splitAnswerKey, stripAssessmentPreamble } from './assessment';
 import { LANGUAGES, RESOURCE_TYPE_META } from '../config';
+import { KATEX_EMBEDDED_CSS } from './katexEmbeddedCss';
 import type { ExamPaperMeta, ResourceType } from '../types';
 
 export type PrintMode = 'full' | 'student' | 'teacher';
@@ -101,7 +102,7 @@ export function buildResourcePdfHtml(input: ResourcePdfInput): string {
       split.hasAnswerKey && printMode === 'student' ? split.questions : content || '';
     const html = formatResponseHtml(stripAssessmentPreamble(body));
     return `<!doctype html><html><head><meta charset="utf-8" />
-      <style>${BASE_STYLE}${EXAM_HEADER_STYLE}</style></head>
+      <style>${KATEX_EMBEDDED_CSS}${BASE_STYLE}${EXAM_HEADER_STYLE}</style></head>
       <body>${examHeaderHtml(examMeta || {}, title, subject, grade)}${html}</body></html>`;
   }
 
@@ -117,7 +118,7 @@ export function buildResourcePdfHtml(input: ResourcePdfInput): string {
 
   const html = formatResponseHtml(content || '');
   return `<!doctype html><html><head><meta charset="utf-8" />
-    <style>${BASE_STYLE}
+    <style>${KATEX_EMBEDDED_CSS}${BASE_STYLE}
       .doc-brand { color: #888888; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
       .doc-title { font-size: 22px; margin: 0.2em 0; }
       .doc-meta { color: #555555; font-size: 12px; margin: 0.3em 0; }

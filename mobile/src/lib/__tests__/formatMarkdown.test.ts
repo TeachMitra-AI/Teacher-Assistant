@@ -49,7 +49,33 @@ describe('parseMarkdownBlocks', () => {
         type: 'list',
         ordered: true,
         items: [[{ text: 'First' }], [{ text: 'Second' }], [{ text: 'Third' }]],
+        numbers: ['1', '2', '3'],
       },
+    ]);
+  });
+
+  // A numbered question immediately followed by something that gets
+  // extracted out of the line-by-line scan (MCQ options, a table, ...) ends
+  // up in its own single-item list block, separate from the next numbered
+  // question's block — see extractStructuralBlocks's own comment. Without
+  // the literal source number, MarkdownText.tsx's native renderer numbered
+  // every such block "1." (array position, not source order).
+  it('preserves the literal source number even when a question is split into its own list block', () => {
+    const blocks = parseMarkdownBlocks(
+      '1. Which is a primary color?\nA. Red\nB. Green\nC. Blue\nD. Yellow\n\n2. Name a secondary color.'
+    );
+    expect(blocks).toEqual([
+      { type: 'list', ordered: true, items: [[{ text: 'Which is a primary color?' }]], numbers: ['1'] },
+      {
+        type: 'options',
+        items: [
+          { letter: 'A', segments: [{ text: 'Red' }] },
+          { letter: 'B', segments: [{ text: 'Green' }] },
+          { letter: 'C', segments: [{ text: 'Blue' }] },
+          { letter: 'D', segments: [{ text: 'Yellow' }] },
+        ],
+      },
+      { type: 'list', ordered: true, items: [[{ text: 'Name a secondary color.' }]], numbers: ['2'] },
     ]);
   });
 
@@ -67,7 +93,7 @@ describe('parseMarkdownBlocks', () => {
   it('starts a new list block when the marker type switches mid-run', () => {
     const blocks = parseMarkdownBlocks('1. First\n- Second');
     expect(blocks).toEqual([
-      { type: 'list', ordered: true, items: [[{ text: 'First' }]] },
+      { type: 'list', ordered: true, items: [[{ text: 'First' }]], numbers: ['1'] },
       { type: 'list', ordered: false, items: [[{ text: 'Second' }]] },
     ]);
   });
@@ -84,6 +110,7 @@ describe('parseMarkdownBlocks', () => {
           [{ text: 'Introduce the topic' }],
           [{ text: 'Demonstrate', bold: true }, { text: ' an example' }],
         ],
+        numbers: ['1', '2'],
       },
       { type: 'paragraph', segments: [{ text: 'That wraps it up.' }] },
     ]);
@@ -143,7 +170,7 @@ describe('parseMarkdownBlocks', () => {
     it('groups consecutive A./B./C./D. lines into one options block', () => {
       const blocks = parseMarkdownBlocks('1. What is 2+2?\nA. 3\nB. 4\nC. 5\nD. 6');
       expect(blocks).toEqual([
-        { type: 'list', ordered: true, items: [[{ text: 'What is 2+2?' }]] },
+        { type: 'list', ordered: true, items: [[{ text: 'What is 2+2?' }]], numbers: ['1'] },
         {
           type: 'options',
           items: [

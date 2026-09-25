@@ -53,4 +53,12 @@ describe('buildResourcePdfHtml — assessment resource', () => {
     const html = buildResourcePdfHtml({ ...baseInput, content: withPreamble, type: 'assessment', examMeta, printMode: 'teacher' });
     expect(html).not.toContain('Science Quiz: Photosynthesis');
   });
+
+  it('embeds KaTeX CSS and renders LaTeX math in the questions', () => {
+    const withMath = `${baseInput.content}\n\n2. Solve $x^2 = 4$.`;
+    const html = buildResourcePdfHtml({ ...baseInput, content: withMath, type: 'assessment', examMeta, printMode: 'teacher' });
+    expect(html).toContain('@font-face');
+    expect(html).toContain('class="katex"');
+    expect(html).not.toContain('$x^2 = 4$');
+  });
 });
