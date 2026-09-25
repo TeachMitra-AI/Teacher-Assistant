@@ -70,25 +70,30 @@ const FEATURES = [
     icon: MessageCircleQuestion,
     title: 'AI Classroom Coach',
     description:
-      'Ask any classroom question — a tricky concept, a behaviour issue, a classroom activity idea — and get grade- and subject-specific guidance instantly, powered by Google Gemini.',
+      'Ask about a tricky concept, a behaviour issue or an activity idea and get grade- and subject-specific guidance instantly, powered by Google Gemini.',
   },
   {
     icon: Languages,
     title: 'Multilingual Answers',
     description:
-      'Get coaching in English, Hindi, Bengali, Telugu, Marathi, Tamil, Gujarati, Kannada, Odia, or Hinglish — whichever your classroom speaks.',
+      'Get coaching in English, Hindi, Bengali, Telugu, Marathi, Tamil, Gujarati, Kannada, Odia, or Hinglish, whichever your classroom speaks.',
+    // Language names exactly as the product's own language menu shows them.
+    chips: ['English', 'हिंदी', 'বাংলা', 'తెలుగు', 'मराठी', 'தமிழ்', '+4 more'],
   },
   {
     icon: ClipboardCheck,
     title: 'Quiz & Worksheet Generator',
     description:
-      'Generate structured quizzes and worksheets by grade, subject, topic, and difficulty, complete with an answer key — ready to print.',
+      'Generate structured quizzes and worksheets by grade, subject, topic, and difficulty, complete with an answer key, ready to print.',
+    // The Generator's own format options.
+    chips: ['Quiz', 'Worksheet', 'Exit ticket', 'Homework'],
   },
   {
     icon: Library,
     title: 'Teaching Resource Library',
     description:
       'Save any AI answer, lesson plan, or worksheet to your personal library, edit it anytime, and export a classroom-ready PDF.',
+    chips: ['Save', 'Edit', 'Export PDF'],
   },
 ];
 
@@ -108,8 +113,8 @@ const STEPS = [
 ];
 
 const CLASSROOM_FACTS = [
-  'Guidance for the realities of Indian schools — foundational literacy and numeracy (FLN), teaching aids made from everyday local materials, and printable resources you can edit to match your school’s format.',
-  'Built for how classrooms actually run here — single-teacher, multi-grade, and mixed-ability setups, not just one-grade-one-teacher classrooms.',
+  'Guidance for the realities of Indian schools: foundational literacy and numeracy (FLN), teaching aids made from everyday local materials, and printable resources you can edit to match your school’s format.',
+  'Built for how classrooms actually run here: single-teacher, multi-grade, and mixed-ability setups, not just one-grade-one-teacher classrooms.',
   'Coaching and generated resources work in English plus 9 Indian languages and Hinglish, so language isn’t a barrier to getting help.',
 ];
 
@@ -128,7 +133,7 @@ const PREVIEW_SCENARIOS: PreviewScenario[] = [
       { role: 'user', text: 'How do I explain photosynthesis to my Grade 5 class?' },
       {
         role: 'ai',
-        text: 'Think of a leaf as a tiny kitchen: sunlight is the stove, water from the roots and carbon dioxide from the air are the ingredients, and chlorophyll — what makes leaves green — does the cooking. The result is sugar for the plant to grow on, and oxygen released for us to breathe.',
+        text: 'Think of a leaf as a tiny kitchen: sunlight is the stove, water from the roots and carbon dioxide from the air are the ingredients, and chlorophyll, which makes leaves green, does the cooking. The result is sugar for the plant to grow on, and oxygen released for us to breathe.',
       },
     ],
   },
@@ -150,7 +155,7 @@ const PREVIEW_SCENARIOS: PreviewScenario[] = [
       { role: 'user', text: 'Suggest a hands-on classroom activity about the monsoon.' },
       {
         role: 'ai',
-        text: 'Try a simple rain-gauge activity: mark a clear jar in centimetres, place it outside, and have students log daily readings on a class chart — then discuss which day had the most rainfall and why.',
+        text: 'Try a simple rain-gauge activity: mark a clear jar in centimetres, place it outside, and have students log daily readings on a class chart, then discuss which day had the most rainfall and why.',
       },
     ],
   },
@@ -170,12 +175,12 @@ const FAQS = [
   {
     question: 'Which languages does it support?',
     answer:
-      'English, Hindi, Bengali, Telugu, Marathi, Tamil, Gujarati, Kannada, Odia, and Hinglish — pick whichever your classroom speaks.',
+      'English, Hindi, Bengali, Telugu, Marathi, Tamil, Gujarati, Kannada, Odia, and Hinglish. Pick whichever your classroom speaks.',
   },
   {
     question: 'Does it work for multi-grade or mixed-ability classrooms?',
     answer:
-      'Yes. You can set your classroom type — including multi-grade, mixed-ability, or large class — so coaching and generated resources match how you actually teach.',
+      'Yes. You can set your classroom type, including multi-grade, mixed-ability or large class, so coaching and generated resources match how you actually teach.',
   },
   {
     question: 'Can I edit what SarasTech generates?',
@@ -421,12 +426,12 @@ export default function HomePage() {
           <div className="home-hero-inner">
             <span className="home-kicker">
               <Sparkles size={13} aria-hidden="true" />
-              AI Teacher Assistant
+              Made for teachers in India
             </span>
             <h1 id="home-hero-heading">Your AI Teaching Assistant for Everyday Classrooms</h1>
             <p className="home-hero-subtitle">
-              With SarasTech AI, ask a question and get a classroom-ready lesson plan, worksheet, or quiz — in English
-              or your regional language.
+              Ask a question and get a classroom-ready lesson plan, worksheet or quiz, in English or your regional
+              language.
             </p>
             <div className="home-hero-cta">
               <button type="button" className="btn-primary home-cta-primary" onClick={() => openAuth('register')}>
@@ -562,7 +567,7 @@ export default function HomePage() {
                       value={previewDraft}
                       onChange={(e) => setPreviewDraft(e.target.value)}
                       placeholder="Ask anything about teaching…"
-                      aria-label="Try SarasTech Coach — ask a classroom question"
+                      aria-label="Try SarasTech Coach: ask a classroom question"
                     />
                     <div className="home-hero-visual-composer-row">
                       <span className="home-hero-visual-composer-controls">
@@ -599,18 +604,18 @@ export default function HomePage() {
             <div className="home-why-copy home-reveal">
               <span className="home-eyebrow">Why SarasTech</span>
               <h2 className="home-why-label" id="home-problem-heading">
-                Building a lesson plan, worksheet, or quiz from scratch — or finding guidance in your own language —
-                takes time most teachers don&rsquo;t have between classes.
+                Building a lesson plan, worksheet or quiz from scratch, or finding guidance in your own language, takes
+                time most teachers don&rsquo;t have between classes.
               </h2>
             </div>
             <div className="home-why-panel home-reveal">
               <span className="home-why-icon" aria-hidden="true">
                 <Sparkles size={22} strokeWidth={1.8} />
               </span>
-              <h3>One AI assistant, ready when you are</h3>
+              <h3>One place for lesson prep</h3>
               <p>
-                SarasTech combines an AI classroom coach with a lesson plan, worksheet, and quiz generator — in
-                English or your regional language — so you get a usable answer or resource in minutes.
+                SarasTech pairs an AI classroom coach with a generator for lesson plans, worksheets and quizzes, in
+                English or your regional language, so you get something usable in minutes.
               </p>
             </div>
           </div>
@@ -618,7 +623,7 @@ export default function HomePage() {
 
         <section className="home-section" id="features" aria-labelledby="home-features-heading">
           <span className="home-eyebrow">Features</span>
-          <h2 id="home-features-heading">AI Tools for Teachers, Built Into One Assistant</h2>
+          <h2 id="home-features-heading">Tools for planning, teaching and reviewing</h2>
           <div className="home-feature-grid">
             {FEATURES.map((feature, index) => {
               const Icon = feature.icon;
@@ -634,6 +639,13 @@ export default function HomePage() {
                     </span>
                     <h3>{feature.title}</h3>
                     <p>{feature.description}</p>
+                    {feature.chips && (
+                      <ul className="home-feature-chips">
+                        {feature.chips.map((chip) => (
+                          <li key={chip}>{chip}</li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                   {/* A real Coach answer (public/product/coach-en-*.png) fills what
                       used to be the featured card's empty right half. */}
@@ -734,7 +746,7 @@ export default function HomePage() {
                 <h2 id="home-audience-heading">Built for Real Indian Classrooms</h2>
               </div>
               <p className="home-audience-lead">
-                Practical AI support for everyday teaching — from lesson planning and classroom activities to
+                Practical AI support for everyday teaching, from lesson planning and classroom activities to
                 assessments and teaching resources, with support for multiple Indian languages.
               </p>
               <ul className="home-audience-list">
@@ -764,8 +776,9 @@ export default function HomePage() {
                 phone. Web is available today.
               </p>
             </div>
-            <a className="btn-outline home-android-cta" href="#follow">
+            <a className="btn-primary home-android-cta" href="#follow">
               Follow for updates
+              <ArrowRight size={18} aria-hidden="true" />
             </a>
           </div>
         </section>
@@ -804,10 +817,10 @@ export default function HomePage() {
 
         <section className="home-cta-band" aria-labelledby="home-final-cta-heading">
           <div className="home-cta-band-inner home-reveal">
-            <h2 id="home-final-cta-heading">Ready to Teach Smarter?</h2>
+            <h2 id="home-final-cta-heading">Try it on your next lesson</h2>
             <p>
-              Create your teacher account and turn a classroom question into a lesson plan, worksheet, quiz, or ready
-              answer — in your language.
+              Create a teacher account, ask your first classroom question, and get a lesson plan, worksheet or quiz in
+              your language.
             </p>
             <div className="home-hero-cta">
               <button type="button" className="btn-primary home-cta-primary" onClick={() => openAuth('register')}>
@@ -825,7 +838,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        <SocialLinks />
       </main>
 
       <footer className="home-footer">
@@ -836,6 +848,7 @@ export default function HomePage() {
               <span>SarasTech</span>
             </div>
             <p className="home-footer-tagline">An AI teaching assistant built for everyday classroom work in India.</p>
+            <SocialLinks />
           </div>
           <div className="home-footer-col">
             <h4>Product</h4>
