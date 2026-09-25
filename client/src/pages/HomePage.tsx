@@ -6,7 +6,6 @@ import {
   Moon,
   Menu,
   X,
-  Clock,
   Sparkles,
   ChevronDown,
   CircleHelp,
@@ -434,9 +433,12 @@ export default function HomePage() {
                 Get Started
                 <ArrowRight size={18} aria-hidden="true" />
               </button>
-              <button type="button" className="btn-outline" onClick={() => openAuth('login')}>
-                Sign In
-              </button>
+              {/* Sign In already lives in the header, mobile menu, closing band and
+                  footer, so the hero's second action shows what the product does
+                  instead of repeating it. */}
+              <a href="#how-it-works" className="btn-outline">
+                See how it works
+              </a>
             </div>
           </div>
 
@@ -595,7 +597,6 @@ export default function HomePage() {
         <section className="home-section" id="why-sarastech" aria-labelledby="home-problem-heading">
           <div className="home-why-grid">
             <div className="home-why-copy home-reveal">
-              <Clock className="home-why-watermark" aria-hidden="true" size={180} strokeWidth={1} />
               <span className="home-eyebrow">Why SarasTech</span>
               <h2 className="home-why-label" id="home-problem-heading">
                 Building a lesson plan, worksheet, or quiz from scratch — or finding guidance in your own language —
