@@ -26,6 +26,7 @@ import {
   Search,
   PanelLeft,
   Compass,
+  Smartphone,
 } from 'lucide-react';
 import { usePreferences } from '../hooks/usePreferences';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
@@ -34,6 +35,7 @@ import AuthModal from '../components/AuthModal';
 import type { Mode } from '../components/AuthForm';
 import { FooterSeoColumns } from '../components/PublicSiteChrome';
 import { SocialLinks } from '../components/SocialLinks';
+import { AnnouncementBar } from '../components/AnnouncementBar';
 import { buildHomeGraph } from '../seo/schema';
 import { ABOUT_PAGE, GUIDE_PAGES, TOOL_PAGES } from '../seo/pages';
 
@@ -186,6 +188,10 @@ const FAQS = [
       'Yes. Every saved lesson plan, worksheet, or quiz opens in a built-in editor, so you can refine it before printing or exporting it as a PDF.',
   },
   {
+    question: 'Is there a SarasTech Android app?',
+    answer: 'An Android app is coming soon. You can use SarasTech in your browser today.',
+  },
+  {
     question: 'Is my saved material private to me?',
     answer: 'Yes. Your resources and history are tied to your own account, so only you can see and edit them.',
   },
@@ -325,6 +331,7 @@ export default function HomePage() {
 
   return (
     <div className="home-page">
+      <AnnouncementBar />
       <div className={`home-header-bar${headerScrolled ? ' home-header-bar--scrolled' : ''}`}>
         <header className="home-header">
           <Link to="/" className="home-brand">
@@ -714,6 +721,25 @@ export default function HomePage() {
                 </li>
               ))}
             </ul>
+          </div>
+        </section>
+
+        <section className="home-section" id="android" aria-labelledby="home-android-heading">
+          <div className="home-android-card home-reveal">
+            <span className="home-android-icon" aria-hidden="true">
+              <Smartphone size={26} strokeWidth={1.8} />
+            </span>
+            <div className="home-android-copy">
+              <span className="home-android-eyebrow">Coming soon</span>
+              <h2 id="home-android-heading">SarasTech for Android is on the way</h2>
+              <p>
+                We&rsquo;re building the SarasTech Android app so you can use your AI teaching assistant on your
+                phone. Web is available today.
+              </p>
+            </div>
+            <a className="btn-outline home-android-cta" href="#follow">
+              Follow for updates
+            </a>
           </div>
         </section>
 

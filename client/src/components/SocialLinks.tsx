@@ -74,7 +74,7 @@ const ICONS: Record<string, ReactNode> = {
 
 export function SocialLinks() {
   return (
-    <section className="home-social" aria-labelledby="home-social-heading">
+    <section className="home-social" id="follow" aria-labelledby="home-social-heading">
       <div className="home-social-inner">
         <h2 id="home-social-heading">Follow {SITE_NAME}</h2>
         <p>Stay connected for teaching tips, AI tools, and classroom ideas.</p>
