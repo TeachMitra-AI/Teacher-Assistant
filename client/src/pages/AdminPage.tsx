@@ -27,7 +27,13 @@ export default function AdminPage({ preferences }: { preferences: ReturnType<typ
   // Preserves the effect's original unmount-safety (no setState after this
   // page navigates away) now that `load` is also called directly by Retry.
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  // Re-armed in the effect body, not just initialised: StrictMode runs
+  // mount → cleanup → mount in dev, and the cleanup alone would leave the
+  // flag false, dropping every response (issue #110).
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
