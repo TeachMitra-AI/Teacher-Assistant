@@ -21,6 +21,7 @@ import {
   Search,
   PanelLeft,
   Smartphone,
+  Play,
 } from 'lucide-react';
 import { usePreferences } from '../hooks/usePreferences';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
@@ -31,6 +32,7 @@ import { FooterSeoColumns } from '../components/PublicSiteChrome';
 import { SocialLinks } from '../components/SocialLinks';
 import { AnnouncementBar } from '../components/AnnouncementBar';
 import { ProductShot } from '../components/ProductShot';
+import { HomeTour } from '../components/HomeTour';
 import { buildHomeGraph } from '../seo/schema';
 import { ABOUT_PAGE, GUIDE_PAGES, TOOL_PAGES } from '../seo/pages';
 
@@ -440,9 +442,10 @@ export default function HomePage() {
               </button>
               {/* Sign In already lives in the header, mobile menu, closing band and
                   footer, so the hero's second action shows what the product does
-                  instead of repeating it. */}
-              <a href="#how-it-works" className="btn-outline">
-                See how it works
+                  instead of repeating it: it jumps to the product tour (HomeTour). */}
+              <a href="#see-it-in-action" className="btn-outline home-cta-tour">
+                <Play size={16} aria-hidden="true" />
+                Watch the 30-sec tour
               </a>
             </div>
           </div>
@@ -620,6 +623,8 @@ export default function HomePage() {
             </div>
           </div>
         </section>
+
+        <HomeTour theme={theme} onGetStarted={() => openAuth('register')} />
 
         <section className="home-section" id="features" aria-labelledby="home-features-heading">
           <span className="home-eyebrow">Features</span>
