@@ -17,6 +17,7 @@ import { Alert } from 'react-native';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-native';
 import * as Print from 'expo-print';
 import { ThemeProvider } from '../../../theme/ThemeContext';
+import { ApiError } from '../../../api/client';
 import { ResourceEditScreen } from '../ResourceEditScreen';
 
 jest.mock('../../../auth/AuthContext', () => ({
@@ -189,6 +190,28 @@ describe('ResourceEditScreen', () => {
     await fireEvent.press(screen.getByText('Apply to editor'));
 
     await waitFor(() => expect(screen.getByDisplayValue('A much simpler explanation.')).toBeTruthy());
+  });
+
+  it('a RATE_LIMITED AI action shows a persistent cooldown message and disables the AI actions, instead of a one-off alert', async () => {
+    getResource.mockResolvedValueOnce(RESOURCE);
+    const retryAt = Date.now() + 65_000;
+    runAiAction.mockRejectedValueOnce(new ApiError('Every AI key is busy.', 429, { code: 'RATE_LIMITED', retryAt }));
+    const alertSpy = jest.spyOn(Alert, 'alert');
+    await act(async () => {
+      await renderScreen();
+    });
+    await waitFor(() => screen.getByDisplayValue('Photosynthesis Lesson'));
+
+    await fireEvent.press(screen.getByTestId('ai-action-simplify'));
+    await waitFor(() => expect(screen.getByText(/AI usage limit reached/)).toBeTruthy());
+
+    // Not the transient one-off Alert other AI action errors use — a
+    // multi-hour cooldown needs a message that stays on screen, not one the
+    // teacher can dismiss and forget.
+    expect(alertSpy).not.toHaveBeenCalled();
+    // Every action (not just the one that hit the limit) is blocked until
+    // the cooldown clears, mirroring ResourceWorkspace.tsx exactly.
+    expect(screen.getByTestId('ai-action-add_activities').props.accessibilityState?.disabled).toBe(true);
   });
 
   it('does not persist an applied suggestion until Save is pressed', async () => {

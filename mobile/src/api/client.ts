@@ -8,9 +8,17 @@ import { getToken, getRefreshToken, setSession } from './session';
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /** The server's machine-readable error code, e.g. 'RATE_LIMITED' (see api()). */
+  code?: string;
+  /** Epoch ms — set only when every Gemini API key is currently exhausted;
+   *  the soonest any key recovers. Parsed from the server's `retryAt` ISO
+   *  string. See lib/useRetryCountdown.ts. */
+  retryAt?: number;
+  constructor(message: string, status: number, extra?: { code?: string; retryAt?: number }) {
     super(message);
     this.status = status;
+    this.code = extra?.code;
+    this.retryAt = extra?.retryAt;
   }
 }
 
@@ -99,11 +107,12 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   }
 
   if (!res.ok) {
-    const message =
-      (data && typeof data === 'object' && 'error' in data && typeof (data as { error: unknown }).error === 'string'
-        ? (data as { error: string }).error
-        : null) || `Request failed (${res.status}).`;
-    throw new ApiError(message, res.status);
+    const body = data && typeof data === 'object' ? (data as Record<string, unknown>) : null;
+    const message = (body && typeof body.error === 'string' ? body.error : null) || `Request failed (${res.status}).`;
+    const code = body && typeof body.code === 'string' ? body.code : undefined;
+    const retryAtRaw = body && typeof body.retryAt === 'string' ? Date.parse(body.retryAt) : NaN;
+    const retryAt = Number.isNaN(retryAtRaw) ? undefined : retryAtRaw;
+    throw new ApiError(message, res.status, { code, retryAt });
   }
 
   return data as T;
