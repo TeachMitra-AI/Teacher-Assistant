@@ -225,6 +225,29 @@ describe('CoachScreen', () => {
     expect(askCoach).toHaveBeenCalledTimes(2);
   });
 
+  it('a RATE_LIMITED failure shows a persistent cooldown countdown, hides Try again, and blocks the composer', async () => {
+    const retryAt = Date.now() + 65_000;
+    askCoach.mockRejectedValueOnce(new ApiError('Every AI key is busy.', 429, { code: 'RATE_LIMITED', retryAt }));
+
+    await act(async () => {
+      renderScreen();
+    });
+    await fireEvent.changeText(screen.getByTestId('coach-composer-input'), 'A question');
+    await fireEvent.press(screen.getByTestId('coach-composer-send'));
+
+    // Shows in both the failed turn's bubble AND the composer (blocking
+    // further sends) — mirrors the web's MessageBubble.tsx + CoachPage.tsx
+    // exactly.
+    await waitFor(() => expect(screen.getAllByText(/AI usage limit reached/).length).toBe(2));
+    // Not the plain error text — a live countdown replaces it, and the retry
+    // button stays hidden until it's actually worth retrying.
+    expect(screen.queryByText('Every AI key is busy.')).toBeNull();
+    expect(screen.queryByText('Try again')).toBeNull();
+    // The composer itself is blocked (not just the failed turn) — a teacher
+    // must not be able to fire another request into the same exhausted pool.
+    expect(screen.getByTestId('coach-composer-send').props.accessibilityState?.disabled).toBe(true);
+  });
+
   it('editing a sent question resubmits the edited text in place, replacing the old answer', async () => {
     askCoach.mockResolvedValueOnce({
       success: true, text: 'First answer.', language: 'en', context: {}, queryId: 'q1',

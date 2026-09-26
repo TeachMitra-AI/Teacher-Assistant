@@ -27,6 +27,8 @@ import { RESOURCE_TYPES, RESOURCE_TYPE_META, GRADES, SUBJECTS, LANGUAGES } from 
 import { buildInitialExamMeta, mergeExamMeta, parseExamMeta } from '../../lib/examMeta';
 import { stripAssessmentPreamble } from '../../lib/assessment';
 import { parseStructuredDocument, buildStructuredPayload, validateQuestions } from '../../lib/structuredQuestions';
+import { useRetryCountdown } from '../../lib/useRetryCountdown';
+import { retryMessage } from '../../lib/retryCountdown';
 import { buildResourcePdfHtml, type PrintMode } from '../../lib/buildResourcePdfHtml';
 import { exportAndSharePdf, SharingUnavailableError } from '../../lib/exportPdf';
 import { MarkdownText } from '../coach/MarkdownText';
@@ -100,6 +102,24 @@ export function ResourceEditScreen({ route, navigation }: Props) {
   const [aiBusy, setAiBusy] = useState<AiActionId | null>(null);
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [suggestionStructured, setSuggestionStructured] = useState<string | null>(null);
+
+  // Every Gemini API key exhausted (see api/client.ts's ApiError.retryAt) —
+  // shown as a persistent inline message and disables the AI Assist actions
+  // instead of the one-off Alert other AI action errors use (an alert the
+  // teacher dismisses says nothing about an hours-long cooldown still being
+  // in effect), and auto-clears once the countdown reaches zero. Mirrors
+  // client/src/pages/ResourceWorkspace.tsx's aiCooldownUntil exactly.
+  const [aiCooldownUntil, setAiCooldownUntil] = useState<number | null>(null);
+  const { remainingMs: aiCooldownRemainingMs, ready: aiCooldownReady } = useRetryCountdown(aiCooldownUntil);
+  useEffect(() => {
+    // Synchronizing local state with the countdown hook's own ticking clock
+    // reaching zero, not the synchronous-setState-during-render anti-pattern
+    // this rule targets — see the fetch-on-mount effect below (and
+    // AuthContext.tsx's identical, already-documented case) for the same
+    // justification.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (aiCooldownUntil != null && aiCooldownReady) setAiCooldownUntil(null);
+  }, [aiCooldownUntil, aiCooldownReady]);
 
   useEffect(() => {
     let cancelled = false;
@@ -277,7 +297,11 @@ export function ResourceEditScreen({ route, navigation }: Props) {
       setSuggestion(result.suggestion);
       setSuggestionStructured(result.structured ?? null);
     } catch (err) {
-      Alert.alert('AI action failed', err instanceof ApiError ? err.message : 'Please try again.');
+      if (err instanceof ApiError && err.code === 'RATE_LIMITED' && err.retryAt != null) {
+        setAiCooldownUntil(err.retryAt);
+      } else {
+        Alert.alert('AI action failed', err instanceof ApiError ? err.message : 'Please try again.');
+      }
     } finally {
       setAiBusy(null);
     }
@@ -510,7 +534,13 @@ export function ResourceEditScreen({ route, navigation }: Props) {
           </View>
         )}
 
-        <AiAssistSection isAssessment={isAssessment} busy={aiBusy} onRun={runAction} />
+        <AiAssistSection
+          isAssessment={isAssessment}
+          busy={aiBusy}
+          cooldownActive={aiCooldownUntil != null && !aiCooldownReady}
+          cooldownMessage={retryMessage(aiCooldownRemainingMs)}
+          onRun={runAction}
+        />
       </ScrollView>
 
       <SuggestionModal

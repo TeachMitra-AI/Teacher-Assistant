@@ -9,7 +9,7 @@
 // state) is deliberately not ported — nothing in the mobile app plan scopes
 // that feature for mobile, and reusing the router would require a mobile
 // deep-link/handle contract that doesn't exist yet.
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, ScrollView, KeyboardAvoidingView, Platform, Pressable, TextInput, Modal, StyleSheet,
 } from 'react-native';
@@ -26,6 +26,8 @@ import { useTheme } from '../../theme/ThemeContext';
 import { spacing, radius } from '../../theme/tokens';
 import { generateAssessment, type GenerateAssessmentInput, type AssessmentFormat, type Difficulty, type QuestionType, type QuestionTypeSelection } from '../../api/resources';
 import { ApiError } from '../../api/client';
+import { useRetryCountdown } from '../../lib/useRetryCountdown';
+import { retryMessage } from '../../lib/retryCountdown';
 import {
   ASSESSMENT_FORMATS, DIFFICULTIES, QUESTION_TYPES, LANGUAGES, GRADES, SUBJECTS,
   QUESTION_COUNT_MIN, QUESTION_COUNT_MAX, QUESTION_COUNT_DEFAULT,
@@ -61,6 +63,21 @@ export function GeneratorFormScreen({ navigation }: Props) {
 
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
+  // Every Gemini API key exhausted (see api/client.ts's ApiError.retryAt) —
+  // shown and auto-clears in place of `error` while active; mirrors the
+  // web's GeneratorPage.tsx exactly. Resets with the rest of this screen's
+  // state when the Generator tab unmounts on blur (MainTabs.tsx) — same
+  // "always a fresh form" scoping as `error`/`generating` already have.
+  const [retryAt, setRetryAt] = useState<number | null>(null);
+  const { remainingMs: retryRemainingMs, ready: retryReady } = useRetryCountdown(retryAt);
+  useEffect(() => {
+    // Synchronizing local state with the countdown hook's own ticking clock
+    // reaching zero, not the synchronous-setState-during-render anti-pattern
+    // this rule targets — see ResourceEditScreen.tsx's identical, already-
+    // documented case.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (retryAt != null && retryReady) setRetryAt(null);
+  }, [retryAt, retryReady]);
 
   function clampCount(n: number) {
     return Math.min(QUESTION_COUNT_MAX, Math.max(QUESTION_COUNT_MIN, n));
@@ -145,7 +162,11 @@ export function GeneratorFormScreen({ navigation }: Props) {
         structured: result.structured,
       });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not generate. Please try again.');
+      if (err instanceof ApiError && err.code === 'RATE_LIMITED' && err.retryAt != null) {
+        setRetryAt(err.retryAt);
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Could not generate. Please try again.');
+      }
     } finally {
       setGenerating(false);
     }
@@ -327,7 +348,7 @@ export function GeneratorFormScreen({ navigation }: Props) {
             title={generating ? 'Generating…' : 'Generate'}
             onPress={handleGenerate}
             loading={generating}
-            disabled={generating || !topic.trim() || questionTypes.length === 0}
+            disabled={generating || !topic.trim() || questionTypes.length === 0 || (retryAt != null && !retryReady)}
           />
           {!generating && (
             <View style={styles.generateHint}>
@@ -339,7 +360,11 @@ export function GeneratorFormScreen({ navigation }: Props) {
           )}
         </View>
 
-        {error ? (
+        {retryAt != null && !retryReady ? (
+          <View style={[styles.errorBanner, { backgroundColor: colors.semantic.danger.bg }]} accessibilityRole="alert">
+            <ThemedText style={{ color: colors.semantic.danger.text }}>{retryMessage(retryRemainingMs)}</ThemedText>
+          </View>
+        ) : error ? (
           <View style={[styles.errorBanner, { backgroundColor: colors.semantic.danger.bg }]} accessibilityRole="alert">
             <ThemedText style={{ color: colors.semantic.danger.text }}>{error}</ThemedText>
           </View>

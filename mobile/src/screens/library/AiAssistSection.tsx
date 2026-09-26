@@ -34,20 +34,30 @@ const AI_ACTIONS: AiActionDef[] = [
 ];
 
 export function AiAssistSection({
-  isAssessment, busy, onRun,
+  isAssessment, busy, cooldownMessage, cooldownActive, onRun,
 }: {
   isAssessment: boolean;
   busy: AiActionId | null;
+  /** Set (with cooldownActive) while every Gemini key is exhausted — see
+   *  ResourceEditScreen's aiCooldownUntil / lib/useRetryCountdown.ts. */
+  cooldownMessage?: string;
+  cooldownActive?: boolean;
   onRun: (action: AiActionId, targetGrade?: string) => void;
 }) {
   const { colors } = useTheme();
   const [adaptOpen, setAdaptOpen] = useState(false);
   const [adaptGrade, setAdaptGrade] = useState('');
+  const disabled = !!busy || !!cooldownActive;
 
   return (
     <View style={styles.container}>
       <ThemedText variant="title" style={styles.title}>AI Assist</ThemedText>
       <ThemedText variant="muted" style={styles.hint}>Generate a suggested revision — you preview and apply it yourself.</ThemedText>
+      {cooldownActive && !!cooldownMessage && (
+        <ThemedText style={[styles.hint, { color: colors.semantic.danger.text }]} accessibilityRole="alert">
+          {cooldownMessage}
+        </ThemedText>
+      )}
 
       <View style={styles.actions}>
         {AI_ACTIONS.filter((a) => !a.assessmentOnly || isAssessment).map((a) => {
@@ -56,9 +66,9 @@ export function AiAssistSection({
           return (
             <Pressable
               key={a.id}
-              disabled={!!busy}
+              disabled={disabled}
               onPress={() => (a.needsGrade ? setAdaptOpen((o) => !o) : onRun(a.id))}
-              style={[styles.actionBtn, { borderColor: colors.border, backgroundColor: colors.surface2, opacity: busy && !isBusy ? 0.5 : 1 }]}
+              style={[styles.actionBtn, { borderColor: colors.border, backgroundColor: colors.surface2, opacity: disabled && !isBusy ? 0.5 : 1 }]}
               accessibilityRole="button"
               testID={`ai-action-${a.id}`}
             >
