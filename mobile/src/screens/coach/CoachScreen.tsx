@@ -32,6 +32,8 @@ import {
   askCoach, askCoachWithAttachments, sendCoachFeedback, listHistory, deleteHistoryItem, clearHistory,
 } from '../../api/coach';
 import { useHistoryOverrides } from '../../lib/useHistoryOverrides';
+import { useRetryCountdown } from '../../lib/useRetryCountdown';
+import { retryMessage } from '../../lib/retryCountdown';
 import { useAttachments, type SelectedAttachment } from '../../lib/useAttachments';
 import { useVoiceInput } from '../../lib/useVoiceInput';
 import { ATTACHMENTS_ENABLED, CLASSROOM_MODE_ENABLED, SPEECH_LOCALE } from '../../config';
@@ -65,6 +67,22 @@ export function CoachScreen({ navigation }: Props) {
   const [query, setQuery] = useState('');
   const listRef = useRef<FlatList<Turn>>(null);
   const isSubmitting = turns.some((t) => t.status === 'pending');
+
+  // Every Gemini API key exhausted (see api/client.ts's ApiError.retryAt) —
+  // blocks sending until the soonest key recovers, then clears itself
+  // automatically (no auto-resend of what was typed; mirrors the web's
+  // CoachPage.tsx aiCooldownUntil exactly).
+  const [aiCooldownUntil, setAiCooldownUntil] = useState<number | null>(null);
+  const { remainingMs: aiCooldownRemainingMs, ready: aiCooldownReady } = useRetryCountdown(aiCooldownUntil);
+  useEffect(() => {
+    // Synchronizing local state with the countdown hook's own ticking clock
+    // reaching zero, not the synchronous-setState-during-render anti-pattern
+    // this rule targets — see the fetch-on-mount effect below for the same
+    // justification.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (aiCooldownUntil != null && aiCooldownReady) setAiCooldownUntil(null);
+  }, [aiCooldownUntil, aiCooldownReady]);
+
   const attachments = useAttachments();
   // Classroom Mode (docs/classroom-mode.md) — plain component state,
   // deliberately NOT persisted, mirroring the web's CoachPage: resets to OFF
@@ -153,7 +171,9 @@ export function CoachScreen({ navigation }: Props) {
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to get a response. Please try again.';
       const errorIsNetwork = err instanceof ApiError && err.status === 0;
-      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message, errorIsNetwork } : t)));
+      const retryAt = err instanceof ApiError && err.code === 'RATE_LIMITED' ? err.retryAt : undefined;
+      if (retryAt != null) setAiCooldownUntil(retryAt);
+      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message, errorIsNetwork, retryAt } : t)));
     } finally {
       scrollToEnd();
     }
@@ -196,7 +216,9 @@ export function CoachScreen({ navigation }: Props) {
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to get a response. Please try again.';
       const errorIsNetwork = err instanceof ApiError && err.status === 0;
-      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message, errorIsNetwork } : t)));
+      const retryAt = err instanceof ApiError && err.code === 'RATE_LIMITED' ? err.retryAt : undefined;
+      if (retryAt != null) setAiCooldownUntil(retryAt);
+      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message, errorIsNetwork, retryAt } : t)));
     } finally {
       scrollToEnd();
     }
@@ -383,7 +405,8 @@ export function CoachScreen({ navigation }: Props) {
             value={query}
             onChange={setQuery}
             onSubmit={handleSubmit}
-            loading={isSubmitting}
+            loading={isSubmitting || (aiCooldownUntil != null && !aiCooldownReady)}
+            cooldownMessage={aiCooldownUntil != null && !aiCooldownReady ? retryMessage(aiCooldownRemainingMs) : undefined}
             attachments={attachments}
             voice={voice}
             classroomMode={classroomMode}

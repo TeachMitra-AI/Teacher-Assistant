@@ -28,6 +28,11 @@ interface ComposerProps {
   onChange: (value: string) => void;
   onSubmit: () => void;
   loading: boolean;
+  /** Set (with `loading`) while every Gemini key is exhausted — see
+   *  CoachScreen's aiCooldownUntil / lib/useRetryCountdown.ts. Shown in
+   *  place of the attachment error, explaining why `loading` is true even
+   *  though nothing is actually in flight. */
+  cooldownMessage?: string;
   attachments: ReturnType<typeof useAttachments>;
   voice: ReturnType<typeof useVoiceInput>;
   classroomMode: boolean;
@@ -35,7 +40,7 @@ interface ComposerProps {
 }
 
 export function Composer({
-  value, onChange, onSubmit, loading, attachments, voice, classroomMode, onClassroomModeChange,
+  value, onChange, onSubmit, loading, cooldownMessage, attachments, voice, classroomMode, onClassroomModeChange,
 }: ComposerProps) {
   const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
@@ -82,10 +87,16 @@ export function Composer({
           { backgroundColor: colors.surface2, borderColor: focused ? colors.orange : colors.border },
         ]}
       >
-        {ATTACHMENTS_ENABLED && attachments.error && (
+        {cooldownMessage ? (
           <ThemedText style={[styles.attachmentError, { color: colors.semantic.danger.text }]} accessibilityRole="alert">
-            {attachments.error}
+            {cooldownMessage}
           </ThemedText>
+        ) : (
+          ATTACHMENTS_ENABLED && attachments.error && (
+            <ThemedText style={[styles.attachmentError, { color: colors.semantic.danger.text }]} accessibilityRole="alert">
+              {attachments.error}
+            </ThemedText>
+          )
         )}
         {ATTACHMENTS_ENABLED && (
           <AttachmentTray attachments={trayItems} onRemove={attachments.remove} disabled={loading} variant="preview" />

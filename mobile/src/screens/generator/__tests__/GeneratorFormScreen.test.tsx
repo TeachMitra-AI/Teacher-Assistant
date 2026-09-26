@@ -5,6 +5,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-native';
 import { ThemeProvider } from '../../../theme/ThemeContext';
+import { ApiError } from '../../../api/client';
 import { QUESTION_COUNT_MIN, QUESTION_COUNT_MAX } from '../../../config';
 import { GeneratorFormScreen } from '../GeneratorFormScreen';
 
@@ -176,6 +177,22 @@ describe('GeneratorFormScreen', () => {
 
     await waitFor(() => expect(screen.getByText('Could not generate. Please try again.')).toBeTruthy());
     expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  it('a RATE_LIMITED failure shows a persistent cooldown message and disables Generate, instead of the plain error', async () => {
+    const retryAt = Date.now() + 65_000;
+    generateAssessment.mockRejectedValueOnce(new ApiError('Every AI key is busy.', 429, { code: 'RATE_LIMITED', retryAt }));
+    await renderScreen();
+    await fireEvent.changeText(screen.getByLabelText('Topic *'), 'Fractions');
+    await fireEvent.press(screen.getByText('Generate'));
+
+    await waitFor(() => expect(screen.getByText(/AI usage limit reached/)).toBeTruthy());
+    expect(screen.queryByText('Every AI key is busy.')).toBeNull();
+
+    // Generate is blocked while the cooldown is active — pressing it again
+    // must not fire a second request into the same exhausted pool.
+    await fireEvent.press(screen.getByText('Generate'));
+    expect(generateAssessment).toHaveBeenCalledTimes(1);
   });
 
   // Issue #95: a teacher can tick more than one specific question type

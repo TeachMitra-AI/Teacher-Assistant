@@ -12,6 +12,8 @@ import { Button } from '../../components/Button';
 import { useTheme } from '../../theme/ThemeContext';
 import { radius, spacing } from '../../theme/tokens';
 import { MAX_QUERY_LENGTH } from '../../config';
+import { useRetryCountdown } from '../../lib/useRetryCountdown';
+import { retryMessage } from '../../lib/retryCountdown';
 import { RunStatus } from './RunStatus';
 import { MarkdownText } from './MarkdownText';
 import { AttachmentTray } from './AttachmentTray';
@@ -39,6 +41,10 @@ export function MessageBubble({ turn, onRetry, onFeedback, onEdit }: MessageBubb
   // would silently drop the file(s) — the files themselves are never kept
   // once a turn is sent (mirrors the web's MessageBubble.tsx canEdit guard).
   const canEdit = turn.status !== 'pending' && !hasAttachments;
+  // No-ops (ready stays true) unless this turn failed because every Gemini
+  // API key is currently exhausted (turn.retryAt — see api/client.ts's
+  // ApiError). Mirrors the web's MessageBubble.tsx exactly.
+  const { remainingMs: retryRemainingMs, ready: retryReady } = useRetryCountdown(turn.retryAt);
 
   function startEdit() {
     setDraft(turn.query);
@@ -117,12 +123,20 @@ export function MessageBubble({ turn, onRetry, onFeedback, onEdit }: MessageBubb
               { backgroundColor: colors.semantic.danger.bg, borderColor: colors.semantic.danger.border },
             ]}
             accessibilityRole="alert"
-            accessibilityLabel={turn.error ?? 'Something went wrong'}
+            accessibilityLabel={turn.retryAt != null ? retryMessage(retryRemainingMs) : (turn.error ?? 'Something went wrong')}
           >
-            <ThemedText style={{ color: colors.semantic.danger.text, fontSize: 14 }}>⚠️ {turn.error}</ThemedText>
-            <Pressable onPress={() => onRetry(turn)} accessibilityRole="button" testID={`retry-${turn.id}`}>
-              <ThemedText style={[styles.retryText, { color: colors.orange }]}>Try again</ThemedText>
-            </Pressable>
+            <ThemedText style={{ color: colors.semantic.danger.text, fontSize: 14 }}>
+              ⚠️ {turn.retryAt != null ? retryMessage(retryRemainingMs) : turn.error}
+            </ThemedText>
+            {/* Retrying while every key is still exhausted would just fail the
+                same way — the button reappears once retryReady flips true (or
+                immediately, for any other kind of error). Mirrors the web's
+                MessageBubble.tsx exactly. */}
+            {retryReady && (
+              <Pressable onPress={() => onRetry(turn)} accessibilityRole="button" testID={`retry-${turn.id}`}>
+                <ThemedText style={[styles.retryText, { color: colors.orange }]}>Try again</ThemedText>
+              </Pressable>
+            )}
           </View>
         )}
 
