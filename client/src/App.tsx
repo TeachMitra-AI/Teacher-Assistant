@@ -20,6 +20,8 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import TermsOfServicePage from './pages/TermsOfServicePage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import ScheduleDemoPage from './pages/ScheduleDemoPage';
+import ManageBookingPage from './pages/ManageBookingPage';
 import ContentPage from './pages/ContentPage';
 import { CONTENT_PAGES } from './seo/pages';
 import BottomNav from './components/BottomNav';
@@ -33,6 +35,7 @@ const CoachPage = lazy(() => import('./pages/CoachPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const ManagePage = lazy(() => import('./pages/ManagePage'));
 const AdminSupportPage = lazy(() => import('./pages/AdminSupportPage'));
+const AdminDemoBookingsPage = lazy(() => import('./pages/AdminDemoBookingsPage'));
 const AdminSupportTicketPage = lazy(() => import('./pages/AdminSupportTicketPage'));
 const AdminSettingsPage = lazy(() => import('./pages/AdminSettingsPage'));
 const AdminNotificationsPage = lazy(() => import('./pages/AdminNotificationsPage'));
@@ -78,6 +81,8 @@ function AppRoutes() {
         <Route path="/reset-password/:token" element={<ResetPasswordPage preferences={preferences} />} />
         <Route path="/terms" element={<TermsOfServicePage />} />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        <Route path="/schedule-demo" element={<ScheduleDemoPage />} />
+        <Route path="/schedule-demo/manage" element={<ManageBookingPage />} />
         {/* Public tool/guide pages — the same registry (seo/pages.ts) the prerender and sitemap read. */}
         {CONTENT_PAGES.map((page) => (
           <Route key={page.path} path={page.path} element={<ContentPage page={page} />} />
@@ -118,6 +123,8 @@ function AppRoutes() {
       <Route path="/settings" element={<SettingsPage preferences={preferences} />} />
       <Route path="/terms" element={<TermsOfServicePage />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
+      <Route path="/schedule-demo" element={<ScheduleDemoPage signedIn />} />
+      <Route path="/schedule-demo/manage" element={<ManageBookingPage signedIn />} />
       {/* The same public pages for a signed-in visitor (e.g. arriving from a
           search result), with the call to action pointing at the real feature. */}
       {CONTENT_PAGES.map((page) => (
@@ -138,6 +145,10 @@ function AppRoutes() {
       <Route
         path="/admin/support/:id"
         element={isSuperAdmin ? <AdminSupportTicketPage preferences={preferences} /> : <Navigate to="/" replace />}
+      />
+      <Route
+        path="/admin/demo-bookings"
+        element={isSuperAdmin ? <AdminDemoBookingsPage preferences={preferences} /> : <Navigate to="/" replace />}
       />
       <Route
         path="/admin/settings"

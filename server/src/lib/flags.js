@@ -564,10 +564,45 @@ function readTeacherAttendanceFlags(env, { warn = console.warn } = {}) {
   };
 }
 
+// ---- Schedule a Call (demo booking) -----------------------------------------
+//
+// See docs/schedule-a-call-plan.md. Same shape and same "default OFF"
+// reasoning as every flag above. MASTER KILL SWITCH: when false, every
+// /api/schedule-demo/* route returns 503 and touches no table.
+//
+// No allowedSchoolCodes here, unlike most other flags — this feature is for
+// visitors who have NOT signed up yet, so there is no school to scope a
+// rollout by. The rest of the feature's tunables (timezone, work hours, slot
+// length, lookahead window, admin notification address) are availability
+// CONFIGURATION, not a rollout flag, so they live in lib/demoBookingConfig.js
+// instead of here.
+
+const DEMO_BOOKING_FLAG_DEFAULTS = Object.freeze({
+  enabled: false,
+});
+
+/**
+ * Read the Schedule a Call feature's global flag from an environment object.
+ * @param {Record<string, string|undefined>} env
+ * @param {{warn?: (msg: string) => void}} [opts]
+ * @returns {{enabled: boolean}}
+ */
+function readDemoBookingFlags(env, { warn = console.warn } = {}) {
+  return {
+    enabled: parseBoolEnv(env.DEMO_BOOKING_ENABLED, {
+      name: 'DEMO_BOOKING_ENABLED',
+      defaultValue: DEMO_BOOKING_FLAG_DEFAULTS.enabled,
+      warn,
+    }),
+  };
+}
+
 module.exports = {
   parseBoolEnv,
   parseListEnv,
   isFlagEnabled,
+  readDemoBookingFlags,
+  DEMO_BOOKING_FLAG_DEFAULTS,
   readAssistantFlags,
   ASSISTANT_FLAG_DEFAULTS,
   readAttachmentFlags,
