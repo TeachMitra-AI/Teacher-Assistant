@@ -797,3 +797,39 @@ model TeacherAttendanceActivityLog {
   @@index([schoolId, createdAt])
   @@index([userId, createdAt])
 }
+
+// ---------------------------------------------------------------------------
+// Schedule a Call — see docs/schedule-a-call-plan.md. A public visitor's
+// request to book a demo call with the SarasTech team.
+//
+// Deliberately has NO School/User relation, unlike every other model in this
+// file: the whole point is that the person booking has not signed up yet.
+// `date`/`startTime` are plain wall-clock strings in DEMO_BOOKING_TIMEZONE
+// (see lib/demoBookingConfig.js), the same convention
+// SchoolAttendanceConfig.openTime uses instead of storing an absolute UTC
+// instant.
+// ---------------------------------------------------------------------------
+model DemoBooking {
+  id           String   @id @default(cuid())
+  name         String
+  email        String
+  organization String
+  role         String // school_admin | org_leadership | other
+  phone        String?
+  notes        String?
+  date         String // "YYYY-MM-DD", wall-clock in DEMO_BOOKING_TIMEZONE
+  startTime    String // "HH:MM", 24h, wall-clock in DEMO_BOOKING_TIMEZONE
+  status       String   @default("confirmed") // confirmed | cancelled
+  // Lets the emailed manage (reschedule/cancel) link work with no login.
+  // Not the same value as `id` — the id alone must never be enough to
+  // manage someone else's booking.
+  cancelToken  String   @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // No @@unique([date, startTime]): a cancelled row must free that slot for
+  // reuse, and a DB-level unique index can't express "unique among
+  // non-cancelled rows" in SQLite. The conflict check instead happens in
+  // the route handler inside a transaction (see routes/scheduleDemo.js).
+  @@index([date, startTime, status])
+}

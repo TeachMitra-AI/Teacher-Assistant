@@ -365,6 +365,12 @@ export default function HomePage() {
             <button type="button" className="btn-text home-desktop-only" onClick={() => openAuth('login')}>
               Sign In
             </button>
+            {/* Quieter than Get Started — this is the one B2B-shaped CTA on
+                an otherwise self-serve teacher signup page, see
+                docs/schedule-a-call-plan.md. */}
+            <Link to="/schedule-demo" className="btn-outline home-header-cta home-desktop-only">
+              Schedule a Call
+            </Link>
             <button
               type="button"
               className="btn-primary home-header-cta home-desktop-only"
@@ -402,6 +408,9 @@ export default function HomePage() {
             >
               Sign In
             </button>
+            <Link to="/schedule-demo" className="btn-outline" onClick={closeMenu}>
+              Schedule a Call
+            </Link>
             <button
               type="button"
               className="btn-primary"
@@ -765,6 +774,30 @@ export default function HomePage() {
                 ))}
               </ul>
             </div>
+          </div>
+        </section>
+
+        {/* For Schools & Organizations — the one B2B-shaped surface on an
+            otherwise self-serve teacher signup page. Placed here, right
+            before the closing sections, because a visitor who has reached
+            this point has already seen the product working (hero, tour,
+            features, a real worksheet, a real Hindi answer) — this is where
+            a school/org evaluator is qualified, not cold. See
+            docs/schedule-a-call-plan.md §1. */}
+        <section className="home-section" id="schools" aria-labelledby="home-schools-heading">
+          <div className="home-schools-card home-reveal">
+            <div className="home-schools-copy">
+              <span className="home-eyebrow">For Schools &amp; Organizations</span>
+              <h2 id="home-schools-heading">Bring SarasTech to your teachers</h2>
+              <p>
+                Rolling out AI-assisted lesson planning, worksheets, and classroom tools across your school or
+                organization? Talk to the SarasTech team and see the real product on a call.
+              </p>
+            </div>
+            <Link to="/schedule-demo" className="btn-primary home-schools-cta">
+              Schedule a Call
+              <ArrowRight size={18} aria-hidden="true" />
+            </Link>
           </div>
         </section>
 

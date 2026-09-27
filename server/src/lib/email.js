@@ -145,4 +145,80 @@ async function sendPasswordResetEmail({ to, token, name, schoolName, expiresInMi
   });
 }
 
-module.exports = { sendEmail, sendPasswordResetEmail, isEmailConfigured, redactEmail };
+/**
+ * Confirmation sent to the visitor who booked a Schedule a Call demo slot.
+ * @param {{to: string, name: string, dateLabel: string, timeLabel: string, durationMinutes: number, manageUrl: string, icsUrl: string}} params
+ */
+async function sendDemoBookingConfirmation({ to, name, dateLabel, timeLabel, durationMinutes, manageUrl, icsUrl }) {
+  const greeting = name ? `Hi ${name},` : 'Hi,';
+
+  const text = [
+    greeting,
+    '',
+    `You're booked for a ${durationMinutes}-minute call with the SarasTech team.`,
+    '',
+    `Date: ${dateLabel}`,
+    `Time: ${timeLabel}`,
+    '',
+    `Add it to your calendar: ${icsUrl}`,
+    `Need to reschedule or cancel? ${manageUrl}`,
+  ].join('\n');
+
+  const html = `
+    <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; font-size: 16px; line-height: 1.5; color: #1f2937;">
+      <p>${greeting}</p>
+      <p>You're booked for a <strong>${durationMinutes}-minute call</strong> with the SarasTech team.</p>
+      <p><strong>Date:</strong> ${dateLabel}<br /><strong>Time:</strong> ${timeLabel}</p>
+      <p>
+        <a href="${icsUrl}" style="display: inline-block; padding: 12px 20px; background: #ff6b35; color: #ffffff; border-radius: 8px; text-decoration: none;">
+          Add to calendar
+        </a>
+      </p>
+      <p style="color: #6b7280; font-size: 14px;">
+        Need to make a change? <a href="${manageUrl}">Reschedule or cancel</a>.
+      </p>
+    </div>
+  `.trim();
+
+  return sendEmail({ to, subject: "You're booked: a call with SarasTech", html, text });
+}
+
+/**
+ * Internal notification sent to the team when a new demo call is booked.
+ * No-op if DEMO_BOOKING_ADMIN_EMAIL isn't configured — same non-fatal-
+ * missing-config contract as a missing BREVO_API_KEY.
+ * @param {{adminEmail: string|null, name: string, email: string, organization: string, role: string, phone?: string, notes?: string, dateLabel: string, timeLabel: string}} params
+ */
+async function sendDemoBookingAdminAlert({ adminEmail, name, email, organization, role, phone, notes, dateLabel, timeLabel }) {
+  if (!adminEmail) {
+    logEmailEvent('warn', 'demo_booking_alert_skipped_not_configured', {});
+    return { sent: false, reason: 'not_configured' };
+  }
+
+  const lines = [
+    `New demo call booked for ${dateLabel} at ${timeLabel}.`,
+    '',
+    `Name: ${name}`,
+    `Email: ${email}`,
+    `Organization: ${organization}`,
+    `Role: ${role}`,
+  ];
+  if (phone) lines.push(`Phone: ${phone}`);
+  if (notes) lines.push('', `What they're looking to solve: ${notes}`);
+
+  return sendEmail({
+    to: adminEmail,
+    subject: `New Schedule a Call booking — ${dateLabel} ${timeLabel}`,
+    html: `<pre style="font-family: system-ui, sans-serif; white-space: pre-wrap;">${lines.join('\n')}</pre>`,
+    text: lines.join('\n'),
+  });
+}
+
+module.exports = {
+  sendEmail,
+  sendPasswordResetEmail,
+  sendDemoBookingConfirmation,
+  sendDemoBookingAdminAlert,
+  isEmailConfigured,
+  redactEmail,
+};

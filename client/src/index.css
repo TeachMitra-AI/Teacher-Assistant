@@ -3298,6 +3298,15 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 [data-theme='dark'] .status-pill.status-triaged { color: #fcd34d; border-color: #78350f; background: rgba(120, 53, 15, 0.35); }
 [data-theme='dark'] .status-pill.status-resolved { color: #6ee7a8; border-color: #14532d; background: rgba(20, 83, 45, 0.35); }
 
+/* Schedule a Call booking status — Admin bookings inbox. Same .status-pill
+   base; "confirmed" reuses the resolved/active green, "cancelled" reuses
+   the muted wont_fix treatment (a cancelled booking is a closed, neutral
+   outcome, not an error state). */
+.status-pill.status-confirmed { color: #15803d; border-color: #86efac; background: #f0fdf4; }
+.status-pill.status-cancelled { color: var(--text-muted); border-color: var(--border); background: var(--surface-2); }
+
+[data-theme='dark'] .status-pill.status-confirmed { color: #6ee7a8; border-color: #14532d; background: rgba(20, 83, 45, 0.35); }
+
 /* ---- Classroom Management (docs/classroom-feature-plan.md) --------------
    NOT the unrelated "Classroom Mode" AI chat feature — that has its own
    composer-scoped styles elsewhere in this file. This block covers the
@@ -7281,6 +7290,135 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 @media (max-width: 768px) {
   .home-android-card { flex-direction: column; align-items: flex-start; padding: 1.75rem 1.5rem; gap: 1.1rem; }
   .home-android-cta { align-self: stretch; min-height: 44px; }
+}
+
+/* "For Schools & Organizations" — the one B2B-shaped CTA on an otherwise
+   self-serve teacher signup page (see docs/schedule-a-call-plan.md). Same
+   horizontal-card shape as .home-android-card just above, minus the icon and
+   the orange border — this one is meant to read as a quieter, secondary
+   surface, not another "look at this" banner. */
+.home-schools-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 2.25rem 2.5rem;
+}
+.home-schools-copy { flex: 1; min-width: 0; }
+.home-schools-copy h2 { font-size: clamp(1.4rem, 2.4vw, 1.75rem); letter-spacing: -0.015em; line-height: 1.25; margin: 0 0 0.5rem; }
+.home-schools-copy p { margin: 0; font-size: 1rem; line-height: 1.6; color: var(--text-muted); max-width: 58ch; }
+.home-schools-cta { flex-shrink: 0; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; }
+@media (max-width: 768px) {
+  .home-schools-card { flex-direction: column; align-items: flex-start; padding: 1.75rem 1.5rem; gap: 1.1rem; }
+  .home-schools-cta { align-self: stretch; min-height: 44px; }
+}
+
+/* ---- Schedule a Call (pages/ScheduleDemoPage.tsx, ManageBookingPage.tsx,
+   components/DemoBookingWidget.tsx, DemoBookingCalendar.tsx) ----
+   Reuses the .home-* and .auth-* design language throughout — no new color
+   tokens, same --orange/--radius/--shadow every other section uses. */
+.demo-hero {
+  max-width: 720px;
+  margin: 0 auto 2.5rem;
+  padding: 0 1.5rem;
+  text-align: center;
+}
+.demo-hero h1 { font-size: clamp(1.8rem, 3.5vw, 2.4rem); letter-spacing: -0.02em; margin: 0.4rem 0 0.75rem; }
+.demo-hero p { margin: 0; font-size: 1.05rem; line-height: 1.6; color: var(--text-muted); }
+
+.demo-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 2.5rem;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 1.5rem 3rem;
+  align-items: start;
+}
+.demo-info { display: flex; flex-direction: column; gap: 0.5rem; }
+.demo-info h2 { font-size: 1.05rem; margin: 1.25rem 0 0.6rem; }
+.demo-info-badge {
+  display: inline-flex; align-items: center; gap: 0.4rem; width: fit-content;
+  font-size: 0.78rem; font-weight: 600; color: var(--accent-text);
+  background: var(--orange-soft); border-radius: 999px; padding: 0.35rem 0.8rem;
+  margin-bottom: 0.5rem;
+}
+.demo-info-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.demo-info-list li { display: flex; align-items: flex-start; gap: 0.55rem; font-size: 0.92rem; line-height: 1.5; color: var(--text); }
+.demo-info-list li svg { flex-shrink: 0; margin-top: 0.2rem; color: var(--accent-text); }
+.demo-info p { margin: 0; font-size: 0.92rem; line-height: 1.5; color: var(--text-muted); display: flex; align-items: flex-start; gap: 0.5rem; }
+.demo-info p svg { flex-shrink: 0; margin-top: 0.2rem; color: var(--accent-text); }
+.demo-info-aside { margin-top: 0.6rem; padding-top: 0.9rem; border-top: 1px dashed var(--border); }
+
+.demo-booking-panel,
+.demo-manage-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.75rem;
+}
+.demo-manage-panel { max-width: 560px; margin: 0 auto; padding: 0 1.5rem 3rem; background: none; border: none; box-shadow: none; }
+.demo-manage-panel > * { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.75rem; }
+
+.demo-widget { display: flex; flex-direction: column; gap: 0.9rem; }
+.demo-widget-title { font-size: 1.15rem; margin: 0; }
+.demo-widget-subtitle { font-size: 0.9rem; margin: 0.4rem 0 0; color: var(--text-muted); }
+.demo-widget-sub { margin: 0; font-size: 0.88rem; color: var(--text-muted); }
+.demo-widget-error, .demo-widget-loading {
+  display: flex; align-items: center; gap: 0.6rem; color: var(--text-muted); font-size: 0.92rem;
+}
+.demo-back { align-self: flex-start; }
+
+.demo-date-strip {
+  display: flex; gap: 0.6rem; overflow-x: auto; padding-bottom: 0.3rem;
+  -webkit-overflow-scrolling: touch;
+}
+.demo-date-chip, .demo-slot-chip {
+  display: inline-flex; align-items: center; gap: 0.4rem; flex-shrink: 0;
+  font-size: 0.85rem; font-weight: 500; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 0.55rem 0.9rem; cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.demo-date-chip:hover, .demo-slot-chip:hover { background: var(--orange-soft); border-color: var(--orange); }
+.demo-date-chip.is-selected, .demo-slot-chip.is-selected {
+  background: var(--orange); border-color: var(--orange); color: #fff;
+}
+.demo-slot-grid { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.demo-continue { align-self: flex-start; }
+
+.demo-confirm-summary { display: flex; flex-direction: column; gap: 0.6rem; margin: 0; }
+.demo-confirm-summary div { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.9rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+.demo-confirm-summary dt { color: var(--text-muted); }
+.demo-confirm-summary dd { margin: 0; font-weight: 500; text-align: right; }
+.demo-confirm-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+
+.demo-success { align-items: center; text-align: center; padding: 1rem 0; }
+.demo-success-badge {
+  display: flex; align-items: center; justify-content: center;
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--orange); color: #fff; font-size: 1.3rem; margin-bottom: 0.4rem;
+}
+.demo-success h3 { margin: 0; font-size: 1.3rem; }
+.demo-success-when { margin: 0; font-size: 1rem; line-height: 1.6; }
+.demo-success-note { margin: 0; font-size: 0.9rem; color: var(--text-muted); max-width: 40ch; }
+.demo-success-link { display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none; margin-top: 0.5rem; }
+
+@media (max-width: 900px) {
+  /* minmax(0, 1fr), not a bare 1fr: a plain `1fr` track still gives its grid
+     item an implicit `min-width: auto` (content-based), so a wide,
+     non-wrapping child further down the tree (.demo-date-strip's row of
+     date chips) blew this column out past the viewport instead of letting
+     it shrink and scroll internally — exactly the bug the codebase's other
+     flex/grid children already guard against with an explicit min-width: 0
+     (see .coach-main-chat, .composer-controls-right, etc.). */
+  .demo-layout { grid-template-columns: minmax(0, 1fr); gap: 1.75rem; }
+}
+@media (max-width: 480px) {
+  .demo-booking-panel, .demo-manage-panel > * { padding: 1.25rem; }
+  .demo-confirm-actions { flex-direction: column-reverse; align-items: stretch; }
 }
 
 /* ---- real product screenshots (components/ProductShot.tsx) ----

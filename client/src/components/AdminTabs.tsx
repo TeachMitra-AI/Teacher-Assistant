@@ -37,6 +37,11 @@ export default function AdminTabs() {
       {isSuperAdmin && (
         <Link to="/admin/support" className={pathname.startsWith('/admin/support') ? 'active' : ''} aria-current={pathname.startsWith('/admin/support') ? 'page' : undefined}>Support</Link>
       )}
+      {/* Schedule a Call bookings are leads, not a school's own data — same
+          super_admin-only reasoning as Support above. */}
+      {isSuperAdmin && (
+        <Link to="/admin/demo-bookings" className={pathname.startsWith('/admin/demo-bookings') ? 'active' : ''} aria-current={pathname.startsWith('/admin/demo-bookings') ? 'page' : undefined}>Bookings</Link>
+      )}
       {/* Notification System send/broadcast — shown to every admin role
           (unlike Support/Settings above), each scoped to what they can
           reach (see docs/notification-system-plan.md §2). */}

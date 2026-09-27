@@ -8,6 +8,8 @@
     { "source": "/attendance", "destination": "/index.html" },
     { "source": "/generator", "destination": "/index.html" },
     { "source": "/settings", "destination": "/index.html" },
-    { "source": "/admin/:path*", "destination": "/index.html" }
+    { "source": "/admin/:path*", "destination": "/index.html" },
+    { "source": "/schedule-demo", "destination": "/index.html" },
+    { "source": "/schedule-demo/manage", "destination": "/index.html" }
   ]
 }

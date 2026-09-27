@@ -64,6 +64,11 @@ const classroomRouter = require('./routes/classroom');
 // reasoning as every router above. NOT the same feature as classroomRouter's
 // student attendance above — that router never touches this one's tables.
 const teacherAttendanceRouter = require('./routes/teacherAttendance');
+// Schedule a Call (docs/schedule-a-call-plan.md) — public demo-booking flow
+// for schools/organizations. A sibling feature, same "fail at boot on a
+// malformed module" reasoning as every router above.
+const scheduleDemoRouter = require('./routes/scheduleDemo');
+const adminScheduleDemoRouter = require('./routes/adminScheduleDemo');
 const { runCheckoutReminderSweep, SWEEP_INTERVAL_MS: teacherAttendanceReminderIntervalMs } = require('./lib/teacherAttendanceReminder');
 const { initSocketServer } = require('./lib/socketServer');
 const { readNotificationsFlags } = require('./lib/flags');
@@ -605,6 +610,23 @@ const teacherAttendanceLimiter = rateLimit({
   message: { error: 'Too many requests. Please wait a few minutes and try again.' },
 });
 
+// Separate bucket for POST /api/schedule-demo/bookings — deliberately its
+// own, tighter limiter rather than reusing the general `limiter`: this is a
+// fully public, unauthenticated write endpoint with no per-user budget to
+// fall back on (the visitor has no account), same reasoning as
+// SUPPORT_RATE_LIMIT_MAX_REQUESTS above.
+const DEMO_BOOKING_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.DEMO_BOOKING_RATE_LIMIT_MAX_REQUESTS, {
+  name: 'DEMO_BOOKING_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 5 : 100, min: 1, max: 100000,
+});
+
+const demoBookingLimiter = rateLimit({
+  windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
+  max: DEMO_BOOKING_RATE_LIMIT_MAX_REQUESTS,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please wait a few minutes and try again.' },
+});
+
 // Separate bucket for POST /api/coach/learning-representation — deliberately
 // NOT the /coach limiter above, same reasoning as assistantLimiter: an
 // optional, explicitly-triggered feature must never eat the budget a
@@ -1007,6 +1029,9 @@ app.use('/api/admin', adminRouter);
 // /api/coach is, and authRequired + requireRole('super_admin') already gate
 // every route in this router.
 app.use('/api/admin/support', adminSupportRouter);
+// Schedule a Call admin inbox — same "no dedicated rate limiter" reasoning
+// as adminSupportRouter above.
+app.use('/api/admin/demo-bookings', adminScheduleDemoRouter);
 // Admin Settings > Feature Management — same "no dedicated rate limiter"
 // reasoning as adminSupportRouter above.
 app.use('/api/admin/feature-flags', adminSettingsRouter);
@@ -1085,6 +1110,21 @@ app.use('/api', classroomRouter);
 // before this line.
 app.use('/api/teacher-attendance', teacherAttendanceLimiter);
 app.use('/api', teacherAttendanceRouter);
+
+// Schedule a Call. Its own routes already start with "/schedule-demo/..."
+// (see routes/scheduleDemo.js). Only POST/PATCH (creating, rescheduling, or
+// cancelling a booking) go behind the tight bucket — same
+// method-scoped-inside-a-prefix-mount shape notificationsSendLimiter uses
+// above, so a visitor paging through the calendar's GET /slots requests for
+// several dates isn't throttled by a limit sized for a rare write. With
+// DEMO_BOOKING_ENABLED unset (the default) every /api/schedule-demo/* route
+// returns 503 and the application otherwise behaves exactly as it did before
+// this line.
+app.use('/api/schedule-demo', (req, res, next) => {
+  if (req.method !== 'POST' && req.method !== 'PATCH') return next();
+  return demoBookingLimiter(req, res, next);
+});
+app.use('/api', scheduleDemoRouter);
 
 // Global error handler — last line of defense. Routes wrapped in
 // asyncHandler (see lib/asyncHandler.js) forward a rejected promise here via
