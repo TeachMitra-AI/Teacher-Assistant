@@ -365,12 +365,6 @@ export default function HomePage() {
             <button type="button" className="btn-text home-desktop-only" onClick={() => openAuth('login')}>
               Sign In
             </button>
-            {/* Quieter than Get Started — this is the one B2B-shaped CTA on
-                an otherwise self-serve teacher signup page, see
-                docs/schedule-a-call-plan.md. */}
-            <Link to="/schedule-demo" className="btn-outline home-header-cta home-desktop-only">
-              Schedule a Call
-            </Link>
             <button
               type="button"
               className="btn-primary home-header-cta home-desktop-only"
@@ -398,19 +392,7 @@ export default function HomePage() {
                 {link.label}
               </a>
             ))}
-            <button
-              type="button"
-              className="btn-outline"
-              onClick={() => {
-                closeMenu();
-                openAuth('login');
-              }}
-            >
-              Sign In
-            </button>
-            <Link to="/schedule-demo" className="btn-outline" onClick={closeMenu}>
-              Schedule a Call
-            </Link>
+            {/* Primary action first, above the quieter Sign In. */}
             <button
               type="button"
               className="btn-primary"
@@ -420,6 +402,16 @@ export default function HomePage() {
               }}
             >
               Get Started
+            </button>
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => {
+                closeMenu();
+                openAuth('login');
+              }}
+            >
+              Sign In
             </button>
           </nav>
         )}
