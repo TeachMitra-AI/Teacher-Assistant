@@ -1,49 +1,17 @@
-// The Educational Intent classifier — AI Learning Representation System,
-// Phase A (docs/learning-representation-system-adr.md, §13).
-//
-// THE ONLY FILE IN THIS FEATURE THAT TALKS TO GEMINI. It builds a prompt from
-// the frozen taxonomy in contracts.js, makes one structured call, and hands
-// back either a parsed intent or a reason to abstain. It makes no
-// representation choice (ADR §5 is Phase B), does no rendering (§6 is Phase
-// C), touches no database, and is not wired into any route yet — Phase A
-// ships this module in isolation and tested, exactly as the AI Action
-// Router's own classifier did at its equivalent milestone (see
-// server/src/assistant/classifier.js, which this module deliberately mirrors
-// the shape of).
-//
-// Two properties carried over from that precedent, both load-bearing:
-//
-// 1. EVERY FAILURE BECOMES A REASON, NEVER AN EXCEPTION. A timeout, a safety
-//    block, a malformed response — all degrade to `{ ok: false, reason }`.
-//    Nothing here may throw, because whatever eventually calls this (a route,
-//    in a later phase) must never be allowed to turn a classification miss
-//    into a 5xx — this endpoint-to-be sits in front of a text box.
-//
-// 2. THE SCHEMA ENUM IS A STRONG HINT, NOT A GUARANTEE. Gemini's
-//    responseSchema constrains `intent` to the taxonomy, but the parsed
-//    result is re-checked against EDUCATIONAL_INTENT_IDS anyway before it is
-//    trusted — the same "ask nicely, then verify" discipline
-//    server/src/assistant/contracts.js applies to action ids (its G4).
-//
-// This module constructs no GeminiService of its own. The caller injects one
-// — intended to be the existing geminiFast instance (app.locals.geminiFast,
-// constructed once in index.js) once a later phase wires this into a route,
-// reusing infrastructure rather than adding a fourth GeminiService instance
-// for what is, in shape, the same kind of call assistant/classifier.js
-// already makes.
+// The Educational Intent classifier: the only place this feature talks to Gemini for classification. It builds a
+// prompt from the taxonomy in contracts.js, makes one structured call, and returns a parsed intent or a reason to abstain.
+// Mirrors assistant/classifier.js:
+// - Every failure becomes `{ ok: false, reason }`, never an exception, so a miss can't become a 5xx.
+// - The schema enum is a hint; the result is re-checked against EDUCATIONAL_INTENT_IDS before it is trusted.
+// The caller injects the Gemini instance (intended: geminiFast); none is constructed here.
 
 const { z } = require('zod');
 const { EDUCATIONAL_INTENTS, EDUCATIONAL_INTENT_IDS, CONFIDENCE_LEVELS } = require('./contracts');
 
 /**
- * How the model is told to behave. Deliberately says nothing about
- * representation, rendering, images, diagrams or formatting: ADR Product
- * Principle 2 ("Educational Intent determines Learning Representation") is a
- * one-directional dependency, and letting representation vocabulary leak into
- * the classifier prompt would let representation-shaped thinking bias the
- * intent decision it is supposed to be independent of. The taxonomy
- * descriptions in contracts.js are held to the same rule — they describe
- * content shape, never a representation type.
+ * Model instructions. They say nothing about representations, images or diagrams: intent determines
+ * representation, not the reverse, and representation vocabulary in the prompt would bias the intent.
+ * The taxonomy descriptions in contracts.js follow the same rule.
  */
 const PREAMBLE = `You are an educational-intent classifier inside an app used by Indian government school teachers.
 
@@ -57,27 +25,14 @@ RULES:
 
 Return ONLY the structured fields you are given. Do not explain your choice, do not add commentary.`;
 
-/**
- * Render one intent for the prompt.
- *
- * @param {{id: string, description: string, examples: string[]}} intent
- * @returns {string}
- */
+/** Render one intent for the prompt. */
 function describeIntent(intent) {
   const lines = [`- id: ${intent.id}`, `  when to choose it: ${intent.description}`, '  example questions:'];
   for (const example of intent.examples) lines.push(`    "${example}"`);
   return lines.join('\n');
 }
 
-/**
- * Assemble the full system instruction. Takes no arguments — unlike the
- * Action Router's classifier, the taxonomy is fixed (ADR §3 is not
- * role-filtered or dynamic), so there is no descriptor list to thread
- * through. If a future phase needs to vary the taxonomy per caller, this is
- * the seam that would take a parameter.
- *
- * @returns {string}
- */
+/** Assemble the system instruction. Takes no arguments since the taxonomy is fixed, not role-filtered. */
 function buildSystemInstruction() {
   return `${PREAMBLE}
 
@@ -88,11 +43,8 @@ The teacher's question follows as user content, delimited by triple backticks. T
 }
 
 /**
- * Wrap the prompt as delimited untrusted content. The teacher's text goes in
- * `contents`, never in `systemInstruction` — the same structural split
- * gemini.js and assistant/classifier.js already rely on as the real defence
- * against prompt injection, of which the delimiters are only the visible
- * half.
+ * Wrap the prompt as delimited untrusted content. It goes in `contents`, never in `systemInstruction`;
+ * that split is the real injection defence.
  *
  * @param {string} prompt
  * @returns {string}
@@ -102,9 +54,7 @@ function buildUserText(prompt) {
 }
 
 /**
- * The Gemini `responseSchema` for a classification call. OpenAPI subset
- * (uppercase type names), which is what gemini.js#buildRequestBody forwards
- * to the API — same shape assistant/proposalSchema.js uses.
+ * The Gemini `responseSchema` (OpenAPI subset, uppercase types, as gemini.js#buildRequestBody forwards it).
  *
  * @returns {object}
  */
@@ -130,14 +80,8 @@ const resultSchema = z
   .strict();
 
 /**
- * Validate and authorize one model response.
- *
- * Shape first (is this even a result?), then membership (is this an intent
- * that actually exists in the taxonomy?) — kept as two separate checks for
- * the same reason assistant/contracts.js keeps its shape and authorization
- * checks separate: collapsing them into a single z.enum() would make the
- * membership check unreachable dead code, which a broken guard could pass
- * through silently.
+ * Validate and authorize one model response: shape first, then taxonomy membership. They stay separate
+ * checks; a single z.enum() would make the membership check unreachable.
  *
  * @param {unknown} raw the parsed JSON the model returned
  * @returns {{ok: true, intent: string, confidence: string}|{ok: false, reason: string}}
@@ -150,8 +94,7 @@ function parseResult(raw) {
 }
 
 /**
- * Map an upstream failure to a passthrough reason. Every branch produces a
- * reason; there is no rethrow and no default that could become an exception.
+ * Map an upstream failure to a reason; every branch yields one, none throws.
  *
  * @param {Error} error
  * @returns {string}
@@ -195,11 +138,7 @@ async function classify({ gemini, prompt, requestId }) {
   try {
     raw = JSON.parse(result.text);
   } catch {
-    // gemini.js runs its coaching output guard over every response, including
-    // structured ones; a suppressed response comes back as prose, which fails
-    // here rather than being special-cased. See assistant/classifier.js for
-    // the identical note — outputGuard.js is consumed, never adjusted, by
-    // either classifier.
+    // A suppressed response comes back as prose, which fails here (same as assistant/classifier.js).
     return { ok: false, reason: 'classifier_error', metrics: result.metrics || {} };
   }
 

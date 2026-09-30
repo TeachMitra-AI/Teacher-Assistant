@@ -1,15 +1,9 @@
-// The router-yields-to-Coach breaker (M9, CHANGE-8).
-//
-// Pure module with an injected clock, so every window and cooldown boundary is
-// asserted exactly rather than slept through.
-//
-// The four properties worth the file:
-//   1. it opens at the threshold — and NOT one below it;
-//   2. events expire, so a slow trickle of 429s across an hour never trips it;
-//   3. it re-closes after the cooldown, and does so WITHOUT carrying the old
-//      history forward (or the first 429 after recovery would re-open it);
-//   4. a success does not reset the count — a storm failing half the time is
-//      exactly the case worth reacting to.
+// The router-yields-to-Coach breaker. A pure module with an injected clock, so every window and cooldown boundary is
+// asserted exactly. The four properties:
+//   1. it opens at the threshold and not one below it;
+//   2. events expire, so a slow trickle of 429s over an hour never trips it;
+//   3. it re-closes after the cooldown without carrying the old history forward (or the first 429 after recovery would re-open it);
+//   4. a success doesn't reset the count, since a storm failing half the time is worth reacting to.
 
 const { createRouterBreaker, createDisabledBreaker } = require('../../src/assistant/breaker');
 
@@ -155,9 +149,7 @@ describe('closing', () => {
     clock.advance(300_001);
     expect(breaker.isOpen()).toBe(false);
 
-    // If the pre-open history survived, this single event would put the count
-    // back at the threshold and the router would yield permanently under mild
-    // pressure.
+    // If the pre-open history survived, this one event would put the count back at the threshold and the router would yield permanently.
     breaker.recordRateLimited();
     expect(breaker.isOpen()).toBe(false);
     expect(breaker.state().recent).toBe(1);

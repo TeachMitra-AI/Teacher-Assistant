@@ -1,47 +1,26 @@
-// Post-generation LaTeX safety guard.
-//
-// Root cause (see investigation, 2026-08-01): assessmentSchema.js's
-// normalizeAssessmentMath repairs JSON-escape-mangled/degenerate LaTeX, but
-// — by design, pinned by assessmentSchema.test.js's "does not touch
-// \text{...} outside math delimiters" — it only ever touches text INSIDE an
-// existing $...$/$$...$$ pair. Gemini sometimes drops the $ delimiters
-// entirely around a unit-bearing quantity ("0.25\text{ mol}" with no $ at
-// all), most often in MCQ "options" entries. Nothing downstream (this file,
-// nor client/src/lib/math.ts) ever looks at text outside a $ pair, so that
-// raw LaTeX reaches the teacher verbatim. Confirmed live against the real
-// Gemini endpoint: a Chemistry MCQ response came back with
-// options: ["0.25 \\text{ mol}", ...] — no delimiters — while the sibling
-// Trigonometry run always wrapped its (delimiter-free-of-units) fractions.
-//
-// This module is a SECOND, independent pass run after normalizeAssessmentMath,
-// treating Gemini's JSON as untrusted input:
-//   1. detect bare LaTeX commands sitting outside $...$/$$...$$
-//   2. mechanically repair the safe case (wrap a balanced-brace run in $...$)
-//   3. verify EVERY math segment (old and newly-wrapped) actually renders in
-//      KaTeX — the same engine the client uses — with throwOnError; nothing
-//      is trusted on the strength of our own regex alone
-//   4. anything that still fails is reported as unsafe; callers must not
-//      forward that document to the client (see resources.js's retry loop)
+// Post-generation LaTeX safety guard, a second pass after normalizeAssessmentMath. That function only repairs text
+// inside an existing $...$/$$...$$ pair, but Gemini sometimes drops the delimiters around a unit-bearing quantity
+// ("0.25\text{ mol}"), mostly in MCQ options, and nothing downstream looks outside a $ pair, so raw LaTeX reached teachers.
+// Treating the JSON as untrusted, this pass:
+//   1. detects bare LaTeX commands outside $...$/$$...$$
+//   2. wraps the safe case (a balanced-brace run) in $...$
+//   3. renders every math segment in KaTeX (the client's engine) with throwOnError, trusting no regex alone
+//   4. reports anything that still fails as unsafe; callers must not forward that document (see resources.js's retry loop)
 const katex = require('katex');
 const { BARE_COMMANDS } = require('./assessmentSchema');
 
-// Same two patterns restoreBareCommands uses, rebuilt here rather than
-// exported, so this backstop stays independent of the repair's internals —
-// the point of a second pass is that it does not share the first one's state.
+// Rebuilt here rather than exported from the repair code, so this backstop doesn't share the first pass's state.
 const BARE_COMMAND_RE = new RegExp(`(?<![\\\\a-zA-Z])(${BARE_COMMANDS.join('|')})(?![a-zA-Z])`, 'g');
 const TEXT_ARG_RE = /\\(?:text|textbf|textit|textrm|mathrm|mbox|operatorname)\s*\{[^{}]*\}/g;
 
-// Same shape as client/src/lib/math.ts's BLOCK_MATH/INLINE_MATH — kept as a
-// separate copy (CJS server vs ESM client) rather than a cross-package
-// import, same convention already used for repairBackspaceLatex in
-// assessmentSchema.js. KEEP IN SYNC.
+// Same shape as BLOCK_MATH/INLINE_MATH in client/src/lib/math.ts, kept as a copy (CJS server vs ESM client), as
+// with repairBackspaceLatex in assessmentSchema.js. Keep in sync.
 const BLOCK_MATH = /\$\$([\s\S]+?)\$\$/g;
 const INLINE_MATH = /\$(\S(?:[^$\n]*?\S)?)\$/g;
 
 /**
- * Finds every already-delimited math range in `text` (block first, so a
- * $$...$$ pair's inner $ characters are never mistaken for inline math),
- * mirroring math.ts's sequential-replace precedence without mutating text.
+ * Finds every already-delimited math range, block first so a $$...$$ pair's inner $ aren't read as inline math
+ * (mirrors math.ts's replace precedence without mutating text).
  * @returns {Array<{start: number, end: number, source: string}>} non-overlapping, sorted by start
  */
 function findExistingMathRanges(text) {
@@ -65,21 +44,13 @@ function findExistingMathRanges(text) {
   return ranges;
 }
 
-// Tokens allowed to extend a candidate bare-math run OUTSIDE brace
-// arguments — deliberately narrow: digits/decimal point, a LaTeX command,
-// a brace, a small arithmetic/relational operator set, and single spaces.
-// Anything else (a plain word character, punctuation, a newline) ends the
-// run — this is what keeps surrounding prose untouched, since a run is only
-// ever kept if it contained at least one \command token.
+// Tokens that may extend a bare-math run outside brace arguments: digits, a LaTeX command, braces, a few
+// operators and single spaces. Anything else ends the run, which keeps prose untouched; a run is only kept if it has a \command.
 const RUN_TOKEN_RE = /\\[a-zA-Z]+|[0-9]+(?:\.[0-9]+)?|[{}+\-=^_]|[ \t]|./g;
 
 /**
- * Scans one "unprotected" stretch of text (i.e. already known to be outside
- * any existing $...$/$$...$$) for maximal bare-LaTeX runs safe to wrap.
- * A run must contain at least one \command and have balanced braces; braces
- * open a "verbatim" mode (matching \text{...}'s actual argument syntax)
- * where any character is allowed, since a unit argument like "km/h" or
- * "opposite side" is free text by design.
+ * Scans a stretch of text outside any existing math for bare-LaTeX runs safe to wrap. A run needs at least one
+ * \command and balanced braces; inside braces any character is allowed, since a \text argument like "km/h" is free text.
  * @param {string} chunk
  * @returns {Array<{start: number, end: number}>} offsets relative to chunk
  */
@@ -93,12 +64,8 @@ function findBareLatexRuns(chunk) {
 
   const flush = () => {
     if (runStart !== -1 && hasCommand && depth === 0 && !broken) {
-      // A run can start/end on a whitespace token picked up before we knew
-      // whether a \command would follow (or after the last one, before we
-      // knew the run was over) — trim those edge positions back to the
-      // actual content so the wrap below never swallows a space that
-      // separates the math from surrounding prose (e.g. "of 120\text{ km}
-      // in" must keep both the space before "120" and the one before "in").
+      // Trim edge whitespace picked up before/after the \command so the wrap doesn't swallow a space that separates
+      // math from prose ("of 120\text{ km} in" keeps the spaces before "120" and "in").
       let s = runStart;
       let e = runEnd;
       while (s < e && (chunk[s] === ' ' || chunk[s] === '\t')) s += 1;
@@ -124,9 +91,7 @@ function findBareLatexRuns(chunk) {
     const isCloseBrace = tok === '}';
 
     if (depth > 0) {
-      // Inside a \command{...} argument: anything goes except we still track
-      // brace depth so nested braces (rare, but \text{$x$} etc. is not our
-      // concern here) don't prematurely end verbatim mode.
+      // Inside a \command{...} argument anything goes, but brace depth is still tracked so nesting doesn't end verbatim mode early.
       if (isOpenBrace) depth += 1;
       else if (isCloseBrace) depth -= 1;
       if (runStart === -1) runStart = m.index; // shouldn't happen, defensive
@@ -161,9 +126,8 @@ function findBareLatexRuns(chunk) {
 }
 
 /**
- * Wraps every safe bare-LaTeX run in `text` with $...$. Only ever touches
- * text OUTSIDE existing math ranges — content already inside $...$/$$...$$
- * is left completely alone (that's normalizeAssessmentMath's job).
+ * Wraps every safe bare-LaTeX run outside existing math ranges in $...$. Content already inside math is left
+ * alone (normalizeAssessmentMath's job).
  * @param {string} text
  * @returns {string}
  */
@@ -203,10 +167,8 @@ function repairBareLatex(text) {
 }
 
 /**
- * True if a \command token still exists outside every $...$/$$...$$ range —
- * i.e. repairBareLatex found it but couldn't safely wrap it (unbalanced
- * braces), or some other bare command survives. Anything this returns true
- * for makes the document unsafe to forward to the client.
+ * True if a \command token still exists outside every math range (unbalanced braces, or some other bare
+ * command survived). That makes the document unsafe to forward.
  * @param {string} text
  * @returns {boolean}
  */
@@ -229,11 +191,8 @@ function hasUnprotectedLatexCommand(text) {
 }
 
 /**
- * Verifies every math segment in `text` actually renders in KaTeX. This is
- * the real safety oracle: repairBareLatex's grammar is deliberately narrow,
- * but rather than trust it, every segment it produces (and every segment
- * that was already there) gets rendered for real before the document is
- * trusted.
+ * Verifies every math segment actually renders in KaTeX. This is the real safety check: rather than trust
+ * repairBareLatex's narrow grammar, every segment, old and new, is rendered before the document is trusted.
  * @param {string} text
  * @returns {string[]} error messages, empty if every segment is valid
  */
@@ -250,16 +209,9 @@ function findUnrenderableSegments(text) {
 }
 
 /**
- * Backstop for the backslash-less mangling repaired by
- * assessmentSchema.js's restoreBareCommands ("$frac59$" for "$\frac59$").
- *
- * This exists because findUnrenderableSegments CANNOT catch it: "frac59" is
- * valid KaTeX, so the render check passes and the teacher receives italic
- * gibberish. Renderability is not meaningfulness, and this is the one case
- * where the difference reaches a classroom.
- *
- * The repair upstream should have fixed it; anything still here means the
- * repair missed a form, and the document must not be forwarded.
+ * Backstop for the backslash-less mangling repaired by restoreBareCommands in assessmentSchema.js ("$frac59$"
+ * for "$\frac59$"). findUnrenderableSegments can't catch it because "frac59" is valid KaTeX that renders as
+ * italic gibberish. Anything found here means the repair missed a form, and the document must not be forwarded.
  * @param {string} text
  * @returns {string[]} error messages, empty if every segment is clean
  */
@@ -281,7 +233,7 @@ function findBareCommandSegments(text) {
 }
 
 /**
- * Runs the full detect → repair → verify pipeline on one string field.
+ * Runs detect, repair and verify on one string field.
  * @param {string} text
  * @returns {{ text: string, ok: boolean, errors: string[] }}
  */
@@ -301,15 +253,11 @@ function sanitizeLatex(text) {
 }
 
 /**
- * Applies sanitizeLatex to every text field of an assessment document
- * (instructions, and each question's text/options/correctAnswer). Expects
- * `doc` to already be schema-shaped enough to iterate (i.e. run this AFTER
- * normalizeAssessmentMath, same as normalizeAssessmentMath expects raw
- * pre-validation shape and tolerates the rest).
+ * Applies sanitizeLatex to every text field of an assessment document (instructions, and each question's
+ * text/options/correctAnswer). Run after normalizeAssessmentMath.
  * @param {{instructions?: string, questions?: object[]}} doc
- * @returns {{ ok: boolean, doc: object, errors: string[] }} `doc` is only
- *   meaningful when ok is true — callers must not forward it to the client
- *   otherwise.
+ * @returns {{ ok: boolean, doc: object, errors: string[] }} `doc` is only meaningful when ok is true;
+ *   otherwise callers must not forward it to the client.
  */
 function sanitizeAssessmentDocument(doc) {
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
@@ -383,15 +331,8 @@ function sanitizeAssessmentDocument(doc) {
 }
 
 /**
- * Runs sanitizeLatex over an arbitrary set of already-extracted text fields.
- *
- * sanitizeAssessmentDocument above walks the assessment shape directly because
- * it predates there being a second shape. A lesson plan (P6) has ten named
- * sections and no questions, so rather than teach this module a second
- * document layout, the caller flattens its own document to {path, value} pairs
- * and gets the repaired values back keyed the same way. The LaTeX rules are
- * identical; only the traversal differs, and traversal is the caller's
- * business.
+ * Runs sanitizeLatex over already-extracted text fields. The caller flattens its own document (e.g. a lesson
+ * plan, which has no questions) to {path, value} pairs and gets repaired values back keyed the same way.
  *
  * @param {Array<{path: string, value: string}>} fields
  * @returns {{ ok: boolean, repaired: Record<string, string>, errors: string[] }}

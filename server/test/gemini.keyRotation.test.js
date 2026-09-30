@@ -1,6 +1,5 @@
-// Integration tests: GeminiService driven by a real, multi-key GeminiKeyPool.
-// Same deterministic-clock style as gemini.reliability.test.js — no real
-// waiting, no real network calls.
+// Integration tests: GeminiService driven by a real multi-key GeminiKeyPool. Same deterministic-clock style as
+// gemini.reliability.test.js, with no real waiting or network.
 const { GeminiService } = require('../src/gemini');
 const { GeminiKeyPool } = require('../src/lib/geminiKeyPool');
 const { nextDailyResetAt } = require('../src/lib/geminiPolicy');
@@ -77,9 +76,7 @@ describe('GeminiService key rotation', () => {
     const { service } = makeService({ maxCallsPerRequest: 4, maxRetries: 10 });
 
     await expect(ask(service)).rejects.toMatchObject({ status: 429 });
-    // Both keys get one immediate rotation attempt each (2 calls), then the
-    // remaining budget (2 more calls) is spent on the normal backoff/retry
-    // path since no key is available anymore.
+    // Both keys get one immediate rotation attempt (2 calls), then the remaining budget (2 calls) goes to the normal backoff/retry path since no key is available.
     expect(mock).toHaveBeenCalledTimes(4);
   });
 
@@ -103,9 +100,7 @@ describe('GeminiService key rotation', () => {
 
   test('when every key is exhausted, the thrown error carries retryAt — the soonest any key recovers', async () => {
     const clock = makeClock(0);
-    // A budget of exactly 2 (= key count) means both keys get exactly one
-    // attempt, then the budget itself stops things — no backoff/retry noise
-    // to account for, so the recovery-time math stays simple to verify.
+    // A budget of exactly 2 (the key count) gives each key one attempt and then the budget stops things, with no backoff noise, so the recovery-time math stays simple.
     const { keyPool, service } = makeService({ clock, maxCallsPerRequest: 2 });
     mockGeminiFetch([geminiRateLimited()]); // always 429
 

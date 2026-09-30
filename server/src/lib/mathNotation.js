@@ -1,40 +1,15 @@
-// Plain school-maths notation → LaTeX.
-//
-// WHY THIS EXISTS
-// ---------------
-// Every LaTeX repair layer in this codebase (repairControlCharLatex,
-// normalizeDegenerateLatex, restoreBareCommands, repairBareLatex) exists for
-// ONE root cause: we ask the model to write LaTeX backslashes inside JSON
-// strings, and JSON escaping eats backslashes. "\frac" becomes FORMFEED+"rac";
-// the model dodges "\sin" (an invalid JSON escape) into "\text{sin}"; and
-// sometimes the backslash simply vanishes, producing "$frac59$" — valid KaTeX
-// that renders as five italic letters and reached a real teacher on 2026-08-07.
-//
-// The prompt already DEMANDS double-backslash escaping, in capitals. It does
-// not work reliably, and no amount of prompt will make it: a model instruction
-// is a request, not a guarantee. Each new way the model gets it wrong has cost
-// another repair pass.
-//
-// So: stop asking for backslashes. The model writes "5/9", "x^2", "sqrt(16)",
-// "45 deg" — notation with NO backslashes, so there is nothing for JSON to
-// corrupt — and this module turns it into LaTeX deterministically, in code we
-// can unit-test rather than hope about.
-//
-// SCOPE: school maths. Fractions, powers, roots, trig, logs, indefinite and
-// definite integrals, the Greek letters that appear in Indian school
-// textbooks, comparison operators, degrees. Not a general computer-algebra
-// parser, and deliberately not one.
-//
-// SAFETY CONTRACT — the most important part of this file:
-//   1. Input that already contains a backslash is LaTeX. Returned UNCHANGED.
-//      That keeps every existing saved resource, and any model that ignores
-//      the new prompt, working exactly as before.
-//   2. Anything this module cannot parse with confidence returns null, and the
-//      caller leaves the original text alone. A half-converted expression is
-//      worse than an unconverted one, so "don't guess" beats "try harder" —
-//      the same rule stripAssessmentPreamble already follows.
-//   3. The existing repair layers stay in place behind this as a safety net.
-//      They become dead code only once live traffic proves this path holds.
+// Plain school-maths notation -> LaTeX.
+// Every LaTeX repair layer exists because the model writes LaTeX backslashes inside JSON strings and JSON
+// escaping eats them ("\frac" becomes FORMFEED+"rac", "\sin" becomes "\text{sin}", sometimes the backslash just
+// vanishes, giving "$frac59$"). Prompting for double backslashes isn't reliable. So the model writes backslash-free
+// notation ("5/9", "x^2", "sqrt(16)", "45 deg") and this module converts it deterministically, where it can be tested.
+// Scope: school maths (fractions, powers, roots, trig, logs, integrals, common Greek letters, comparisons, degrees),
+// not a general algebra parser.
+// Safety contract:
+//   1. Input already containing a backslash is LaTeX and is returned unchanged, so saved resources still work.
+//   2. Anything not parsed with confidence returns null and the caller keeps the original; a half-converted
+//      expression is worse than an unconverted one.
+//   3. The older repair layers stay behind this as a safety net.
 
 // Functions rendered as LaTeX operators (\sin x), not as \text{}.
 const FUNCTIONS = Object.freeze({
@@ -45,9 +20,8 @@ const FUNCTIONS = Object.freeze({
   log: '\\log', ln: '\\ln', exp: '\\exp',
 });
 
-// Named symbols. Greek letters limited to the ones that actually appear in
-// Indian school maths and science — a longer list is more surface for a
-// variable named "eta" to be silently rewritten.
+// Named symbols. Greek letters are limited to those in Indian school maths and science; a longer list risks
+// rewriting a variable named "eta".
 const SYMBOLS = Object.freeze({
   pi: '\\pi', theta: '\\theta', alpha: '\\alpha', beta: '\\beta',
   gamma: '\\gamma', delta: '\\delta', lambda: '\\lambda', mu: '\\mu',
@@ -61,8 +35,6 @@ const OPERATORS = [
   ['+-', '\\pm'], ['-+', '\\mp'], ['->', '\\rightarrow'], ['=>', '\\Rightarrow'],
   ['<', '<'], ['>', '>'], ['=', '='],
 ];
-
-// ---- Tokenizer --------------------------------------------------------------
 
 function tokenize(src) {
   const tokens = [];
@@ -117,16 +89,13 @@ function tokenize(src) {
   return tokens;
 }
 
-// ---- Parser (recursive descent) ---------------------------------------------
-//
-// Precedence, loosest first:
-//   comparison  :=  additive ( (= < > <= >= != ~= -> =>) additive )*
-//   additive    :=  multiplicative ( (+ | -) multiplicative )*
-//   multiplic.  :=  unary ( (* | / | times | div | juxtaposition) unary )*
-//   unary       :=  '-'? power
-//   power       :=  atom ( '^' unary )?
-//   atom        :=  number | symbol | variable | func '(' expr ')'
-//                 | '(' expr ')' | '|' expr '|'
+// Recursive-descent parser. Precedence, loosest first:
+//   comparison  := additive ( (= < > <= >= != ~= -> =>) additive )*
+//   additive    := multiplicative ( (+ | -) multiplicative )*
+//   multiplic.  := unary ( (* | / | times | div | juxtaposition) unary )*
+//   unary       := '-'? power
+//   power       := atom ( '^' unary )?
+//   atom        := number | symbol | variable | func '(' expr ')' | '(' expr ')' | '|' expr '|'
 
 function parse(tokens) {
   let pos = 0;
@@ -164,9 +133,7 @@ function parse(tokens) {
     return left;
   }
 
-  // "|" is its own closing delimiter, so while we are inside |...| a "|" can
-  // only be the END of it — never the start of a juxtaposed factor. Without
-  // this, "|x|" parses the closing bar as a new opening bar and fails.
+  // "|" closes itself, so inside |...| a "|" can only end it, never start a juxtaposed factor ("|x|" would otherwise fail).
   let absDepth = 0;
 
   // A term that can start a factor — used to detect juxtaposition ("2x", "3pi").
@@ -190,9 +157,7 @@ function parse(tokens) {
         // The whole point of the exercise: "/" becomes a real fraction.
         left = { kind: 'frac', num: left, den: right };
       } else if (at('ident', 'times') || at('ident', 'div')) {
-        // Word forms, so the model never needs the × or ÷ Unicode characters
-        // the prompt forbids. Checked BEFORE the juxtaposition branch below,
-        // which would otherwise treat "times" as a variable.
+        // Word forms ("times", "div"), so the model needn't emit × or ÷. Checked before juxtaposition, which would read "times" as a variable.
         const { value } = eat();
         const right = unary();
         if (right === null) return null;
@@ -270,10 +235,8 @@ function parse(tokens) {
         return { kind: 'root', degree: lower === 'cbrt' ? '3' : null, inner };
       }
 
-      // integral(expr, var) — indefinite — or integral(lower, upper, expr,
-      // var) — definite. The last argument must be the bare differential
-      // variable ("x", "t"); everything before it is comma-separated
-      // sub-expressions parsed the same way any other argument is.
+      // integral(expr, var) is indefinite; integral(lower, upper, expr, var) is definite. The last argument must be the
+      // bare differential variable.
       if (lower === 'integral' && at('punct', '(')) {
         eat();
         const args = [comparison()];
@@ -316,9 +279,7 @@ function parse(tokens) {
       // A bare function name with no parentheses ("sin x") — still valid.
       if (FUNCTIONS[lower]) return { kind: 'raw', latex: `${FUNCTIONS[lower]} ` };
 
-      // A variable. Single letters are the overwhelmingly common case; a
-      // multi-letter run is a word ("apples"), which does not belong inside
-      // maths delimiters at all — bail rather than italicise prose.
+      // A variable. Single letters are the norm; a multi-letter run is a word ("apples") that doesn't belong in math, so bail.
       if (name.length === 1) return { kind: 'var', value: name };
       return null;
     }
@@ -330,8 +291,6 @@ function parse(tokens) {
   // Trailing tokens mean we did not understand the whole expression.
   return tree !== null && pos === tokens.length ? tree : null;
 }
-
-// ---- Emitter ----------------------------------------------------------------
 
 function emit(node) {
   switch (node.kind) {
@@ -352,9 +311,7 @@ function emit(node) {
     case 'pow':
       return `${emit(node.base)}^{${emit(node.exp)}}`;
     case 'frac':
-      // Strip the parentheses a group only needed for precedence — \frac's
-      // braces already group, and "\frac{(a+b)}{2}" prints ugly brackets a
-      // teacher would not write on a blackboard.
+      // Strip parentheses a group only needed for precedence; \frac's braces already group and "\frac{(a+b)}{2}" looks wrong.
       return `\\frac{${emitUnwrapped(node.num)}}{${emitUnwrapped(node.den)}}`;
     case 'integral': {
       const bounds = node.lower ? `_{${emit(node.lower)}}^{${emit(node.upper)}}` : '';
@@ -392,9 +349,8 @@ function toLatex(source) {
 }
 
 /**
- * Convert every $...$ / $$...$$ segment in a string from plain notation to
- * LaTeX. Segments that are already LaTeX, or that cannot be parsed, are left
- * exactly as they are — this never makes a document worse than it arrived.
+ * Convert every $...$ / $$...$$ segment from plain notation to LaTeX. Segments already in LaTeX or
+ * unparseable are left as they are, so this never makes a document worse.
  * @param {string} text
  * @returns {string}
  */

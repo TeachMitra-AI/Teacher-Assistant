@@ -1,25 +1,12 @@
-// Milestone M2 acceptance criterion — the contract drift guard.
-//
-// Two pairs of files hold the same knowledge in two runtimes. Neither pair can
-// be collapsed into a single source today (CommonJS server vs ESM client; a
-// shared package would need a monorepo restructure larger than this project),
-// so the duplication is deliberate and documented. This test converts that
-// documentation from a convention into a control.
-//
-//   Pair A  server/src/assistant/contracts.js  <->  client/src/assistant/types.ts
-//           The wire vocabularies. Drift here means the client fails to handle a
-//           decision or reason the server can legitimately send.
-//
-//   Pair B  server/src/actions/schemas/generateAssessment.js  <->  client/src/config.ts
-//           The generator's option vocabularies. Drift here means the teacher's
-//           dropdown offers something the server rejects with a 400 they cannot
-//           act on — and, from M2, that the capability descriptor advertises a
-//           choice the picker cannot express.
-//
-// The client files are TypeScript and this suite is CommonJS, so they are read
-// as TEXT and parsed. That is acceptable ONLY because every extraction below
-// fails loudly when it finds nothing: a drift test that silently compares two
-// empty lists is worse than no test at all, because it reports success forever.
+// Contract drift guard. Two pairs of files hold the same knowledge in two runtimes (CommonJS server, ESM client) and
+// can't be collapsed today, so the duplication is deliberate and this test turns the cross-referencing comments into a control.
+//   Pair A  server/src/assistant/contracts.js <-> client/src/assistant/types.ts
+//           The wire vocabularies. Drift means the client can't handle a decision or reason the server sends.
+//   Pair B  server/src/actions/schemas/generateAssessment.js <-> client/src/config.ts
+//           The generator's option vocabularies. Drift means a dropdown offers something the server 400s on, or the
+//           descriptor advertises a choice the picker can't express.
+// The client files are TypeScript, so they're read as text, which is safe only because every extraction fails loudly
+// on finding nothing; a drift test that compares two empty lists reports success forever.
 
 const fs = require('fs');
 const path = require('path');
@@ -42,8 +29,7 @@ function readClientFile(filePath) {
 }
 
 /**
- * Pull the string literals out of an exported TypeScript union.
- * Handles both single-line and leading-pipe multi-line forms.
+ * Pull the string literals out of an exported TypeScript union, in single-line and leading-pipe multi-line forms.
  * @returns {string[]} in declaration order
  */
 function extractUnionMembers(source, typeName) {
@@ -68,11 +54,8 @@ function extractNumericConst(source, name) {
 }
 
 /**
- * Pull the `value:` literals from an exported array-of-objects constant.
- *
- * Deliberately reads only the array BODY, never the type annotation on the
- * declaration line — the annotation repeats the same literals, and including it
- * would let an annotation-only edit mask a real change to the options.
+ * Pull the `value:` literals from an exported array-of-objects constant. It reads only the array body, never the
+ * declaration's type annotation, which repeats the same literals and would let an annotation-only edit mask a real change.
  */
 function extractOptionValues(source, constName) {
   const start = source.indexOf(`export const ${constName}`);
@@ -92,8 +75,6 @@ function extractOptionValues(source, constName) {
   return values;
 }
 
-// ---------------------------------------------------------------------------
-
 describe('contract drift — the extractors themselves work', () => {
   // If these fail, every comparison below is meaningless, so they are asserted
   // first and explicitly rather than being assumed.
@@ -106,13 +87,8 @@ describe('contract drift — the extractors themselves work', () => {
 
   test('a known option list is parsed correctly out of config.ts', () => {
     const parsed = extractOptionValues(config, 'ASSESSMENT_FORMATS');
-    // Deliberately NOT pinned to the full list. This test's job is to prove the
-    // extractor really reads values (rather than silently returning [] and
-    // making every comparison below vacuously pass) — pinning the vocabulary
-    // here as well just meant it broke, with a confusing message, every time a
-    // format was legitimately added. Pair B below is the actual drift check
-    // against the server's FORMATS, and it is the one that should fail when
-    // client and server disagree.
+    // Not pinned to the full list: this only proves the extractor reads values rather than returning [] and letting every
+    // comparison pass vacuously. Pinning the vocabulary here broke whenever a format was added; Pair B below is the real drift check.
     expect(parsed.length).toBeGreaterThan(0);
     expect(parsed).toContain('quiz');
     expect(parsed).toContain('worksheet');
@@ -127,9 +103,7 @@ describe('contract drift — the extractors themselves work', () => {
 describe('contract drift — pair A: server contracts vs client types', () => {
   const types = readClientFile(TYPES_PATH);
 
-  // Every frozen server vocabulary that has a client counterpart. PHASE1_DECISIONS
-  // and NON_ACTION_INTENTS are intentionally absent: they are server-side policy
-  // subsets with no client union to drift from.
+  // Every frozen server vocabulary with a client counterpart. PHASE1_DECISIONS and NON_ACTION_INTENTS are absent: they are server-side policy subsets.
   const PAIRS = [
     ['EFFECTS', contracts.EFFECTS, 'ActionEffect'],
     ['DECISIONS', contracts.DECISIONS, 'ActionDecision'],
@@ -139,21 +113,16 @@ describe('contract drift — pair A: server contracts vs client types', () => {
     ['ACTION_STATUSES', contracts.ACTION_STATUSES, 'ActionStatus'],
     ['SLOT_TYPES', contracts.SLOT_TYPES, 'SlotType'],
     ['VOCABULARIES', contracts.VOCABULARIES, 'VocabularyId'],
-    // M8. These two cross the wire in the OTHER direction — the client SENDS
-    // them to POST /api/assistant/events — which makes drift here a client that
-    // posts a value the server rejects, losing the whole batch silently. Exactly
-    // the class of failure this pair exists to catch, just travelling the other
-    // way.
+    // These cross the wire the other way: the client sends them to POST /api/assistant/events, so drift means a posted value
+    // the server rejects, losing the whole batch silently.
     ['ASSISTANT_EVENT_NAMES', contracts.ASSISTANT_EVENT_NAMES, 'AssistantEventName'],
     ['PREFILL_OUTCOMES', contracts.PREFILL_OUTCOMES, 'PrefillOutcome'],
   ];
 
   test.each(PAIRS)('%s matches the client union exactly', (_name, serverValues, typeName) => {
     const clientValues = extractUnionMembers(types, typeName);
-    // Compared as sorted sets: order is a stylistic choice in a union, but
-    // membership is the contract. Both directions — a client union with an
-    // EXTRA member is drift too, and would mean the client believes in a value
-    // the server can never send.
+    // Compared as sorted sets: union order is stylistic, membership is the contract. Both directions matter, since an
+    // extra client member means the client believes in a value the server can never send.
     expect([...clientValues].sort()).toEqual([...serverValues].sort());
   });
 
@@ -171,9 +140,8 @@ describe('contract drift — pair A: server contracts vs client types', () => {
     const serverSideOnly = [
       'PHASE1_DECISIONS',
       'NON_ACTION_INTENTS',
-      // M8. `Event.type` values. Storage-layer names that never appear on the
-      // wire — the client sends ASSISTANT_EVENT_NAMES and the server maps them
-      // to these, so there is no client union to drift from.
+      // `Event.type` values are storage-layer names that never appear on the wire (the client sends ASSISTANT_EVENT_NAMES and
+      // the server maps them), so there's no client union to drift from.
       'ASSISTANT_EVENT_TYPES',
     ];
     const allVocabularies = Object.entries(contracts)
@@ -223,9 +191,7 @@ describe('contract drift — pair B: generator schema vs client picker options',
 });
 
 describe('contract drift — the cross-reference comments survive', () => {
-  // The comments are how a developer discovers the counterpart file in the first
-  // place. A refactor that removes them leaves the next person with no pointer,
-  // which is how M1 nearly shipped a stale reference.
+  // The comments are how a developer finds the counterpart file; removing them leaves the next person with no pointer.
   test('both files in each pair name their counterpart', () => {
     const serverContracts = fs.readFileSync(
       path.resolve(__dirname, '../../src/assistant/contracts.js'),

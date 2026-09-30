@@ -1,12 +1,8 @@
-// Pagination, search, and filtering on the admin list endpoints
-// (audit items P3 / B5). Two distinct things are under test here:
-//
-//   1. Boundedness. The server-side page-size clamp is the actual control —
-//      if a client could ask for `limit=100000` and get it, pagination would
-//      be opt-in and the unbounded-payload problem would still be reachable.
-//   2. That none of the new query parameters can widen the caller's school
-//      scope. `q`, `role`, `status`, and `schoolId` are all new surface on a
-//      tenant boundary, so each gets an explicit cross-school assertion.
+// Pagination, search and filtering on the admin list endpoints. Two things are tested:
+//   1. Boundedness: the server-side page-size clamp is the real control, so a client asking for `limit=100000`
+//      must not get it.
+//   2. None of the query parameters (`q`, `role`, `status`, `schoolId`) can widen the caller's school scope; each
+//      gets an explicit cross-school assertion.
 const request = require('supertest');
 const { app, prisma } = require('./helpers/testApp');
 const { createFixtures, PASSWORD } = require('./helpers/fixtures');
@@ -14,9 +10,7 @@ const { loginAs } = require('./helpers/auth');
 
 const MAX_PAGE_SIZE = 100;
 
-// Every bulk row created by this file carries this marker in its email, so
-// `?q=` can isolate them from the fixture users this file (and every other
-// test file, on the shared throwaway DB) also creates.
+// Every bulk row carries this marker in its email so `?q=` can isolate them from fixture users created by other test files on the shared DB.
 const MARKER = 'pgnbulk';
 const BULK_COUNT = 12;
 
@@ -33,11 +27,8 @@ describe('admin list pagination', () => {
     schoolAdminAToken = await loginAs(app, fx.schoolA, fx.schoolAdminA, PASSWORD);
     resourcePersonAToken = await loginAs(app, fx.schoolA, fx.resourcePersonA, PASSWORD);
 
-    // All bulk users share one createdAt to the millisecond. This is the
-    // condition that makes an unstable sort visible: ordering by createdAt
-    // alone leaves ties in an engine-defined order that can differ between
-    // the page-1 and page-2 queries, so a row can appear on both pages or on
-    // neither. A real seed script or bulk import produces exactly this.
+    // All bulk users share one createdAt to the millisecond, which makes an unstable sort visible: with ties in
+    // createdAt alone, a row can appear on both pages or neither.
     const sharedCreatedAt = new Date('2026-03-01T00:00:00.000Z');
     bulkIds = [];
     for (let i = 0; i < BULK_COUNT; i += 1) {
@@ -104,10 +95,7 @@ describe('admin list pagination', () => {
   });
 
   describe('default page size', () => {
-    // Pinned deliberately. This default dropped from 100 to 25 once the client
-    // gained pager controls, and it is the value any caller that omits `limit`
-    // gets — including a curl or a future integration. A silent change to it
-    // would silently change how much data every such caller receives.
+    // Pinned: this is what any caller omitting `limit` gets (a curl, a future integration); it dropped from 100 to 25 when the client gained pagers.
     test('omitting limit yields DEFAULT_PAGE_SIZE, not everything', async () => {
       const res = await asSuper(request(app).get('/api/admin/users'));
       expect(res.status).toBe(200);
@@ -125,10 +113,7 @@ describe('admin list pagination', () => {
   });
 
   describe('response shape', () => {
-    // The client stopped rendering a "Questions" column, so the per-school
-    // Query count — one correlated aggregate over the largest table in the
-    // schema, per row — is no longer selected. Asserted so it cannot drift
-    // back in unnoticed.
+    // The per-school Query count (a correlated aggregate over the largest table, per row) is no longer selected; asserted so it doesn't drift back.
     test('GET /schools returns a teacher count but no per-school query count', async () => {
       const res = await asSuper(request(app).get('/api/admin/schools?limit=5'));
       expect(res.status).toBe(200);
@@ -167,20 +152,11 @@ describe('admin list pagination', () => {
     });
   });
 
-  // Regression tests for the createdAt tiebreaker, over BULK_COUNT rows that
-  // all share one createdAt.
-  //
-  // Set equality alone is NOT a sufficient guard: SQLite happens to return
-  // tied rows in a stable incidental order (rowid), so dropping the `id`
-  // tiebreaker still yields complete, duplicate-free pages *on SQLite*. The
-  // order assertion below is what actually pins the behaviour — it fails
-  // immediately if the tiebreaker is removed, because the incidental rowid
-  // order is ascending while the specified order is `id` descending.
-  //
-  // This matters because the incidental order is an engine detail, not a
-  // guarantee. On PostgreSQL — the documented migration target in
-  // docs/postgres-migration-plan.md — tied rows genuinely can come back in a
-  // different order between the page-1 and page-2 queries.
+  // Regression tests for the createdAt tiebreaker over BULK_COUNT rows sharing one createdAt. Set equality isn't enough:
+  // SQLite returns tied rows in a stable incidental order (rowid), so dropping the `id` tiebreaker still gives
+  // complete pages there. The order assertion pins it, since rowid order is ascending and the specified order is `id`
+  // descending. That order is an engine detail; on PostgreSQL (see docs/postgres-migration-plan.md) tied rows can
+  // come back differently between pages.
   describe('stable ordering across pages (identical createdAt)', () => {
     async function pageThroughBulk(limit) {
       const seen = [];

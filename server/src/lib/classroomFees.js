@@ -1,20 +1,10 @@
-// Classroom Management — fee/payment status (docs/classroom-feature-plan.md
-// §11, extended per docs/fee-tracking-amounts-plan.md).
-//
-// Status is always DERIVED from amount vs expectedAmount, never stored as
-// the source of truth — a student with no FeeRecord row for a period reads
-// as "pending" without a DB row existing yet, same "derive the default,
-// don't backfill" convention as Query.title falling back to queryText.
-//
-// Shared by GET .../fees and GET .../fees/export (§13) so their numbers can
-// never drift apart.
+// Classroom Management fee/payment status (docs/classroom-feature-plan.md, docs/fee-tracking-amounts-plan.md).
+// Status is derived from amount vs expectedAmount, never stored: a student with no FeeRecord for a period reads
+// as "pending". Shared by GET .../fees and GET .../fees/export so their numbers match.
 
 /**
- * paid: fully covered (amount >= expectedAmount). partial: something paid,
- * not enough. pending: nothing paid. `expectedAmount` of null means this
- * class never had a feeAmount set when the record was touched — falls back
- * to a binary paid (amount > 0) / pending read, same as the pre-amount
- * tracking behavior, since there's nothing to be "partial" against.
+ * paid: amount >= expectedAmount. partial: something paid, not enough. pending: nothing paid.
+ * A null `expectedAmount` (no class feeAmount when the record was touched) falls back to paid (amount > 0) / pending.
  * @param {number} amount
  * @param {number | null} expectedAmount
  */
@@ -60,9 +50,7 @@ async function getClassFeeStatus(prisma, { classId, teacherId, period }) {
   const pending = perStudent.length - paid - partial;
   const totalCollected = perStudent.reduce((sum, s) => sum + s.amount, 0);
   const totalExpected = perStudent.reduce((sum, s) => sum + (s.expectedAmount || 0), 0);
-  // Summed per-student, NOT (totalExpected - totalCollected): each student's
-  // shortfall is independent, so one student overpaying must never net
-  // against — and hide — another student's unpaid balance in this total.
+  // Summed per student, not (totalExpected - totalCollected), so one student's overpayment can't hide another's unpaid balance.
   const totalPending = perStudent.reduce((sum, s) => sum + Math.max((s.expectedAmount || 0) - s.amount, 0), 0);
 
   return {

@@ -1,20 +1,9 @@
-// Run orchestration (Milestone M7a).
-//
-// Two modes, and the difference between them is stated plainly because
-// conflating them is how a team concludes that quality is monitored when it is
-// actually frozen:
-//
-//   live   — real network, real model. NOT deterministic (temperature, and a
-//            floating model alias). This is the mode that MEASURES QUALITY.
-//   replay — recorded upstream responses. Bit-for-bit deterministic, free,
-//            offline. This is the mode that catches PIPELINE REGRESSIONS. It
-//            does not measure the model, and a green replay run is not evidence
-//            that the router is good.
-//
-// REPLAY ALWAYS EXECUTES THE COMPLETE CORPUS. Filtering is refused outright in
-// replay mode rather than merely discouraged: a CI gate that can be narrowed is
-// a CI gate that will be narrowed on the first inconvenient morning, and a
-// partial run reports metrics whose denominators silently changed.
+// Run orchestration, in two modes:
+//   live   - real network and model. Not deterministic (temperature, a floating model alias). Measures quality.
+//   replay - recorded upstream responses. Deterministic, free and offline. Catches pipeline regressions; it doesn't
+//            measure the model, and a green replay isn't evidence the router is good.
+// Replay always runs the complete corpus. Filtering is refused in replay mode because a CI gate that can be narrowed
+// will be, and a partial run reports metrics whose denominators silently changed.
 
 const { execSync } = require('child_process');
 
@@ -25,17 +14,10 @@ const { score } = require('./score');
 const { splitCorpus } = require('./baselines');
 
 /**
- * Minimum spacing between upstream calls in live mode, in milliseconds.
- *
- * NOT a workaround — a requirement. The first smoke run of this harness fired 64
- * calls in 34 seconds, tripped the upstream per-minute limit, and reported 22
- * consecutive `classifier_error` turns. Those were scored as false negatives and
- * would have gone into a baseline as a model-quality result. An eval runner that
- * saturates the rate limiter measures the rate limiter.
- *
- * ~4.2 s spaces requests at roughly 14/minute, inside the usual 15 RPM free-tier
- * allowance with headroom for gemini.js's own retry. Override with --pace-ms on
- * a key with a higher quota.
+ * Minimum spacing between upstream calls in live mode, in ms. This is a requirement, not a workaround: an early
+ * run fired 64 calls in 34 seconds, tripped the per-minute limit, and scored 22 consecutive `classifier_error`
+ * turns as false negatives. ~4.2 s gives roughly 14/minute, inside the usual 15 RPM free tier with headroom for
+ * gemini.js's retry. Override with --pace-ms on a key with a higher quota.
  */
 const DEFAULT_PACE_MS = 4200;
 
@@ -70,9 +52,9 @@ function applyFilter(entries, filter) {
  *
  * @param {object} options
  * @param {'live'|'replay'} options.mode
- * @param {boolean} [options.record] live only — write cassettes from this run
- * @param {number} [options.repeat] live only — passes per case, for a variance band
- * @param {string} [options.filter] live only — refused in replay mode
+ * @param {boolean} [options.record] live only: write cassettes from this run
+ * @param {number} [options.repeat] live only: passes per case, for a variance band
+ * @param {string} [options.filter] live only; refused in replay mode
  * @param {number} [options.maxCalls] cost circuit breaker
  */
 async function runCorpus({
@@ -113,10 +95,8 @@ async function runCorpus({
       ? createRecorder({})
       : createReplayer(cassetteFile ? { file: cassetteFile } : {});
 
-  // Spacing between TURNS, never inside the fetch seam: a sleep inside the seam
-  // sits inside gemini.js's 5 s total deadline and starves the real call.
-  // Retries within one request are deliberately unpaced — they are already
-  // bounded by maxCallsPerRequest and by the deadline.
+  // Spacing between turns, never inside the fetch seam (it would eat gemini.js's 5 s deadline). Retries within one
+  // request are unpaced, since maxCallsPerRequest and the deadline already bound them.
   const paceInterval = mode === 'live' ? (paceMs ?? DEFAULT_PACE_MS) : 0;
   let nextAllowedAt = 0;
   const pace =
@@ -130,8 +110,7 @@ async function runCorpus({
 
   const context = createRunContext({ fetchImpl: seam.fetchImpl });
 
-  // The dev/holdout split is applied BEFORE any filter, and it is a filter over
-  // the frozen corpus files rather than a change to them (decision D7).
+  // The dev/holdout split is applied before any filter and doesn't change the corpus files.
   const selected = splitCorpus(corpus, { half });
   const cases = applyFilter(selected.cases, filter);
   const sessions = applyFilter(selected.sessions, filter);
@@ -168,11 +147,9 @@ async function runCorpus({
     passes.push(results);
   }
 
-  // A cassette miss must never become a score. The throw inside the seam is
-  // caught by interpret.js's total catch and reported as `classifier_error`, so
-  // the run would otherwise finish "successfully" with the missing cases counted
-  // as model failures. Checked here, after the run, so the error names every
-  // missing case at once rather than one per re-run.
+  // A cassette miss must never become a score. interpret.js's total catch reports the seam's throw as `classifier_error`,
+  // so the run would finish "successfully" with the missing cases counted as model failures. Checked after the run so
+  // the error names every missing case at once.
   if (seam.state.misses && seam.state.misses.length > 0) {
     const listed = seam.state.misses
       .map((miss) => `${miss.caseId}${miss.turn ? `#${miss.turn}` : ''}`)

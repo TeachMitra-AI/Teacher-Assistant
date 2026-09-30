@@ -1,16 +1,9 @@
-// The interpret pipeline (Milestone M5).
-//
-// The pipeline's job is to be boring, and these tests are mostly about proving
-// it: every stage in the right order, every failure ending in a passthrough, and
-// the happy path reproducing the specification's own published payload.
-//
-// Every dependency is injected, so this whole file runs with no server, no key,
-// no network and no Gemini. The only I/O in the module under test is the profile
-// read, which arrives as a function.
-//
-// TWO GROUPS CARRY MOST OF THE WEIGHT:
-//   - "all nine passthrough reasons", because the frozen contract promises them
-//   - "nothing can make this throw", because a 5xx here is a defect (G22)
+// The interpret pipeline. Its job is to be boring, and these tests prove it: every stage in order, every failure
+// ending in a passthrough, and the happy path reproducing the spec's published payload.
+// Every dependency is injected, so the file runs with no server, key, network or Gemini; the only I/O in the module is
+// the profile read, which arrives as a function.
+// Two groups carry most of the weight: "all nine passthrough reasons" (the frozen contract promises them) and
+// "nothing can make this throw" (a 5xx here is a defect).
 
 const {
   interpretRequest,
@@ -21,7 +14,7 @@ const { PASSTHROUGH_REASONS } = require('../../src/assistant/contracts');
 const { CATALOG_VERSION } = require('../../src/actions/registry');
 const { interpret } = require('../../src/assistant/interpret');
 
-/** Both Phase 1 actions switched on. The pipeline reads flags through this. */
+/** Both actions switched on; the pipeline reads flags through this. */
 const ENV_ALL_ON = {
   ASSISTANT_ACTION_GENERATE_ASSESSMENT: 'true',
   ASSISTANT_ACTION_OPEN_GENERATOR: 'true',
@@ -51,9 +44,7 @@ function run(input = {}, deps = {}) {
 }
 
 describe('the happy path reproduces the specification’s published payload', () => {
-  // Same technique M2 used for the catalog and M4 used for the resolver: the
-  // documented example is executable, so a spec example that stops being true
-  // fails the build instead of quietly rotting.
+  // The documented example is executable, as for the catalog and resolver, so a spec example that stops being true fails the build.
   test('spec §7.2 prefill — params, provenance and memoryUpdates all match', async () => {
     const { response } = await run(
       {
@@ -97,11 +88,8 @@ describe('the happy path reproduces the specification’s published payload', ()
   });
 
   test('memory still supplies a grade the turn does NOT state', async () => {
-    // The control for the fixture above, which now reads `grade: 'utterance'`
-    // because its utterance says "for class 5". Drop those words and nothing
-    // else changes: memory supplies the same value and is labelled as memory.
-    // Without this, a bug that made recovery fabricate grades would look like a
-    // passing suite.
+    // The control for the fixture above, which reads `grade: 'utterance'` because its utterance says "for class 5". Drop
+    // those words and memory supplies the same value, labelled as memory. Without this, a bug fabricating grades would look like a passing suite.
     const { response } = await run(
       {
         utterance: 'a fractions worksheet',
@@ -140,7 +128,7 @@ describe('the happy path reproduces the specification’s published payload', ()
 
     expect(response.actions[0].params.grade).toBe('Class 3-5');
     expect(response.actions[0].provenance.grade).toBe('utterance');
-    // Names only — never the recovered value (G11).
+    // Names only, never the recovered value.
     expect(telemetry.recoveredSlots).toEqual(['grade']);
     expect(JSON.stringify(telemetry)).not.toContain('Class 3-5');
   });
@@ -256,9 +244,7 @@ describe('all nine passthrough reasons', () => {
 
 describe('stage ordering', () => {
   test('the emergency check runs BEFORE the budget and the catalog', async () => {
-    // If the ordering ever inverts, an emergency during a quota outage would
-    // report the wrong reason — and, far worse, an emergency would start
-    // depending on a flag being on.
+    // If the ordering inverted, an emergency during a quota outage would report the wrong reason, and worse, would depend on a flag being on.
     const checkBudget = vi.fn(async () => false);
     const { response } = await run(
       { utterance: 'a student collapsed and is not breathing' },
@@ -278,9 +264,7 @@ describe('stage ordering', () => {
   });
 
   test('the profile is read only once a real action has been proposed', async () => {
-    // A passthrough must not cost a database query. Most messages are
-    // passthroughs, so this is the difference between one extra read per
-    // routed turn and one per message sent in the whole app.
+    // A passthrough must not cost a database query: most messages are passthroughs, so this is one extra read per routed turn instead of one per message.
     const readProfile = vi.fn(async () => ({}));
     await run({}, {
       classify: classifierReturning({ intent: 'coach_question', confidence: 'high' }),
@@ -332,9 +316,7 @@ describe('the response envelope', () => {
   });
 
   test('an `ask` turn offers no memoryUpdates', async () => {
-    // A turn that ended in a question has settled nothing. Remembering its
-    // half-formed reading would let a guess outlive the question meant to
-    // resolve it.
+    // A turn that ended in a question has settled nothing; remembering its half-formed reading would let a guess outlive the question.
     const { response } = await run({}, {
       classify: classifierReturning({
         intent: 'generate_assessment',

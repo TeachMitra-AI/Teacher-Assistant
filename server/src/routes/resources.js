@@ -1,9 +1,6 @@
-// "My Library" — teacher-owned saved resources (CRUD).
-//
-// Every resource is private to the authenticated user. Ownership is ALWAYS
-// derived from the access token (req.user.id) — never from the request body —
-// and a resource that does not exist OR does not belong to the caller returns
-// the same 404, so one teacher can never probe for another's resources.
+// "My Library": teacher-owned saved resources (CRUD), plus the generation endpoints.
+// Every resource is private to its owner. Ownership always comes from the access token (req.user.id), never the
+// body, and a resource that doesn't exist or isn't the caller's returns the same 404, so existence isn't leaked.
 const crypto = require('crypto');
 const express = require('express');
 const { z } = require('zod');
@@ -14,17 +11,10 @@ const { sendAiError } = require('../lib/sendAiError');
 const { authRequired } = require('../middleware/auth');
 const { languageDirective, LANGUAGE_NAMES } = require('../prompts');
 const { assessmentDocumentSchema, checkAgainstRequest, normalizeAssessmentMath, OPTION_LETTERS } = require('../lib/assessmentSchema');
-// Second, independent normalization pass run AFTER normalizeAssessmentMath —
-// see lib/latexGuard.js for why: normalizeAssessmentMath only ever repairs
-// LaTeX INSIDE an existing $...$/$$...$$ pair (by design, pinned by its own
-// tests), so it never catches Gemini dropping the delimiters entirely (e.g.
-// an MCQ option coming back as "0.25\text{ mol}" with no $ at all). This
-// module detects that, repairs the mechanically-safe case, and verifies
-// every math segment actually renders in KaTeX before the document is
-// trusted — treating Gemini's JSON as untrusted input end to end.
+// Second pass after normalizeAssessmentMath (see lib/latexGuard.js): it catches Gemini dropping the math delimiters
+// entirely, repairs the safe case, and renders every segment in KaTeX before the document is trusted.
 const { sanitizeAssessmentDocument, sanitizeTextFields } = require('../lib/latexGuard');
-// Lesson Plan (Classroom Mode P6). Its own schema/prompt/renderer — see
-// lib/lessonPlanSchema.js for why it is not a generateAssessment format (D21).
+// Lesson plan has its own schema, prompt and renderer (see lib/lessonPlanSchema.js).
 const {
   lessonPlanDocumentSchema,
   normalizeLessonPlanMath,
@@ -34,39 +24,27 @@ const {
 const { buildLessonPlanPrompt, renderLessonPlanMarkdown } = require('../lib/lessonPlanPrompt');
 const { generateLessonPlanSchema } = require('../actions/schemas/generateLessonPlan');
 const { MAX_META, MAX_LANGUAGE } = require('../lib/resourceFields');
-// The generation request schema is defined once, in the actions/ layer, and
-// imported by both this route and (from M2) the `generate_assessment` capability
-// descriptor — so the router can never validate against a drifted copy of the
-// contract this endpoint actually enforces.
-// MAX_QUESTIONS comes along because the `more_questions` AI-assist action below
-// enforces the same ceiling the original generation request was held to.
+// The generation request schema lives in actions/ and is shared with the `generate_assessment` capability
+// descriptor, so the router can't validate against a drifted copy. MAX_QUESTIONS is also the ceiling for the
+// `more_questions` assist action below.
 const {
   generateAssessmentSchema, QUESTION_TYPES: REQUEST_QUESTION_TYPES, NEW_QUESTION_TYPES, MAX_QUESTIONS,
   normalizeQuestionTypes,
 } = require('../actions/schemas/generateAssessment');
 const { generateAssessmentSetSchema } = require('../actions/schemas/generateAssessmentSet');
-// Structured Question Model (Generator v2) — see docs/generator-v2-plan.md.
-// Gates ONLY the 3 new question types + the structured-edit re-render rule
-// below; existing mcq/true_false/short_answer/mixed behavior is never gated.
+// Structured question model (docs/generator-v2-plan.md). Gates only the 3 new question types and the
+// structured-edit re-render rule; the existing types are never gated.
 const { readStructuredQuestionsFlags } = require('../lib/flags');
-// Per-format wording, headings and purpose. Its own module so the "every format
-// has metadata" assertion runs at boot (see lib/assessmentFormats.js) rather
-// than a missing entry silently rendering a new format as a quiz.
+// Per-format wording and purpose; a separate module so the "every format has metadata" assertion runs at boot (lib/assessmentFormats.js).
 const { formatMeta } = require('../lib/assessmentFormats');
-// Notification System system-hook (docs/notification-system-plan.md §0/§6):
-// a saved resource is the clearest, lowest-risk "lesson generated"/
-// "assessment ready" system event this app has today — it fires from the
-// SAVE endpoint below, not from the generation contract itself, so this
-// never touches POST /resources/generate.
+// Notification system hook (docs/notification-system-plan.md): a saved resource fires a system notification from
+// the SAVE endpoint below, never from the generation contract, so POST /resources/generate is untouched.
 const { createNotification } = require('../lib/notificationService');
 const { readNotificationsFlags } = require('../lib/flags');
 
 const router = express.Router();
 
-// Friendly title per Resource.type, for the system notification only —
-// deliberately not the same list as client/src/config.ts's
-// RESOURCE_TYPE_META labels (kept server-local, since this is the only
-// server-side place that needs a human label for a resource type).
+// Friendly title per Resource.type for the system notification only, kept server-local rather than mirroring client/src/config.ts.
 const RESOURCE_TYPE_NOTIFICATION_LABEL = {
   lesson_plan: 'lesson plan',
   classroom_activity: 'classroom activity',
@@ -75,10 +53,8 @@ const RESOURCE_TYPE_NOTIFICATION_LABEL = {
   general: 'resource',
 };
 
-// NOTE: request bodies are parsed by the app-level JSON middleware in index.js,
-// which applies a larger 64kb limit to /api/resources paths (a full lesson plan
-// with several structured sections can exceed the default 16kb) while leaving
-// the 16kb limit intact for every other route.
+// Request bodies are parsed by the app-level JSON middleware in index.js, which allows 64kb on /api/resources
+// (a full lesson plan can exceed the default 16kb) and keeps 16kb elsewhere.
 
 const RESOURCE_TYPES = ['lesson_plan', 'classroom_activity', 'assessment', 'explanation', 'general'];
 
@@ -87,15 +63,11 @@ const MAX_CONTENT = 50000;
 const MAX_STRUCTURED = 50000;
 const MAX_SOURCE_ID = 60;
 
-// MAX_META (grade / subject) and MAX_LANGUAGE are NOT declared here: the
-// generation schema in src/actions/schemas/generateAssessment.js needs the same
-// bounds, so they live in a leaf module both files import (see
-// lib/resourceFields.js for why that beats either file importing the other).
-// The bounds above stay local because only the CRUD schemas below use them.
+// MAX_META and MAX_LANGUAGE live in lib/resourceFields.js, which the generation schema also imports. The bounds
+// above are local because only the CRUD schemas use them.
 
-// Create payload. Note there is deliberately NO userId/ownerId/schoolId field:
-// ownership is taken from the token, so a client-supplied id cannot be honored.
-// `.strict()` rejects unknown keys (including any attempt to inject userId).
+// Create payload. There's no userId/ownerId/schoolId field: ownership comes from the token, and `.strict()`
+// rejects unknown keys, including any attempt to inject one.
 const createSchema = z
   .object({
     type: z.enum(RESOURCE_TYPES).default('general'),
@@ -123,12 +95,9 @@ const updateSchema = z
   .strict()
   .refine((data) => Object.keys(data).length > 0, { message: 'No fields to update.' });
 
-// --- Lesson Plan Workspace AI actions ---
-// Each action id maps to a trusted instruction. The model is asked to return
-// the COMPLETE revised document (a full replacement) so the client can apply a
-// suggestion with a simple content swap. The resource content is passed as
-// delimited untrusted input — never as instructions — mirroring the
-// prompt-injection boundary used for the coach (see prompts.js).
+// Lesson Plan Workspace AI actions. Each id maps to a trusted instruction; the model returns the complete revised
+// document so the client applies a suggestion with a content swap. The resource content is delimited untrusted
+// input, never instructions (same boundary as the coach, see prompts.js).
 const AI_ACTIONS = [
   // Generic (any resource type)
   'simplify',
@@ -205,28 +174,13 @@ The current resource content is provided next, delimited by triple backticks (\`
   return { systemInstruction, userText };
 }
 
-// --- Quiz / Worksheet Generator ---
-// Generates a fresh, classroom-ready assessment. The teacher's structured
-// config (validated enums + bounded strings) goes into the trusted
-// systemInstruction; the free-text topic + optional instructions are passed as
-// delimited untrusted user content (same injection boundary as the coach).
-// The result is returned to the client for preview/edit and is NEVER persisted
-// here — the teacher saves it explicitly via POST /api/resources.
-//
-// Phase 1 structured-generation note: Gemini's job is narrowed to QUESTION
-// CONTENT ONLY — it returns JSON (validated against assessmentDocumentSchema),
-// never a formatted document. The title, metadata block, worksheet
-// name/date fields, question numbering, MCQ option letters, and the
-// answer-key heading are all built here, deterministically, from the
-// teacher's own request config and the validated question data — never from
-// the model's raw text. This is what makes the printed page's structure
-// independent of whether Gemini "feels like" following Markdown formatting
-// instructions on any given call.
-// The request schema and its option vocabularies (formats, difficulties,
-// question types, count bounds) now live in
-// src/actions/schemas/generateAssessment.js — imported at the top of this file.
-// They moved so the capability registry and this endpoint share ONE definition
-// instead of drifting copies; nothing about what is accepted changed.
+// Quiz / Worksheet Generator. The validated config goes into the trusted systemInstruction; the free-text topic and
+// instructions are delimited untrusted content. The result goes to the client for preview and is never persisted
+// here; the teacher saves via POST /api/resources.
+// Gemini returns question content only, as JSON validated against assessmentDocumentSchema. The title, metadata
+// block, question numbering, option letters and answer-key heading are built here from the request config and the
+// validated data, so the printed structure doesn't depend on the model following formatting instructions.
+// The request schema and its vocabularies live in actions/schemas/generateAssessment.js, shared with the capability registry.
 
 const QUESTION_TYPE_CONTENT_RULES = {
   mcq: 'Every question is multiple-choice with exactly four plausible options; exactly one is correct.',
@@ -239,11 +193,8 @@ const QUESTION_TYPE_CONTENT_RULES = {
   mixed: 'Use a sensible mix of question types (multiple-choice, true/false, short-answer, descriptive, fill-in-the-blank, and matching) appropriate to the topic.',
 };
 
-// Short human-readable name per type, used only to describe a MULTI-select
-// request (a teacher who ticked more than one specific type) — a single
-// selection keeps using QUESTION_TYPE_CONTENT_RULES's full sentence above,
-// unchanged. 'mixed' is absent: the schema's refine forbids combining it with
-// any other type, so it never appears in a multi-type list.
+// Short name per type, used only to describe a multi-select request; a single selection uses QUESTION_TYPE_CONTENT_RULES's
+// full sentence. 'mixed' is absent: the schema forbids combining it with another type.
 const QUESTION_TYPE_LABELS = {
   mcq: 'multiple-choice',
   true_false: 'true/false',
@@ -253,14 +204,10 @@ const QUESTION_TYPE_LABELS = {
   match: 'match-the-following',
 };
 
-// The 6 real per-question types a document can contain — 'mixed' is a
-// REQUEST-only modifier (see QUESTION_TYPES's own comment in the schema
-// module), never a value Gemini can put in a question's own "type" field.
+// The 6 real per-question types. 'mixed' is a request-only modifier, never a question's own `type`.
 const CONCRETE_QUESTION_TYPES = ['mcq', 'true_false', 'short_answer', 'descriptive', 'fill_blank', 'match'];
 
-// Boot-time assertion, same discipline as lib/assessmentFormats.js's own
-// FORMAT_META check: a question type with no content rule would silently
-// fall through to `undefined` in the prompt rather than failing loudly.
+// Boot-time assertion (like FORMAT_META's): a type with no content rule would silently become `undefined` in the prompt.
 {
   const missingRule = REQUEST_QUESTION_TYPES.filter((t) => !QUESTION_TYPE_CONTENT_RULES[t]);
   if (missingRule.length > 0) {
@@ -270,20 +217,11 @@ const CONCRETE_QUESTION_TYPES = ['mcq', 'true_false', 'short_answer', 'descripti
   }
 }
 
-// Gemini's structured-output schema (OpenAPI subset) — see
-// server/src/lib/assessmentSchema.js for the matching Zod validation applied
-// to the parsed response.
-// The maths-notation contract, stated ONCE and shared by every prompt that
-// asks for maths (single assessment, batched set, lesson plan). Since
-// 2026-08-07 the model writes plain notation — "5/9", not "\\frac{5}{9}" —
-// because a backslash inside a JSON string is what every LaTeX repair layer
-// in lib/assessmentSchema.js exists to undo. lib/mathNotation.js converts it.
-// Per-question-type field-filling instructions, stated ONCE and shared by
-// every prompt that asks the model to produce/revise questions (generation,
-// the batched set, and the 4 assessment AI-assist actions) — previously these
-// bullets were duplicated verbatim in three places; adding 3 new types to
-// each copy independently is exactly the kind of drift a single shared
-// constant avoids.
+// Gemini's structured-output schema (OpenAPI subset); lib/assessmentSchema.js has the matching zod validation.
+// The maths-notation contract is stated once here and shared by every maths prompt (single assessment, set, lesson plan).
+// The model writes plain notation ("5/9", not "\\frac{5}{9}") because a backslash in a JSON string is what the LaTeX
+// repair layers exist to undo; lib/mathNotation.js converts it.
+// Per-question-type field rules are also stated once and shared by generation, the set, and the four assist actions, so the copies can't drift.
 const QUESTION_TYPE_FIELD_RULES = `- For "mcq" questions: "options" must contain EXACTLY 4 answer choices as plain text (no "A."/"B." labels), and "correctOptionIndex" must be the 0-based index (0, 1, 2, or 3) of the correct option. Set "correctAnswer" to an empty string, "modelAnswer" to an empty string, and "pairs" to an empty array.
 - For "true_false" questions: set "options" to an empty array and "correctOptionIndex" to -1. Set "correctAnswer" to exactly "True" or "False". Set "modelAnswer" to an empty string and "pairs" to an empty array.
 - For "short_answer" questions: set "options" to an empty array and "correctOptionIndex" to -1. Set "correctAnswer" to a brief model answer a teacher could grade against. Set "modelAnswer" to an empty string and "pairs" to an empty array.
@@ -333,27 +271,11 @@ const ASSESSMENT_RESPONSE_SCHEMA = {
   required: ['instructions', 'questions'],
 };
 
-// Narrows ASSESSMENT_RESPONSE_SCHEMA's per-question `type` enum to exactly
-// `typeEnum` — used ONLY by the single-generate endpoint (issue #95), whose
-// request can restrict which types Gemini may use. Every other caller of
-// ASSESSMENT_RESPONSE_SCHEMA (the batched set, the 4 AI-assist actions)
-// keeps the base object, unnarrowed, unaffected by this.
-//
-// WHY THIS MATTERS: before this, the schema handed to Gemini always allowed
-// all 6 concrete types regardless of the request — the "use only these
-// types" instruction lived purely in the prompt's natural-language text
-// (QUESTION_TYPE_CONTENT_RULES for a single type, or the multi-select
-// sentence in buildGeneratorPrompt below). A single-type request is one
-// simple instruction the model follows reliably in practice; the newer
-// multi-select instruction ("use only these N types, distributed across the
-// questions") is a harder one, and the model would sometimes emit a type
-// outside the requested set — which checkAgainstRequest (lib/
-// assessmentSchema.js) then correctly rejected as a contract violation,
-// surfacing to the teacher as "The generated content did not match your
-// request" on a multi-select generation that a single-select one would not
-// have hit. Restricting the schema's enum turns "please use only these
-// types" into a constraint Gemini's structured output cannot violate,
-// instead of one it can merely fail to follow.
+// Narrows the schema's per-question `type` enum to `typeEnum`, used only by single-generate, whose request can restrict types.
+// Other callers keep the base schema.
+// Before this, the schema always allowed all 6 types and "use only these types" lived only in the prompt. Multi-select is
+// a harder instruction, and a stray type made checkAgainstRequest reject the result ("did not match your request").
+// A schema enum is a constraint Gemini's structured output can't violate.
 function buildAssessmentResponseSchema(typeEnum) {
   return {
     ...ASSESSMENT_RESPONSE_SCHEMA,
@@ -382,11 +304,8 @@ function buildGeneratorPrompt(config) {
   const languageLine = `- ${languageDirective(lang, { structured: true })}\n`;
   const meta = formatMeta(format);
 
-  // A teacher who ticked exactly one type (the overwhelmingly common case,
-  // and everything every caller before issue #95 ever sent) gets the exact
-  // same two lines as before — byte-for-byte — so this change cannot alter
-  // behavior it wasn't asked to touch. Only a genuine multi-select produces
-  // the "use only these types" phrasing.
+  // Exactly one type (the common case, and all callers before multi-select) gets the same two lines as before.
+  // Only a real multi-select gets the "use only these types" phrasing.
   const types = normalizeQuestionTypes(questionType);
   const questionTypeLine = types.length === 1
     ? types[0]
@@ -424,24 +343,15 @@ The topic and any extra instructions are provided next as delimited user content
     + (instructions ? `\nAdditional instructions: ${instructions}` : '')
     + '\n```';
 
-  // 'mixed' still leaves Gemini free to choose among all 6 concrete types;
-  // one or more specific types narrows the schema to exactly those (see
-  // buildAssessmentResponseSchema's own comment for why this needs to be a
-  // hard schema constraint and not just the prompt text above).
+  // 'mixed' leaves all 6 concrete types open; specific types narrow the schema to exactly those (see buildAssessmentResponseSchema).
   const responseTypeEnum = types.includes('mixed') ? CONCRETE_QUESTION_TYPES : types;
   return { systemInstruction, userText, responseSchema: buildAssessmentResponseSchema(responseTypeEnum) };
 }
 
 /**
- * Builds ONE prompt covering several artifacts (POST /resources/generate-set).
- *
- * The token saving is structural, not clever: everything shared — the topic,
- * grade, subject, the maths-notation rules, the injection boundary — is stated
- * ONCE, and only what genuinely differs per artifact (its purpose, length,
- * difficulty, question type) is repeated. That is also why the per-artifact
- * `purpose` from FORMAT_META is kept verbatim: it is the line that makes an
- * exit ticket read differently from a quiz, and dropping it to save tokens
- * would produce four documents that are the same worksheet in four costumes.
+ * Builds ONE prompt covering several artifacts (POST /resources/generate-set). Shared content (topic, grade,
+ * subject, maths rules, injection boundary) is stated once; only what differs per artifact is repeated. Each
+ * artifact's `purpose` from FORMAT_META is kept, since it's what makes an exit ticket read unlike a quiz.
  *
  * @param {object} config the shared request (topic, grade, subject, language)
  * @param {Array<{format: string, difficulty: string, questionType: string, questionCount: number}>} items
@@ -503,14 +413,9 @@ The topic and any extra instructions are provided next as delimited user content
 }
 
 /**
- * Renders the validated, app-normalized question data into the same
- * Markdown shape the rest of the app (client/src/lib/format.ts,
- * client/src/lib/assessment.ts) already expects — title, metadata block,
- * Instructions, Questions, and a canonical Answer Key heading. Every part of
- * this is deterministic app output; nothing here comes from the model's own
- * formatting choices, and the answer-key heading is now GUARANTEED present
- * and exact (unlike the previous Markdown-generation approach, where it
- * depended on the model reproducing the heading text verbatim).
+ * Renders the validated question data into the Markdown shape the client expects (client/src/lib/format.ts,
+ * client/src/lib/assessment.ts): title, metadata block, Instructions, Questions and a canonical Answer Key
+ * heading. All of it is deterministic app output, not the model's formatting.
  * @param {object} config the validated generateAssessmentSchema request
  * @param {{instructions: string, questions: object[]}} doc the validated assessmentDocumentSchema response
  */
@@ -520,13 +425,8 @@ function renderAssessmentMarkdown(config, doc) {
   const title = `${subject ? `${subject} ` : ''}${meta.title}: ${topic}`;
   const answerKeyHeading = meta.answerKeyHeading;
 
-  // Student Name / Roll No. / Date / school letterhead are NOT rendered into
-  // this Markdown (a worksheet used to get hardcoded "Student Name: ____" /
-  // "Date: ____" lines here — see the Phase 1 note above). Phase 3 replaces
-  // that with a real letterhead the teacher configures and the client
-  // renders separately (client/src/components/ExamHeader.tsx), sourced from
-  // Resource.structured.examMeta — deterministic teacher input, never text
-  // baked into a generated document.
+  // Student name / roll no. / date and the school letterhead aren't in this Markdown; the client renders them
+  // separately from Resource.structured.examMeta (client/src/components/ExamHeader.tsx).
   const preamble = [
     `# ${title}`,
     '',
@@ -540,13 +440,8 @@ function renderAssessmentMarkdown(config, doc) {
 }
 
 /**
- * Renders JUST the Instructions/Questions/Answer-Key portion (everything
- * from "## Instructions" onward) — split out from renderAssessmentMarkdown
- * so the assessment AI-assist actions (Phase 4: make_easier, make_harder,
- * more_questions, simplify_wording) can rebuild only this part and splice it
- * back onto the resource's EXISTING title/metadata preamble, preserved
- * byte-for-byte from what's already saved (see parseAssessmentBody below) —
- * an edit action never regenerates the title/metadata from scratch.
+ * Renders just the Instructions/Questions/Answer-Key portion (from "## Instructions" onward), split out so the
+ * assist actions can rebuild it and splice it onto the resource's existing preamble, which is preserved byte for byte.
  * @param {{instructions: string, questions: object[]}} doc
  * @param {string} answerKeyHeading exact heading text, e.g. "## Answer Key"
  */
@@ -595,54 +490,29 @@ function renderAssessmentBody(doc, answerKeyHeading) {
   return lines.join('\n');
 }
 
-// --- Assessment AI-assist actions (Phase 4) ---------------------------------
-// make_easier / make_harder / more_questions / simplify_wording used to send
-// the resource's raw Markdown to Gemini and ask for a complete rewritten
-// Markdown document back (the same "hope it follows the formatting rules"
-// approach Phase 1 replaced for initial generation). That let a follow-up
-// edit reintroduce every problem Phase 1 fixed: inconsistent numbering, a
-// missing/misworded answer-key heading, a malformed MCQ, or literal
-// Markdown syntax leaking through.
-//
-// These four now go through the SAME structured pipeline as generation:
-// parse the resource's current content back into { instructions, questions }
-// (parseAssessmentBody), ask Gemini for a JSON revision of just that data
-// (same ASSESSMENT_RESPONSE_SCHEMA/assessmentDocumentSchema as generation),
-// validate it, and re-render deterministically (renderAssessmentBody) onto
-// the ORIGINAL title/metadata preamble — which is preserved byte-for-byte,
-// never regenerated. Resource.structured (Phase 3's examMeta / the generator
-// config) is never read or touched by this path at all, so the letterhead a
-// teacher configured can never be overwritten by an AI action.
+// Assessment AI-assist actions (make_easier / make_harder / more_questions / simplify_wording). They used to send raw
+// Markdown to Gemini and get Markdown back, which let an edit reintroduce bad numbering, a missing answer-key
+// heading or a malformed MCQ. They now use the structured pipeline: parse the content into { instructions, questions },
+// ask for a JSON revision (same schema as generation), validate, and re-render onto the original preamble.
+// Resource.structured (examMeta and the generator config) is never touched here, so a configured letterhead
+// can't be overwritten by an AI action.
 const ASSESSMENT_ACTIONS = ['make_easier', 'make_harder', 'more_questions', 'simplify_wording'];
 const MORE_QUESTIONS_COUNT = 5;
 
-// Extra attempts to re-ask Gemini for a fresh response when
-// sanitizeAssessmentDocument (lib/latexGuard.js) finds LaTeX it can't safely
-// repair — e.g. a bare "\text{...}" with unbalanced braces. Only THIS
-// failure mode retries; invalid JSON / schema mismatch / wrong question
-// count still fail immediately exactly as before. Bounded small: each
-// attempt is a full Gemini call (with its own internal retry/continuation
-// budget in gemini.js), so this caps worst-case latency/cost at 3x a single
-// generation rather than letting it grow unbounded.
+// Extra attempts when sanitizeAssessmentDocument (lib/latexGuard.js) finds LaTeX it can't repair. Only this failure
+// retries (other failures fail immediately). Each attempt is a full Gemini call, so this caps the worst case at 3x one generation.
 const MAX_LATEX_REGEN_ATTEMPTS = 2;
 
-// Mirrors client/src/lib/assessment.ts's ANSWER_KEY_HEADING — kept as a
-// separate small copy rather than a cross-package import (CJS server vs ESM
-// client) since it's 3 lines and unlikely to drift silently.
+// Mirrors ANSWER_KEY_HEADING in client/src/lib/assessment.ts, kept as a copy (CJS server vs ESM client).
 const ANSWER_KEY_HEADING_RE = /^\s{0,3}#{1,6}\s*(?:teacher(?:'s)?\s+)?answer\s*keys?\b.*$/im;
 const INSTRUCTIONS_HEADING_RE = /^##\s+Instructions\s*$/im;
 const QUESTIONS_HEADING_RE = /^##\s+Questions\s*$/im;
 
 /**
- * Splits a "N. <question text>" / "A.-D. <option text>" questions block
- * (the text between "## Questions" and the answer-key heading) back into
- * question objects. Deliberately conservative: a soft-wrapped continuation
- * line (no blank line, no list marker) is folded into the current question's
- * text, but anything genuinely ambiguous — a stray line after option lines
- * have already started, or content before the first numbered question —
- * makes the whole parse fail (return null) rather than guess. A failed parse
- * is surfaced to the teacher as "AI Assist can't safely apply changes here"
- * rather than risking a silently wrong edit.
+ * Splits a "N. <question>" / "A.-D. <option>" questions block back into question objects. Conservative:
+ * a soft-wrapped continuation line joins the current question, but anything ambiguous (a stray line after options
+ * start, content before question 1) fails the parse (null) rather than guessing, so AI Assist says it
+ * can't safely apply changes instead of making a wrong edit.
  * @returns {Array<{type: 'mcq'|'true_false'|'short_answer', text: string, options?: string[]}>|null}
  */
 function parseQuestionsBlock(block) {
@@ -698,18 +568,11 @@ function parseAnswerLines(block) {
 }
 
 /**
- * Inverse of renderAssessmentMarkdown/renderAssessmentBody: recovers
- * { preamble, answerKeyHeading, doc } from a resource's CURRENT saved
- * content, so an AI-assist action can operate on the same structured shape
- * generation does, and re-render it the same deterministic way — without
- * ever asking the model to reproduce the title/metadata block. Always
- * derived from the live content (never a possibly-stale side-channel), so it
- * stays correct even if the teacher hand-edited the Markdown directly. Fails
- * closed: returns null if the document doesn't match the expected shape
- * closely enough to parse safely (missing headings, a question/answer count
- * mismatch, an answer that doesn't resolve to a valid option, etc.) — the
- * caller must treat null as "cannot safely apply a structured AI action
- * here", never fall back to guessing.
+ * Inverse of renderAssessmentMarkdown/renderAssessmentBody: recovers { preamble, answerKeyHeading, doc } from a
+ * resource's current saved content, so an assist action works on the structured shape and re-renders it. Derived
+ * from live content, so it stays correct if the teacher hand-edited the Markdown. Fails closed: null if the
+ * document doesn't match closely enough (missing headings, count mismatch, an answer that doesn't resolve to an
+ * option); callers must not guess.
  * @returns {{preamble: string, answerKeyHeading: string, doc: {instructions: string, questions: object[]}}|null}
  */
 function parseAssessmentBody(content) {
@@ -721,12 +584,8 @@ function parseAssessmentBody(content) {
   if (!(instrMatch.index < qMatch.index && qMatch.index < akMatch.index)) return null;
 
   const preamble = text.slice(0, instrMatch.index).trimEnd();
-  // Read the heading text straight off the regex match itself (akMatch[0])
-  // rather than re-deriving a line via akMatch.index math: ANSWER_KEY_HEADING_RE's
-  // leading `\s{0,3}` can match the newline of a preceding blank line, which
-  // shifts `.index` to point at that blank line instead of the heading —
-  // akMatch[0] still contains the full heading text either way, since the
-  // pattern's trailing `.*$` captures through the end of the heading line.
+  // Read the heading from the match itself (akMatch[0]): the regex's leading `\s{0,3}` can match a preceding blank
+  // line's newline and shift `.index`, but the match text still holds the full heading.
   const answerKeyHeading = /teacher/i.test(akMatch[0]) ? '## Teacher Answer Key' : '## Answer Key';
 
   const instructions = text.slice(instrMatch.index + instrMatch[0].length, qMatch.index).trim();
@@ -797,11 +656,9 @@ The current instructions and questions are provided next as delimited JSON (trip
 }
 
 /**
- * Cross-checks a validated AI-assist response against the action's own
- * contract — assessmentDocumentSchema already validated each question's
- * internal shape; this checks the RELATIONSHIP to the existing questions
- * (count, per-position type, and — for simplify_wording — that answers truly
- * didn't change) that only the caller, not the schema, can know.
+ * Cross-checks a validated assist response against the action's contract: assessmentDocumentSchema checked each
+ * question's shape, this checks the relationship to the existing questions (count, per-position type, and for
+ * simplify_wording that answers didn't change).
  * @returns {string|null} an error message, or null if the response satisfies the action's contract.
  */
 function checkAssessmentActionResult(action, existingQuestions, responseQuestions) {
@@ -843,30 +700,20 @@ function checkAssessmentActionResult(action, existingQuestions, responseQuestion
   return null;
 }
 
-// Wording for this route file's Gemini-failure responses (ai-action and
-// generate routes) — passed into the shared sendAiError mapper (lib/) so the
-// RATE_LIMITED/TIMEOUT/UPSTREAM_AUTH logic itself lives in exactly one place.
+// Wording for this file's Gemini-failure responses, passed to the shared sendAiError mapper.
 const AI_ERROR_MESSAGES = {
   safetyBlockedMessage: "This couldn't be processed — try adjusting your request.",
   upstreamUnavailableMessage: 'Failed to generate content. Please try again.',
 };
 
-// --- Structured Question Model (Generator v2) -------------------------------
-// See docs/generator-v2-plan.md. `Resource.structured` already holds a flat
-// JSON-as-string generator config (`{format, difficulty, questionType,
-// questionCount, topic, examMeta}` — GeneratorPage.tsx today); this adds two
-// more keys to that SAME object rather than a new column: `schemaVersion: 2`
-// (the version marker) and `questions`/`instructions` (the structured
-// document). Every resource saved before this shipped has no `schemaVersion`
-// key and is untouched by any of this — see §6 of the plan for why that is
-// permanent, not a migration step.
+// Structured question model (docs/generator-v2-plan.md). `Resource.structured` is a JSON-as-string generator config
+// (`{format, difficulty, questionType, questionCount, topic, examMeta}`); this adds `schemaVersion: 2` and
+// `questions`/`instructions` to the same object instead of a new column. Resources saved before this have no
+// `schemaVersion` and are left alone.
 
 /**
- * Reads a validated Structured Question Model payload out of a client-
- * supplied `structured` JSON string. Returns null for anything that isn't
- * schemaVersion 2 with a questions array — a missing/legacy/malformed
- * `structured` all resolve to null, which is exactly "leave this resource
- * alone" for every call site below.
+ * Reads a validated structured-questions payload from a client-supplied `structured` JSON string. Anything that
+ * isn't schemaVersion 2 with a questions array (missing, legacy, malformed) returns null, meaning "leave this resource alone".
  * @returns {{schemaVersion: 2, questions: object[], instructions?: string, format?: string, grade?: string, subject?: string, topic?: string, difficulty?: string}|null}
  */
 function tryReadStructuredQuestions(structuredStr) {
@@ -883,12 +730,9 @@ function tryReadStructuredQuestions(structuredStr) {
 }
 
 /**
- * Validates a structured-questions payload and, if valid, deterministically
- * renders it to the same Markdown shape generation produces — the one real
- * behavioral change this feature adds (plan §2c): whenever a client submits
- * `structured.questions`, the server (not the client) computes `content`, so
- * the two can never drift. Returns null on ANY validation failure — the
- * caller treats that as a 400, never a silent skip.
+ * Validates a structured-questions payload and renders it to the same Markdown generation produces. Whenever a
+ * client submits `structured.questions`, the server computes `content`, so the two can't drift. Returns null
+ * on any validation failure, which the caller turns into a 400.
  * @returns {string|null}
  */
 function tryRenderFromStructured(raw) {
@@ -926,9 +770,7 @@ function toDto(r) {
   };
 }
 
-// Fetch a resource and assert the caller owns it. Returns the row, or null if
-// it does not exist OR belongs to someone else — callers translate null into a
-// single 404 so existence is never leaked across users.
+// Fetch a resource and assert the caller owns it. Null means missing or someone else's; callers return a single 404.
 async function findOwned(id, userId) {
   const resource = await prisma.resource.findUnique({ where: { id } });
   if (!resource || resource.userId !== userId) return null;
@@ -945,11 +787,8 @@ router.get('/resources', authRequired, asyncHandler(async (req, res) => {
   const type = typeof req.query.type === 'string' ? req.query.type : '';
   if (type && RESOURCE_TYPES.includes(type)) where.type = type;
 
-  // Answers "what did this turn already save?" — Classroom Mode asks it so a
-  // set reopened from history can show its cards as Saved instead of offering
-  // to save the same quiz a second time. Always ANDed with the caller's own
-  // userId above, so it can only ever narrow what that caller could already
-  // see; an id belonging to someone else's query simply matches nothing.
+  // "What did this turn already save?", so a set reopened from history shows its cards as Saved. ANDed with the
+  // caller's userId above, so it can only narrow what they could already see.
   const sourceQueryId = typeof req.query.sourceQueryId === 'string'
     ? req.query.sourceQueryId.trim().slice(0, MAX_SOURCE_ID)
     : '';
@@ -978,11 +817,8 @@ router.post('/resources', authRequired, asyncHandler(async (req, res) => {
   }
   const data = parsed.data;
 
-  // Structured Question Model (Generator v2, plan §2c/§8): a `structured`
-  // payload carrying native questions always wins over whatever `content` the
-  // client sent — the server is the only thing that renders Markdown from
-  // question data, so the two can never drift. Anything without a valid
-  // `schemaVersion: 2` + `questions` is untouched (every existing caller).
+  // A `structured` payload with native questions wins over any client `content`: the server is the only thing that
+  // renders Markdown from question data. Anything without a valid `schemaVersion: 2` + `questions` is untouched.
   const structuredQuestions = tryReadStructuredQuestions(data.structured);
   if (structuredQuestions) {
     const rendered = tryRenderFromStructured(structuredQuestions);
@@ -1008,17 +844,9 @@ router.post('/resources', authRequired, asyncHandler(async (req, res) => {
     },
   });
 
-  // Classroom Mode telemetry (P7): which artifacts a teacher actually KEEPS.
-  //
-  // Recorded here rather than from the client because the save already passes
-  // through this endpoint tagged with its source, so no new transport, no new
-  // endpoint, and no way for the count to drift from what was really stored.
-  // Saving is the honest success signal — an artifact that generated but was
-  // never saved did not help anyone.
-  //
-  // Best-effort and metadata-only: the artifact kind and the resource type,
-  // never the title, the topic or any generated text. A failure here must
-  // never cost the teacher the save they just made.
+  // Classroom Mode telemetry: which artifacts a teacher keeps. Recorded here, where the save arrives tagged with its
+  // source, so the count can't drift from what was stored. Best-effort and metadata-only (artifact kind and resource
+  // type, never title, topic or generated text); a failure must never cost the save.
   try {
     const meta = data.structured ? JSON.parse(data.structured) : null;
     if (meta && meta.source === 'classroom_mode') {
@@ -1036,11 +864,8 @@ router.post('/resources', authRequired, asyncHandler(async (req, res) => {
     // problem, and neither changes that the resource was created.
   }
 
-  // System-generated notification: "Your <type> is ready", linking back to
-  // the resource just saved. Best-effort and non-blocking, same pattern as
-  // the telemetry write above — a failure here must never cost the teacher
-  // the save they just made, and it never fires at all while the feature is
-  // disabled (no DB row, no realtime emit).
+  // System notification ("Your <type> is ready") linking to the saved resource. Best-effort like the telemetry above,
+  // and it never fires while the feature is disabled.
   try {
     if (readNotificationsFlags(process.env).enabled) {
       const label = RESOURCE_TYPE_NOTIFICATION_LABEL[data.type] || 'resource';
@@ -1081,7 +906,7 @@ router.patch('/resources/:id', authRequired, asyncHandler(async (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Resource not found.' });
 
   const data = { ...parsed.data };
-  // Same re-render rule as create (plan §2c) — see tryReadStructuredQuestions.
+  // Same re-render rule as create — see tryReadStructuredQuestions.
   const structuredQuestions = tryReadStructuredQuestions(data.structured);
   if (structuredQuestions) {
     const rendered = tryRenderFromStructured(structuredQuestions);
@@ -1100,26 +925,18 @@ router.patch('/resources/:id', authRequired, asyncHandler(async (req, res) => {
 }));
 
 /**
- * Handles the four structured assessment AI-assist actions (Phase 4) — see
- * the block comment above ASSESSMENT_ACTIONS for why this exists as a
- * separate structured pipeline rather than reusing buildWorkspacePrompt's
- * Markdown passthrough. Ownership was already checked by the caller.
- * Resource.structured's examMeta sub-key (Phase 3's letterhead) is never read
- * or written here, on a legacy resource or a structured one — only the
- * `questions`/`instructions`/generator-config keys are (Generator v2, plan §2f).
+ * Handles the four structured assessment assist actions (see the comment above ASSESSMENT_ACTIONS). Ownership was
+ * checked by the caller. Resource.structured's examMeta is never read or written here; only
+ * `questions`/`instructions`/generator-config keys are.
  */
 async function handleAssessmentAction(gemini, resource, action, requestId) {
   if (resource.type !== 'assessment') {
     return { status: 400, body: { error: 'This action is only available for quizzes and worksheets.', requestId } };
   }
 
-  // Structured Question Model (Generator v2, plan §2f): a resource with
-  // native structured questions reads/writes `structured` directly and skips
-  // parseAssessmentBody's regex round-trip entirely — a legacy resource (no
-  // `schemaVersion: 2`) keeps using exactly that round-trip, unchanged. This
-  // branches ONCE, here; every check and every Gemini call below is IDENTICAL
-  // for both paths, differing only in how `doc` was obtained and how `finish`
-  // turns the revised doc back into a response body.
+  // A resource with native structured questions reads and writes `structured` directly and skips the
+  // parseAssessmentBody round-trip; a legacy one keeps the round-trip. This branches once; every check and
+  // Gemini call below is the same for both.
   const structuredQuestions = tryReadStructuredQuestions(resource.structured);
 
   let doc;
@@ -1149,9 +966,7 @@ async function handleAssessmentAction(gemini, resource, action, requestId) {
     };
     finish = (newDoc) => ({
       suggestion: renderAssessmentMarkdown(config, newDoc),
-      // The client applies both fields together (never just `suggestion`) so
-      // structured.questions can never go stale relative to the applied
-      // content — see plan §2f.
+      // The client applies both fields together, so structured.questions can't go stale relative to the applied content.
       structured: JSON.stringify({ ...structuredQuestions, instructions: newDoc.instructions, questions: newDoc.questions }),
     });
   } else {
@@ -1171,19 +986,12 @@ async function handleAssessmentAction(gemini, resource, action, requestId) {
     finish = (newDoc) => ({ suggestion: `${preamble}\n\n${renderAssessmentBody(newDoc, answerKeyHeading)}` });
   }
 
-  // Normalize the EXISTING questions too: content saved before the LaTeX
-  // repair existed may still carry JSON-mangled math, and the action contract
-  // (e.g. simplify_wording's byte-identical answers) compares the model's
-  // (normalized) response against these — both sides must be in repaired form.
+  // Normalize the existing questions too: content saved before the LaTeX repair may carry JSON-mangled math, and the
+  // action contract (e.g. simplify_wording's identical answers) compares against the normalized response.
   const normalizedDoc = normalizeAssessmentMath(doc);
 
-  // The EXISTING saved doc is spliced straight into the outgoing suggestion
-  // below (more_questions keeps its old questions; every action keeps the
-  // preamble) without another Gemini call in between — so it needs the same
-  // LaTeX safety check a fresh generation gets. A resource saved before this
-  // guard existed could still carry unrepairable bare LaTeX; there's no
-  // "regenerate" to fall back on for already-saved content, so this fails
-  // the same way genuinely unparseable content already does.
+  // The saved doc is spliced into the outgoing suggestion with no further Gemini call, so it needs the same LaTeX
+  // check as a fresh generation. There's nothing to regenerate for saved content, so it fails like unparseable content.
   const docSanitized = sanitizeAssessmentDocument(normalizedDoc);
   if (!docSanitized.ok) {
     console.warn('[resources.ai-action] saved resource contains unrepairable LaTeX', {
@@ -1232,9 +1040,7 @@ async function handleAssessmentAction(gemini, resource, action, requestId) {
       return { status: 502, body: { error: 'The suggested revision was malformed. Please try again.', code: 'INVALID_AI_RESPONSE', requestId } };
     }
 
-    // sanitizeAssessmentDocument runs AFTER normalizeAssessmentMath, same
-    // order as generation — see lib/latexGuard.js. Only THIS check retries;
-    // every other failure below still fails immediately, unchanged.
+    // Runs after normalizeAssessmentMath, as in generation (lib/latexGuard.js). Only this check retries.
     const responseSanitized = sanitizeAssessmentDocument(normalizeAssessmentMath(raw));
     if (!responseSanitized.ok) {
       console.warn('[resources.ai-action] AI response contained unrepairable LaTeX', {
@@ -1269,10 +1075,8 @@ async function handleAssessmentAction(gemini, resource, action, requestId) {
   return { status: 200, body: { ...finish(newDoc), requestId } };
 }
 
-// POST /api/resources/:id/ai-action — generate a suggested revision of an
-// owned resource. The suggestion is returned to the client for preview/apply
-// and is NEVER persisted here — saving stays an explicit PATCH. Ownership is
-// enforced exactly like every other route (404 for missing OR not-yours).
+// POST /api/resources/:id/ai-action: generate a suggested revision of an owned resource. It's returned for
+// preview and never persisted; saving stays an explicit PATCH. Missing and not-yours both return 404.
 router.post('/resources/:id/ai-action', authRequired, asyncHandler(async (req, res) => {
   const requestId = crypto.randomUUID();
 
@@ -1312,20 +1116,11 @@ router.post('/resources/:id/ai-action', authRequired, asyncHandler(async (req, r
   }
 }));
 
-// POST /api/resources/generate — Quiz / Worksheet Generator. Builds a trusted
-// prompt from the validated config, asks Gemini for structured JSON question
-// data (see ASSESSMENT_RESPONSE_SCHEMA), validates + normalizes it, and
-// renders the final Markdown itself (renderAssessmentMarkdown) for the client
-// to preview/edit. NOTHING is persisted here: the teacher saves explicitly
-// via POST /api/resources (type "assessment"), so AI output is never
-// silently written to the library.
-//
-// A response that fails JSON parsing, schema validation, or doesn't match
-// the requested question count/type is treated as a failed generation
-// (502 INVALID_AI_RESPONSE) rather than passed through — the previous
-// Markdown-based approach had no equivalent check, so a malformed or
-// non-compliant response reached the teacher's preview looking "generated"
-// when it wasn't actually usable.
+// POST /api/resources/generate: Quiz / Worksheet Generator. Builds a trusted prompt from the validated config, asks
+// Gemini for structured JSON (ASSESSMENT_RESPONSE_SCHEMA), validates and normalizes it, and renders the Markdown itself
+// for the client to preview. Nothing is persisted; the teacher saves via POST /api/resources.
+// A response that fails JSON parsing, schema validation or the requested count/type is a failed generation (502
+// INVALID_AI_RESPONSE), not passed through.
 router.post('/resources/generate', authRequired, asyncHandler(async (req, res) => {
   const requestId = crypto.randomUUID();
 
@@ -1340,10 +1135,8 @@ router.post('/resources/generate', authRequired, asyncHandler(async (req, res) =
   }
   const config = parsed.data;
 
-  // Structured Question Model (Generator v2, plan §2g): the 3 new question
-  // types are gated independently of the existing 4 — an old/cached client
-  // requesting one while the flag is off gets a clear 503, never a silent
-  // accept. mcq/true_false/short_answer/mixed work unconditionally.
+  // The 3 new question types are gated separately from the existing ones: a cached client requesting one while the
+  // flag is off gets a clear 503, never a silent accept.
   if (normalizeQuestionTypes(config.questionType).some((t) => NEW_QUESTION_TYPES.includes(t))
     && !readStructuredQuestionsFlags(process.env).enabled) {
     return res.status(503).json({
@@ -1380,13 +1173,8 @@ router.post('/resources/generate', authRequired, asyncHandler(async (req, res) =
       });
     }
 
-    // sanitizeAssessmentDocument (lib/latexGuard.js) runs AFTER
-    // normalizeAssessmentMath: it detects LaTeX Gemini left outside any
-    // $...$/$$...$$ pair (normalizeAssessmentMath never looks there by
-    // design), mechanically repairs the safe case, and verifies every math
-    // segment actually renders in KaTeX. Only THIS check retries the whole
-    // generation — invalid JSON / schema mismatch / wrong question count
-    // below still fail immediately, unchanged.
+    // sanitizeAssessmentDocument (lib/latexGuard.js) runs after normalizeAssessmentMath: it catches LaTeX left outside
+    // math delimiters, repairs the safe case, and renders every segment in KaTeX. Only this check retries the generation.
     const sanitized = sanitizeAssessmentDocument(normalizeAssessmentMath(raw));
     if (!sanitized.ok) {
       console.warn('[resources.generate] AI response contained unrepairable LaTeX', {
@@ -1426,27 +1214,17 @@ router.post('/resources/generate', authRequired, asyncHandler(async (req, res) =
   }
 
   const content = renderAssessmentMarkdown(config, docParsed.data);
-  // Structured Question Model (Generator v2, plan §2e): additive field — a
-  // caller that only reads `.content` (every caller before this shipped) is
-  // unaffected. `instructions`/`questions` are exactly what a client would
-  // send back inside `structured` on save/edit (see tryReadStructuredQuestions).
+  // Additive field: callers that only read `.content` are unaffected. `instructions`/`questions` are what a client
+  // sends back in `structured` on save or edit (see tryReadStructuredQuestions).
   const structured = JSON.stringify({ instructions: docParsed.data.instructions, questions: docParsed.data.questions, schemaVersion: 2 });
   return res.json({ content, structured, requestId });
 }));
 
-// POST /api/resources/generate-set — the four question-shaped artifacts in ONE
-// Gemini call (Classroom Mode, 2026-08-07).
-//
-// Takes Classroom Mode from 7 calls per teacher question to 4. The binding
-// constraint is the free tier's 20 requests/minute, not token price — see
-// actions/schemas/generateAssessmentSet.js for the full reasoning.
-//
-// THE PART THAT MATTERS: per-artifact validation and retry. A naive batch
-// throws the whole response away when one artifact has a problem, regenerates
-// all four, and — with MAX_LATEX_REGEN_ATTEMPTS — can cost MORE than four
-// separate calls ever did. Here each artifact is normalized, LaTeX-checked and
-// schema-checked INDEPENDENTLY: the good ones are kept and returned, and only
-// the failed ones are re-requested, as a smaller set, on the next attempt.
+// POST /api/resources/generate-set: the four question-shaped artifacts in one Gemini call (Classroom Mode). That
+// takes it from 7 calls per teacher question to 4, since the free tier's 20 requests/minute is the binding limit
+// (see actions/schemas/generateAssessmentSet.js).
+// Each artifact is normalized, LaTeX-checked and schema-checked independently: good ones are kept and only failed
+// ones are re-requested, as a smaller set. A naive batch would regenerate all four and could cost more than four separate calls.
 router.post('/resources/generate-set', authRequired, asyncHandler(async (req, res) => {
   const requestId = crypto.randomUUID();
 
@@ -1461,7 +1239,7 @@ router.post('/resources/generate-set', authRequired, asyncHandler(async (req, re
   }
   const config = parsed.data;
 
-  // Structured Question Model (Generator v2, plan §2g) — same gate as
+  // Structured Question Model (Generator v2) — same gate as
   // /resources/generate, checked per item since each item has its own type.
   if (
     config.items.some((item) => NEW_QUESTION_TYPES.includes(item.questionType))
@@ -1479,7 +1257,7 @@ router.post('/resources/generate-set', authRequired, asyncHandler(async (req, re
   // format -> rendered Markdown, filled in as artifacts pass every check.
   const done = new Map();
   // format -> the structured {instructions, questions} JSON string, same shape
-  // as /resources/generate's `structured` field (plan §2e).
+  // as /resources/generate's `structured` field.
   const doneStructured = new Map();
   // format -> the last reason it failed, for the per-artifact error the client
   // shows on that one card.
@@ -1559,9 +1337,7 @@ router.post('/resources/generate-set', authRequired, asyncHandler(async (req, re
     pending = stillPending;
   }
 
-  // Partial success is a success. One artifact failing must not cost the
-  // teacher the three that worked — the same rule the client queue already
-  // applies per card.
+  // Partial success is a success: one failed artifact mustn't cost the teacher the others.
   if (done.size === 0) {
     return res.status(502).json({
       error: 'The generated content could not be produced. Please try again.',
@@ -1581,13 +1357,8 @@ router.post('/resources/generate-set', authRequired, asyncHandler(async (req, re
   });
 }));
 
-// POST /api/resources/generate-lesson-plan — Classroom Mode P6.
-//
-// A SEPARATE endpoint from /resources/generate, not a fourth format of it
-// (D21 — see lib/lessonPlanSchema.js's header for the full reasoning): a
-// lesson plan has no questions and no answer key, so it shares this route
-// file's generation MACHINERY (the LaTeX retry loop, the error mapping) while
-// keeping its own schema, prompt and renderer.
+// POST /api/resources/generate-lesson-plan: a separate endpoint, not a fourth format (see lib/lessonPlanSchema.js).
+// It shares this file's generation machinery (LaTeX retry loop, error mapping) but has its own schema, prompt and renderer.
 router.post('/resources/generate-lesson-plan', authRequired, asyncHandler(async (req, res) => {
   const requestId = crypto.randomUUID();
 
@@ -1632,10 +1403,8 @@ router.post('/resources/generate-lesson-plan', authRequired, asyncHandler(async 
       });
     }
 
-    // Same two-stage LaTeX discipline as the assessment path: repair the known
-    // manglings, then verify every math segment really renders — and, since
-    // 2026-08-07, that a segment which renders is not silently meaningless
-    // (a "$frac59$" whose backslash was lost). Only this check retries.
+    // Same two-stage LaTeX handling as assessments: repair known manglings, then verify every segment renders and isn't
+    // silently meaningless (e.g. "$frac59$" with a lost backslash). Only this check retries.
     const normalized = normalizeLessonPlanMath(raw);
     const sanitized = sanitizeTextFields(lessonPlanTextFields(normalized));
     if (!sanitized.ok) {

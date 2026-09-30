@@ -1,16 +1,9 @@
-// Classroom Mode OFF must be byte-for-byte the behaviour that shipped before
-// the feature existed (docs/classroom-mode.md §7 rule 3 — "the acceptance test
-// for every phase").
-//
-// The doc named this as the acceptance test from P0 but nothing enforced it at
-// the route level until now. It matters more after batching and the maths
-// notation change (D22/D23) than it did before: those touched code the ORDINARY
-// coach path and the ordinary Generator also run through.
-//
-// What "unchanged" means concretely, and what each test below pins:
-//   - no `classroom` key and no `classroomMode` key in the response
-//   - no planner call — the mode costs nothing when off
-//   - no telemetry row — a teacher who never touches the feature leaves no trace
+// Classroom Mode OFF must behave exactly as it did before the feature existed (docs/classroom-mode.md): the acceptance
+// test for every phase, enforced at the route level here. It matters more now that batching and the maths-notation
+// change touched code the ordinary coach path and Generator also run through. Each test pins part of "unchanged":
+//   - no `classroom` or `classroomMode` key in the response
+//   - no planner call: the mode costs nothing when off
+//   - no telemetry row: a teacher who never uses the feature leaves no trace
 //   - the answer itself is identical
 const request = require('supertest');
 const { app, prisma } = require('./helpers/testApp');
@@ -93,9 +86,7 @@ describe('Classroom Mode OFF — the ordinary coach path is untouched', () => {
     expect(res.body.text).toContain('concrete objects');
   });
 
-  // The strongest form of "unchanged": the exact key set. Any future work that
-  // leaks a Classroom Mode concept into the ordinary response fails here, not
-  // in a teacher's browser.
+  // The strongest form of "unchanged": the exact key set. Leaking a Classroom Mode concept into the ordinary response fails here, not in a teacher's browser.
   test('the response key set contains nothing classroom-related', async () => {
     mockGeminiFetch([geminiSuccess(ANSWER)]);
     const res = await ask(base);
@@ -104,18 +95,15 @@ describe('Classroom Mode OFF — the ordinary coach path is untouched', () => {
     expect(classroomish).toEqual([]);
   });
 
-// --- Plan persistence (D24) ---------------------------------------------------
-// Reopening a chat used to show the answer with the artifact cards gone: the
-// plan lived only in React state and the Query row had nowhere to put it. The
-// plan is now persisted so the cards come back — but restored cards generate
-// NOTHING until the teacher asks, which is enforced client-side.
+// Plan persistence. Reopening a chat used to show the answer without the artifact cards, since the plan lived only in
+// React state. The plan is now persisted so the cards return, but restored cards generate nothing until the teacher asks (enforced client-side).
 describe('Classroom Mode plan persistence', () => {
   afterEach(async () => {
     vi.unstubAllGlobals();
     await prisma.query.deleteMany({ where: { userId: fx.teacherA.id } });
   });
 
-  // The ordinary path must not gain a column value — §7 rule 3.
+  // The ordinary path must not gain a column value.
   test('an ordinary question leaves classroomPlan NULL', async () => {
     mockGeminiFetch([geminiSuccess('An ordinary answer.')]);
     await request(app)
@@ -183,9 +171,7 @@ describe('Classroom Mode plan persistence', () => {
   });
 });
 
-// --- Artifact persistence (D25) -----------------------------------------------
-// Overturns D11 for the chat turn: reopening a chat now shows what was already
-// generated instead of offering to spend four model calls rebuilding it.
+// Artifact persistence. Reopening a chat now shows what was already generated instead of offering to spend four model calls rebuilding it.
 describe('Classroom Mode artifact persistence', () => {
   let queryId;
 
@@ -254,9 +240,7 @@ describe('Classroom Mode artifact persistence', () => {
     expect(res.status).toBe(404);
   });
 
-  // Sized to pass the 64kb body parser but trip this route's own 60000-byte
-  // cap, so it tests OUR bound rather than express's. Anything larger is
-  // rejected earlier by the parser, which is fine but is not this assertion.
+  // Sized to pass the 64kb body parser but trip this route's own 60000-byte cap, so it tests our bound, not express's.
   test('rejects a payload too large to sit on a row other queries read', async () => {
     const oversized = { worksheet: 'x'.repeat(61000) };
     const res = await request(app).put(url()).set('Authorization', `Bearer ${token}`).send({ artifacts: oversized });
@@ -286,9 +270,7 @@ describe('Classroom Mode artifact persistence', () => {
     expect(res.status).toBe(400);
   });
 
-  // THE performance guard. classroomArtifacts holds up to five full documents;
-  // a 20-row history that selected it would move hundreds of KB to render a
-  // sidebar that shows none of it.
+  // The performance guard: classroomArtifacts holds up to five full documents, and a 20-row history that selected it would move hundreds of KB for a sidebar that shows none of it.
   test('the history LIST never carries the artifacts blob', async () => {
     await request(app).put(url()).set('Authorization', `Bearer ${token}`).send({ artifacts: ARTIFACTS });
 

@@ -1,10 +1,6 @@
-// Classroom Mode planner — gates, normalization, precedence, failure modes.
-//
-// The bar these tests hold: this module decides whether to SPEND a model call
-// and what a later generation request will be built from. Every case below is
-// one where being wrong is either expensive (a call nobody asked for) or
-// harmful (materials attached to an emergency, or a worksheet confidently aimed
-// at the wrong class).
+// Classroom Mode planner: gates, normalization, precedence and failure modes. The module decides whether to spend a
+// model call and what a later generation is built from, so being wrong is expensive (an unrequested call) or harmful
+// (materials on an emergency, or a worksheet aimed at the wrong class).
 
 // describe/test/expect are globals here (`globals: true` in vitest.config).
 const {
@@ -30,9 +26,7 @@ function fakeGemini(textOrFn) {
 }
 
 describe('classroomPlan.shouldSkipPlanning — gate 1: emergencies', () => {
-  // The single most important behaviour in this feature. A teacher describing a
-  // child in danger must not have worksheets generated underneath the safety
-  // guidance — and the call must not even be made.
+  // The most important behaviour: a teacher describing a child in danger must not have worksheets generated beneath the safety guidance, and the call must not be made.
   test.each([
     'A student collapsed and is not breathing',
     'One of my students is having a seizure',
@@ -44,9 +38,7 @@ describe('classroomPlan.shouldSkipPlanning — gate 1: emergencies', () => {
     expect(shouldSkipPlanning(query, {})).toEqual({ skip: true, reason: 'emergency' });
   });
 
-  // The inverse, and the reason detectEmergency has TEACHING_ABOUT_PATTERN:
-  // teaching ABOUT an emergency topic is an ordinary lesson request, and is
-  // exactly the kind of thing Classroom Mode should produce materials for.
+  // The inverse, and why detectEmergency has TEACHING_ABOUT_PATTERN: teaching about an emergency topic is an ordinary lesson request Classroom Mode should produce materials for.
   test.each([
     'How do I teach first aid to Class 6?',
     'Create a lesson plan about fire safety',
@@ -119,9 +111,7 @@ describe('classroomPlan.normalizePlan — artifact hygiene', () => {
     expect(plan.artifacts).toEqual(['quiz']);
   });
 
-  // Stable presentation order matters: a teacher asking two similar questions
-  // should not see the five cards shuffle because the model emitted them in a
-  // different sequence.
+  // Stable presentation order: a teacher asking two similar questions shouldn't see the five cards shuffle with the model's emit order.
   test('artifacts are returned in canonical order regardless of model order', () => {
     const plan = normalizePlan(
       { topic: 'Fractions', artifacts: ['exit_ticket', 'quiz', 'lesson_plan', 'homework', 'worksheet'] },
@@ -155,9 +145,7 @@ describe('classroomPlan.normalizePlan — context precedence (D8)', () => {
     expect(plan.subject).toBe('Science'); // the teacher's, untouched
   });
 
-  // An ambiguous or contradictory value is dropped rather than guessed at:
-  // grade is optional for generation, so an empty grade costs a less targeted
-  // worksheet, while a wrong one costs a worksheet aimed at the wrong class.
+  // An ambiguous or contradictory value is dropped: grade is optional, so an empty one costs a less targeted worksheet, while a wrong one costs one aimed at the wrong class.
   test('a grade the vocabulary cannot resolve is dropped, not guessed', () => {
     const plan = normalizePlan(
       { topic: 'Fractions', grade: 'somewhere between 3 and 9', artifacts: ['quiz'] },
@@ -218,9 +206,7 @@ describe('classroomPlan.planClassroom — end to end', () => {
     expect(gemini.calls).toHaveLength(1);
   });
 
-  // The whole failure philosophy in one test: the planner is an optional extra
-  // on a request whose real job is answering a question. It may return nothing;
-  // it may never throw at the caller.
+  // The failure philosophy in one test: the planner is an optional extra on a request whose job is answering a question. It may return nothing and may never throw at the caller.
   test('a model that throws yields null rather than an error', async () => {
     const gemini = { async generateContent() { throw new Error('upstream exploded'); } };
     await expect(planClassroom({ gemini, query: 'How do I teach fractions?' })).resolves.toBeNull();

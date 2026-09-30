@@ -1,22 +1,9 @@
-// Case execution (Milestone M7a).
-//
-// Drives the REAL pipeline: `interpret()` from src/assistant/interpret.js, with
-// the real classifier, the real proposal gate, the real resolver and the real
-// policy. Nothing is reimplemented here and nothing is stubbed except the socket
-// (see cassette.js).
-//
-// It calls interpret() DIRECTLY rather than over HTTP. interpret.js was built
-// database-free via injected dependencies precisely so this is possible, and it
-// means the eval measures the pipeline rather than the HTTP shell — which has
-// its own 943 tests covering auth, the rate limiter, the envelope and the
-// rollout gate. The one consequence worth stating: the 500-character envelope
-// limit is a route-level check and is therefore NOT exercised here.
-//
-// MEMORY IS CARRIED BY APPLYING `memoryUpdates` VERBATIM, and by nothing else.
-// That is exactly what the client does — M6 decision D1 made sessionMemory.ts a
-// dumb carrier because resolver.js re-applies expiry to whatever the client
-// sends. So this file re-implements zero rules. Had D1 gone the other way, this
-// would have become a fourth home for the TTL table.
+// Case execution. It drives the real pipeline (interpret() from src/assistant/interpret.js with the real classifier,
+// proposal gate, resolver and policy), and only the socket is stubbed (see cassette.js).
+// It calls interpret() directly rather than over HTTP, so the eval measures the pipeline and not the HTTP shell,
+// which has its own tests. The 500-character envelope limit is a route-level check and isn't exercised here.
+// Memory is carried by applying `memoryUpdates` verbatim and nothing else, as the client does, since resolver.js
+// re-applies expiry to whatever the client sends. This file therefore re-implements no rules.
 
 const crypto = require('crypto');
 
@@ -28,13 +15,9 @@ const { buildSystemInstruction, describeAction } = require('../../src/assistant/
 const { buildResponseSchema } = require('../../src/assistant/proposalSchema');
 
 /**
- * The routing tunables, mirroring how index.js constructs `geminiFast`.
- *
- * Kept as literals rather than read from the environment so a baseline is
- * reproducible: an eval run whose timeouts depend on whatever happens to be in
- * a developer's .env would report latency that means nothing across machines.
- * The one value that IS read from the environment is the endpoint, because the
- * whole point of recording modelVersion is that the endpoint can move.
+ * The routing tunables, mirroring how index.js builds `geminiFast`. They're literals, not read from the
+ * environment, so a baseline is reproducible across machines. The endpoint is the one value read from the
+ * environment, since recording modelVersion exists because the endpoint can move.
  */
 const ROUTING_TUNABLES = Object.freeze({
   timeoutMs: 3500,
@@ -49,10 +32,8 @@ const DEFAULT_ENDPOINT =
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent';
 
 /**
- * The flag environment a run executes under: both actions on, everything else
- * at its default. Passed as an object to `listForRole`, never exported to
- * process.env — the M5/M6 practice of never editing or polluting the real
- * environment during verification.
+ * The flag environment a run executes under: both actions on, everything else at its default. Passed as an
+ * object to `listForRole` and never written to process.env.
  */
 const RUN_ENV = Object.freeze({
   ASSISTANT_ACTION_GENERATE_ASSESSMENT: 'true',
@@ -62,21 +43,12 @@ const RUN_ENV = Object.freeze({
 const sha = (value) => crypto.createHash('sha256').update(value).digest('hex').slice(0, 16);
 
 /**
- * The four provenance hashes recorded in every baseline.
- *
- * They answer different questions, which is why they are not one hash:
- *
- *   promptHash     — the exact system instruction the model was given. Changes
- *                    when the preamble changes OR when any descriptor changes.
- *   descriptorHash — what the classifier is told the app can do (the projection
- *                    plus the response schema). Changes when a capability's
- *                    described behaviour changes.
- *   registryHash   — the AUTHORIZATION surface: ids, versions, effects, roles,
- *                    flags, autoExecute, catalog version. Changes when what is
- *                    PERMITTED changes, which is a security-relevant event even
- *                    when the prompt is byte-identical.
- *   modelVersion   — captured from the response, because the endpoint is a
- *                    floating alias and the model can move underneath a run.
+ * The four provenance hashes recorded in every baseline, separate because they answer different questions:
+ *   promptHash     - the exact system instruction; changes with the preamble or any descriptor.
+ *   descriptorHash - what the classifier is told the app can do (projection plus response schema).
+ *   registryHash   - the authorization surface (ids, versions, effects, roles, flags, autoExecute, catalog
+ *                    version); a change is security-relevant even if the prompt is byte-identical.
+ *   modelVersion   - captured from the response, since the endpoint is a floating alias and the model can move.
  */
 function computeHashes(descriptors) {
   return {
@@ -106,8 +78,7 @@ function computeHashes(descriptors) {
 }
 
 /**
- * Build everything a run needs: the descriptor set, the hashes, and a
- * GeminiService wired to the supplied fetch seam.
+ * Build everything a run needs: the descriptor set, the hashes, and a GeminiService wired to the supplied fetch seam.
  */
 function createRunContext({ fetchImpl, apiKey = process.env.GEMINI_API_KEY, endpoint } = {}) {
   const descriptors = listForRole('teacher', RUN_ENV);
@@ -150,17 +121,12 @@ function toActual(response) {
 }
 
 /**
- * Run one turn.
- *
- * `seam.state` is reset per turn so `classifierCalls` is the number of upstream
- * calls THIS utterance caused. That is the direct evidence for the emergency
- * hard gate — the same assertion M5 made, that the classifier was never reached.
+ * Run one turn. `seam.state` is reset per turn so `classifierCalls` is the number of upstream calls this
+ * utterance caused, the direct evidence for the emergency hard gate.
  */
 async function runTurn({ context, seam, caseId, turn, utterance, profile, memory, pace }) {
-  // Pacing happens HERE, before the request starts — never inside the fetch
-  // seam. A sleep inside the seam sits inside gemini.js's own 5 s total deadline
-  // and eats the budget the real call needs, which turns rate-limit avoidance
-  // into a wall of timeouts. Found on this harness's second smoke run.
+  // Pacing happens here, before the request starts, never inside the fetch seam: a sleep there eats into gemini.js's
+  // 5 s total deadline and turns rate-limit avoidance into timeouts.
   if (pace) await pace();
 
   seam.state.caseId = caseId;
@@ -180,14 +146,9 @@ async function runTurn({ context, seam, caseId, turn, utterance, profile, memory
       gemini: context.gemini,
       env: context.env,
       readProfile: async () => profile || {},
-      // M9, approval A6. Stated EXPLICITLY rather than relying on interpret()'s
-      // default, because what this argument guarantees is the whole point: a run
-      // that hits the upstream per-minute cap must keep measuring ROUTING
-      // QUALITY, not infrastructure state. With a live breaker, one 429 storm
-      // would open it and the rest of the corpus would score as passthroughs —
-      // the M7a lesson (a rate limiter was once scored as model quality) in a
-      // new costume. Neither the budget counter nor the breaker belongs in a
-      // measurement harness.
+      // Stated explicitly rather than relying on interpret()'s default: a run that hits the upstream per-minute cap must
+      // keep measuring routing quality, not infrastructure state. With a live breaker, one 429 storm would open it and the
+      // rest of the corpus would score as passthroughs. Neither the budget nor the breaker belongs in a measurement harness.
       breaker: createDisabledBreaker(),
     }
   );
@@ -228,10 +189,7 @@ async function runSingle({ context, seam, testCase, pace }) {
 }
 
 /**
- * Run a multi-turn session, threading memory forward.
- *
- * Turn numbers are positional and 1-based, which is what the resolver's TTL
- * arithmetic is written against.
+ * Run a multi-turn session, threading memory forward. Turn numbers are positional and 1-based, as the resolver's TTL arithmetic expects.
  */
 async function runSession({ context, seam, session, pace }) {
   const results = [];
@@ -252,8 +210,7 @@ async function runSession({ context, seam, session, pace }) {
       memory,
     });
 
-    // The ONLY memory rule this file applies: carry forward what the server
-    // offered. Expiry is re-applied server-side on the next call.
+    // The only memory rule here: carry forward what the server offered. Expiry is re-applied server-side on the next call.
     if (actual.memoryUpdates) memory = { ...memory, ...actual.memoryUpdates };
 
     results.push({

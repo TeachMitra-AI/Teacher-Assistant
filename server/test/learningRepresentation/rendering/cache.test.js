@@ -1,18 +1,9 @@
-// Request-level render cache — AI Learning Representation System, Phase E.
-//
-// Three things matter here, mirroring the frozen architecture discussion:
-//   1. THE KEY is exactly {representation, prompt, answer, version} — no
-//      more, no less — and changing any one of the four changes the key.
-//   2. A HIT NEVER CALLS render() (the whole point — proven by injecting a
-//      render() that throws if invoked and confirming the cached path
-//      never reaches it).
-//   3. A FAILURE IS NEVER CACHED — every render() failure reason is
-//      exercised to prove none of them get written.
-//
-// `render()` itself is never imported directly here except to confirm
-// renderWithCache delegates to the real module — everything else uses an
-// injected fake gemini, the same pattern classifier.test.js and
-// renderer.test.js already established.
+// Request-level render cache. Three things matter:
+//   1. The key is exactly {representation, prompt, answer, version}, and changing any one changes it.
+//   2. A hit never calls render() (proven by injecting a render() that throws if invoked).
+//   3. A failure is never cached (every render() failure reason is exercised to prove none is written).
+// `render()` is imported directly only to confirm renderWithCache delegates to the real module; everything else uses an
+// injected fake gemini, as classifier.test.js and renderer.test.js do.
 
 const {
   MAX_CACHE_ENTRIES,

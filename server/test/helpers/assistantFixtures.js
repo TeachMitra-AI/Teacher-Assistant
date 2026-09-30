@@ -1,20 +1,8 @@
-// Canonical example payloads for the AI Action Router wire contracts (M0).
-//
-// These are the SAME examples published in docs/ai-action-router-phase1-spec.md
-// §7. Keeping an executable copy here means the documented contract and the
-// frozen vocabularies in src/assistant/contracts.js are checked against each
-// other by the test suite (test/assistant/contracts.test.js) instead of drifting
-// apart quietly — a documented example that no longer validates is exactly the
-// kind of rot that makes a spec untrustworthy six months later.
-//
-// From M2/M5 onward these fixtures double as the expected shapes for the
-// catalog and interpret route tests, so a change to the contract fails loudly in
-// one place rather than in a dozen assertions.
-//
-// NOTE: the two catalog entries below describe the actions Phase 1 will ship.
-// They are illustrative fixtures, NOT the registry — the real descriptors land
-// in src/actions/descriptors/ during M2, and the registry is what the endpoint
-// will actually serve.
+// Canonical example payloads for the AI Action Router wire contracts, the same examples as
+// docs/ai-action-router-phase1-spec.md. An executable copy means the documented contract and the vocabularies in
+// src/assistant/contracts.js are checked against each other (test/assistant/contracts.test.js), so a documented example
+// that no longer validates can't quietly rot. They also serve as the expected shapes for the catalog and interpret route tests.
+// The catalog entries are illustrative fixtures, not the registry, which is what the endpoint serves.
 
 /** GET /api/assistant/catalog — populated response (assistant enabled, teacher role). */
 const catalogResponse = {
@@ -76,10 +64,7 @@ const catalogResponse = {
   ],
 };
 
-/**
- * GET /api/assistant/catalog when the assistant is disabled. An empty catalog is
- * a valid INERT state, not an error — the client simply never routes.
- */
+/** GET /api/assistant/catalog when the assistant is disabled. An empty catalog is a valid inert state, not an error. */
 const catalogDisabledResponse = {
   catalogVersion: 0,
   actions: [],
@@ -99,11 +84,8 @@ const interpretRequest = {
 };
 
 /**
- * The main path: enough was understood to open the Generator with values.
- *
- * Note that `provenance` is a SIBLING of `params`, never a key inside it. The
- * generation schema is `.strict()`, so router metadata folded into params would
- * make every downstream generation request fail with a 400.
+ * The main path: enough was understood to open the Generator with values. `provenance` is a sibling of `params`,
+ * never a key inside it: the generation schema is `.strict()`, so router metadata in params would 400.
  */
 const interpretPrefillResponse = {
   catalogVersion: 1,
@@ -148,28 +130,14 @@ const interpretPrefillResponse = {
 };
 
 /**
- * Exactly one required slot missing => one chip question, and NO navigation.
+ * Exactly one required slot missing => one chip question and no navigation. A chip answer is resolved entirely on the
+ * client, which already holds these params and only fills `format`; only a free-text answer returns to the server with `pendingAsk`.
  *
- * Answering by chip is resolved entirely on the client: it already holds these
- * params and only needs to fill `format`. No second network call, no second LLM
- * call. Only a free-text answer comes back to the server with `pendingAsk` set.
- *
- * ─── ONE PROVENANCE DIFFERS FROM THE SPEC AS WRITTEN (Alternative A) ────────
- * `grade` is 'utterance' here; spec §7.2 shows 'memory'. The VALUE is unchanged
- * (Class 3-5) and so is every other field — only the attribution moved, and it
- * moved to the truthful one.
- *
- * The spec example's utterance is "a fractions worksheet FOR CLASS 5". The
- * teacher stated the grade in this very message; it read as 'memory' only
- * because the classifier failed to extract it, which is the extraction gap
- * deterministic recovery exists to close (M7a measured grade at 23.9%). The
- * example was therefore encoding a SYMPTOM as though it were a rule.
- *
- * Kept as the same input rather than being rewritten to a grade-free utterance,
- * so the diff against the approved document stays one line and reviewable. The
- * spec's memory-inheritance demonstration survives intact in
- * `interpretPrefillResponse` above, where `subject` genuinely is not stated in
- * the turn and still resolves from memory.
+ * `grade` is 'utterance' here where the spec shows 'memory'. The value is unchanged and only the attribution moved, to
+ * the truthful one: the utterance is "a fractions worksheet FOR CLASS 5", so the teacher stated the grade in this very
+ * message, and it only read as 'memory' because the classifier failed to extract it, which deterministic recovery
+ * closes. The input is kept the same so the diff against the approved document stays one line. The spec's
+ * memory-inheritance demonstration survives in `interpretPrefillResponse` above, where `subject` isn't stated and resolves from memory.
  */
 const interpretAskResponse = {
   catalogVersion: 1,
@@ -191,9 +159,7 @@ const interpretAskResponse = {
       },
       provenance: {
         topic: 'utterance',
-        // Recovered from "…for class 5" in this turn's utterance. See the note
-        // above: the spec shows 'memory', the value is identical, and this is
-        // the one line where the two differ.
+        // Recovered from "...for class 5" in this turn's utterance; the spec shows 'memory', the value is identical.
         grade: 'utterance',
         difficulty: 'default',
         questionType: 'default',
@@ -216,9 +182,8 @@ const interpretAskResponse = {
 };
 
 /**
- * Not an action (or anything at all went wrong). The client submits to
- * /api/coach exactly as it does today. `reason` is diagnostic only and is never
- * shown to the teacher — every reason produces the same experience.
+ * Not an action, or anything went wrong. The client submits to /api/coach as usual. `reason` is diagnostic only and
+ * never shown; every reason gives the same experience.
  */
 const interpretPassthroughResponse = {
   catalogVersion: 1,

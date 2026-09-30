@@ -1,18 +1,8 @@
-// Supertest wrapper that makes each request look like it comes from a
-// different client IP.
-//
-// src/index.js rate-limits /api/auth to 30 requests per 15 minutes PER IP,
-// keyed off req.ip — which, because the app sets `trust proxy: 1` for Railway,
-// is read from X-Forwarded-For. The auth suites exercise five endpoints
-// (register, login, forgot/reset password, google) and run well past 30 calls
-// per file, so sharing one IP would fail them with 429s that say nothing about
-// the behaviour under test.
-//
-// Handing every request its own synthetic address takes the per-IP limiter out
-// of the picture entirely. That's deliberate: these suites test what the auth
-// endpoints DO, not how often they may be called. A test that wants to assert
-// on the limiter itself should pass an explicit `fixedIp` so its requests
-// share one bucket.
+// Supertest wrapper that makes each request come from a different client IP. src/index.js rate-limits /api/auth to 30
+// requests per 15 minutes per IP (req.ip, read from X-Forwarded-For because of `trust proxy: 1`), and the auth suites
+// run well past 30 calls per file, so one shared IP would fail them with 429s unrelated to the behaviour under test.
+// A synthetic address per request takes the per-IP limiter out of the picture, on purpose: these suites test what
+// the endpoints do, not how often they may be called. A test of the limiter itself should pass a `fixedIp` so its requests share one bucket.
 const request = require('supertest');
 
 // Private-range (10.0.0.0/8) addresses, so they can never collide with
@@ -25,8 +15,7 @@ function nextIp() {
 
 /**
  * @param {import('express').Express} app
- * @param {string} [fixedIp] pin every request to one IP (share a rate-limit
- *   bucket) instead of the default one-IP-per-request behaviour
+ * @param {string} [fixedIp] pin every request to one IP (share a rate-limit bucket) instead of one IP per request
  */
 function makeClient(app, fixedIp) {
   const method = (verb) => (path) =>

@@ -1,7 +1,5 @@
-// runCheckoutReminderSweep — docs/feature-teacher-attendance-implementation-plan.md
-// §1.4/§5. Exercises the sweep directly against Prisma (not through HTTP —
-// there's no route for this, it's a background job) with schoolAttendanceConfig
-// and teacherAttendance rows set up by hand.
+// runCheckoutReminderSweep (docs/feature-teacher-attendance-implementation-plan.md). Exercises the sweep directly
+// against Prisma rather than through HTTP (it's a background job with no route), with schoolAttendanceConfig and teacherAttendance rows set up by hand.
 const { prisma } = require('../helpers/testApp');
 const { createFixtures } = require('../helpers/fixtures');
 const { runCheckoutReminderSweep } = require('../../src/lib/teacherAttendanceReminder');
@@ -150,9 +148,7 @@ describe('runCheckoutReminderSweep', () => {
       },
     });
 
-    // 15:10 is inside the CUSTOM window (15:00-16:05) but would be outside
-    // the default 15/30 window (15:45-16:30) — proves the per-school
-    // setting is actually what's being read, not the hardcoded default.
+    // 15:10 is inside the custom window (15:00-16:05) but outside the default 15/30 window (15:45-16:30), proving the per-school setting is what's read.
     await runCheckoutReminderSweep(istDateTime('2026-04-07', 15, 10));
 
     const logs = await prisma.teacherAttendanceActivityLog.count({

@@ -1,21 +1,11 @@
-// Gemini LLM service: builds requests, calls the API, retries on transient
-// failures, and completes truncated responses. The API key lives only here,
-// on the server, sourced from environment variables.
-//
-// AI-safety note: requests use Gemini's dedicated `systemInstruction` field
-// for all trusted/app-authored content (prompts.js) and `contents` for only
-// the teacher's raw question — a real structural boundary, not just string
-// concatenation. Responses are checked for Gemini's own input/output safety
-// signals (promptFeedback.blockReason, finishReason SAFETY/RECITATION) and
-// passed through outputGuard before being returned.
-//
-// Reliability note: every fetch to Gemini for a single /api/coach request —
-// the initial call, EVERY retry, and EVERY continuation (and its retries) —
-// draws from ONE shared per-request budget (maxCallsPerRequest) and ONE
-// shared overall deadline (totalTimeoutMs). Retries are NOT per-logical-call
-// independent budgets. This structurally caps both cost (upstream calls) and
-// latency (wall-clock) for a single request. See the per-request `tracker`
-// created in generateResponse().
+// Gemini LLM service: builds requests, calls the API, retries transient failures and completes truncated
+// responses. The API key lives only here, server-side, from environment variables.
+// Trusted, app-authored content goes in Gemini's `systemInstruction` (prompts.js) and only the teacher's raw
+// question in `contents`: a real structural boundary, not string concatenation. Responses are checked for Gemini's
+// own safety signals (promptFeedback.blockReason, finishReason SAFETY/RECITATION) and passed through outputGuard.
+// Every fetch for one /api/coach request (initial call, every retry, every continuation and its retries) draws from
+// one shared call budget (maxCallsPerRequest) and one overall deadline (totalTimeoutMs), which caps both cost and
+// latency. See the per-request `tracker` created in generateResponse().
 
 const { selectTemplate, languageDirective, styleDirective } = require('./prompts');
 const { sanitizeOutput, MAX_OUTPUT_LENGTH } = require('./safety/outputGuard');
@@ -37,9 +27,8 @@ const GENERATION_CONFIG = {
   topP: 0.95,
 };
 
-// Devanagari and other Indic scripts consume many more tokens per character
-// than English, so a low cap truncates non-English answers. Keep this high
-// and rely on finishReason + continuation to complete long responses.
+// Indic scripts use many more tokens per character than English, so a low cap truncates non-English answers. Keep
+// this high and rely on finishReason and continuation for long responses.
 const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
 
 /** Wraps text in triple-backtick delimiters for a user-turn content block. */
@@ -61,10 +50,8 @@ function makeBudgetError() {
 
 class GeminiService {
   constructor(config) {
-    // Either a pre-built, possibly-shared GeminiKeyPool (multi-key failover)
-    // or a single apiKey string, wrapped in a size-1 pool — the latter keeps
-    // single-key behavior (including every existing test) identical to
-    // before key rotation existed.
+    // A pre-built, possibly shared GeminiKeyPool (multi-key failover) or a single apiKey wrapped in a size-1 pool,
+    // which keeps single-key behaviour identical to before key rotation.
     this.keyPool = config.keyPool ?? new GeminiKeyPool([config.apiKey]);
     this.endpoint = config.endpoint;
     this.timeoutMs = config.timeoutMs; // per-call timeout
@@ -88,9 +75,7 @@ class GeminiService {
     this.fetchImpl = config.fetchImpl ?? ((...args) => globalThis.fetch(...args));
   }
 
-  /**
-   * Heuristic: is the response text a complete thought (not truncated)?
-   */
+  /** Heuristic: is the response text a complete thought (not truncated)? */
   isResponseComplete(text) {
     if (!text || text.trim().length === 0) return false;
     const trimmed = text.trim();
@@ -111,19 +96,12 @@ class GeminiService {
 
   /**
    * @param {{ systemInstruction: string, userText: string, responseSchema?: object, attachments?: Array<{mimeType: string, data: string}> }} params
-   *   `responseSchema` (optional): an OpenAPI-subset schema object. When
-   *   present, Gemini is asked to return `application/json` conforming to
-   *   it, instead of free-form text — used for structured generation (see
-   *   generateStructuredContent) so formatting never depends on the model
-   *   choosing to follow Markdown instructions correctly.
-   *   `attachments` (optional): zero or more inline files — base64 `data`
-   *   plus `mimeType` each — added as additional `parts` entries alongside
-   *   `userText`, ALL IN THE SAME `contents` BLOCK, so Gemini reasons over
-   *   every attachment and the question together in one pass rather than one
-   *   file at a time. Every part sits in the same untrusted user-turn
-   *   `contents` block as plain text does; nothing about the
-   *   systemInstruction/contents boundary changes when a part happens to be
-   *   an image or PDF instead of text, no matter how many there are.
+   *   `responseSchema` (optional): an OpenAPI-subset schema; when present, Gemini returns `application/json`
+   *   conforming to it (structured generation, see generateStructuredContent) so formatting doesn't depend on
+   *   the model following Markdown instructions.
+   *   `attachments` (optional): inline files (base64 `data` plus `mimeType`) added as extra `parts` in the same
+   *   `contents` block as `userText`, so Gemini reasons over every file and the question together. They are untrusted
+   *   user-turn content like the text; the systemInstruction/contents boundary doesn't change.
    */
   buildRequestBody({ systemInstruction, userText, responseSchema, attachments }) {
     const generationConfig = { ...GENERATION_CONFIG, maxOutputTokens: this.maxOutputTokens };
@@ -144,10 +122,8 @@ class GeminiService {
   }
 
   /**
-   * Create the per-request state shared by every fetch this request makes.
-   * `callsMade` counts ALL fetches (initial + retries + continuations + their
-   * retries) against the single shared budget; `continuations` counts logical
-   * continuation attempts; `retries` counts retry attempts across everything.
+   * Create the per-request state shared by every fetch. `callsMade` counts all fetches against the single shared
+   * budget, `continuations` counts continuation attempts, and `retries` counts retries across everything.
    */
   createTracker() {
     return {
@@ -185,9 +161,8 @@ class GeminiService {
   }
 
   /**
-   * Sleep for a backoff interval before a retry, unless doing so would blow
-   * the overall deadline. Returns false (and marks timedOut) if the request
-   * should give up instead of waiting.
+   * Sleep for a backoff interval before a retry, unless that would blow the overall deadline. Returns false (and
+   * marks timedOut) if the request should give up instead.
    */
   async backoffAndWait(tracker, attempt, retryAfterMs) {
     const delay = computeBackoffMs(attempt, {
@@ -206,17 +181,12 @@ class GeminiService {
   }
 
   /**
-   * Make one logical Gemini call, retrying transient failures. Every fetch
-   * (including retries) is counted against the shared `tracker` budget, and
-   * every attempt respects the shared deadline. Retries stop at whichever
-   * limit is hit first: maxRetries (per logical call), the shared call
-   * budget, or the overall deadline.
+   * Make one logical Gemini call, retrying transient failures. Every fetch counts against the shared `tracker`
+   * budget and respects the shared deadline; retries stop at whichever comes first: maxRetries, the call budget or the deadline.
    */
   async makeRequest(requestBody, tracker) {
     let attempt = 0;
-    // Caps how many times a single logical call may hop to a different key
-    // before falling back to the normal backoff/retry path — one attempt per
-    // key in the pool is enough to try everything currently available.
+    // Caps key hops per logical call; one attempt per key in the pool is enough to try everything available.
     let keyRotations = 0;
     const maxKeyRotations = this.keyPool.size();
     for (;;) {
@@ -272,17 +242,12 @@ class GeminiService {
             tracker.now()
           );
           this.keyPool.reportFailure(key, err, { retryAfterMs });
-          // Soonest ANY key in the pool recovers, as of right now. Attached
-          // to every candidate error (not just whichever one is ultimately
-          // thrown) so that whichever error does propagate — once every key
-          // and the retry budget are exhausted — carries an accurate
-          // estimate for the route handler to hand back to the client.
+          // The soonest any key recovers. Attached to every candidate error so whichever one propagates, once all keys and the
+          // retry budget are exhausted, gives the route an accurate estimate for the client.
           err.retryAt = this.keyPool.nextAvailableAt();
 
-          // Another key is free right now: switch to it immediately — no
-          // backoff wait, no retry-budget consumed — so this is invisible to
-          // the caller. Only fall through to the backoff/retry path below
-          // once every key is exhausted.
+          // Another key is free: switch immediately, with no backoff and no retry budget used, so the caller doesn't notice.
+          // Fall through to backoff and retry only once every key is exhausted.
           if (keyRotations < maxKeyRotations && this.keyPool.hasAvailableKey() && this.hasCapacity(tracker)) {
             keyRotations += 1;
             tracker.keyRotations += 1;
@@ -311,19 +276,12 @@ class GeminiService {
   }
 
   /**
-   * Extract the answer text and Gemini's finishReason from a response.
-   * finishReason === 'MAX_TOKENS' is the authoritative signal that the answer
-   * was cut off because it hit the output-token limit.
-   *
-   * Also distinguishes the two safety-block cases Gemini can report, rather
-   * than letting both collapse into the same generic "malformed response"
-   * error: the INPUT can be blocked before generation starts
-   * (promptFeedback.blockReason, empty candidates), or the OUTPUT can be
-   * blocked after generation (finishReason SAFETY/RECITATION). Both throw a
-   * distinguishable error (`.code`) so the route handler can show a graceful,
-   * specific message instead of a generic failure. These are raised AFTER a
-   * successful (200) response, i.e. outside the retry path, so a safety block
-   * is never retried.
+   * Extract the answer text and Gemini's finishReason. finishReason === 'MAX_TOKENS' is the authoritative sign the
+   * answer was cut off at the output-token limit.
+   * It also separates the two safety blocks instead of collapsing them into a generic "malformed response": the
+   * input can be blocked before generation (promptFeedback.blockReason, empty candidates) or the output after it
+   * (finishReason SAFETY/RECITATION). Each throws an error with a distinct `.code` so the route can show a specific
+   * message. They're raised after a 200, outside the retry path, so a safety block is never retried.
    */
   extractCandidate(response) {
     const candidates = response?.candidates;
@@ -355,21 +313,14 @@ class GeminiService {
   }
 
   /**
-   * Requests the rest of a response that was cut off. The previously-written
-   * text — which is the model's own prior output, not the teacher's input,
-   * but still untrusted content by this point — is delimited the same way
-   * the teacher's original question is, rather than trusted as instructions.
-   * The base systemInstruction (guardrails + anti-injection framing) is
-   * carried forward so continuations stay under the same rules as the
-   * original request. Uses the SHARED tracker, so a continuation's own
-   * retries consume the same budget as everything else.
+   * Requests the rest of a cut-off response. The previous text is the model's own output but still untrusted by now,
+   * so it's delimited like the teacher's question rather than trusted as instructions. The base systemInstruction
+   * is carried forward so continuations follow the same rules, and the shared tracker means a continuation's
+   * retries use the same budget.
    */
   async fetchContinuation(previousText, language, baseSystemInstruction, tracker) {
     tracker.continuations += 1;
-    // Restated here even though `baseSystemInstruction` already carries it:
-    // this is the point where a long answer is most likely to drift back into
-    // English, so the last thing the model reads before continuing is which
-    // language to continue in.
+    // Restated though `baseSystemInstruction` carries it: a long answer is most likely to drift back into English here.
     const languageInstruction = ` ${languageDirective(language)}`;
     const continuationSystemInstruction = `${baseSystemInstruction}
 
@@ -387,28 +338,16 @@ You are continuing a response that was cut off mid-way. The text already written
   }
 
   /**
-   * Generic content generation for the Lesson Plan Workspace AI actions.
-   * Unlike generateResponse (which builds a coaching prompt from templates),
-   * the caller supplies a fully-formed trusted systemInstruction and the
-   * delimited untrusted userText. Shares the same per-request budget/deadline,
-   * retry, continuation, and output-sanitization machinery so cost and latency
-   * are bounded identically. Returns only { text, metrics } — no coaching
-   * fields — and never persists anything itself.
+   * Generic content generation for the Lesson Plan Workspace AI actions. The caller supplies a fully formed trusted
+   * systemInstruction and the delimited untrusted userText, unlike generateResponse, which builds a coaching prompt
+   * from templates. It shares the per-request budget, deadline, retry, continuation and output sanitization, and
+   * returns only { text, metrics }; it never persists anything.
    * @param {{systemInstruction: string, userText: string, language?: string, responseSchema?: object, attachments?: Array<{mimeType: string, data: string}>}} params
-   *   `responseSchema` (optional): requests structured JSON output (see
-   *   buildRequestBody). When present, the MAX_TOKENS continuation loop
-   *   below is skipped — continuation works by asking the model to resume
-   *   from a text splice, which is safe for prose but would very likely
-   *   produce invalid JSON for a structured response; a truncated JSON
-   *   response is left for the caller's schema validation to reject
-   *   cleanly instead.
-   *   `attachments` (optional): zero or more inline image/PDF parts, ALL in
-   *   the SAME request (see buildRequestBody) — a batch of files is one
-   *   logical call, not one call per file, so Gemini reasons over all of them
-   *   together. Sent only on the INITIAL call — a continuation asks the model
-   *   to keep writing its own prior text (fetchContinuation), which needs no
-   *   re-attached files, so continuations stay text-only exactly as they
-   *   already are for every other caller of this method.
+   *   `responseSchema` (optional): requests structured JSON (see buildRequestBody). The MAX_TOKENS continuation loop
+   *   is then skipped: continuation resumes from a text splice, which is safe for prose but would likely produce
+   *   invalid JSON, so a truncated response is left for the caller's schema validation to reject.
+   *   `attachments` (optional): inline image/PDF parts in the same request (see buildRequestBody); a batch is one
+   *   logical call. Sent only on the initial call; continuations stay text-only.
    * @param {{correlationId?: string}} [options]
    */
   async generateContent({ systemInstruction, userText, language = 'en', responseSchema, attachments }, options = {}) {
@@ -473,11 +412,8 @@ You are continuing a response that was cut off mid-way. The text already written
    */
   async generateResponse({ query, context = {}, language = 'en', responseStyle = 'balanced' }, options = {}) {
     const { systemInstruction: baseInstruction, userContent } = selectTemplate(query, context);
-    // Always present, for every language including English — see
-    // languageDirective's own comment for why saying nothing is not the same
-    // as saying "English". Kept LAST in the assembled instruction: the
-    // templates above mandate English section names ("Fun Activity 1"), and
-    // this is what tells the model to translate those too.
+    // Always present, English included (see languageDirective). Kept last in the instruction: the templates mandate
+    // English section names ("Fun Activity 1"), and this tells the model to translate those too.
     const languageInstruction = `\n\nIMPORTANT: ${languageDirective(language)}`;
     const style = styleDirective(responseStyle);
     const styleInstruction = style ? `\n\nRESPONSE STYLE: ${style}` : '';
@@ -495,11 +431,8 @@ You are continuing a response that was cut off mid-way. The text already written
       let text = first.text;
       let finishReason = first.finishReason;
 
-      // Keep asking the model to continue while it reports the answer was cut
-      // off due to the token limit. Long Hindi/Indic answers can need several
-      // passes. Bounded by ALL of: maxContinuations, the cumulative length
-      // cap, the shared call budget, and the overall deadline — whichever is
-      // reached first.
+      // Keep asking the model to continue while it reports a token-limit cutoff (long Indic answers can need several
+      // passes). Bounded by whichever comes first: maxContinuations, the cumulative length cap, the call budget or the deadline.
       for (
         let i = 0;
         finishReason === 'MAX_TOKENS' &&
@@ -518,9 +451,8 @@ You are continuing a response that was cut off mid-way. The text already written
         }
       }
 
-      // Safety net: model reported it stopped normally but the text still
-      // looks cut off mid-sentence — try a single continuation, subject to
-      // the same shared budget/deadline.
+      // Safety net: the model reported a normal stop but the text still looks cut off mid-sentence, so try one
+      // continuation within the same budget and deadline.
       if (
         finishReason !== 'MAX_TOKENS' &&
         !this.isResponseComplete(text) &&

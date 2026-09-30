@@ -1,6 +1,5 @@
-// POST/GET/PATCH /api/schedule-demo/* and GET /api/admin/demo-bookings, end
-// to end. Same env-flipping-per-test approach as support.test.js: flags and
-// config are read per-request, not cached at boot.
+// POST/GET/PATCH /api/schedule-demo/* and GET /api/admin/demo-bookings, end to end. Same env-flipping approach as
+// support.test.js: flags and config are read per request, not cached at boot.
 const request = require('supertest');
 
 const { app, prisma } = require('./helpers/testApp');
@@ -35,10 +34,8 @@ function clearDemoBookingEnv() {
   for (const key of DEMO_BOOKING_ENV_KEYS) delete process.env[key];
 }
 
-// "YYYY-MM-DD" from a Date's LOCAL calendar fields — never .toISOString(),
-// which reads UTC and can silently shift to the previous/next day relative
-// to the local getDay() these helpers select by (this bit us once already:
-// a local Saturday just after midnight IST is still Friday in UTC).
+// "YYYY-MM-DD" from a Date's local calendar fields, never .toISOString(), which reads UTC and can shift the day
+// relative to the local getDay() these helpers select by (a local Saturday just after midnight IST is still Friday in UTC).
 function toDateKey(date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -57,10 +54,7 @@ function nextWeekday() {
 }
 
 beforeAll(async () => {
-  // Lowercase prefix only — auth.js's login route lowercases the submitted
-  // email before querying (emailField's .toLowerCase()), so a mixed-case
-  // prefix here would create a user whose stored email never matches what
-  // loginAs's plain HTTP call ends up querying for.
+  // Lowercase prefix only: auth.js's login route lowercases the email before querying, so a mixed-case prefix would create a user whose stored email never matches what loginAs queries.
   fixtures = await createFixtures(prisma, 'demobooking');
   superAdminToken = await loginAs(app, fixtures.schoolA, fixtures.superAdmin, fixtures.PASSWORD);
   savedEnv = Object.fromEntries(DEMO_BOOKING_ENV_KEYS.map((k) => [k, process.env[k]]));
@@ -184,10 +178,7 @@ describe('POST /api/schedule-demo/bookings', () => {
 });
 
 describe('Reschedule and cancel', () => {
-  // Each call books a DIFFERENT time — bookings created by earlier tests in
-  // this file are never cleaned up (one shared DB for the whole file), so
-  // reusing a time here would spuriously 409 against a still-confirmed row
-  // from another test.
+  // Each call books a different time: bookings from earlier tests are never cleaned up (one shared DB per file), so reusing a time would 409 against a still-confirmed row.
   async function createBooking(startTime) {
     enableDemoBooking();
     const date = nextWeekday();

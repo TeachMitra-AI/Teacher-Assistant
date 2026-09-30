@@ -1,18 +1,6 @@
-// Learning Representation taxonomy — AI Learning Representation System,
-// Phase B (docs/learning-representation-system-adr.md, §4).
-//
-// Frozen wire vocabulary for what a response may be presented as, alongside
-// its text. Seven representations, all STRUCTURED (ADR §6) — none of them is
-// a diffusion-generated image. That is a load-bearing V1 constraint, not an
-// oversight: ADR §6 explains why pixel generation is deferred (unreliable
-// labels, higher cost/latency, inconsistent style) and ADR §8 lists it as
-// explicitly out of scope.
-//
-// `verbal_explanation` is the default and the ONLY representation
-// `no_visualization` ever maps to (see mapping.js) — it is not a fallback
-// bolted on afterwards, it is a first-class entry in this taxonomy, matching
-// how `no_visualization` is a first-class entry in the intent taxonomy
-// (contracts.js).
+// Learning Representation taxonomy: what a response may be presented as alongside its text
+// (docs/learning-representation-system-adr.md). All seven are structured; none is a generated image.
+// `verbal_explanation` is the default and the only target of `no_visualization` (see mapping.js).
 
 const LEARNING_REPRESENTATIONS = Object.freeze([
   Object.freeze({
@@ -49,13 +37,7 @@ const LEARNING_REPRESENTATION_IDS = Object.freeze(
   LEARNING_REPRESENTATIONS.map((representation) => representation.id)
 );
 
-/**
- * The representation every abstain path resolves to — a classifier failure,
- * a low-confidence result, or the `no_visualization` intent itself. Exported
- * as a named constant (rather than the literal string re-typed at each call
- * site) so mapping.js's abstain branches and any future caller agree on
- * exactly one value.
- */
+/** The representation every abstain path resolves to: classifier failure, low confidence, or `no_visualization`. */
 const VERBAL_EXPLANATION = 'verbal_explanation';
 
 module.exports = {

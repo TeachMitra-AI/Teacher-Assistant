@@ -1,11 +1,7 @@
-// Batched assessment generation (2026-08-07). Classroom Mode cost SEVEN Gemini
-// calls per teacher question; the free tier allows 20/minute, so three
-// questions throttled a teacher. Batching the four question-shaped artifacts
-// into one call takes that to four.
-//
-// The behaviour these tests protect is PER-ARTIFACT handling. A naive batch
-// throws the whole response away when one artifact is bad and regenerates all
-// four — which can cost more than separate calls ever did.
+// Batched assessment generation. Classroom Mode cost seven Gemini calls per teacher question and the free tier allows
+// 20/minute, so three questions throttled a teacher; batching the four question-shaped artifacts into one call makes it four.
+// These tests protect per-artifact handling: a naive batch throws the whole response away when one artifact is bad and
+// regenerates all four, which can cost more than separate calls.
 const request = require('supertest');
 const { app, prisma } = require('../helpers/testApp');
 const { createFixtures, PASSWORD } = require('../helpers/fixtures');
@@ -21,11 +17,8 @@ describe('POST /api/resources/generate-set', () => {
     token = await loginAs(app, fx.schoolA, fx.teacherA, PASSWORD);
   });
 
-  // mockGeminiFetch stubs the GLOBAL fetch. Without this the stub outlives the
-  // suite and other test files in the same worker get this file's canned
-  // Gemini responses instead of their own behaviour — which showed up as
-  // unrelated auth/session tests failing with the wrong status, differently on
-  // each run. Same cleanup test/routes/learningRepresentation.test.js does.
+  // mockGeminiFetch stubs the global fetch. Without this the stub outlives the suite and other files in the worker get
+  // this file's canned responses, showing up as unrelated auth/session tests failing with the wrong status. Same cleanup as test/routes/learningRepresentation.test.js.
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -91,9 +84,7 @@ describe('POST /api/resources/generate-set', () => {
     expect(byFormat.exit_ticket).toContain('Exit Ticket: Fractions');
   });
 
-  // THE test. One bad artifact must not cost the teacher the good ones, and the
-  // retry must ask for ONLY the failed one — otherwise batching costs more than
-  // separate calls when anything goes wrong.
+  // One bad artifact must not cost the teacher the good ones, and the retry must ask for only the failed one, or batching costs more than separate calls when anything goes wrong.
   test('retries only the failed artifact, keeping the ones that worked', async () => {
     const gemini = mockGeminiFetch([
       geminiSuccess(JSON.stringify({

@@ -1,11 +1,7 @@
-// Notification System — see docs/notification-system-plan.md.
-//
-// SCOPE: this file owns every /api/notifications* route. Every route only
-// ever touches the CALLER's own notifications (WHERE recipientId ===
-// req.user.id, enforced in the query itself, never just checked after
-// fetching) — a notification is inbox-private, same as SupportNote is
-// submitter-private in routes/adminSupport.js. The one exception is POST,
-// which CREATES notifications for other users but never reads them back.
+// Notification System (docs/notification-system-plan.md): every /api/notifications* route.
+// Every route touches only the caller's own notifications (WHERE recipientId === req.user.id, enforced in the query, not
+// checked after fetching); a notification is inbox-private. The exception is POST, which creates notifications for
+// others but never reads them back.
 const express = require('express');
 const { z } = require('zod');
 
@@ -36,10 +32,8 @@ function parseListQuery(query) {
 const NEWEST_FIRST = [{ createdAt: 'desc' }, { id: 'desc' }];
 
 /**
- * Gate middleware — same shape as routes/support.js's
- * requireHelpSupportEnabled: runs before any work is done, so a disabled
- * deployment never touches the database and the Socket.IO handshake (gated
- * independently in lib/socketServer.js) has the matching REST-side twin.
+ * Gate middleware, like routes/support.js's requireHelpSupportEnabled: runs before any work, so a disabled deployment
+ * never touches the database. The Socket.IO handshake is gated separately in lib/socketServer.js.
  */
 function requireNotificationsEnabled() {
   return (req, res, next) => {
@@ -52,13 +46,8 @@ function requireNotificationsEnabled() {
 }
 
 /**
- * Gate for the device-token routes below — a SEPARATE flag from
- * requireNotificationsEnabled() above (see lib/flags.js's readMobilePushFlags
- * doc comment for why this is layered on top of NOTIFICATIONS_ENABLED rather
- * than merged into it). MOBILE_PUSH_ENABLED off means no token is ever
- * persisted and, per notificationService.js/pushService.js, no Expo call is
- * ever made — the same "gate before any work is done" shape as the gate
- * above.
+ * Gate for the device-token routes: a separate flag layered on NOTIFICATIONS_ENABLED (see readMobilePushFlags in
+ * lib/flags.js). With MOBILE_PUSH_ENABLED off, no token is persisted and no Expo call is made.
  */
 function requireMobilePushEnabled() {
   return (req, res, next) => {
@@ -87,18 +76,14 @@ router.get('/notifications', authRequired, requireNotificationsEnabled(), asyncH
   res.json({ notifications: rows.map(toDto), total, page, limit });
 }));
 
-// GET /api/notifications/unread-count — cheap, indexed count for the badge.
-// MUST be registered before /notifications/:id-shaped routes below so
-// "unread-count" is never captured as an :id — mirrors
-// routes/adminSupport.js's /tickets/stats-before-/tickets/:id ordering.
+// GET /api/notifications/unread-count: cheap indexed count for the badge. Register before the `:id` routes so
+// "unread-count" isn't captured as an :id (as with /tickets/stats in adminSupport.js).
 router.get('/notifications/unread-count', authRequired, requireNotificationsEnabled(), asyncHandler(async (req, res) => {
   const count = await prisma.notification.count({ where: { recipientId: req.user.id, read: false } });
   res.json({ count });
 }));
 
-// PATCH /api/notifications/read-all — marks every unread notification of the
-// caller's read in one updateMany. Registered before /:id/read so "read-all"
-// is never matched by that route's :id segment.
+// PATCH /api/notifications/read-all: marks the caller's unread notifications read in one updateMany. Register before /:id/read.
 router.patch('/notifications/read-all', authRequired, requireNotificationsEnabled(), asyncHandler(async (req, res) => {
   const result = await prisma.notification.updateMany({
     where: { recipientId: req.user.id, read: false },
@@ -107,19 +92,14 @@ router.patch('/notifications/read-all', authRequired, requireNotificationsEnable
   res.json({ updated: result.count });
 }));
 
-// PATCH /api/notifications/:id/read — marks one of the CALLER'S OWN
-// notifications read. A second user's id 404s rather than 403ing, so this
-// never confirms whether a given id belongs to someone else.
+// PATCH /api/notifications/:id/read: marks one of the caller's own notifications read. Someone else's id 404s, never 403s.
 router.patch('/notifications/:id/read', authRequired, requireNotificationsEnabled(), asyncHandler(async (req, res) => {
   const result = await prisma.notification.updateMany({
     where: { id: req.params.id, recipientId: req.user.id, read: false },
     data: { read: true, readAt: new Date() },
   });
   if (result.count === 0) {
-    // Either it doesn't exist, isn't the caller's, or was already read —
-    // the last case isn't an error (marking an already-read notification
-    // read again is a harmless no-op from the client's perspective), so
-    // only 404 when the row genuinely isn't the caller's to mark.
+    // A notification that doesn't exist or isn't the caller's is a 404; one already read is a harmless no-op, not an error.
     const exists = await prisma.notification.findFirst({
       where: { id: req.params.id, recipientId: req.user.id },
       select: { id: true },
@@ -129,26 +109,19 @@ router.patch('/notifications/:id/read', authRequired, requireNotificationsEnable
   res.json({ id: req.params.id, read: true });
 }));
 
-// ---- Device tokens (Phase 7b: OS-level push) -------------------------------
+// Device tokens (OS-level push)
 
 const DEVICE_TOKEN_PLATFORMS = ['ios', 'android'];
 
 const deviceTokenSchema = z.object({
-  // Expo push tokens look like "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]" —
-  // 200 is a generous ceiling, not a measured exact length, matching how
-  // sendSchema's own `link` field is bounded above.
+  // Expo push tokens look like "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"; 200 is a generous ceiling, not a measured length.
   token: z.string().trim().min(10).max(200),
   platform: z.enum(DEVICE_TOKEN_PLATFORMS),
 });
 
-// POST /api/notifications/device-tokens — register (or re-register) the
-// CALLER'S OWN device token. Upserts on `token` itself, not on
-// [userId, token]: a token uniquely identifies one app installation, so a
-// token already on file (a re-registration after an app restart, or the same
-// physical device signed into a different account) is reassigned to
-// whichever user is registering it now rather than creating a duplicate row
-// — mirrors issueSession()'s "one row per login/refresh" shape, just keyed by
-// installation instead of by session.
+// POST /api/notifications/device-tokens: register (or re-register) the caller's own device token. It upserts on
+// `token`, not [userId, token]: a token identifies one installation, so one already on file (app restart, or the
+// same device on another account) is reassigned to the registering user instead of duplicated.
 router.post(
   '/notifications/device-tokens',
   authRequired,
@@ -169,13 +142,8 @@ router.post(
     try {
       row = await prisma.deviceToken.upsert(upsertArgs);
     } catch (err) {
-      // Prisma's upsert is update-then-insert-on-miss, not atomic: two
-      // concurrent registrations of the SAME token can both miss the update
-      // and both attempt the insert branch — the loser hits the unique
-      // constraint on `token` here (Finding #4). The winner's row already
-      // reflects a registration of this exact token, so retrying resolves
-      // through the update branch instead of surfacing a spurious 500 for
-      // what is, from the caller's perspective, a successful registration.
+      // Prisma's upsert isn't atomic: two concurrent registrations of the same token can both miss the update and hit the
+      // unique constraint on insert. The winner's row already covers this token, so a retry succeeds through the update branch.
       if (!isUniqueConstraintError(err)) throw err;
       row = await prisma.deviceToken.upsert(upsertArgs);
     }
@@ -184,11 +152,8 @@ router.post(
   })
 );
 
-// DELETE /api/notifications/device-tokens/:token — unregister one of the
-// CALLER'S OWN device tokens (logout). Ownership-checked the same way
-// DELETE /auth/sessions/:id is: a token that exists but isn't the caller's
-// 404s rather than silently succeeding, so this can never be used to guess
-// whether some other user's device is registered.
+// DELETE /api/notifications/device-tokens/:token: unregister one of the caller's own tokens (logout). A token that
+// exists but isn't the caller's 404s, so it can't be used to guess whether another user's device is registered.
 router.delete(
   '/notifications/device-tokens/:token',
   authRequired,
@@ -201,9 +166,7 @@ router.delete(
     try {
       await prisma.deviceToken.delete({ where: { token: req.params.token } });
     } catch (err) {
-      // A concurrent delete (e.g. the same logout firing twice) between the
-      // check above and this delete means the row is already gone — same
-      // outcome as the not-found check above (Finding #4).
+      // A concurrent delete (e.g. a double logout) between the check and this delete leaves the row already gone, same as the not-found case.
       if (!isRecordNotFoundError(err)) throw err;
       return res.status(404).json({ error: 'Device token not found.' });
     }
@@ -211,7 +174,7 @@ router.delete(
   })
 );
 
-// ---- Sending (school_admin / resource_person / super_admin only) ----------
+// Sending (school_admin / resource_person / super_admin only)
 
 const targetSchema = z.object({
   scope: z.enum(['all', 'school', 'role', 'users']),
@@ -230,11 +193,9 @@ const sendSchema = z.object({
   target: targetSchema,
 });
 
-// POST /api/notifications — send/broadcast. Scope is re-derived server-side
-// from the caller's own role inside createBroadcast()/resolveRecipients() —
-// the request body's target is a REQUEST, not a grant (see
-// docs/notification-system-plan.md §7). A teacher never reaches this route
-// at all: requireRole rejects them with 403 before the handler runs.
+// POST /api/notifications: send or broadcast. Scope is re-derived server-side from the caller's role in
+// createBroadcast()/resolveRecipients(); the body's target is a request, not a grant. A teacher never gets here
+// (requireRole returns 403).
 router.post(
   '/notifications',
   authRequired,

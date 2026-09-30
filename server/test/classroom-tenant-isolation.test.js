@@ -1,13 +1,8 @@
-// Classroom Management — tenant isolation (docs/classroom-feature-plan.md
-// §8, §15). Same shape as test/tenant-isolation.test.js: assert one
-// teacher's classroom data (classes/students/attendance/fees, including
-// export) can NEVER be read or written by another teacher, even via a
-// guessed/enumerated id — and, the case specific to this feature's V1 scope,
-// that NO role gets special cross-teacher visibility, not even
-// school_admin/resource_person/super_admin. Classroom isolation is per
-// TEACHER (req.user.id), not per school — this file proves that
-// specifically, which is why it is a separate file from the general
-// tenant-isolation.test.js (which is about school boundaries).
+// Classroom Management tenant isolation (docs/classroom-feature-plan.md), like test/tenant-isolation.test.js: one
+// teacher's classroom data (classes, students, attendance, fees, export) can never be read or written by another
+// teacher, even via a guessed id, and no role gets special cross-teacher visibility, not even
+// school_admin/resource_person/super_admin. Isolation is per teacher (req.user.id), not per school, which is why
+// this is separate from the general school-boundary test.
 const request = require('supertest');
 
 const { app, prisma } = require('./helpers/testApp');
@@ -65,9 +60,7 @@ describe('Classroom Management — tenant isolation', () => {
     return (req) => req.set('Authorization', `Bearer ${token}`);
   }
 
-  // Every non-owner role that should be blocked from teacherA's data,
-  // including a SECOND TEACHER AT THE SAME SCHOOL — the case that proves
-  // isolation is per-teacher, not per-school.
+  // Every non-owner role that must be blocked from teacherA's data, including a second teacher at the same school, which proves isolation is per teacher.
   const NON_OWNER_ROLES = [
     ['a second teacher at the SAME school', () => teacherA2Token],
     ['school_admin (same school)', () => schoolAdminAToken],

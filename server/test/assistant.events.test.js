@@ -1,22 +1,10 @@
-// Milestone M8 — POST /api/assistant/events, end to end.
-//
-// Three things are worth proving here, and they are the three things that could
-// actually hurt someone:
-//
-//   1. PRIVACY (G11). This endpoint is the only place a client POSTs telemetry,
-//      which makes it the only place teacher-authored text could be smuggled
-//      into the database. The schema has no free-text field by construction;
-//      these tests attack that claim directly rather than trusting it.
-//
-//   2. VOLUME (CHANGE-6 / finding D). `Event` is a RARE-INCIDENT table on
-//      single-writer SQLite. The design promises at most two rows per routed
-//      session, and a promise nobody counted is a hope.
-//
-//   3. INERTNESS. Flags off must mean zero rows, not "few rows".
-//
-// Flags are manipulated through process.env and restored afterwards, matching
-// assistant.catalog.test.js — the route reads them per request, so this works
-// against the shared app instance without rebuilding it.
+// POST /api/assistant/events, end to end. Three things could actually hurt someone:
+//   1. Privacy. This is the only place a client POSTs telemetry, so the only place teacher text could be smuggled into
+//      the database. The schema has no free-text field by construction, and these tests attack that claim directly.
+//   2. Volume. `Event` is a rare-incident table on single-writer SQLite; at most two rows per routed session is a
+//      promise that needs counting.
+//   3. Inertness. Flags off must mean zero rows, not "few rows".
+// Flags are set through process.env and restored afterwards, as in assistant.catalog.test.js.
 
 const request = require('supertest');
 
@@ -97,9 +85,7 @@ describe('authentication and the rollout gate', () => {
   });
 
   test('is INERT with the flags off — accepts the call and writes nothing', async () => {
-    // Not a 404 and not a 403: the client posts telemetry without knowing or
-    // caring whether it is inside the rollout, exactly as it fetches a catalog
-    // that may be empty. Silence is the correct inert behaviour.
+    // Not a 404 or 403: the client posts telemetry without knowing whether it's in the rollout, so silence is the inert behaviour.
     const res = await post({
       events: [{ name: 'prefill_delivered', actionId: 'generate_assessment', fieldCount: 8 }],
     });
@@ -165,8 +151,7 @@ describe('the envelope', () => {
       events: [{ name: 'prefill_outcome', actionId: 'generate_assessment', outcome: 'abandoned' }],
     });
 
-    // `abandoned` is derived server-side from a delivery with no outcome, and is
-    // deliberately NOT emittable. A client claiming it is a client to distrust.
+    // `abandoned` is derived server-side from a delivery with no outcome and isn't emittable; a client claiming it is one to distrust.
     expect(res.status).toBe(400);
   });
 
@@ -216,9 +201,7 @@ describe('what actually gets stored', () => {
   });
 
   test('collapses many corrections into ONE outcome row', async () => {
-    // The volume guarantee. Six corrections, one row — writing a row per
-    // correction is the single easiest way to reintroduce the sustained write
-    // stream CHANGE-6 exists to prevent.
+    // The volume guarantee: six corrections, one row. A row per correction would reintroduce the sustained write stream.
     const corrections = ['grade', 'subject', 'topic', 'format', 'difficulty', 'questionCount'].map(
       (field) => ({ field, from: 'utterance' })
     );
@@ -274,10 +257,8 @@ describe('what actually gets stored', () => {
   });
 
   test('drops a field name the registry does not declare, keeping the row', async () => {
-    // A bounded string is not enough on its own — a topic fits in 60 characters.
-    // Unknown names are dropped rather than rejecting the whole event, because
-    // losing one correction is immaterial and losing the outcome row would break
-    // the denominator.
+    // A bounded string isn't enough on its own (a topic fits in 60 characters). Unknown names are dropped rather than
+    // rejecting the event, since losing one correction is immaterial and losing the outcome row would break the denominator.
     await post({
       events: [
         {
@@ -307,9 +288,7 @@ describe('privacy — G11, attacked directly', () => {
   test('no accepted payload can carry teacher text into a row', async () => {
     const teacherText = 'Generate a Class 5 fractions worksheet about photosynthesis';
 
-    // Every field an attacker could reach, loaded with content. The strict
-    // envelope rejects the unknown keys outright; the ones that ARE accepted are
-    // enums and integers, so none of them can hold this string.
+    // Every field an attacker could reach, loaded with content. The strict envelope rejects unknown keys; accepted fields are enums and integers and can't hold this string.
     await post({
       events: [
         {
@@ -348,10 +327,8 @@ describe('privacy — G11, attacked directly', () => {
   });
 
   test('drops an event whose actionId is not a registered action', async () => {
-    // REGRESSION GUARD for a real hole this suite found. `actionId` was bounded
-    // at 60 characters and nothing else, and 60 characters is ample room for a
-    // topic — teacher text posted through it reached a stored row. The bound is
-    // now backed by registry membership.
+    // Regression guard for a real hole: `actionId` was bounded at 60 characters only, enough for a topic, and teacher text
+    // posted through it reached a stored row. The bound is now backed by registry membership.
     const res = await post({
       events: [
         {

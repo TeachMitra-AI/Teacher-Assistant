@@ -1,4 +1,4 @@
-// Admin analytics + management, scoped by role:
+// Admin analytics and management, scoped by role:
 //   super_admin      -> all schools
 //   resource_person  -> all schools in the same district as their own school
 //   school_admin     -> their own school only
@@ -16,19 +16,10 @@ const ADMIN_ROLES = ['school_admin', 'resource_person', 'super_admin'];
 const USER_ROLES = ['teacher', 'school_admin', 'resource_person', 'super_admin'];
 const USER_STATUSES = ['active', 'pending', 'rejected'];
 
-// Shared list-query parsing for the paginated admin tables.
-//
-// The page size is clamped server-side because the clamp — not the client's
-// good behaviour — is what actually bounds these endpoints: before this, a
-// super_admin's GET /users selected every user row in the database, buffered
-// them all in Node, and JSON.stringify'd the result synchronously (blocking
-// the event loop for every other request). Mirrors the convention already in
-// GET /api/resources: clamp the size, cap the search term's length.
-//
-// The client now sends an explicit `limit` and renders pager controls, so the
-// default no longer has to be generous enough to avoid silently truncating a
-// pager-less table. It stays a real default rather than a required parameter
-// so a hand-rolled curl or a future integration cannot ask for everything.
+// Shared list-query parsing for the paginated admin tables. The page size is clamped server-side because that, not
+// client behaviour, bounds these endpoints: GET /users used to select every user row, buffer them all and
+// JSON.stringify them synchronously, blocking the event loop. Follows GET /api/resources: clamp the size, cap the
+// search term. The default is real rather than a required parameter so a curl or integration can't ask for everything.
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
 
@@ -41,9 +32,8 @@ function parseListQuery(query) {
   return { limit, page, skip: (page - 1) * limit, q };
 }
 
-// `id` breaks ties on every paginated listing: createdAt is not unique (a seed
-// or a bulk import shares one timestamp to the millisecond), and an unstable
-// sort makes rows duplicate or vanish across page boundaries.
+// `id` breaks ties on every paginated listing: createdAt isn't unique (a seed or bulk import shares a timestamp),
+// and an unstable sort duplicates or drops rows across page boundaries.
 const NEWEST_FIRST = [{ createdAt: 'desc' }, { id: 'desc' }];
 
 // Returns an array of school ids in scope, or null meaning "all schools".
@@ -147,23 +137,17 @@ function toSortedArray(obj) {
     .map(([label, count]) => ({ label, count }));
 }
 
-// GET /api/admin/schools?page=&limit=&q= — super_admin only, paginated.
-//
-// `_count.queries` is deliberately NOT selected. Prisma emits one correlated
-// aggregate per row, so including it meant a count over the largest table in
-// the schema, once per school, on every page load — to render a number nobody
-// acted on. The per-school question total belongs in a detail view. (The
-// teacher count stays: it is a count over a small table and it is the number
-// that tells a super_admin whether a school is actually in use.)
+// GET /api/admin/schools?page=&limit=&q=: super_admin only, paginated.
+// `_count.queries` isn't selected: Prisma runs a correlated aggregate per row over the largest table, to show a
+// number nobody used. A per-school question total belongs in a detail view. The teacher count stays (small table,
+// and it shows whether a school is in use).
 router.get('/schools', authRequired, requireRole('super_admin'), asyncHandler(async (req, res) => {
   const { limit, page, skip, q } = parseListQuery(req.query);
 
   const where = {};
   if (q) {
-    // A leading-wildcard LIKE cannot use an index on SQLite or PostgreSQL, so
-    // this is a scan. Acceptable here: the endpoint is super_admin-only and
-    // the page size is capped. Case-insensitive for ASCII on SQLite by
-    // default, the same assumption GET /api/resources already relies on.
+    // A leading-wildcard LIKE can't use an index, so this is a scan; fine for a super_admin-only endpoint with a capped
+    // page size. Case-insensitive for ASCII on SQLite, as GET /api/resources assumes.
     where.OR = [
       { name: { contains: q } },
       { code: { contains: q } },
@@ -238,13 +222,9 @@ function userDto(u) {
   };
 }
 
-// GET /api/admin/users?page=&limit=&q=&role=&status=&schoolId=
-// Users within the caller's scope (no credentials), paginated.
-//
-// Every filter below can only ever NARROW the school scope established by
-// schoolScope() — none of them is allowed to widen it. That ordering is the
-// tenant boundary, so it is asserted directly in tenant-isolation.test.js
-// rather than left as a code-reading exercise.
+// GET /api/admin/users?page=&limit=&q=&role=&status=&schoolId=: users in the caller's scope (no credentials), paginated.
+// Every filter can only narrow the school scope from schoolScope(), never widen it. That ordering is the tenant
+// boundary and tenant-isolation.test.js asserts it.
 router.get('/users', authRequired, requireRole(...ADMIN_ROLES), asyncHandler(async (req, res) => {
   const scope = await schoolScope(req.user);
   const { limit, page, skip, q } = parseListQuery(req.query);
@@ -259,10 +239,8 @@ router.get('/users', authRequired, requireRole(...ADMIN_ROLES), asyncHandler(asy
   const status = typeof req.query.status === 'string' ? req.query.status : '';
   if (status && USER_STATUSES.includes(status)) where.status = status;
 
-  // A super_admin (scope === null) may narrow to a single school. For every
-  // other role the scope already pins the schools, so an id outside it is
-  // ignored rather than applied — a school_admin cannot use this to read
-  // another school's users.
+  // A super_admin (scope === null) may narrow to one school. For others the scope already pins the schools, so an
+  // id outside it is ignored; a school_admin can't use this to read another school's users.
   const schoolId = typeof req.query.schoolId === 'string' ? req.query.schoolId : '';
   if (schoolId && (scope === null || scope.includes(schoolId))) where.schoolId = schoolId;
 
@@ -286,13 +264,9 @@ router.get('/users', authRequired, requireRole(...ADMIN_ROLES), asyncHandler(asy
   res.json({ users: users.map(userDto), total, page, limit });
 }));
 
-// GET /api/admin/users/pending — sign-ups awaiting approval in the caller's
-// scope. Readable by every admin role (a resource_person can see the queue for
-// their district), but only school_admin/super_admin can act on it below.
-//
-// Paginated like the other listings. The queue is naturally small — it drains
-// as admins act on it — but "naturally small" is not a bound: a wave of spam
-// sign-ups would otherwise make this endpoint as unbounded as GET /users was.
+// GET /api/admin/users/pending: sign-ups awaiting approval in the caller's scope. Every admin role can read it
+// (a resource_person sees their district's queue), but only school_admin/super_admin can act. Paginated: a wave of
+// spam sign-ups would otherwise make it as unbounded as GET /users was.
 router.get('/users/pending', authRequired, requireRole(...ADMIN_ROLES), asyncHandler(async (req, res) => {
   const scope = await schoolScope(req.user);
   const { limit, page, skip, q } = parseListQuery(req.query);
@@ -314,11 +288,9 @@ router.get('/users/pending', authRequired, requireRole(...ADMIN_ROLES), asyncHan
   res.json({ users: users.map(userDto), total, page, limit });
 }));
 
-// Approve or reject one pending sign-up. Ownership/scope is checked exactly
-// the way POST /users/:id/revoke-sessions does it, so an admin can never act
-// on an account outside their own school (or district, or all schools for a
-// super_admin). Each decision writes an Event row so there's a durable record
-// of who let a given teacher in.
+// Approve or reject one pending sign-up. Scope is checked like POST /users/:id/revoke-sessions, so an admin can
+// never act outside their own school, district or (for super_admin) all schools. Each decision writes an Event row,
+// a durable record of who let a teacher in.
 async function decidePendingUser(req, res, { status, eventType }) {
   const target = await prisma.user.findUnique({ where: { id: req.params.id } });
   if (!target) return res.status(404).json({ error: 'User not found.' });
@@ -328,10 +300,8 @@ async function decidePendingUser(req, res, { status, eventType }) {
     return res.status(403).json({ error: 'You do not have permission to do this.' });
   }
 
-  // Only a pending account is a valid target — this keeps the endpoint from
-  // doubling as a way to deactivate an already-approved colleague, and makes a
-  // double-click from two admins at once a harmless 409 rather than a silent
-  // second decision.
+  // Only a pending account is a valid target: this stops the endpoint deactivating an approved colleague, and makes a
+  // simultaneous double decision a harmless 409.
   if (target.status !== 'pending') {
     return res.status(409).json({ error: 'This account is not awaiting approval.' });
   }
@@ -349,9 +319,7 @@ async function decidePendingUser(req, res, { status, eventType }) {
   return res.json({ id: updated.id, status: updated.status });
 }
 
-// PATCH /api/admin/users/:id/approve — school_admin/super_admin only.
-// resource_person is deliberately excluded: it matches the existing precedent
-// that account-mutating actions are restricted to those two roles.
+// PATCH /api/admin/users/:id/approve: school_admin/super_admin only. resource_person is excluded, as for other account-mutating actions.
 router.patch('/users/:id/approve', authRequired, requireRole('school_admin', 'super_admin'), asyncHandler(async (req, res) => {
   return decidePendingUser(req, res, { status: 'active', eventType: 'user_approved' });
 }));
@@ -365,20 +333,11 @@ const roleSchema = z.object({
   role: z.enum(['teacher', 'school_admin', 'resource_person', 'super_admin']),
 });
 
-// PATCH /api/admin/users/:id/role — super_admin changes a user's role.
-//
-// The client raises a confirmation dialog in front of this (ManagePage), but
-// that only guards against a mis-click — it does nothing for a direct call, so
-// the two ways this endpoint can strand the deployment are blocked here:
-//
-//   - changing your OWN role, which for a super_admin means instantly losing
-//     access to every route that could put it back; and
-//   - demoting the LAST super_admin, after which nobody can grant the role to
-//     anyone, including themselves.
-//
-// Each successful change writes an Event, the same durable record approve and
-// reject keep (see decidePendingUser) — a privilege grant is the last thing
-// that should be invisible after the fact.
+// PATCH /api/admin/users/:id/role: super_admin changes a user's role. The client confirms first (ManagePage), but
+// that only guards a mis-click, so two ways this could strand the deployment are blocked here:
+//   - changing your own role (a super_admin would lose access to everything that could restore it)
+//   - demoting the last super_admin (nobody could grant the role again)
+// Each change writes an Event, like approve and reject; a privilege grant shouldn't be invisible afterwards.
 router.patch('/users/:id/role', authRequired, requireRole('super_admin'), asyncHandler(async (req, res) => {
   const parsed = roleSchema.safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid role.' });
@@ -434,10 +393,8 @@ router.patch('/users/:id/role', authRequired, requireRole('super_admin'), asyncH
   }
 }));
 
-// POST /api/admin/users/:id/revoke-sessions — an admin's "kill a compromised
-// account" tool: revokes every active refresh-token session the target user
-// has, so they're forced to log in again everywhere within one access-token
-// TTL. Scoped the same way every other admin route is (schoolScope above).
+// POST /api/admin/users/:id/revoke-sessions: an admin's "kill a compromised account" tool. It revokes every active
+// refresh-token session, forcing login everywhere within one access-token TTL. Scoped by schoolScope like the other admin routes.
 router.post('/users/:id/revoke-sessions', authRequired, requireRole(...ADMIN_ROLES), asyncHandler(async (req, res) => {
   const target = await prisma.user.findUnique({ where: { id: req.params.id } });
   if (!target) return res.status(404).json({ error: 'User not found.' });

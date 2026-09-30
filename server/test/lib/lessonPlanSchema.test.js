@@ -34,9 +34,7 @@ describe('lessonPlanDocumentSchema', () => {
     expect(lessonPlanDocumentSchema.safeParse(validPlan()).success).toBe(true);
   });
 
-  // The Presentation pairing is what makes this the Indian format rather than
-  // a generic list of steps (D15). A step with only a teacher activity would
-  // silently produce a one-column table.
+  // The Presentation pairing is what makes this the Indian format and not a generic step list; a step with only a teacher activity would silently give a one-column table.
   test('rejects a presentation step missing its student activity', () => {
     const r = lessonPlanDocumentSchema.safeParse(
       validPlan({ presentation: [{ teacherActivity: 'Explain fractions' }] })

@@ -1,10 +1,5 @@
-// The vocabulary registry (Milestone M4).
-//
-// Small, but it guards a real gap: a descriptor may declare
-// `type: 'vocab', vocab: 'GRADES'`, and the registry's startup validation only
-// checks that the id is a KNOWN id — not that an implementation exists behind
-// it. A slot pointing at a vocabulary with no mapper would canonicalize nothing
-// and quietly fall through to the profile default on every request.
+// The vocabulary registry. The registry's startup validation only checks that a slot's vocabulary id is known, not
+// that a mapper exists; a slot pointing at a mapper-less vocabulary would quietly fall through to the profile default.
 
 const { VOCABULARIES } = require('../../../src/assistant/contracts');
 const { DESCRIPTORS } = require('../../../src/actions/registry');
@@ -51,9 +46,7 @@ describe('vocabulary registry', () => {
   });
 
   test('an unknown vocabulary degrades instead of throwing', () => {
-    // Unreachable through a descriptor — the registry rejects an unknown id at
-    // boot. It matters anyway: this module sits in a pipeline that must always
-    // return an answer, never an exception, because it is in front of a text box.
+    // Unreachable through a descriptor (the registry rejects an unknown id at boot), but the pipeline must always return an answer, never an exception.
     expect(mapVocabulary('NO_SUCH_VOCABULARY', 'class 5').status).toBe(VOCAB_STATUS.UNMAPPED);
     expect(mapVocabulary(undefined, 'class 5').status).toBe(VOCAB_STATUS.UNMAPPED);
   });

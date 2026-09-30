@@ -1,78 +1,32 @@
-// AI Action Router — frozen wire contracts (Phase 1, Milestone M0).
-//
-// This module is the single server-side definition of the shapes exchanged
-// between the client and the two assistant endpoints, plus the closed
-// vocabularies those shapes are built from. It contains NO logic: no HTTP, no
-// Gemini, no registry, no policy. It exists so that both tracks of the project
-// (server pipeline, client executor) can be built in parallel against a shape
-// that was agreed once and cannot drift silently.
-//
-// Why a "freeze": the milestone plan builds the client prefill path (M3) before
-// the classifier exists (M5). That only works if the object the classifier will
-// eventually produce is pinned down first — otherwise M3 is built against a
-// guess. Changing anything here after M0 costs a coordination round trip
-// between both tracks, so it is deliberately a conscious act.
-//
-// CLIENT COUNTERPART: client/src/assistant/types.ts mirrors every constant and
-// shape below as TypeScript types. The two are a DELIBERATE, documented
-// duplication (CommonJS server vs ESM client — see the guardrails document,
-// CHANGE-11) rather than a shared package, which would require a monorepo
-// restructure larger than this project. If you change a value here, change it
-// there in the same commit.
+// Wire contracts for the AI Action Router: the request/response shapes exchanged with the client and the
+// closed vocabularies they use. No logic lives here.
+// The client mirrors every constant and shape in client/src/assistant/types.ts. Change both together.
 
-/**
- * Contract version. Bumped only when a shape below changes in a way an already
- * deployed client would misread. Distinct from the registry's catalogVersion
- * (which tracks WHICH actions exist, not what the envelope looks like).
- */
+/** Contract version; bump when a shape changes in a way a deployed client would misread. Separate from the registry's catalogVersion. */
 const ASSISTANT_CONTRACT_VERSION = 1;
 
-/**
- * Longest utterance the interpret endpoint accepts. Matches MAX_QUERY_LENGTH in
- * index.js on purpose: the router sits in front of the same composer that feeds
- * /api/coach, so a message the coach would accept must never be rejected by the
- * router for being too long.
- */
+/** Longest accepted utterance. Matches MAX_QUERY_LENGTH in index.js so the router never rejects what /api/coach would accept. */
 const MAX_UTTERANCE_LENGTH = 500;
 
 /**
- * What the application may do with a resolved action. This is the safety spine
- * of the whole design: an action's effect is declared by the registry and CAPS
- * what the decision policy is allowed to return, at any confidence, so no model
- * output can ever escalate its own consequences.
- *
- * Phase 1 ships only 'read' and 'draft' actions. 'write' and 'destructive' are
- * defined here so the policy can be written and tested against the complete
- * ladder now, rather than being retrofitted when those actions arrive.
+ * What an action may do once resolved. The registry declares it and it caps the decision policy
+ * at any confidence, so model output can't escalate its own consequences.
  */
 const EFFECTS = Object.freeze(['read', 'draft', 'write', 'destructive']);
 
-/** The highest effect any Phase 1 action may declare. Enforced by the registry at startup (M2). */
+/** The highest effect any action may declare today; enforced by the registry at startup. */
 const PHASE1_MAX_EFFECT = 'draft';
 
 /**
- * What the application decided to do about an utterance.
- *
- * Phase 1 emits only 'prefill', 'ask' and 'passthrough' (see PHASE1_DECISIONS).
- * The other two are defined but never sent:
- *   - 'execute'  — reserved for a future action with autoExecute enabled. The
- *                  client must defensively downgrade it to 'prefill' so a
- *                  server-side rollout can never surprise an older client into
- *                  generating without review.
- *   - 'suggest'  — deferred to Phase 2 (CHANGE-4). With only two actions it can
- *                  offer nothing useful, but keeping the value defined means
- *                  introducing it later is additive rather than breaking.
+ * What the app decided to do with an utterance. Only 'prefill', 'ask' and 'passthrough' are sent today.
+ * 'execute' is reserved for auto-execute actions; clients downgrade it to 'prefill'. 'suggest' is deferred.
  */
 const DECISIONS = Object.freeze(['execute', 'prefill', 'ask', 'suggest', 'passthrough']);
 
-/** The subset of DECISIONS the Phase 1 policy is permitted to return. */
+/** The decisions the policy may currently return. */
 const PHASE1_DECISIONS = Object.freeze(['prefill', 'ask', 'passthrough']);
 
-/**
- * Why a turn fell back to the coach. DIAGNOSTIC ONLY — these strings are logged
- * and returned for debugging, but every one of them produces the same teacher
- * experience (a normal coaching answer), so none is ever displayed.
- */
+/** Why a turn fell back to the coach. Diagnostic only: every reason gives the teacher the same coaching answer. */
 const PASSTHROUGH_REASONS = Object.freeze([
   'not_an_action', // the utterance is a coaching question, not a command
   'low_confidence', // understood something, but not well enough to act on
@@ -85,12 +39,7 @@ const PASSTHROUGH_REASONS = Object.freeze([
   'emergency_detected', // active-emergency utterance: routed straight to the coach
 ]);
 
-/**
- * Where a resolved parameter's value came from. Recorded per field and carried
- * to the client. Not decoration — provenance drives the prefill UI, the undo
- * behaviour ("clear AI fields" resets only non-user values), and the correction
- * metric that gates launch (which SOURCE produces the most teacher edits).
- */
+/** Where a resolved value came from. Drives the prefill UI, "clear AI fields", and the correction metric. */
 const PROVENANCE_SOURCES = Object.freeze([
   'utterance', // stated in this message — strongest
   'memory', // carried from an earlier turn in this session
@@ -100,111 +49,57 @@ const PROVENANCE_SOURCES = Object.freeze([
   'user', // the teacher edited this field after prefill
 ]);
 
-/**
- * Model-reported confidence. Deliberately ORDINAL rather than a float: LLMs are
- * poorly calibrated at self-reported numeric confidence but adequately ordered
- * at categorical confidence, and three buckets is all the resolution the
- * decision policy needs.
- */
+/** Model-reported confidence. Ordinal because LLMs are better calibrated on buckets than on numbers. */
 const CONFIDENCE_LEVELS = Object.freeze(['high', 'medium', 'low']);
 
 /** Lifecycle of an action descriptor. Actions are deprecated, never deleted — cached catalogs exist in the wild. */
 const ACTION_STATUSES = Object.freeze(['active', 'beta', 'deprecated']);
 
 /**
- * How a slot's value is validated and canonicalized.
- *   enum   — a closed set defined inline on the slot
- *   vocab  — a controlled vocabulary with a fuzzy mapper (grade, subject, language)
- *   text   — free text, length-bounded
- *   number — integer within min/max
+ * How a slot is validated:
+ *   enum   - closed set defined on the slot
+ *   vocab  - controlled vocabulary with a fuzzy mapper (grade, subject, language)
+ *   text   - bounded free text
+ *   number - integer within min/max
  */
 const SLOT_TYPES = Object.freeze(['enum', 'vocab', 'text', 'number']);
 
-/** Controlled-vocabulary identifiers a slot may reference. Mappers land in src/actions/vocab/ (M4). */
+/** Vocabulary ids a slot may reference; mappers are in src/actions/vocab/. */
 const VOCABULARIES = Object.freeze(['GRADES', 'SUBJECTS', 'LANGUAGES']);
 
-/**
- * Intent values the classifier may return that are NOT action ids. Kept
- * separate from the catalog so the proposal validator can distinguish "the
- * model correctly reported it has no action for this" from "the model returned
- * an id that does not exist", which are different outcomes worth different
- * telemetry.
- */
+/** Non-action intents the classifier may return, kept apart so "no matching action" isn't confused with an unknown id. */
 const NON_ACTION_INTENTS = Object.freeze(['unknown', 'coach_question']);
 
-// ---- Telemetry vocabularies (M8) --------------------------------------------
-// These are WIRE contracts, not internal labels: the client posts them to
-// POST /api/assistant/events and the server validates them as closed enums
-// before anything reaches the database. That closure is the privacy control —
-// see the note on ASSISTANT_EVENT_NAMES below.
+// Telemetry vocabularies. These are wire contracts validated as closed enums before anything reaches the
+// database; the closure is the privacy control.
 
 /**
- * What the client may report about a prefill it delivered.
- *
- * A CLOSED set, and closed on purpose. The alternative — an open string
- * describing what happened — is precisely how teacher-authored content
- * eventually reaches a database: someone adds `detail` "just for debugging" and
- * it carries a topic. There is nowhere here to put a value even by accident
- * (G11), and the server rejects anything outside this list rather than storing
- * it.
- *
- *   prefill_delivered — a draft was actually applied to the Generator's form.
- *                       The DENOMINATOR of the field-edit rate. Note this is a
- *                       different fact from the server deciding `prefill`: a
- *                       decision that the teacher never saw (expired draft,
- *                       storage disabled, navigated away) must not inflate the
- *                       denominator, which is why only the client can report it.
- *   prefill_outcome   — what the teacher then did with it. The NUMERATOR arrives
- *                       here too, as a count of corrected fields, so a session
- *                       costs at most two rows however many fields were edited.
+ * What the client may report about a delivered prefill. The set is closed so there is nowhere to put
+ * teacher content, and the server rejects anything else.
+ *   prefill_delivered - the draft was applied to the form; the denominator of the edit rate. Only the
+ *                       client can report it, since the server can't know the teacher saw the draft.
+ *   prefill_outcome   - what the teacher did next, with a count of corrected fields (two rows per session at most).
  */
 const ASSISTANT_EVENT_NAMES = Object.freeze(['prefill_delivered', 'prefill_outcome']);
 
 /**
- * How a delivered prefill ended.
- *
- * `abandoned` is deliberately NOT in this list. It is derived at query time from
- * a `prefill_delivered` row with no matching outcome, because the only way to
- * emit it would be an unload beacon — and beacons are unreliable on exactly the
- * low-end mobile browsers this product targets. An undercounted `abandoned`
- * would read as good news, which is the worst direction for a metric to fail in.
- *
- *   generated — the teacher pressed Generate with AI-filled fields present. The
- *               routing did its job.
- *   undone    — the teacher pressed "Clear AI fields". The highest-signal
- *               evidence that a routing was flatly wrong.
- *   edited    — fields were corrected but no generation followed in this visit.
+ * How a delivered prefill ended. `abandoned` is derived at query time (a delivery with no outcome),
+ * since an unload beacon is unreliable on low-end mobile browsers.
+ *   generated - Generate was pressed with AI-filled fields
+ *   undone    - "Clear AI fields" was pressed; the strongest sign the routing was wrong
+ *   edited    - fields were corrected but no generation followed
  */
 const PREFILL_OUTCOMES = Object.freeze(['generated', 'undone', 'edited']);
 
-/**
- * Largest batch POST /api/assistant/events accepts.
- *
- * A routed session produces at most two events, so this is roughly an order of
- * magnitude of headroom for a teacher who routes repeatedly before the buffer
- * flushes. It exists to bound the work a single request can ask the database to
- * do, and it is enforced server-side rather than trusted from the client.
- */
+/** Largest batch POST /api/assistant/events accepts; bounds the database work one request can cause. */
 const MAX_EVENT_BATCH = 20;
 
-/**
- * Longest `Event.metadata` JSON string the writers will persist.
- *
- * A belt-and-braces bound, not the primary control: the schemas above already
- * make oversized metadata impossible to construct. It exists so that a future
- * field added carelessly cannot turn a rare-incident table into a blob store.
- */
+/** Longest `Event.metadata` JSON the writers persist. A backstop so a careless new field can't turn the table into a blob store. */
 const MAX_EVENT_METADATA_LENGTH = 2000;
 
 /**
- * `Event.type` values this feature writes, and the ONLY types its prune script
- * is permitted to delete.
- *
- * Prefixed `assistant_` so they are greppable, and so retention can be scoped
- * with a prefix match that cannot reach `ai_safety_flag`, `user_approved` or the
- * reliability rows — those are institutional records with entirely different
- * retention needs, and a prune script that widens by accident would destroy them
- * silently.
+ * `Event.type` values this feature writes. The shared prefix lets the prune script match only these
+ * and never `ai_safety_flag`, `user_approved` or the reliability rows.
  */
 const ASSISTANT_EVENT_TYPE_PREFIX = 'assistant_';
 const ASSISTANT_EVENT_TYPES = Object.freeze([
@@ -213,23 +108,13 @@ const ASSISTANT_EVENT_TYPES = Object.freeze([
 ]);
 
 /**
- * How long assistant telemetry rows are kept.
- *
- * Ninety days is long enough to compare a rollout stage against the one before
- * it and to see a week-over-week trend after a prompt change, and short enough
- * that the table does not grow without bound on single-writer SQLite. Enforced
- * by tools/pruneAssistantEvents.js, which is an operational step rather than a
- * request-path cost — pruning inside the write path would put deletes on exactly
- * the path CHANGE-6 exists to protect.
+ * How long assistant telemetry is kept. Pruned by tools/pruneAssistantEvents.js, outside the
+ * request path, to keep deletes off the write path on single-writer SQLite.
  */
 const ASSISTANT_EVENT_RETENTION_DAYS = 90;
 
-// ---- Shapes -----------------------------------------------------------------
-// JSDoc typedefs rather than runtime validators: the runtime validation that
-// matters happens against zod schemas (proposalSchema.js in M5, and each
-// action's own paramSchema, which is REFERENCED from the real route — never
-// copied). These typedefs document the contract and give editors autocomplete
-// without creating a second source of truth for validation.
+// Shapes. These typedefs document the contract; runtime validation is done by the zod schemas
+// (proposalSchema.js and each action's paramSchema), so there is a single source of truth.
 
 /**
  * @typedef {object} SlotSpec
@@ -239,21 +124,17 @@ const ASSISTANT_EVENT_RETENTION_DAYS = 90;
  * @property {'GRADES'|'SUBJECTS'|'LANGUAGES'} [vocab] present when type is 'vocab'
  * @property {boolean} required
  * @property {string|null} [defaultFrom] e.g. 'prefs.defaultGrade', 'memory.grade', 'const:medium'
- * @property {string} [ask] question used ONLY when this is the single missing required slot
- * @property {string[]} [askOptions] rendered as chips; a chip answer is resolved client-side (CHANGE-3)
+ * @property {string} [ask] question used only when this is the single missing required slot
+ * @property {string[]} [askOptions] rendered as chips; a chip answer is resolved client-side
  * @property {boolean} [sensitive] never cached, never logged
  * @property {number} [min] type 'number'
  * @property {number} [max] type 'number'
  */
 
 /**
- * The registry's own record of an action. Server-internal: `paramSchema`,
- * `requiredRoles`, `featureFlag` and `autoExecute` are NEVER projected into a
- * catalog response — the client is told what it may use, never what it may not.
- *
- * Deliberately carries no route, path or handler name: the server never tells
- * the client where to navigate. Coupling is by id only, which is what makes
- * shipping a new action to an already-deployed (PWA-cached) client safe.
+ * The registry's record of an action. Server-internal: `paramSchema`, `requiredRoles`, `featureFlag`
+ * and `autoExecute` are never projected into a catalog response. It carries no route or handler name;
+ * coupling to the client is by id only, so a new action is safe for an already-deployed client.
  *
  * @typedef {object} ActionDescriptor
  * @property {string} id permanent; never renamed, never reused
@@ -263,11 +144,11 @@ const ASSISTANT_EVENT_RETENTION_DAYS = 90;
  * @property {'read'|'draft'|'write'|'destructive'} effect caps the decision policy
  * @property {string[]} requiredRoles NOT projected
  * @property {string} featureFlag NOT projected
- * @property {boolean} autoExecute must be false for every Phase 1 action; NOT projected
+ * @property {boolean} autoExecute must be false for every action today; NOT projected
  * @property {string} summary one line, feeds the classifier prompt
- * @property {string[]} examples >=5 incl. Hinglish; feeds prompt, chips and evals
+ * @property {string[]} examples at least 5, including Hinglish; feeds prompt, chips and evals
  * @property {SlotSpec[]} slots
- * @property {object} paramSchema zod schema REFERENCE (never a copy); NOT projected
+ * @property {object} paramSchema zod schema reference (never a copy); NOT projected
  */
 
 /**
@@ -282,9 +163,8 @@ const ASSISTANT_EVENT_RETENTION_DAYS = 90;
  */
 
 /**
- * One remembered slot. Session memory is a TYPED STORE, never a chat transcript:
- * constant token cost, deterministic, and — the deciding reason — inspectable
- * and correctable by the teacher, which a transcript is not.
+ * One remembered slot. Session memory is a typed store rather than a transcript: constant token
+ * cost, deterministic, and inspectable and correctable by the teacher.
  *
  * @typedef {object} MemorySlot
  * @property {string|number} value canonical, already mapped to the app's vocabulary
@@ -298,20 +178,14 @@ const ASSISTANT_EVENT_RETENTION_DAYS = 90;
  * @property {string} utterance <= MAX_UTTERANCE_LENGTH
  * @property {number} [catalogVersion] the version the client holds; a mismatch tells it to refetch
  * @property {Record<string, MemorySlot>} [memory] client-held session memory (the server stays stateless)
- * @property {{actionId: string, slot: string}|null} [pendingAsk] set only when answering a clarifying question by FREE TEXT
+ * @property {{actionId: string, slot: string}|null} [pendingAsk] set only when answering a clarifying question by free text
  * @property {number} [turn]
- * @property {number} [sequence] monotonic; supports the client's stale-response guard (CHANGE-9)
+ * @property {number} [sequence] monotonic; supports the client's stale-response guard
  */
 
 /**
- * What the model returned. UNTRUSTED — every field is re-validated before use,
- * and `intent` is re-checked against the role-filtered catalog even though the
- * Gemini responseSchema constrains it, because a schema constraint is a strong
- * hint and not a guarantee.
- *
- * Slots are RAW STRINGS ("class 5", not "Class 3-5"). Canonicalization is the
- * application's job, in code, where it is testable and fixable without touching
- * a prompt.
+ * What the model returned. Untrusted: every field is re-validated, and `intent` is re-checked against the
+ * role-filtered catalog. Slots are raw strings ("class 5"); canonicalization happens in code.
  *
  * @typedef {object} IntentProposal
  * @property {string} intent an action id, or one of NON_ACTION_INTENTS
@@ -321,13 +195,9 @@ const ASSISTANT_EVENT_RETENTION_DAYS = 90;
  */
 
 /**
- * The application's trusted output. `params` contains ONLY values that passed
- * the action's real paramSchema.
- *
- * IMPORTANT: provenance, confidence and every other piece of router metadata
- * are SIBLINGS of `params`, never inside it. The generation schema is
- * `.strict()` and rejects unknown keys, so merging metadata into params to
- * "keep it together" makes every downstream generation request fail with a 400.
+ * The application's trusted output. `params` holds only values that passed the action's real paramSchema.
+ * Provenance, confidence and other router metadata are siblings of `params`, never inside it: the
+ * generation schema is `.strict()`, so merging them in would make every generation request fail with a 400.
  *
  * @typedef {object} ResolvedAction
  * @property {string} actionId
@@ -343,10 +213,8 @@ const ASSISTANT_EVENT_RETENTION_DAYS = 90;
  */
 
 /**
- * `actions` is a LIST from day one even though Phase 1 never returns more than
- * one. Documented contract: Phase 1 clients execute actions[0] and ignore the
- * rest. This costs one array literal now and avoids a breaking envelope change
- * when compound requests arrive in Phase 4.
+ * `actions` is a list so compound requests can be added without changing the envelope; clients
+ * currently execute actions[0] and ignore the rest.
  *
  * @typedef {object} InterpretResponse
  * @property {number} catalogVersion
@@ -358,16 +226,9 @@ const ASSISTANT_EVENT_RETENTION_DAYS = 90;
  */
 
 /**
- * One telemetry event, as the CLIENT sends it (M8).
- *
- * Every field is metadata. There is deliberately no field capable of holding an
- * utterance, a slot value, generated content, prompt text or model output — the
- * privacy rule is enforced by the SHAPE, not by a reviewer remembering it.
- *
- * `requestId` is the opaque correlation id the interpret response already
- * carried, echoed back so an Event row joins to its decision log line. It is the
- * one identifier that crosses the two channels, and it is a UUID with no
- * teacher-derived content.
+ * One telemetry event as the client sends it. Every field is metadata; no field can hold an
+ * utterance, slot value, generated content or model output. `requestId` is the UUID from the
+ * interpret response, echoed back to join an Event row to its decision log line.
  *
  * @typedef {object} AssistantTelemetryEvent
  * @property {string} name an ASSISTANT_EVENT_NAMES value
@@ -376,8 +237,8 @@ const ASSISTANT_EVENT_RETENTION_DAYS = 90;
  * @property {number} [fieldCount] how many fields the prefill filled
  * @property {number} [lowConfidenceCount] how many were marked uncertain
  * @property {string} [outcome] a PREFILL_OUTCOMES value; prefill_outcome only
- * @property {{field: string, from: string}[]} [corrections] field NAMES and their
- *   previous PROVENANCE_SOURCES value. Never the values those fields held
+ * @property {{field: string, from: string}[]} [corrections] field names and their previous
+ *   PROVENANCE_SOURCES value, never the values themselves
  */
 
 module.exports = {

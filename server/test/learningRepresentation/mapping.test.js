@@ -1,12 +1,6 @@
-// Intent → Representation mapping — AI Learning Representation System,
-// Phase B (docs/learning-representation-system-adr.md, §5, §13 Phase B).
-//
-// Two things matter here more than most test files: the mapping must match
-// ADR §5's table EXACTLY (a silent drift here is the single most consequential
-// bug this feature could ship, per the ADR's own "Wrong representation"
-// risk), and the abstain policy from the Phase A review answer (medium
-// proceeds, low and every failure abstain) must be exercised for every
-// intent and every failure reason, not just spot-checked.
+// Intent -> representation mapping. Two things matter most: the mapping must match the ADR's table exactly (silent
+// drift is the most consequential bug this feature could ship), and the abstain policy (medium proceeds; low and every
+// failure abstain) must be exercised for every intent and failure reason, not spot-checked.
 
 const { EDUCATIONAL_INTENT_IDS } = require('../../src/learningRepresentation/contracts');
 const { LEARNING_REPRESENTATION_IDS, VERBAL_EXPLANATION } = require('../../src/learningRepresentation/representations');
@@ -48,9 +42,7 @@ describe('resolveRepresentation — confident results use the deterministic mapp
   });
 
   test.each(EDUCATIONAL_INTENT_IDS)('%s at medium confidence ALSO resolves via the table (not suppressed)', (intent) => {
-    // Medium is deliberately not treated as a reason to abstain — see the
-    // module header for why (representations are low-stakes suggestions,
-    // unlike the Action Router's effect-dominated policy).
+    // Medium isn't a reason to abstain; see mapping.js (representations are low-stakes suggestions, unlike the Action Router's effect-dominated policy).
     const result = resolveRepresentation({ ok: true, intent, confidence: 'medium' });
     expect(result).toEqual({ representation: INTENT_TO_REPRESENTATION[intent], source: 'mapped' });
   });

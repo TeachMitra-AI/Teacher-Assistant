@@ -1,15 +1,7 @@
-// The structured renderer — AI Learning Representation System, Phase C.
-//
-// Mirrors test/learningRepresentation/classifier.test.js in shape: `gemini`
-// is injected, no network, no key. Three things matter here specifically:
-//
-//   1. GROUNDING — the prompt tells the model to restructure the EXISTING
-//      answer, never to re-answer independently (ADR §11's hallucination
-//      mitigation).
-//   2. AN UNSUPPORTED REPRESENTATION NEVER REACHES GEMINI — the availability
-//      check in schemas.js short-circuits before any call is made.
-//   3. EVERY FAILURE BECOMES A REASON, per representation type, not just for
-//      one representative case.
+// The structured renderer. Like classifier.test.js: `gemini` is injected, with no network or key. Three things matter:
+//   1. Grounding: the prompt tells the model to restructure the existing answer, never re-answer independently.
+//   2. An unsupported representation never reaches Gemini: the availability check in schemas.js short-circuits first.
+//   3. Every failure becomes a reason, per representation type, not just one representative case.
 
 const { RENDER_SPECS, RENDERABLE_REPRESENTATION_IDS } = require('../../../src/learningRepresentation/rendering/schemas');
 const {

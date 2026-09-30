@@ -1,18 +1,8 @@
-// Teacher Attendance — see docs/feature-teacher-attendance-implementation-plan.md
-// and docs/attendance-plan-review.md (the policy decisions this file
-// implements).
-//
-// NOT to be confused with routes/classroom.js's student attendance
-// (SchoolClass/Student/AttendanceRecord) — that's a teacher marking THEIR
-// STUDENTS present/absent. This file is a teacher's own attendance,
-// reviewed by their school's Principal (role = school_admin).
-//
-// The one rule everything here follows (attendance-system-design.html §6):
-// the client sends only raw evidence (lat/lon/accuracy/device id) — never a
-// verdict — and the server always recomputes geofence distance and status
-// itself via lib/teacherAttendance.js. checkInSchema/checkOutSchema in
-// teacherAttendanceSchema.js have no field for a client-supplied "inside:
-// true" for exactly this reason.
+// Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md): a teacher's own check-in and
+// check-out, reviewed by their school's Principal (school_admin). Not routes/classroom.js's student attendance.
+// The client sends only raw evidence (lat/lon/accuracy/device id), never a verdict, and the server recomputes
+// geofence distance and status via lib/teacherAttendance.js. checkInSchema/checkOutSchema have no field for a
+// client-supplied "inside: true" for that reason.
 const express = require('express');
 
 const { prisma } = require('../lib/db');
@@ -52,9 +42,8 @@ function sanitizeFilenamePart(value) {
 }
 
 /**
- * Same rollout predicate shape as routes/classroom.js's
- * isWithinClassroomRollout: `enabled` is the gate, `allowedSchoolCodes` is a
- * FILTER on top of it (empty means every school).
+ * Same rollout predicate as routes/classroom.js's isWithinClassroomRollout: `enabled` is the gate and
+ * `allowedSchoolCodes` a filter on top (empty means every school).
  */
 async function isWithinTeacherAttendanceRollout(user, flags) {
   if (!flags.enabled) return false;
@@ -68,10 +57,8 @@ async function isWithinTeacherAttendanceRollout(user, flags) {
 }
 
 /**
- * Gate middleware — same shape as routes/classroom.js's
- * requireClassroomManagementEnabled: flags read LIVE (process.env), applied
- * per-route rather than router-wide (this router self-prefixes with
- * "/teacher-attendance/..." and mounts at the bare "/api" — see index.js).
+ * Gate middleware, like routes/classroom.js's requireClassroomManagementEnabled: flags are read live and applied
+ * per route, since this router mounts at the bare "/api" and self-prefixes "/teacher-attendance/..." (see index.js).
  */
 function requireTeacherAttendanceEnabled() {
   return asyncHandler(async (req, res, next) => {
@@ -88,25 +75,14 @@ function requireTeacherAttendanceEnabled() {
 const gate = [authRequired, requireTeacherAttendanceEnabled()];
 const adminGate = [authRequired, requireRole('school_admin'), requireTeacherAttendanceEnabled()];
 
-// ---- DTOs -------------------------------------------------------------------
+// DTOs
 
 /**
- * A teacher's own view of one day — evidence fields (raw GPS, device id) are
- * deliberately omitted. `record._count.reviews` (from an `include` on the
- * query that produced this row) tells deriveEffectiveStatus whether a
- * Principal has already resolved a missing-checkout day, so an approved/
- * corrected/leave-marked record doesn't keep reading as still-pending — see
- * deriveEffectiveStatus's own doc comment. A caller that just created a
- * review in the same request (the review-action route) can pass
- * `{ justReviewed: true }` instead of re-querying for the count.
- *
- * `reviewReason` surfaces the Principal's own typed reason (from the latest
- * TeacherAttendanceReview row, when the query's `include` loaded it as
- * `reviews`) — so a teacher looking at their History can see *why* a day
- * was resolved the way it was, not just the final status. `null` when the
- * day was never reviewed, or when the caller's query didn't load `reviews`
- * (the review-queue route never does, since those records are unreviewed
- * by definition).
+ * A teacher's own view of one day; raw GPS and device id are omitted. `record._count.reviews` (from the query's
+ * `include`) tells deriveEffectiveStatus whether a Principal already resolved a missing-checkout day. A caller that
+ * just created a review can pass `{ justReviewed: true }` instead of re-querying.
+ * `reviewReason` is the Principal's typed reason from the latest TeacherAttendanceReview (when `reviews` was loaded),
+ * so a teacher can see why a day was resolved; null if never reviewed or not loaded.
  */
 function attendanceToDto(record, { justReviewed = false } = {}) {
   const today = istDateString(new Date());
@@ -155,10 +131,8 @@ const NO_CONFIG_RESPONSE = {
 };
 
 /**
- * Is `now` a day this school doesn't expect anyone to check in at all — a
- * weekly off day (e.g. every Sunday) or a declared holiday? Checked before
- * check-in is allowed to even start, per the review doc's edge case: "a
- * declared holiday shouldn't ask anyone to check in."
+ * Is `now` a day the school expects no check-in at all (weekly off day or declared holiday)? Checked before
+ * check-in can start.
  * @returns {Promise<{code: string, message: string} | null>}
  */
 async function getNonWorkingDayReason(schoolId, now, config) {
@@ -173,7 +147,7 @@ async function getNonWorkingDayReason(schoolId, now, config) {
   return null;
 }
 
-// ---- Check-in / check-out ----------------------------------------------------
+// Check-in / check-out
 
 router.post(
   '/teacher-attendance/check-in',
@@ -204,11 +178,8 @@ router.post(
     const distance = distanceMeters(lat, lon, config.geofenceLat, config.geofenceLon);
     const withinGeofence = isWithinGeofence(distance, config);
 
-    // Redesigned behavior (docs/feature-teacher-attendance-implementation-plan.md
-    // §1.2/§4): too far or outside the check-in window is a hard block, not
-    // an allowed-but-flagged record. Nothing is written to TeacherAttendance
-    // for a blocked attempt — only a log entry, so there's still a record
-    // that someone tried, without a queue anyone has to process.
+    // Too far or outside the check-in window is a hard block, not a flagged record. Nothing is written to
+    // TeacherAttendance for a blocked attempt, only a log entry.
     if (!withinGeofence) {
       await logActivity({
         schoolId: req.user.schoolId,
@@ -298,13 +269,8 @@ router.post(
         .json({ error: 'You already checked out today.', attendance: attendanceToDto(existing) });
     }
 
-    // Checkout has no time-of-day gate at all, deliberately — unlike
-    // check-in (which still has an upper bound, checkinWindowEnd), a
-    // teacher physically at school can check out whenever they actually
-    // leave. Location is the only thing that can block it (below).
-    // earlyDepartureMinutes is still computed and recorded — it's real,
-    // useful information for Reports/History — it just no longer blocks
-    // the action itself.
+    // Checkout has no time-of-day gate, unlike check-in (upper bound checkinWindowEnd): a teacher at school can leave
+    // whenever, and only location can block it. earlyDepartureMinutes is still recorded for Reports/History.
     const earlyDeparture = computeEarlyDeparture(now, config);
 
     const { lat, lon, accuracyMeters, deviceId } = parsed.data;
@@ -331,10 +297,8 @@ router.post(
     const requiredMinutes = computeRequiredMinutes(config);
     const { dayStatus, shortfallMinutes } = deriveDayStatus(workingMinutes, requiredMinutes, config);
 
-    // A short working day (even an implausibly short one — check in,
-    // immediately check out) is recorded as exactly what it is — Half Day
-    // plus the real shortfallMinutes — never auto-escalated to a Principal
-    // review. It's a fact, not a violation (decision §1.6).
+    // A short day, even an implausibly short one, is recorded as Half Day with the real shortfallMinutes, never
+    // escalated to a Principal review. It's a fact, not a violation.
     const status = dayStatus === 'half_day' ? 'half_day' : 'present';
 
     const record = await prisma.teacherAttendance.update({
@@ -367,7 +331,7 @@ router.post(
   })
 );
 
-// ---- Own view -----------------------------------------------------------------
+// Own view
 
 router.get(
   '/teacher-attendance/today',
@@ -408,14 +372,9 @@ router.get(
 );
 
 /**
- * Today's counts across the whole school — the Principal's landing glance
- * on the Reports tab (docs/attendance-register-design.html §5): four
- * numbers, not a table, before any per-teacher detail. `absent` here is a
- * simple roster-size-minus-anyone-with-a-record count (present, half_day,
- * on_leave, on_duty, or flagged_review today all count as "not absent") —
- * intentionally not the same richer "filled-in calendar" absence logic
- * buildRows/summarizeRows use for a full month, since today's dashboard
- * just needs a fast, honest headline number.
+ * Today's counts across the school, the Principal's headline on the Reports tab (docs/attendance-register-design.html):
+ * four numbers, not a table. `absent` is roster size minus anyone with a record today, deliberately simpler than the
+ * month view's "filled-in calendar" absence logic.
  */
 router.get(
   '/teacher-attendance/today-summary',
@@ -446,14 +405,11 @@ router.get(
   })
 );
 
-// ---- Whole-school report (Principal) ---------------------------------------------
+// Whole-school report (Principal)
 
 /**
- * Every teacher's SUMMARY for one school+month, paginated — the list view
- * behind the Reports table. Deliberately summary-only, not full day-by-day
- * records: sending every teacher's full month up front doesn't scale past a
- * handful of teachers (docs/feature-teacher-attendance-implementation-plan.md
- * §7). A specific teacher's day-by-day detail is a separate call, below.
+ * Every teacher's summary for one school and month, paginated; the Reports table. Summary only, since sending
+ * every teacher's full month doesn't scale (docs/feature-teacher-attendance-implementation-plan.md). Day-by-day detail is the call below.
  */
 router.get(
   '/teacher-attendance/school-history',
@@ -575,11 +531,8 @@ router.get(
 );
 
 /**
- * One teacher's full day-by-day records for a month — the Reports
- * drill-down's detail fetch, split out from the list above so opening one
- * teacher never requires having loaded everyone else's daily detail too.
- * Registered after /school-history/export above so that literal path isn't
- * shadowed by this one's :userId param.
+ * One teacher's day-by-day records for a month, the Reports drill-down. Registered after /school-history/export so
+ * that literal path isn't shadowed by :userId.
  */
 router.get(
   '/teacher-attendance/school-history/:userId',
@@ -614,15 +567,9 @@ router.get(
   })
 );
 
-// ---- Corrections (Principal, on-demand) -----------------------------------------
-//
-// There is deliberately no review queue here anymore
-// (docs/feature-teacher-attendance-implementation-plan.md §1.7/§4) — nothing
-// auto-flags a day for approval, so there was nothing left to queue.
-// Corrections are reachable from any day in the Reports drill-down
-// (client/src/components/attendance/ReportsTab.tsx) instead of being gated
-// behind queue membership; the action endpoint below never checked queue
-// membership itself, so it's unchanged by that removal.
+// Corrections (Principal, on-demand)
+// There is no review queue: nothing auto-flags a day for approval. Corrections are reachable from any day in the
+// Reports drill-down (client/src/components/attendance/ReportsTab.tsx), and the action endpoint never checked queue membership.
 
 router.post(
   '/teacher-attendance/:id/review',
@@ -633,9 +580,7 @@ router.post(
       return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid review action.' });
     }
     const record = await prisma.teacherAttendance.findUnique({ where: { id: req.params.id } });
-    // Not-found and not-yours both 404, same convention as
-    // classroom.js/resources.js — a Principal never learns another school's
-    // record even exists.
+    // Missing and other-school's records both 404, so a Principal never learns another school's record exists.
     if (!record || record.schoolId !== req.user.schoolId) {
       return res.status(404).json({ error: 'Attendance record not found.' });
     }
@@ -658,11 +603,7 @@ router.post(
       updateData.checkInAt = new Date(correctedCheckInAt);
       const config = await getSchoolConfig(req.user.schoolId);
       if (config) {
-        // A corrected time is recorded the same way a normal check-in is —
-        // present, with however many minutes late that implies — never a
-        // flag, matching every other arrival everywhere else in this file
-        // (decision §1.6). "Outside the window" no longer has a distinct
-        // outcome once there's no queue for it to route into.
+        // A corrected time is recorded like a normal check-in: present, with the resulting late minutes, never a flag.
         const arrival = classifyArrival(updateData.checkInAt, config);
         updateData.lateMinutes = arrival.lateMinutes;
         updateData.status = 'present';
@@ -690,9 +631,7 @@ router.post(
       }
     }
 
-    // Append-only: the review row and the status change happen together, or
-    // not at all — never a status change with no matching audit entry.
-    // attendance-plan-review.md §11.
+    // Append-only: the review row and the status change happen together or not at all, so there's never a status change without an audit entry.
     const [review, updated] = await prisma.$transaction([
       prisma.teacherAttendanceReview.create({
         data: {
@@ -717,22 +656,17 @@ router.post(
     });
 
     res.json({
-      // The review row was just created in the transaction above, not
-      // re-fetched — feeding its reason in directly is simpler than a
-      // second round trip just to reload the same relation.
+      // The review row was just created in the transaction above; its reason is used directly rather than re-fetched.
       attendance: attendanceToDto({ ...updated, reviews: [{ reason }] }, { justReviewed: true }),
       review: { id: review.id, action: review.action },
     });
   })
 );
 
-// ---- School config -------------------------------------------------------------
+// School config
 
-// Readable by any authenticated teacher (not admin-only) — same "viewing
-// isn't sensitive, only editing is" shape as the holidays routes below. A
-// teacher needs their own school's weekly-off days and timings to make
-// sense of their own History tab (attendance-plan-review.md's Absent
-// computation needs it too — see client's HistoryTab.tsx).
+// Readable by any authenticated teacher: viewing isn't sensitive, only editing is (as with holidays). A teacher needs
+// their school's weekly-off days and timings to make sense of their History tab.
 router.get(
   '/teacher-attendance/school-config',
   ...gate,
@@ -766,7 +700,7 @@ router.put(
   })
 );
 
-// ---- Holidays ---------------------------------------------------------------
+// Holidays
 
 router.get(
   '/teacher-attendance/holidays',
@@ -817,9 +751,7 @@ router.put(
       return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid holiday.' });
     }
     const existing = await prisma.schoolHoliday.findUnique({ where: { id: req.params.id } });
-    // Not-found and not-yours both 404, same convention as everywhere else
-    // in this file — a Principal never learns another school's holiday even
-    // exists.
+    // Missing and other-school's holidays both 404, so a Principal never learns another school's holiday exists.
     if (!existing || existing.schoolId !== req.user.schoolId) {
       return res.status(404).json({ error: 'Holiday not found.' });
     }
@@ -848,23 +780,17 @@ router.delete(
   })
 );
 
-// ---- Activity log -----------------------------------------------------------
+// Activity log
 
-// Two kinds of event, genuinely different in how often a Principal cares
-// about them: TEACHER_ACTIONS is a specific person's own day (check-ins,
-// blocked attempts, reminders) — what this log exists for. ADMIN_ACTIONS
-// (settings/holiday edits, corrections) are administrative housekeeping
-// that can happen many times in a row while someone's mid-edit and would
-// otherwise bury the actual teacher activity in between them. Split out so
-// the client can filter by category instead of forcing one flat feed.
+// Two kinds of event. TEACHER_ACTIONS are a person's own day (check-ins, blocked attempts, reminders), which is what
+// this log is for. ADMIN_ACTIONS (settings, holiday edits, corrections) can repeat while someone is mid-edit and
+// would bury the teacher activity, so the client can filter by category.
 const TEACHER_ACTIONS = ['login', 'check_in', 'check_out', 'check_in_blocked', 'check_out_blocked', 'reminder_sent'];
 const ADMIN_ACTIONS = ['correction', 'mark_on_leave', 'mark_on_duty', 'holiday_changed', 'settings_changed'];
 
 /**
- * The "who → what → when → where → result" feed decision §1.10 requires.
- * Defaults to the last 7 days and never returns unbounded history — see
- * docs/feature-teacher-attendance-implementation-plan.md §7: this is the one
- * table with no natural ceiling, so it must never default to "everything."
+ * The "who, what, when, where, result" feed. Defaults to the last 7 days and never returns unbounded history: this
+ * table has no natural ceiling (docs/feature-teacher-attendance-implementation-plan.md).
  */
 router.get(
   '/teacher-attendance/activity-log',

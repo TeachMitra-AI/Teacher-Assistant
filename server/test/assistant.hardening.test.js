@@ -1,25 +1,13 @@
-// Milestone M9 — the cost and availability guards, end to end.
-//
-// The two new modules are unit-tested in test/assistant/budget.test.js and
-// test/assistant/breaker.test.js. What is checked HERE is everything that only
-// exists once they are WIRED: that the route reads them from app.locals, that
-// an exhausted budget and an open breaker both spend NO model call, that both
-// produce a passthrough rather than an error (G22), and — the point of the whole
-// amendment — that an open router breaker leaves POST /api/coach working.
-//
-// ─── HOW THE GUARDS ARE DRIVEN ─────────────────────────────────────────────
-// By replacing app.locals.assistantBudget / assistantBreaker for the duration of
-// a test and restoring afterwards. That is not a workaround for an untestable
-// design; it IS the design (approval A4) — the route resolves both per request
-// from app.locals precisely so they can be constructed elsewhere. Exhausting the
-// real 100-call budget over HTTP would be a slower test that proved less.
-//
-// ─── WHY THE LIMITER TEST BUILDS ITS OWN APP ───────────────────────────────
-// The suite runs with fileParallelism: false and shares one required
-// src/index.js per worker. Exhausting the shared app's limiter to see a 429
-// would poison every test file that runs after this one. So the limiter case
-// mounts the REAL factory (lib/limiters.js) on a throwaway Express app — which
-// is exactly why that factory exists.
+// The cost and availability guards, end to end. budget.js and breaker.js are unit-tested in test/assistant/; here it's
+// what only exists once they're wired: the route reads them from app.locals, an exhausted budget and an open breaker
+// both spend no model call, both produce a passthrough rather than an error, and an open router breaker leaves
+// POST /api/coach working.
+// The guards are driven by replacing app.locals.assistantBudget / assistantBreaker for a test and restoring them; the
+// route resolves both per request so they can be built elsewhere. Exhausting the real 100-call budget over HTTP would
+// be slower and prove less.
+// The limiter test builds its own app: the suite shares one required src/index.js per worker (fileParallelism:
+// false), and exhausting the shared limiter for a 429 would poison later files. It mounts the real factory
+// (lib/limiters.js) on a throwaway Express app.
 
 const express = require('express');
 const request = require('supertest');
@@ -105,13 +93,11 @@ beforeEach(() => {
   app.locals.assistantBreaker = savedBreaker;
 });
 
-// ---- the wiring itself ------------------------------------------------------
+// the wiring itself
 
 describe('the guards are wired', () => {
   test('the app constructs both and exposes them on app.locals', () => {
-    // If either is missing, the route falls back to the pipeline's permissive
-    // defaults and M9 silently does nothing — which would look exactly like a
-    // passing suite.
+    // If either is missing the route falls back to permissive defaults and the guards silently do nothing, which looks like a passing suite.
     expect(typeof savedBudget.consume).toBe('function');
     expect(typeof savedBreaker.isOpen).toBe('function');
   });
@@ -121,7 +107,7 @@ describe('the guards are wired', () => {
   });
 });
 
-// ---- per-user daily budget --------------------------------------------------
+// per-user daily budget
 
 describe('per-user daily budget (pipeline stage 7)', () => {
   beforeEach(() => enableAssistant());
@@ -202,7 +188,7 @@ describe('per-user daily budget (pipeline stage 7)', () => {
   });
 });
 
-// ---- the telemetry write bound (found by the M9 security review) ------------
+// the telemetry write bound
 
 describe('telemetry writes are bounded per user', () => {
   beforeEach(() => enableAssistant());
@@ -256,7 +242,7 @@ describe('telemetry writes are bounded per user', () => {
   });
 });
 
-// ---- CHANGE-8: the router yields to the coach -------------------------------
+// the router yields to the coach
 
 describe('the router breaker (CHANGE-8)', () => {
   beforeEach(() => enableAssistant());
@@ -286,9 +272,7 @@ describe('the router breaker (CHANGE-8)', () => {
 
     const res = await interpret({ utterance: 'make a class 5 fractions worksheet' });
 
-    // No tenth reason was introduced: the wire vocabulary is frozen and mirrored
-    // in the client's types.ts. `breakerOpen` on the decision log is what makes
-    // this case diagnosable.
+    // No new passthrough reason: the wire vocabulary is frozen and mirrored in the client's types.ts. `breakerOpen` on the decision log makes this case diagnosable.
     expect(res.body.reason).toBe('classifier_error');
     const { PASSTHROUGH_REASONS } = require('../src/assistant/contracts');
     expect(PASSTHROUGH_REASONS).toContain(res.body.reason);
@@ -316,9 +300,7 @@ describe('the router breaker (CHANGE-8)', () => {
   });
 
   test('a timeout does not trip the breaker', async () => {
-    // Only genuine upstream rate limiting counts. Treating every failure as
-    // quota pressure would make the router yield for reasons that have nothing
-    // to do with the Coach's quota.
+    // Only genuine upstream rate limiting counts; treating every failure as quota pressure would make the router yield for unrelated reasons.
     app.locals.assistantBreaker = createRouterBreaker({
       threshold: 2,
       windowMs: 60_000,
@@ -334,9 +316,7 @@ describe('the router breaker (CHANGE-8)', () => {
   });
 
   test('THE COACH KEEPS WORKING WHILE THE BREAKER IS OPEN', async () => {
-    // Invariant I12, and the reason CHANGE-8 exists at all. If this ever fails,
-    // the breaker has stopped protecting the thing it was built to protect and
-    // has started being an outage.
+    // If this fails the breaker has stopped protecting the Coach and become an outage.
     app.locals.assistantBreaker = openBreaker();
     const { mock } = mockGeminiFetch([geminiSuccess('Try think-pair-share for a large class.')]);
 
@@ -362,15 +342,12 @@ describe('the router breaker (CHANGE-8)', () => {
   });
 });
 
-// ---- the signal the breaker depends on --------------------------------------
+// the signal the breaker depends on
 
 describe('the rateLimited signal reaches the pipeline', () => {
   test('a real GeminiService reports rateLimited on an upstream 429', async () => {
-    // THE SEAM THE WHOLE BREAKER HANGS FROM. gemini.js is protected and is not
-    // modified, so the breaker reads `metrics.rateLimited` off the error the
-    // shared service already produces. If that field ever stopped being set, the
-    // breaker would never open and every unit test above would still pass — this
-    // is the case that would catch it.
+    // The seam the breaker hangs from: gemini.js isn't modified, so the breaker reads `metrics.rateLimited` off the error
+    // it already produces. If that stopped being set the breaker would never open and every unit test above would still pass.
     mockGeminiFetch([geminiRateLimited()]);
 
     const gemini = new GeminiService({
@@ -427,7 +404,7 @@ describe('the rateLimited signal reaches the pipeline', () => {
   });
 });
 
-// ---- the limiter on the generation endpoint ---------------------------------
+// the limiter on the generation endpoint
 
 describe('POST /api/resources/generate is rate limited', () => {
   test('the limiter is mounted on the real app', async () => {
@@ -442,8 +419,7 @@ describe('POST /api/resources/generate is rate limited', () => {
   });
 
   test('the limiter does not change the endpoint while healthy', async () => {
-    // No user-visible regression when limits are healthy: a malformed body is
-    // still the same 400 it was before M9.
+    // No user-visible regression when limits are healthy: a malformed body is still the same 400.
     const res = await request(app)
       .post('/api/resources/generate')
       .set('Authorization', `Bearer ${teacherToken}`)
@@ -453,9 +429,7 @@ describe('POST /api/resources/generate is rate limited', () => {
   });
 
   test('other /api/resources paths are NOT limited by it', async () => {
-    // The mount is on the generate path alone. If it ever widened to the whole
-    // resources router, library browsing would start consuming a generation
-    // budget.
+    // The mount is on the generate path alone; if it widened to the whole resources router, library browsing would use up a generation budget.
     const listed = await request(app)
       .get('/api/resources')
       .set('Authorization', `Bearer ${teacherToken}`);
@@ -479,16 +453,12 @@ describe('POST /api/resources/generate is rate limited', () => {
 
     const blocked = await request(limited).post('/generate');
     expect(blocked.status).toBe(429);
-    // The teacher reads a sentence, not a status code — client/src/api.ts
-    // surfaces this string through the Generator's existing error region, which
-    // is why no client change was needed.
+    // The teacher reads a sentence, not a status code: client/src/api.ts surfaces this string through the Generator's error region.
     expect(blocked.body.error).toMatch(/wait a few minutes/i);
   });
 
   test('the non-production default is generous enough for the test suite', () => {
-    // Load-bearing: resources.test.js drives this endpoint many times and is a
-    // PROTECTED file that must pass unmodified. If a tighter default is ever
-    // wanted, it belongs in production configuration — not here.
+    // resources.test.js drives this endpoint many times and mustn't need changing, so a tighter default belongs in production configuration, not here.
     expect(GENERATE_LIMIT_DEFAULTS.other).toBeGreaterThanOrEqual(600);
     expect(GENERATE_LIMIT_DEFAULTS.production).toBeLessThan(GENERATE_LIMIT_DEFAULTS.other);
   });

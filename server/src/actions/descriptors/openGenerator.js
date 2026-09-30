@@ -1,14 +1,5 @@
-// Capability descriptor: open_generator.
-//
-// Plain navigation — "open the generator", with nothing pre-filled. It exists
-// for two reasons beyond its own modest usefulness:
-//
-//   1. It gives the registry a second, structurally different action (no slots,
-//      a different effect class), so filtering, projection and validation are
-//      exercised against variety rather than a single shape.
-//   2. It is the natural landing place for an utterance that clearly means
-//      "take me to the generator" but names no topic — better than a
-//      half-filled form or a coaching answer about worksheets.
+// Capability descriptor: open_generator. Plain navigation with nothing pre-filled. It gives the registry a
+// structurally different action (no slots, another effect class) and a landing place for "take me to the generator".
 
 const { openGeneratorSchema } = require('../schemas/openGenerator');
 
@@ -19,10 +10,7 @@ const openGenerator = {
   status: 'active',
   domain: 'generator',
 
-  // 'read' — navigation only. Reversible, visible, and destroys nothing, which
-  // is why the policy is allowed to act on it directly rather than pre-filling
-  // and waiting. (Phase 1 still stops at 'prefill' for everything; the
-  // distinction starts mattering when the policy graduates.)
+  // 'read': navigation only; reversible and destroys nothing, so the policy may act on it directly.
   effect: 'read',
 
   // Empty means "any authenticated user" — the generator page itself is

@@ -1,15 +1,8 @@
-// The resolver (Milestone M4).
-//
-// Three things are being pinned here, in rising order of importance:
-//
-//   1. Precedence and provenance — utterance > memory > profile > default, with
-//      every value recording where it came from.
-//   2. The drop-don't-guess discipline — a value the action's own schema will
-//      not accept is dropped, never clamped, coerced or approximated.
-//   3. FIXTURE CONFORMANCE — the resolver reproduces the example payloads in
-//      the approved specification (§7.2), which live in
-//      test/helpers/assistantFixtures.js. This is the M2 precedent: a documented
-//      example that nothing asserts is how a spec quietly stops being true.
+// The resolver. Three things are pinned, in rising importance:
+//   1. Precedence and provenance: utterance > memory > profile > default, each value recording where it came from.
+//   2. Drop-don't-guess: a value the action's schema won't accept is dropped, never clamped, coerced or approximated.
+//   3. Fixture conformance: the resolver reproduces the spec's example payloads (test/helpers/assistantFixtures.js); a
+//      documented example nothing asserts is how a spec quietly stops being true.
 
 const { z } = require('zod');
 
@@ -30,10 +23,8 @@ const {
 const remember = (value, turn) => ({ value, source: 'utterance', turn });
 
 /**
- * A descriptor built for a case the live registry cannot produce — a `write`
- * action, or a slot with no TTL of its own. Constructing one here rather than
- * adding it to the registry is the point: Phase 1 must not contain a write
- * action, but the rules that protect against one have to be tested now.
+ * A descriptor for a case the live registry can't produce (a `write` action, or a slot with no TTL of its own).
+ * Built here so the rules that would protect against a write action are tested now.
  */
 function syntheticDescriptor({ effect = 'write', slots, schema }) {
   return {
@@ -115,10 +106,8 @@ describe('resolveSlots — precedence', () => {
 });
 
 describe('resolveSlots — tier 1b, deterministic recovery', () => {
-  // Recovery is a SECOND READER OF THE UTTERANCE, not a fifth source. It sits
-  // below the model (which saw the whole sentence) and above memory (which is a
-  // different, older turn), and it carries provenance 'utterance' because that
-  // is where the value actually came from.
+  // Recovery is a second reader of the utterance, not a fifth source: below the model (which saw the whole sentence)
+  // and above memory (an older turn), with provenance 'utterance' because that's where the value came from.
 
   test('a recovered value fills a slot the model left empty', () => {
     const result = resolveSlots({
@@ -133,9 +122,7 @@ describe('resolveSlots — tier 1b, deterministic recovery', () => {
   });
 
   test('the MODEL wins when both have a value', () => {
-    // Structural, not a rule someone has to remember: the recoverer is never
-    // even offered a slot the model filled, and tier 1b is unreachable once
-    // tier 1 has accepted.
+    // Structural: the recoverer is never offered a slot the model filled, so tier 1b is unreachable once tier 1 accepts.
     const result = resolveSlots({
       descriptor: generateAssessment,
       slots: { grade: 'class 9' },
@@ -148,9 +135,8 @@ describe('resolveSlots — tier 1b, deterministic recovery', () => {
   });
 
   test('RECOVERY BEATS MEMORY — a value said now outranks one remembered', () => {
-    // The precedence half that matters most. Ranking recovery under memory
-    // would reproduce the stale-prefill bug: the teacher says "class 5" and the
-    // form opens on last turn's class, badged "Remembered".
+    // The precedence half that matters most: ranking recovery under memory would reproduce the stale-prefill bug, where
+    // "class 5" opens on last turn's class badged "Remembered".
     const result = resolveSlots({
       descriptor: generateAssessment,
       recovered: { grade: 'Class 3-5' },
@@ -204,9 +190,7 @@ describe('resolveSlots — tier 1b, deterministic recovery', () => {
   });
 
   test('a recovered value the schema rejects is dropped, not forced in', () => {
-    // Same drop-don't-guess discipline as every other tier. Nothing upstream
-    // should be able to put an unacceptable value into params by routing it
-    // through recovery.
+    // Same drop-don't-guess as every other tier: nothing should be able to put an unacceptable value into params through recovery.
     const result = resolveSlots({
       descriptor: generateAssessment,
       recovered: { grade: 12345 },
@@ -232,9 +216,8 @@ describe('resolveSlots — tier 1b, deterministic recovery', () => {
   });
 
   test('recovery introduces NO new provenance value', () => {
-    // The public-contract guard. A recovered field must be indistinguishable
-    // from a model-extracted one on the wire, because the client mirrors this
-    // vocabulary and a stale PWA must not meet a value it has no branch for.
+    // The public-contract guard: a recovered field must look like a model-extracted one on the wire, since the client mirrors
+    // this vocabulary and a stale PWA mustn't meet a value it has no branch for.
     const result = resolveSlots({
       descriptor: generateAssessment,
       slots: { topic: 'Fractions' },
@@ -381,9 +364,7 @@ describe('resolveSlots — ambiguity and contradiction', () => {
 
 describe('resolveSlots — validation drops, never guesses', () => {
   test('an out-of-range question count falls back to the default', () => {
-    // Spec §7.4: questionCount 500 fails the schema, the slot is dropped, and
-    // the registry default of 10 is used. Clamping to 30 would look like the
-    // application had understood and agreed.
+    // questionCount 500 fails the schema, the slot is dropped and the registry default of 10 is used; clamping to 30 would look like agreement.
     const result = resolveSlots({
       descriptor: generateAssessment,
       slots: { questionCount: '500' },
@@ -394,7 +375,7 @@ describe('resolveSlots — validation drops, never guesses', () => {
   });
 
   test('a value outside a closed enum leaves the slot missing', () => {
-    // Spec §7.4: "test paper" is not a format. One chip question is the right
+    // "test paper" is not a format. One chip question is the right
     // outcome; a coin flip between quiz and worksheet is not.
     const result = resolveSlots({
       descriptor: generateAssessment,
@@ -510,10 +491,8 @@ describe('resolveSlots — the params object itself', () => {
 });
 
 describe('resolveSlots — conformance with the approved specification', () => {
-  // The fixtures are the spec's §7.2 example payloads, authored independently of
-  // this implementation. Reproducing them exactly is the strongest available
-  // evidence that the resolver does what was approved rather than what was
-  // convenient.
+  // The fixtures are the spec's example payloads, written independently of this implementation; reproducing them
+  // exactly is the strongest evidence the resolver does what was approved.
   test('reproduces the documented prefill payload', () => {
     const result = resolveSlots({
       descriptor: generateAssessment,
@@ -532,14 +511,9 @@ describe('resolveSlots — conformance with the approved specification', () => {
   });
 
   test('reproduces the documented ask payload', () => {
-    // `recovered` is what assistant/slotRecovery.js reads out of the spec
-    // example's own utterance, "a fractions worksheet FOR CLASS 5". The resolver
-    // is a pure merge and has no utterance to scan, so the stage above it is
-    // represented by its output — exactly as interpret.js supplies it.
-    //
-    // The memory entry is deliberately LEFT IN PLACE with the same value. It is
-    // no longer what fills the slot, and that is the assertion: recovery
-    // outranks memory, which is why the documented provenance is 'utterance'.
+    // `recovered` is what slotRecovery.js reads from the spec example's utterance, "a fractions worksheet FOR CLASS 5". The
+    // resolver is a pure merge with no utterance to scan, so the stage above it is represented by its output, as interpret.js supplies it.
+    // The memory entry stays in place with the same value on purpose: recovery outranks memory, so the documented provenance is 'utterance'.
     const result = resolveSlots({
       descriptor: generateAssessment,
       slots: { topic: 'Fractions' },

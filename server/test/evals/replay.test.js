@@ -1,27 +1,12 @@
-// THE CI GATE (Milestone M7a).
-//
-// Replays the complete corpus against recorded upstream responses and asserts
-// the promoted baseline exactly. Free, offline, deterministic, no API key.
-//
-// ─── WHAT THIS GATE MEASURES, AND WHAT IT DOES NOT ─────────────────────────
-// It measures the PIPELINE: that the code still turns the same model output into
-// the same decisions, slots, provenance and policy outcomes. It does NOT measure
-// the model, and a green run here is not evidence that the router is any good.
-// Spec §10.5 is right that a flaky paid gate gets disabled within a month; this
-// is the deterministic half it asks for, and the corpus and runner deliberately
-// live outside test/ so the paid half never becomes a PR blocker.
-//
-// ─── EXACT MATCH, NO TOLERANCE BAND ────────────────────────────────────────
-// Replay is deterministic, so any drift is a real behavioural change. A
-// tolerance band on a deterministic run only hides regressions. When a change is
-// intended, the SAME pull request re-promotes the baseline, so a reviewer sees
-// the code change and the number change together.
-//
-// ─── THE COMPLETE CORPUS, ALWAYS ───────────────────────────────────────────
-// No filtering, and `runCorpus` refuses `--filter` in replay mode outright. A
-// gate that can be narrowed is a gate that will be narrowed on the first
-// inconvenient morning, and a partial run reports metrics whose denominators
-// silently changed.
+// The CI gate. It replays the complete corpus against recorded upstream responses and asserts the promoted baseline
+// exactly: free, offline, deterministic, no API key.
+// It measures the pipeline (the code still turns the same model output into the same decisions, slots, provenance and
+// policy outcomes), not the model, and a green run isn't evidence the router is good. A flaky paid gate gets disabled
+// within a month, so this is the deterministic half, and the corpus and runner live outside test/ so the paid half never blocks a PR.
+// Exact match, no tolerance band: replay is deterministic, so any drift is a real change, and a band only hides
+// regressions. When a change is intended, the same pull request re-promotes the baseline so a reviewer sees both together.
+// Always the complete corpus: `runCorpus` refuses `--filter` in replay mode, since a gate that can be narrowed will
+// be, and a partial run reports metrics whose denominators silently changed.
 
 const fs = require('fs');
 const path = require('path');
@@ -31,9 +16,7 @@ const { loadCorpus } = require('../../evals/lib/loadCorpus');
 
 const { resolveActiveBaseline } = require('../../evals/lib/baselines');
 
-// 194 turns of pure arithmetic and in-memory lookups — no network, no database.
-// Given its own timeout anyway rather than relying on the 15 s default being
-// generous enough, so a slow machine fails honestly instead of flakily.
+// 194 turns of arithmetic and in-memory lookups. It has its own timeout rather than relying on the 15 s default, so a slow machine fails honestly instead of flakily.
 const TIMEOUT_MS = 60000;
 
 describe('replay CI gate', () => {
@@ -75,9 +58,8 @@ describe('replay CI gate', () => {
     }
   });
 
-  // Guards the M7a finding that the emergency short-circuit is English-only:
-  // the seven guard-tripping cases must cost ZERO upstream calls, which is the
-  // same evidence M5 used (a call count, not an assertion about intent).
+  // Guards the finding that the emergency short-circuit is English-only: the seven guard-tripping cases must cost zero
+  // upstream calls, evidenced by a call count, not an assertion about intent.
   test('guard-tripping emergency cases reach the classifier zero times', () => {
     const guarded = run.scored.filter(
       (entry) => entry.expected.passthroughReason === 'emergency_detected'
@@ -89,11 +71,9 @@ describe('replay CI gate', () => {
   });
 
   describe('against the ACTIVE baseline', () => {
-    // Resolved BY HASH, not by filename. M7b changes the prompt, which changes
-    // every cassette key, so the frozen M7a baseline cannot also be the thing CI
-    // asserts current code against — those are two different jobs (see
-    // evals/lib/baselines.js). A run finds the baseline describing the code it
-    // is running, and no match is a loud failure rather than a silent skip.
+    // Resolved by hash, not filename: later prompt changes alter every cassette key, so the frozen baseline can't also be
+    // what CI asserts current code against (see evals/lib/baselines.js). A run finds the baseline describing the code it
+    // runs, and no match is a loud failure, never a silent skip.
     let baseline;
 
     test('a baseline exists that describes the current prompt, descriptors and corpus', () => {

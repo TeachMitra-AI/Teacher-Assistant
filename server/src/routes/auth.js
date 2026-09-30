@@ -1,22 +1,10 @@
-// Authentication.
-//
-// Identity is the teacher's EMAIL, not their name — common names collide
-// within a single school, and email is also what Google hands back from a
-// verified ID token, so both sign-in methods key off the same field.
-//
-// The school code picks the tenant at sign-UP only, and is now OPTIONAL there
-// (the website's Register form no longer collects one — see
-// DEFAULT_REGISTRATION_SCHOOL_CODE below); a caller that still supplies one
-// (e.g. the mobile app) is placed at that school exactly as before. Sign-in
-// resolves an account by email alone, so a returning teacher never needs the
-// code; if one email happens to hold accounts at several schools, the client
-// is asked to choose one and re-submits with an explicit schoolId.
-//
-// New sign-ups are created `status: 'active'` and can sign in immediately.
-// statusGateError() below still enforces `pending`/`rejected` for any
-// existing account in one of those states (e.g. a manual admin action via
-// routes/admin.js) — the approval gate itself isn't removed, new accounts
-// just no longer start in it.
+// Authentication. Identity is the email, not the name: common names collide within a school, and Google returns
+// a verified email too, so both sign-in methods key off it.
+// The school code picks the tenant at sign-up only and is optional there (the website form doesn't collect it;
+// DEFAULT_REGISTRATION_SCHOOL_CODE applies). Sign-in resolves by email alone; if one email holds accounts at several
+// schools, the client is asked to choose and re-submits with an explicit schoolId.
+// New sign-ups are `active` and can sign in at once. statusGateError() still enforces `pending`/`rejected` for
+// accounts put in those states (e.g. by an admin through routes/admin.js).
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { z } = require('zod');
@@ -25,20 +13,15 @@ const { prisma } = require('../lib/db');
 const { asyncHandler } = require('../lib/asyncHandler');
 const { isUniqueConstraintError } = require('../lib/prismaErrors');
 const { sendPasswordResetEmail } = require('../lib/email');
-// Called through the module object rather than destructured, so the one
-// function that reaches out to Google stays substitutable from a test without
-// the route needing a seam of its own.
+// Called through the module object so a test can substitute the one function that reaches Google.
 const googleAuth = require('../lib/googleAuth');
 const { getEffectiveFeatureFlags } = require('../lib/systemSettings');
 const { readTeacherAttendanceFlags } = require('../lib/flags');
 const { logTeacherAttendanceActivity } = require('../lib/teacherAttendanceActivityLog');
 
-// Teacher Attendance's own activity log (decision §1.10 in
-// docs/feature-teacher-attendance-implementation-plan.md) — "login is not
-// attendance" (§1.1), but it's still one of the events that must be logged.
-// Gated the same way every teacher-attendance route gates itself, so a
-// school with the feature off never gets one of these rows. Shared by both
-// login paths below (password and Google) rather than duplicated.
+// Teacher Attendance's activity log: login isn't attendance but is still logged
+// (docs/feature-teacher-attendance-implementation-plan.md). Gated like every teacher-attendance route, so a school
+// with the feature off gets no rows. Shared by the password and Google login paths.
 async function logAttendanceLoginIfEnabled(user) {
   const flags = readTeacherAttendanceFlags(process.env);
   const withinRollout =
@@ -57,9 +40,8 @@ const {
 
 const router = express.Router();
 
-// Creates a new server-tracked refresh-token session and its paired access
-// token. Every login/register/refresh call goes through this so a session
-// can always be found and revoked later (Section 2 of the Phase 0 plan).
+// Creates a server-tracked refresh-token session and its paired access token. Every login, register and refresh
+// goes through this so a session can always be found and revoked.
 async function issueSession(user, req) {
   const refreshToken = generateRefreshToken();
   await prisma.session.create({
@@ -77,9 +59,7 @@ const MAX_ATTEMPTS = parseInt(process.env.LOGIN_MAX_ATTEMPTS || '5', 10);
 const LOCKOUT_MINUTES = parseInt(process.env.LOGIN_LOCKOUT_MINUTES || '15', 10);
 const RESET_TOKEN_TTL_MINUTES = parseInt(process.env.PASSWORD_RESET_TTL_MINUTES || '60', 10);
 
-// Emails are trimmed and lower-cased before validation, so the address a
-// teacher types is matched the same way however they capitalize it. The stored
-// value is always the normalized one.
+// Emails are trimmed and lower-cased before validation so matching is case-insensitive; the stored value is the normalized one.
 const emailField = z
   .string()
   .trim()
@@ -93,15 +73,12 @@ const newPasswordField = z
   .min(8, 'Password must be at least 8 characters.')
   .max(72, 'Password must be at most 72 characters.');
 
-// Verifying an EXISTING password deliberately doesn't apply the length rule
-// above: rules belong on the path that sets a password, and applying them here
+// Verifying an existing password skips the length rule: rules belong on the path that sets one, and applying them here
 // would turn a wrong-password 401 into a confusing 400.
 const existingPasswordField = z.string().min(1, 'Enter your password.').max(72);
 
 const registerSchema = z.object({
-  // Optional: the website Register form no longer collects one (see
-  // DEFAULT_REGISTRATION_SCHOOL_CODE). A caller that still sends a real code
-  // (the mobile app) is placed at that school exactly as before.
+  // Optional: the website form doesn't send one (see DEFAULT_REGISTRATION_SCHOOL_CODE); a caller that sends a real code (the mobile app) is placed at that school.
   schoolCode: z.string().trim().min(1).max(40).optional(),
   name: z.string().trim().min(2).max(60),
   email: emailField,
@@ -119,19 +96,14 @@ const loginSchema = z.object({
 // email, wrong password, or a Google-only account with no local password.
 const INVALID_CREDENTIALS = 'Incorrect email or password.';
 
-// Shared by /register and /google's sign-up branch, both for their normal
-// check-then-create conflict AND for the P2002 a concurrent duplicate
-// registration can still race into (Finding #4) — same outcome either way,
-// so the wording must stay identical between the two paths.
+// Shared by /register and /google sign-up, for the normal conflict check and for the P2002 a concurrent duplicate can
+// still hit. The wording must be identical on both paths.
 const EMAIL_ALREADY_REGISTERED = 'An account with this email already exists at this school. Please sign in instead.';
 
 const RESPONSE_STYLES = ['balanced', 'concise', 'detailed', 'step_by_step', 'practical'];
 
-// Site-wide defaults for the quiz/worksheet exam-paper letterhead (Phase 3 of
-// the quiz/worksheet generator rework). Purely presentational teacher input —
-// never sent to Gemini — so it's validated here only to keep the stored JSON
-// well-formed, not for any AI-safety reason. Per-resource overrides live in
-// Resource.structured (see server/src/routes/resources.js), not here.
+// Site-wide defaults for the exam-paper letterhead. Presentational teacher input, never sent to Gemini, so it's
+// validated only to keep the stored JSON well-formed. Per-resource overrides live in Resource.structured (routes/resources.js).
 const examPaperDefaultsSchema = z
   .object({
     schoolName: z.string().trim().max(120).optional(),
@@ -142,13 +114,9 @@ const examPaperDefaultsSchema = z
   })
   .strict();
 
-// First-run onboarding state (Phase 0 of the onboarding rework). Purely a
-// record of what onboarding surfaces the teacher has already seen/dismissed so
-// they aren't re-shown across devices — no AI or presentational payload. Rides
-// the same preferences JSON blob as examPaperDefaults, so no new table/migration
-// is needed. `dismissedTips` is an open-ended list of scoped tip ids future
-// phases append to; kept a flat string[] on purpose so a new tip needs no
-// schema change, only a new id.
+// First-run onboarding state: which onboarding surfaces the teacher has seen or dismissed, so they aren't re-shown
+// across devices. Rides the same preferences JSON as examPaperDefaults, so no migration. `dismissedTips` is a flat
+// string[] so a new tip needs only a new id.
 const onboardingSchema = z
   .object({
     seenWelcomeIntro: z.boolean().optional(),
@@ -185,16 +153,12 @@ function normalizeCode(code) {
   return code.trim().toUpperCase();
 }
 
-// The school a sign-up is placed at when the caller supplies no schoolCode
-// (the website's Register form, since it no longer asks for one). Must name
-// an existing School — chosen because it already has a school_admin in place
-// to review new pending accounts.
+// The school a sign-up lands at when no schoolCode is supplied. It must name an existing School, and this one
+// already has a school_admin to review new accounts.
 const DEFAULT_REGISTRATION_SCHOOL_CODE = 'RAMPUR01';
 
-// The approval gate, shared by both sign-in methods so email+password and
-// Google can never drift apart on who is allowed in. Returns the error code to
-// send with a 403, or null when the account may proceed. These strings are a
-// contract the client branches on, not display copy.
+// The approval gate shared by both sign-in methods so they can't drift on who may enter. Returns the error code
+// for a 403, or null if the account may proceed. The strings are a contract the client branches on, not display copy.
 function statusGateError(user) {
   if (user.status === 'pending') return 'pending_approval';
   if (user.status === 'rejected') return 'registration_rejected';
@@ -211,16 +175,10 @@ function parsePreferences(raw) {
   }
 }
 
-// avatarUrl is a path relative to the API root (matching every path the
-// client already passes to api(), e.g. '/auth/me') — the client prepends its
-// own API_BASE when rendering it in an <img> tag, since <img> requests never
-// go through the api() fetch wrapper (no Authorization header to attach
-// anyway; see routes/avatar.js for why the serving route is public).
-// Versioned by the picture's own updatedAt so the URL changes whenever the
-// photo changes, which is what makes the aggressive immutable Cache-Control
-// on that route safe. Requires the caller to have loaded
-// `profilePicture: { select: { updatedAt: true } }` alongside `school` —
-// never `data`, which this DTO must never carry.
+// avatarUrl is relative to the API root; the client prepends API_BASE, since <img> requests don't go through the
+// api() wrapper (routes/avatar.js explains why serving is public). It's versioned by the picture's updatedAt so the
+// URL changes with the photo, which makes the immutable Cache-Control safe. The caller must load
+// `profilePicture: { select: { updatedAt: true } }` with `school`, never `data`.
 function publicUser(user, school) {
   return {
     id: user.id,
@@ -237,14 +195,9 @@ function publicUser(user, school) {
   };
 }
 
-// POST /api/auth/register — first-time teacher sign-up. Issues NO session
-// itself: the account is created `active`, but this endpoint only reports
-// that status back — the client signs the teacher in with a separate
-// /auth/login call using the same credentials.
-//
-// schoolCode is optional (see registerSchema): a caller that supplies one is
-// placed at that school; a caller that doesn't (the website form) is placed
-// at DEFAULT_REGISTRATION_SCHOOL_CODE automatically.
+// POST /api/auth/register: first-time teacher sign-up. Issues no session; the account is created `active` and the
+// client signs in separately via /auth/login. schoolCode is optional (see registerSchema): with none, the account
+// goes to DEFAULT_REGISTRATION_SCHOOL_CODE.
 router.post('/register', asyncHandler(async (req, res) => {
   const parsed = registerSchema.safeParse(req.body || {});
   if (!parsed.success) {
@@ -276,9 +229,7 @@ router.post('/register', asyncHandler(async (req, res) => {
       data: { schoolId: school.id, name, email, passwordHash, role: 'teacher', status: 'active' },
     });
   } catch (err) {
-    // Two concurrent registrations for the same email at the same school can
-    // both pass the findUnique check above before either creates — the loser
-    // hits the schoolId_email unique constraint here instead (Finding #4).
+    // Two concurrent registrations for the same email and school can both pass the findUnique check; the loser hits the schoolId_email constraint here.
     if (isUniqueConstraintError(err)) {
       return res.status(409).json({ error: EMAIL_ALREADY_REGISTERED });
     }
@@ -288,12 +239,8 @@ router.post('/register', asyncHandler(async (req, res) => {
   return res.status(201).json({ status: 'active' });
 }));
 
-// POST /api/auth/login — returning teacher/admin sign-in with email +
-// password. No school code: the account is found by email across every
-// school. That lookup is intentionally non-unique, because the same address
-// could hold accounts at more than one school — when it matches several, the
-// client gets a school picker instead of a session and re-submits with an
-// explicit `schoolId`.
+// POST /api/auth/login: sign-in with email and password. No school code: the account is found by email across all
+// schools. If several match, the client gets a school picker and re-submits with an explicit `schoolId`.
 router.post('/login', asyncHandler(async (req, res) => {
   const parsed = loginSchema.safeParse(req.body || {});
   if (!parsed.success) {
@@ -325,9 +272,7 @@ router.post('/login', asyncHandler(async (req, res) => {
     return res.status(423).json({ error: `Too many attempts. Try again in ${minutes} minute(s).` });
   }
 
-  // A Google-only account has no local password to compare against. Treated as
-  // a plain credential failure so this response can't be used to tell a
-  // Google-only account apart from a nonexistent one.
+  // A Google-only account has no password. Treated as a plain credential failure so the response can't distinguish it from a nonexistent account.
   const ok = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
   if (!ok) {
     const failed = user.failedLoginCount + 1;
@@ -345,10 +290,8 @@ router.post('/login', asyncHandler(async (req, res) => {
     return res.status(401).json({ error: INVALID_CREDENTIALS });
   }
 
-  // Approval gate. Checked only after the password is proven, so an account's
-  // pending/rejected state is never disclosed to someone who doesn't hold the
-  // credential. These two error codes are contract, not prose — the client
-  // switches to a dedicated screen on each.
+  // Approval gate, checked only after the password is proven so a pending/rejected state isn't disclosed to someone
+  // without the credential. The two error codes are contract: the client shows a dedicated screen for each.
   const statusError = statusGateError(user);
   if (statusError) return res.status(403).json({ error: statusError });
 
@@ -369,10 +312,8 @@ router.post('/login', asyncHandler(async (req, res) => {
 
 const googleAuthSchema = z.object({
   idToken: z.string().trim().min(20).max(4096),
-  // Either one supplied => this is a sign-UP. schoolCode (when present) picks
-  // the tenant, same as /register. `signup` is the website's no-code path —
-  // it no longer collects a schoolCode, so it sends this instead and the
-  // account lands at DEFAULT_REGISTRATION_SCHOOL_CODE. Neither => sign-in.
+  // Either field makes this a sign-up. schoolCode picks the tenant (as in /register); `signup` is the website's
+  // no-code path and lands at DEFAULT_REGISTRATION_SCHOOL_CODE. Neither means sign-in.
   schoolCode: z.string().trim().min(1).max(40).optional(),
   signup: z.boolean().optional(),
   // Display name from the sign-up form. Purely presentational; if omitted, the
@@ -382,17 +323,10 @@ const googleAuthSchema = z.object({
   schoolId: z.string().trim().min(1).max(40).optional(),
 });
 
-// POST /api/auth/google — one endpoint for both Google sign-up and Google
-// sign-in, branching on whether a schoolCode or a signup flag was supplied.
-// It's a fully parallel alternative to email+password, not a replacement: the
-// two share the same User rows, the same approval gate, and the same
-// issueSession().
-//
-// Identity comes from Google's verified `sub`, not from the email in the
-// request body. Signing in is matched on `sub` alone — deliberately NOT on
-// email — so a Google token can never be used to take over an account created
-// with a password. (Linking a Google identity onto an existing manual account
-// is a separate feature, out of scope here.)
+// POST /api/auth/google: Google sign-up and sign-in in one endpoint, branching on whether a schoolCode or signup
+// flag was supplied. It shares User rows, the approval gate and issueSession() with email+password.
+// Identity comes from Google's verified `sub`, not the request body. Sign-in matches on `sub` only, never email, so a
+// Google token can't take over an account created with a password. Linking Google to an existing account is out of scope.
 router.post('/google', asyncHandler(async (req, res) => {
   if (!googleAuth.isGoogleAuthConfigured()) {
     return res.status(503).json({ error: 'google_not_configured' });
@@ -440,9 +374,7 @@ router.post('/google', asyncHandler(async (req, res) => {
       await prisma.user.create({
         data: {
           schoolId: school.id,
-          // Google's profile name is a reasonable default, but the sign-up form's
-          // value wins when present. Falls back to the local part of the address
-          // so `name` is never blank.
+          // Google's profile name is a default; the sign-up form's value wins. Falls back to the email's local part so `name` is never blank.
           name: name || identity.name || identity.email.split('@')[0],
           email: identity.email,
           googleSub: identity.sub,
@@ -451,11 +383,7 @@ router.post('/google', asyncHandler(async (req, res) => {
         },
       });
     } catch (err) {
-      // Same race as /register above: two concurrent sign-ups for the same
-      // email at the same school can both pass the findFirst check before
-      // either creates (Finding #4). googleSub has no unique constraint of
-      // its own (only an index), so this can only ever be the email side of
-      // schoolId_email.
+      // Same concurrent-sign-up race as /register. googleSub has only an index, so this can only be the schoolId_email constraint.
       if (isUniqueConstraintError(err)) {
         return res.status(409).json({ error: EMAIL_ALREADY_REGISTERED });
       }
@@ -511,15 +439,9 @@ const resetPasswordSchema = z.object({
   password: newPasswordField,
 });
 
-// POST /api/auth/forgot-password — start a self-service password reset.
-//
-// The response is byte-identical whether or not the address has an account, so
-// this endpoint can't be used to discover who is registered. Rate limiting
-// comes from the /api/auth-wide authLimiter in index.js.
-//
-// A reset token follows the same rules as a refresh token: generated from a
-// CSPRNG, and only its SHA-256 hash is stored, so the database never holds
-// anything replayable.
+// POST /api/auth/forgot-password: start a self-service reset. The response is identical whether or not the address
+// has an account, so it can't reveal who is registered; rate limiting comes from authLimiter in index.js.
+// The reset token is CSPRNG-generated and only its SHA-256 hash is stored, like a refresh token.
 router.post('/forgot-password', asyncHandler(async (req, res) => {
   const parsed = forgotPasswordSchema.safeParse(req.body || {});
   // A malformed address is a client-side format problem, not a statement about
@@ -529,9 +451,8 @@ router.post('/forgot-password', asyncHandler(async (req, res) => {
   }
   const { email } = parsed.data;
 
-  // Only accounts that could actually sign in are resettable. A pending or
-  // rejected sign-up has no session to restore, and a Google-only account has
-  // no password to replace.
+  // Only accounts that could sign in are resettable: a pending or rejected sign-up has no session to restore, and a
+  // Google-only account has no password to replace.
   const users = await prisma.user.findMany({
     where: { email, status: 'active', passwordHash: { not: null } },
     include: { school: true },
@@ -570,24 +491,16 @@ router.post('/forgot-password', asyncHandler(async (req, res) => {
   return res.json({ ok: true });
 }));
 
-// POST /api/auth/reset-password — redeem a reset token and set a new password.
-//
-// Every existing session is revoked on success. A password reset is a
-// credential change, and whoever prompted it may not be the person holding the
-// old sessions — this mirrors the reuse-detection precedent in /auth/refresh,
-// which also revokes everything when a credential looks compromised.
+// POST /api/auth/reset-password: redeem a token and set a new password. Every session is revoked on success, since
+// a credential change means whoever holds the old sessions may not be the owner (like reuse detection in /auth/refresh).
 router.post('/reset-password', asyncHandler(async (req, res) => {
-  // Unknown, already-redeemed, expired and malformed tokens are all reported
-  // the same way — there's nothing useful a caller could do with the
-  // distinction, and the person holding a truncated link can't tell it from an
-  // expired one anyway.
+  // Unknown, redeemed, expired and malformed tokens all get the same response; the caller can't act on the difference.
   const invalid = { error: 'This reset link is invalid or has expired. Please request a new one.' };
 
   const parsed = resetPasswordSchema.safeParse(req.body || {});
   if (!parsed.success) {
-    // A bad password IS actionable ("at least 8 characters"), so that message
-    // is kept. A bad token is not, so it gets the message above rather than
-    // raw schema text like "expected string to have >=20 characters".
+    // A bad password is actionable ("at least 8 characters") so that message is kept; a bad token gets the generic one
+    // instead of raw schema text.
     const passwordIssue = parsed.error.issues.find((issue) => issue.path[0] === 'password');
     return res.status(400).json(passwordIssue ? { error: passwordIssue.message } : invalid);
   }
@@ -603,9 +516,8 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, 10);
   await prisma.$transaction([
-    // Clearing the lockout counters matters: a teacher who locked themselves
-    // out by guessing is exactly who reaches for "forgot password", and they
-    // shouldn't hit a 423 immediately after successfully resetting.
+    // Clear the lockout counters: someone who locked themselves out guessing is who uses "forgot password", and they
+    // shouldn't hit a 423 right after a successful reset.
     prisma.user.update({
       where: { id: record.userId },
       data: { passwordHash, failedLoginCount: 0, lockedUntil: null },
@@ -623,11 +535,9 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
   return res.json({ ok: true });
 }));
 
-// POST /api/auth/refresh — exchange a still-valid refresh token for a new
-// access+refresh pair. Rotates the refresh token on every call: the old one
-// is marked revoked (and linked via replacedBy) so it can never be used
-// again. Presenting an already-revoked token is treated as likely theft and
-// revokes every session the user has, forcing a fresh login everywhere.
+// POST /api/auth/refresh: exchange a valid refresh token for a new access+refresh pair. It rotates the token every
+// time: the old one is revoked (linked via replacedBy) and can't be reused. Presenting an already-revoked token is
+// treated as likely theft and revokes all the user's sessions.
 const refreshSchema = z.object({ refreshToken: z.string().min(20) });
 
 router.post('/refresh', asyncHandler(async (req, res) => {
@@ -675,21 +585,11 @@ router.post('/refresh', asyncHandler(async (req, res) => {
   });
 }));
 
-// POST /api/auth/logout — revoke one refresh-token session, and (Phase 7b)
-// unregister one push device token in the same call. Always returns success
-// even if either token was already gone, so the client can clear its local
-// storage unconditionally without special-casing the response.
-//
-// `deviceToken` is deliberately scoped through the SESSION the refreshToken
-// identifies, not through a bearer access token — logout already only
-// requires the refresh token (no Authorization header), and reusing that
-// same credential to look up `userId` keeps this route's own ownership
-// contract (never delete a device token that doesn't belong to whoever is
-// logging out) without adding a second auth path. If the refresh token is
-// missing/already revoked, there is no `userId` to attribute the device
-// token to, so it is left alone — deviceToken cleanup with no valid session
-// is silently skipped rather than deleted unowned (mirrors how a missing
-// refreshToken already silently skips session revocation above).
+// POST /api/auth/logout: revoke one refresh-token session and unregister one push device token in the same call.
+// Always succeeds, even if either token is already gone, so the client can clear local storage unconditionally.
+// `deviceToken` is scoped through the session the refreshToken identifies (logout has no Authorization header), so a
+// device token is never deleted for someone else. With no valid session there's no userId, and the device token is
+// left alone.
 router.post('/logout', asyncHandler(async (req, res) => {
   const refreshToken = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken : null;
   const deviceToken = typeof req.body?.deviceToken === 'string' ? req.body.deviceToken : null;
@@ -722,9 +622,7 @@ router.get('/sessions', authRequired, asyncHandler(async (req, res) => {
   return res.json({ sessions });
 }));
 
-// DELETE /api/auth/sessions/:id — revoke one of the caller's own sessions
-// (e.g. "sign out of another device"). Ownership-checked the same way
-// routes/queries.js checks a query's userId.
+// DELETE /api/auth/sessions/:id: revoke one of the caller's own sessions (e.g. "sign out of another device"). Ownership-checked like routes/queries.js.
 router.delete('/sessions/:id', authRequired, asyncHandler(async (req, res) => {
   const session = await prisma.session.findUnique({ where: { id: req.params.id } });
   if (!session || session.userId !== req.user.id) {
@@ -744,9 +642,8 @@ router.get('/me', authRequired, asyncHandler(async (req, res) => {
   return res.json({ user: publicUser(user, user.school), featureFlags: await getEffectiveFeatureFlags() });
 }));
 
-// PATCH /api/auth/me — update the caller's own display name and/or preferences.
-// `email` is the identity key and `name` is what admins see in the Manage
-// table, so neither is editable here — only the display name is.
+// PATCH /api/auth/me: update the caller's display name and/or preferences. `email` is the identity key and `name`
+// is what admins see in Manage, so neither is editable here.
 router.patch('/me', authRequired, asyncHandler(async (req, res) => {
   const parsed = profileSchema.safeParse(req.body || {});
   if (!parsed.success) {
@@ -777,13 +674,8 @@ router.patch('/me', authRequired, asyncHandler(async (req, res) => {
   return res.json({ user: publicUser(updated, updated.school) });
 }));
 
-// PATCH /api/auth/me/password — change the caller's own password after
-// verifying the current one. This is the signed-in path; a teacher who has
-// forgotten their password uses /forgot-password instead.
-//
-// Unlike a reset, existing sessions are deliberately left alone: the caller
-// already proved they hold the current password, so signing them out of their
-// own other devices would be surprising rather than protective.
+// PATCH /api/auth/me/password: change the caller's password after verifying the current one. Unlike a reset, other
+// sessions are left alone: the caller just proved they hold the password. Someone who forgot it uses /forgot-password.
 router.patch('/me/password', authRequired, asyncHandler(async (req, res) => {
   const parsed = passwordChangeSchema.safeParse(req.body || {});
   if (!parsed.success) {
@@ -811,10 +703,6 @@ router.patch('/me/password', authRequired, asyncHandler(async (req, res) => {
 }));
 
 module.exports = router;
-// Attached to the router function so routes/avatar.js can build the same
-// user DTO after an upload/remove (it responds with { user: publicUser(...) }
-// exactly like PATCH /me does) without duplicating the shape. index.js's
-// `app.use('/api/auth', ..., authRouter)` is unaffected — Express only cares
-// that the export is callable as middleware, and an extra own property on a
-// function is invisible to it.
+// Attached to the router so routes/avatar.js can build the same user DTO after an upload or remove without duplicating
+// it. Express only needs the export to be callable as middleware, so the extra property is invisible to it.
 module.exports.publicUser = publicUser;

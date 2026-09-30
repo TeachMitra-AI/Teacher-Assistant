@@ -1,14 +1,7 @@
-// Milestone M2 — GET /api/assistant/catalog, end to end.
-//
-// The registry's own logic is unit-tested in test/actions/registry.test.js.
-// What is checked here is the HTTP surface: authentication, the rollout gates,
-// and — most importantly — that switching the assistant off leaves the endpoint
-// inert rather than broken, because "not enabled for you" is a normal state and
-// not a failure.
-//
-// Flags are manipulated through process.env and restored afterwards. The route
-// reads them per request, so this works against the single shared app instance
-// without rebuilding it.
+// GET /api/assistant/catalog, end to end. The registry's logic is unit-tested in test/actions/registry.test.js; here it's
+// the HTTP surface: authentication, the rollout gates, and that switching the assistant off leaves the endpoint inert
+// rather than broken, since "not enabled for you" is a normal state.
+// Flags are set through process.env and restored afterwards; the route reads them per request, so this works against the shared app.
 
 const request = require('supertest');
 
@@ -16,7 +9,7 @@ const { app, prisma } = require('./helpers/testApp');
 const { createFixtures } = require('./helpers/fixtures');
 const { loginAs } = require('./helpers/auth');
 const { CATALOG_VERSION } = require('../src/actions/registry');
-// The example payloads published in docs/ai-action-router-phase1-spec.md §7.1.
+// The example payloads published in docs/ai-action-router-phase1-spec.md.
 // Named distinctly from the database `fixtures` below, which are unrelated.
 const contractFixtures = require('./helpers/assistantFixtures');
 const { setRoleListSetting, ASSISTANT_ALLOWED_ROLES_SETTING_KEY } = require('../src/lib/systemSettings');
@@ -185,14 +178,9 @@ describe('GET /api/assistant/catalog — enabled', () => {
 
 describe('GET /api/assistant/catalog — matches the documented contract', () => {
   test('the live endpoint returns exactly what the specification documents', async () => {
-    // test/helpers/assistantFixtures.js holds the example payload published in
-    // docs/ai-action-router-phase1-spec.md §7.1. Without this assertion the
-    // registry and the documented contract are two independent declarations of
-    // the same capabilities, free to drift — a spec that quietly stops being
-    // true is worse than no spec, because people still trust it.
-    //
-    // Compared with toEqual, which ignores property order: the ORDER of keys in
-    // a JSON object is not part of the contract, but every key and value is.
+    // test/helpers/assistantFixtures.js holds the example payload published in docs/ai-action-router-phase1-spec.md.
+    // Without this assertion the registry and the documented contract could drift apart. toEqual ignores property
+    // order, which isn't part of the contract; every key and value is.
     enableAssistant();
 
     const res = await request(app)
@@ -266,10 +254,8 @@ describe('GET /api/assistant/catalog — rollout gates', () => {
 
 describe('GET /api/assistant/catalog — Admin Settings > AI Access override precedence', () => {
   afterEach(async () => {
-    // Cleans up what these tests write directly via setRoleListSetting — the
-    // shared beforeEach's clearAssistantEnv() only resets env vars, so a
-    // leftover SystemSetting row here would otherwise leak into a later test
-    // in this file that assumes ASSISTANT_ALLOWED_ROLES alone governs.
+    // Cleans up rows written via setRoleListSetting: the shared beforeEach's clearAssistantEnv() resets only env vars, so a
+    // leftover SystemSetting row would leak into a later test that assumes ASSISTANT_ALLOWED_ROLES alone governs.
     await prisma.systemSetting.deleteMany({ where: { key: ASSISTANT_ALLOWED_ROLES_SETTING_KEY } });
   });
 
@@ -343,20 +329,9 @@ describe('GET /api/assistant/catalog — additive only', () => {
     expect(res.status).toBe(404);
   });
 
-  // AMENDED AT M5, with approval, and recorded in the living README §9.
-  //
-  // This was written at M2 as `POST /api/assistant/interpret does not exist yet
-  // (arrives in M5)`, asserting a 404. M5 built the endpoint, so the assertion
-  // became false by design rather than by regression — its own name scheduled
-  // its own expiry.
-  //
-  // Editing an inherited test is a blocking review item (G26, protected area
-  // #12) and was therefore raised and approved rather than done quietly. What
-  // it guarded — that mounting this router exposes the surface the milestone
-  // intended AND NOTHING ELSE — is still worth guarding, so the assertion was
-  // rewritten to pin the current surface rather than deleted. It is now
-  // strictly stronger than the version it replaces: an unplanned third endpoint
-  // would fail it, which the 404 check never covered.
+  // This started as a check that POST /api/assistant/interpret returned 404 before it existed, and became false by
+  // design when the endpoint was built. It now pins the current surface instead of being deleted, so it guards that
+  // mounting this router exposes the intended surface and nothing else, and an unplanned extra endpoint fails it.
   test('the assistant exposes exactly the M5 surface, and nothing more', async () => {
     enableAssistant();
     const auth = { Authorization: `Bearer ${teacherToken}` };

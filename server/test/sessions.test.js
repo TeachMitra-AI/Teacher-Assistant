@@ -32,13 +32,9 @@ describe('session / refresh-token revocation', () => {
   });
 
   test('refresh rotates the token: old refresh token is marked revoked, new one works', async () => {
-    // Note: we deliberately do NOT re-present the old (rotated-out) token
-    // via a second /refresh call here — doing so is exactly the "theft"
-    // signal covered by the next test, and it has the side effect of
-    // revoking every session for the user, which would make the "new token
-    // still works" assertion below fail for reasons unrelated to rotation
-    // itself. So the "old token is now dead" half of this is checked
-    // directly against the database instead.
+    // The old (rotated-out) token isn't re-presented via a second /refresh here: that's the "theft" signal covered by the
+    // next test and revokes every session, which would make the "new token still works" assertion fail for unrelated
+    // reasons. So "the old token is now dead" is checked against the database instead.
     const { hashToken } = require('../src/middleware/auth');
     const first = await login(fx.teacherA2);
 

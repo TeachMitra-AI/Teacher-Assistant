@@ -1,8 +1,6 @@
-// GeminiService's optional multimodal `attachments` extension (server/src/gemini.js).
-// Verifies the inlineData parts are added correctly for one or many files —
-// all in the SAME contents block, in a SINGLE call — and — just as
-// importantly — that every existing caller which never passes `attachments`
-// sees byte-for-byte the same request shape as before this feature existed.
+// GeminiService's optional multimodal `attachments` extension (server/src/gemini.js). Verifies inlineData parts are
+// added for one or many files, all in the same contents block in a single call, and that callers that never pass
+// `attachments` see the same request shape as before.
 const { GeminiService } = require('../src/gemini');
 const { mockGeminiFetch, geminiSuccess } = require('./helpers/geminiMock');
 

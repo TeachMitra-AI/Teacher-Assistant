@@ -1,13 +1,6 @@
-// Milestone M0 — feature flags.
-//
-// The single most important property under test is that EVERY gate is closed by
-// default. A deployment that sets none of these variables must ship a
-// completely inert assistant: forgetting to configure the feature can only
-// under-enable it, never over-enable it.
-//
-// The parsing helpers follow lib/config.js's clamp-and-warn philosophy rather
-// than fail-fast — a typo in a feature flag must not take the server down, but
-// it must be loud.
+// Feature flags. The key property is that every gate is closed by default: a deployment setting none of these must
+// ship an inert assistant, so forgetting to configure a feature can only under-enable it. The parsing helpers clamp
+// and warn rather than fail fast: a typo in a flag mustn't take the server down, but must be loud.
 
 const {
   parseBoolEnv,
@@ -134,7 +127,7 @@ describe('flags.readAssistantFlags', () => {
     const { warn, warnings } = withWarn();
     const flags = readAssistantFlags({}, { warn });
 
-    // The headline guarantee of this milestone.
+    // The headline guarantee.
     expect(flags.enabled).toBe(false);
     expect(flags.allowedRoles).toEqual(['teacher']);
     expect(flags.allowedSchoolCodes).toEqual([]);
@@ -350,10 +343,8 @@ describe('flags.readClassroomModeFlags', () => {
     expect(readClassroomModeFlags({ CLASSROOM_MODE_ALLOWED_SCHOOL_CODES: '' }).allowedSchoolCodes).toEqual([]);
   });
 
-  // This feature is the one place where a single teacher action fans out into
-  // several model calls, so a mistyped enable value must fail CLOSED — an
-  // accidental "CLASSROOM_MODE_ENABLED=ture" that coerced to true would start
-  // spending several times per question with nobody having asked for it.
+  // One teacher action fans out into several model calls here, so a mistyped enable value must fail closed: an
+  // "CLASSROOM_MODE_ENABLED=ture" coerced to true would multiply spend per question unasked.
   test('a nonsense enable value leaves the feature OFF and warns', () => {
     const { warn, warnings } = withWarn();
     const flags = readClassroomModeFlags({ CLASSROOM_MODE_ENABLED: 'probably' }, { warn });

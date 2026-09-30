@@ -1,22 +1,7 @@
-// Controlled vocabulary: GRADES (Milestone M4).
-//
-// Turns what a teacher says — "class 5", "5th", "V", "पाँचवीं", "kaksha 5 ke
-// liye" — into one of the application's canonical grade BANDS.
-//
-// This is the hardest mapping in Phase 1 and the clearest argument for keeping
-// canonicalization in code rather than in a prompt (decision D10). The
-// vocabulary is expressed in RANGES while teachers speak in POINTS, so the
-// mapping is many-to-one and lossy in a direction that matters: "class 5-6"
-// crosses two bands and there is no honest single answer. A prompt cannot be
-// unit-tested against forty phrasings, cannot be fixed without a model change,
-// and regresses silently when the model is upgraded. This module can, is, and
-// does not.
-//
-// CLIENT COUNTERPART: client/src/config.ts (GRADES) holds the same canonical
-// list, where it populates the Generator's grade datalist and the Settings
-// picker. That duplication is deliberate and documented (CHANGE-11 — CommonJS
-// server vs ESM client), and pinned by server/test/actions/vocabDrift.test.js.
-// CHANGE BOTH IN THE SAME COMMIT.
+// Controlled vocabulary: GRADES. Turns "class 5", "5th", "V", "पाँचवीं", "kaksha 5 ke liye" into a canonical grade band.
+// The hardest mapping: the vocabulary is ranges while teachers speak in points, so "class 5-6" spans two bands with
+// no single honest answer. Done in code rather than a prompt so it can be unit-tested against many phrasings.
+// client/src/config.ts (GRADES) holds the same list, pinned by test/actions/vocabDrift.test.js. Change both together.
 
 const {
   VOCAB_STATUS,
@@ -28,10 +13,7 @@ const {
   resolveMultiple,
 } = require('./shared');
 
-/**
- * The canonical grade bands, in school order. This list is the vocabulary —
- * every mapped result is one of these strings exactly.
- */
+/** The canonical grade bands, in school order; every mapped result is exactly one of these. */
 const GRADES = Object.freeze([
   'Pre-Primary',
   'Class 1-2',
@@ -41,11 +23,7 @@ const GRADES = Object.freeze([
   'Class 11-12',
 ]);
 
-/**
- * Which band a numbered class falls in. Classes outside 1–12 are not grades.
- * Module-private: the mapping is asserted through `mapGrade`'s own cases, so
- * exporting the table would only invite a second consumer of it.
- */
+/** Which band a numbered class falls in. Classes outside 1-12 are not grades. */
 const NUMBER_TO_BAND = Object.freeze({
   1: 'Class 1-2',
   2: 'Class 1-2',
@@ -62,13 +40,8 @@ const NUMBER_TO_BAND = Object.freeze({
 });
 
 /**
- * Words that mark the phrase as being about a class, in English and Hinglish.
- *
- * Exported (behaviour here is unchanged) because assistant/slotRecovery.js gates
- * on exactly this set when deciding whether a number in a whole sentence is a
- * class at all. Restating the list there would be a second copy that drifts:
- * adding "section" here to widen the mapper would silently widen the recovery
- * gate too, which is the correct coupling and must stay visible as one.
+ * Words that mark a phrase as being about a class, in English and Hinglish. Exported because
+ * assistant/slotRecovery.js gates on this same set; adding a word here widens that gate too, deliberately.
  */
 const CLASS_KEYWORDS = new Set([
   'class',
@@ -82,10 +55,7 @@ const CLASS_KEYWORDS = new Set([
   'कक्षा',
 ]);
 
-// Cardinal number words. "class five" is at least as common as "class 5" and
-// far more common than "fifth class", so leaving these out was a real recall
-// gap — found by running the mapper over realistic phrasings rather than by the
-// test table, which had been written by the same person as the implementation.
+// Cardinal words: "class five" is more common than "fifth class", so leaving them out was a recall gap.
 const ENGLISH_CARDINALS = Object.freeze({
   one: 1,
   two: 2,
@@ -145,10 +115,7 @@ const HINDI_ORDINALS = Object.freeze({
   'बारहवीं': 12,
 });
 
-// Hinglish ordinals — the Devanagari forms above as teachers type them on a
-// Latin keyboard, which is how a large share of the target users actually
-// write. Spelling varies, so the common variants are all listed rather than
-// being normalized by a rule that would over-match.
+// Hinglish ordinals as typed on a Latin keyboard. Spellings vary, so common variants are listed rather than normalized by a rule that would over-match.
 const HINGLISH_ORDINALS = Object.freeze({
   pehli: 1,
   pehla: 1,
@@ -203,10 +170,8 @@ const PRE_PRIMARY_TOKENS = new Set([
 ]);
 
 /**
- * Vague band words. Each maps to the band(s) it covers: a single candidate is a
- * confident answer ("middle school" IS classes 6–8), while several candidates
- * mean the phrase genuinely spans bands and the caller should keep the
- * teacher's own words instead.
+ * Vague band words. One candidate is a confident answer ("middle school" is classes 6-8); several mean the
+ * phrase spans bands and the caller keeps the teacher's own words.
  */
 const BAND_WORDS = Object.freeze({
   primary: ['Class 1-2', 'Class 3-5'],
@@ -221,9 +186,7 @@ const BAND_WORDS = Object.freeze({
   seniorschool: ['Class 11-12'],
 });
 
-// Multi-word phrases collapsed to a single token before tokenizing, so the
-// tokenizer never sees "pre-primary" as two mentions joined by a range
-// separator. Applied in order.
+// Multi-word phrases collapsed to one token before tokenizing, so "pre-primary" isn't read as two mentions joined by a range separator. Applied in order.
 const PHRASE_ALIASES = Object.freeze([
   [/\bpre[\s-]*primary\b/g, ' preprimary '],
   [/\bpre[\s-]*school\b/g, ' preprimary '],
@@ -238,22 +201,10 @@ const PHRASE_ALIASES = Object.freeze([
 ]);
 
 /**
- * Read a single token as a class number, or null.
- *
- * Two of the four notations are GATED ON CLASS CONTEXT, because standing alone
- * they are indistinguishable from ordinary words:
- *
- *   roman numerals   "i", "v" and "x" are valid numerals AND common English.
- *                    Ungated, "i want a worksheet" reads as Class 1-2.
- *   cardinal words   "one", "ten" and the rest appear constantly in ordinary
- *                    sentences. Ungated, "ten questions on fractions" reads as
- *                    Class 9-10 — found by exploratory testing after cardinals
- *                    were added, which is exactly the class of mistake a
- *                    same-author test table does not catch.
- *
- * Both are accepted when the phrase says it is about a class ("class five") or
- * when the token IS the whole phrase ("five"). Digits, ordinals and the
- * Hindi/Hinglish ordinals need no gate: nothing else says "5th" or "panchvi".
+ * Read a single token as a class number, or null. Roman numerals and cardinal words are gated on class
+ * context because alone they're ordinary words ("i want a worksheet" would read as Class 1-2, "ten questions"
+ * as Class 9-10). They're accepted when the phrase is about a class ("class five") or is the whole phrase ("five").
+ * Digits and ordinals need no gate.
  *
  * @param {string} token
  * @param {{hasClassContext: boolean}} opts
@@ -317,9 +268,7 @@ function mapGrade(raw) {
     return resolveMultiple(mentions, separators, raw);
   }
 
-  // No numbered class was named. Fall back to the vague band words, which are
-  // weaker evidence and are therefore only consulted when nothing explicit was
-  // said: "primary class 3" must resolve on the 3, not on "primary".
+  // No numbered class named: fall back to the weaker band words, so "primary class 3" resolves on the 3.
   const bandWord = tokens.find((token) => BAND_WORDS[token]);
   if (bandWord) {
     return resolveMultiple(BAND_WORDS[bandWord], [], raw);

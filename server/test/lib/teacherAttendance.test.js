@@ -1,6 +1,4 @@
-// Pins the worked examples from docs/attendance-plan-review.md §4/§5 down as
-// exact, deterministic tests — this is where the review doc's numbers stop
-// being prose and become the actual spec.
+// Pins the attendance rules' worked examples (arrival, status and early departure) as exact tests: the numbers become the spec.
 
 const {
   timeStringToMinutes,
@@ -23,22 +21,17 @@ const {
   isImplausiblyShortDay,
 } = require('../../src/lib/teacherAttendance');
 
-// Builds a UTC Date whose IST wall-clock time is hh:mm, on a fixed
-// reference date. Only time-of-day matters to every function under test
-// (school hours never cross the UTC day boundary once shifted by +5:30), so
-// the calendar date itself is arbitrary and fixed for reproducibility.
+// Builds a UTC Date whose IST wall-clock time is hh:mm on a fixed reference date. Only time of day matters to the
+// functions under test, so the calendar date is arbitrary and fixed for reproducibility.
 function istTime(hours, minutes) {
   const istMinutesOfDay = hours * 60 + minutes;
   const utcMinutesOfDay = (istMinutesOfDay - (5 * 60 + 30) + 1440) % 1440;
   return new Date(Date.UTC(2026, 0, 1, Math.floor(utcMinutesOfDay / 60), utcMinutesOfDay % 60));
 }
 
-// The exact worked-example config from attendance-plan-review.md §5's
-// "config note": opens 9:00, closes 16:00, check-in window 8:30–10:00,
-// half-day 50%, full-day grace 15 min, early-departure grace 15 min, and
-// late grace deliberately 0 — the doc states its examples use no grace so
-// the numbers stay literal, and separately recommends 10 min as the real
-// production default (tested on its own below).
+// The worked-example config: opens 9:00, closes 16:00, check-in window 8:30-10:00, half-day 50%,
+// full-day grace 15 min, early-departure grace 15 min, and late grace 0 (the doc's examples use no grace so the
+// numbers stay literal; it recommends 10 min as the production default, tested separately below).
 const EXAMPLE_CONFIG = {
   openTime: '09:00',
   closeTime: '16:00',
@@ -81,7 +74,7 @@ describe('computeRequiredMinutes', () => {
   });
 });
 
-// attendance-plan-review.md §5, examples 1–4 — arrival classification.
+// Arrival classification: worked examples 1-4.
 describe('classifyArrival — the review doc\'s four arrival examples', () => {
   test('example 1: 8:40 AM is on time (before opening, inside the window)', () => {
     const result = classifyArrival(istTime(8, 40), EXAMPLE_CONFIG);
@@ -121,10 +114,8 @@ describe('classifyArrival — the review doc\'s four arrival examples', () => {
     expect(classifyArrival(istTime(9, 15), config)).toEqual({ classification: 'late', lateMinutes: 15 });
   });
 
-  // Decided rule: check-in has no earliest time at all, only a latest one
-  // (checkinWindowEnd) — arriving hours before opening (e.g. 1:16 AM) is
-  // never blocked on its own; only the location requirement (checked
-  // separately, at the route level) and the window's close matter.
+  // Check-in has no earliest time, only a latest (checkinWindowEnd): arriving hours before opening (e.g. 1:16 AM) is
+  // never blocked on its own; only the location requirement (checked at the route level) and the window's close matter.
   test('arriving hours before opening (1:16 AM) is still on time, not outside the window', () => {
     const result = classifyArrival(istTime(1, 16), EXAMPLE_CONFIG);
     expect(result.classification).toBe('on_time');
@@ -165,7 +156,7 @@ describe('deriveDayStatus', () => {
   });
 });
 
-// attendance-plan-review.md §5, example 8 ("checks out early, e.g. 2:00 PM").
+// Worked example 8 ("checks out early, e.g. 2:00 PM").
 describe('computeEarlyDeparture', () => {
   test('example 5: checking out at 3:00 PM (closing 4:00 PM) is 60 minutes early', () => {
     expect(computeEarlyDeparture(istTime(15, 0), EXAMPLE_CONFIG)).toEqual({ isEarly: true, earlyMinutes: 60 });

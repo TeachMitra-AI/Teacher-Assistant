@@ -1,27 +1,12 @@
-// Custom profile pictures — POST/DELETE /api/auth/me/avatar (upload/remove
-// the caller's own photo) and GET /api/users/:userId/avatar (serve one).
-//
-// A SIBLING of routes/auth.js, not an extension of it — same pattern as
-// routes/attachments.js being its own file alongside index.js's /coach
-// handler. It reuses auth.js's publicUser() (see the export at the bottom of
-// that file) so an upload/remove returns the exact same user DTO shape
-// PATCH /auth/me already does, and reuses lib/fileValidation.js's magic-byte
-// sniffing rather than trusting the client-declared mimetype.
-//
-// STORAGE: image bytes live in the ProfilePicture table (SQLite BLOB via
-// Prisma's Bytes type) — see the approved design review. This project
-// deliberately never writes uploads to local disk (routes/attachments.js's
-// comments explain why: the deployment target's filesystem is ephemeral),
-// and has no external object-storage vendor configured, so the DB is the
-// right place for a small, per-user image at this project's current scale.
-//
-// SERVING: GET /users/:userId/avatar is intentionally PUBLIC (no
-// authRequired) and versioned by the picture's updatedAt (see
-// publicUser()'s avatarUrl in routes/auth.js) — an approved design decision.
-// Plain <img> tags never send an Authorization header, so an authenticated
-// endpoint would need a signed URL instead; a teacher's profile photo isn't
-// sensitive, and User.id is already an unguessable cuid, so "public but
-// unguessable" was chosen over that added complexity for v1.
+// Custom profile pictures: POST/DELETE /api/auth/me/avatar (upload/remove the caller's photo) and GET
+// /api/users/:userId/avatar (serve one). A sibling of routes/auth.js; it reuses auth.js's publicUser() so an
+// upload/remove returns the same user DTO as PATCH /auth/me, and lib/fileValidation.js's magic-byte sniffing.
+// Storage: bytes live in the ProfilePicture table (SQLite BLOB via Prisma's Bytes). Uploads are never written to local
+// disk (ephemeral filesystem, see routes/attachments.js) and there's no external object storage, so the DB suits a
+// small per-user image.
+// Serving: GET /users/:userId/avatar is public (no authRequired), versioned by the picture's updatedAt (see
+// publicUser()'s avatarUrl in routes/auth.js). Plain <img> tags send no Authorization header, a profile photo isn't
+// sensitive, and User.id is an unguessable cuid, so this beat signed URLs for v1.
 const express = require('express');
 const multer = require('multer');
 
@@ -33,15 +18,10 @@ const { publicUser } = require('./auth');
 
 const router = express.Router();
 
-// Deliberately hardcoded, not env-configurable like the attachment/assistant
-// flags in lib/flags.js — this is a core Settings capability, not a
-// cost-tunable AI feature with a rollout to stage.
+// Hardcoded, not env-configurable: a core Settings capability, not a cost-tunable AI feature.
 const AVATAR_MAX_FILE_SIZE_MB = 5;
 
-// Narrower than fileValidation.js's ALLOWED_MIME_TYPES (which also accepts
-// PDF, for the attachments feature) — an avatar is always a photo, so PDF
-// (and everything else) is rejected here regardless of what sniffMimeType
-// would identify it as.
+// Narrower than fileValidation.js's ALLOWED_MIME_TYPES (which includes PDF for attachments): an avatar is always a photo.
 const AVATAR_ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 const upload = multer({
@@ -81,9 +61,7 @@ router.post(
       return res.status(400).json({ error: 'A photo is required.', code: 'FILE_REQUIRED' });
     }
 
-    // Magic-byte sniffing, not req.file.mimetype (the client-declared
-    // Content-Type) — same rationale as fileValidation.js: a browser sets it
-    // from the file extension, which a hostile client can set to anything.
+    // Magic-byte sniffing, not the client-declared Content-Type, as in fileValidation.js.
     const mimeType = sniffMimeType(req.file.buffer);
     if (!mimeType || !AVATAR_ALLOWED_MIME_TYPES.includes(mimeType)) {
       return res.status(400).json({
@@ -121,32 +99,16 @@ router.get(
     if (!picture) {
       return res.status(404).json({ error: 'No profile picture set.' });
     }
-    // Safe to cache aggressively: the URL is versioned by updatedAt (see
-    // publicUser() in routes/auth.js), so a new photo gets a new URL rather
-    // than needing invalidation of this one. Uses the raw Node setHeader
-    // (not Express's res.set) for Content-Type — res.set() auto-appends
-    // "; charset=utf-8" to the header for some mime types, which is wrong
-    // for a binary image.
+    // Safe to cache aggressively: the URL is versioned by updatedAt, so a new photo gets a new URL. Content-Type is set
+    // with the raw setHeader because res.set() appends "; charset=utf-8" for some types, wrong for binary.
     res.setHeader('Content-Type', picture.mimeType);
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    // Overrides helmet()'s app-wide default of 'same-origin' (index.js) for
-    // this ONE route only. This resource is DESIGNED to be embedded via
-    // <img src> from wherever the client is hosted — which is routinely a
-    // different origin than the API (see README's "ships as two pieces"
-    // deployment shape, and CORS_ORIGINS existing at all). Without this, a
-    // plain <img> tag's cross-origin (no-cors) request is silently blocked
-    // by the browser even though an in-page fetch() to the identical URL
-    // succeeds (fetch goes through normal CORS, which this app already
-    // allows) — the same-origin default is correct for every OTHER route in
-    // this app, which have no business being embedded cross-origin, so it's
-    // relaxed only here rather than globally.
+    // Overrides helmet()'s app-wide 'same-origin' for this one route. The image is meant to be embedded via <img src>
+    // from the client's origin, often different from the API's. Without this, a plain <img> (no-cors) request is blocked
+    // even though a fetch() to the same URL works. Other routes keep the same-origin default.
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    // Prisma's SQLite Bytes fields come back as a plain Uint8Array, not a
-    // Node Buffer — Buffer.isBuffer() on it is false, which makes Express's
-    // res.send() silently fall through to res.json() and JSON-serialize the
-    // image bytes as text instead of sending them as binary. Wrapping in
-    // Buffer.from() (a cheap view, not a copy of new data) is what makes
-    // res.send() take the actual binary path.
+    // Prisma's SQLite Bytes come back as a Uint8Array, not a Buffer, so res.send() would JSON-serialize the bytes.
+    // Buffer.from() wraps them (a cheap view) so res.send() sends binary.
     return res.send(Buffer.from(picture.data));
   })
 );

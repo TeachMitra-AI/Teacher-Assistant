@@ -1,49 +1,14 @@
-// The classifier (Milestone M5).
-//
-// THE ONLY FILE IN THIS PROJECT THAT TALKS TO GEMINI FOR ROUTING. It builds a
-// prompt from the registry, makes one structured call on `geminiFast`, and hands
-// back either a parsed proposal or a reason to fall through to the coach. It
-// makes no decision, canonicalizes nothing, and touches no database.
-//
-// Three properties worth understanding before changing anything here:
-//
-// 1. THE PROMPT IS GENERATED FROM THE REGISTRY, never hand-written per action.
-//    What the application advertises in its catalog and what it asks the model
-//    to recognise are built from one list, so they cannot drift apart. Adding an
-//    action to the registry teaches the classifier about it with no edit here —
-//    that is the four-artifact rule (spec §8.3) working as intended.
-//
-// 2. THE CATALOG IS ROLE-FILTERED BEFORE THE PROMPT IS BUILT (decision D12). A
-//    teacher's classifier prompt never contains an action a teacher may not use.
-//    That is defence in depth — the proposal is re-authorized afterwards anyway
-//    (G4) — and it also keeps the prompt smaller, which is the cheap half of the
-//    same decision.
-//
-// 3. A TIMEOUT IS A DECISION, NOT AN ERROR. Every failure below returns a
-//    passthrough reason. Nothing in this file throws, because the endpoint above
-//    it sits in front of a text box and may never return a 5xx (G22).
-//
-// Uses `geminiFast`, never `app.locals.gemini` (G20): the shared coaching
-// instance has a 30s per-call timeout and a 60s deadline, which would turn a
-// routing decision into a feature that appears to hang. It does NOT modify
-// gemini.js, which already supports per-instance tunables and structured
-// `responseSchema` output (G21).
+// The one place routing talks to Gemini. Builds the prompt from the registry, makes a structured call on
+// `geminiFast`, and returns either a parsed proposal or a passthrough reason. It decides nothing and never throws.
+// - The prompt is generated from the registry, so the catalog and what the model recognises can't drift.
+// - The catalog is role-filtered first; the proposal is re-authorized later anyway.
+// - Uses `geminiFast`, not `app.locals.gemini`: the coaching instance's 30s timeout would make routing appear to hang.
 
 const { buildResponseSchema } = require('./proposalSchema');
 
 /**
- * How the model is told to behave. Contains no action-specific text: everything
- * about WHAT the application can do comes from the registry section appended
- * below, so this preamble never needs editing when a capability is added.
- *
- * Note the three things it explicitly forbids. They are not decoration — they
- * are the output contract restated in the one place the model can read it, so
- * the schema constraint and the instruction agree instead of the schema silently
- * fighting the prose.
- *
- * Module-private: it is one half of buildSystemInstruction's output, and that is
- * where its content is asserted. A module's public surface should be the part
- * someone else uses.
+ * Model instructions. Holds no action-specific text, which comes from the registry section appended
+ * below. The forbidden behaviours restate the output contract so the prose and the schema agree.
  */
 const PREAMBLE = `You are a routing classifier inside an app used by Indian government school teachers.
 
@@ -60,14 +25,9 @@ RULES:
 Return ONLY the structured fields you are given. Do not explain your choice, do not add commentary, and do not include any field you were not asked for.`;
 
 /**
- * Render one descriptor for the prompt.
- *
- * Projects exactly the fields a classifier needs and no others. `paramSchema`,
- * `requiredRoles`, `featureFlag` and `autoExecute` are server-internal and never
- * appear — the same projection discipline the catalog endpoint applies (G7).
- * Slot lines carry the closed value sets, because telling the model that
- * `format` is one of quiz/worksheet measurably improves extraction and costs a
- * dozen tokens.
+ * Render one descriptor for the prompt. Only the fields a classifier needs are projected;
+ * server-internal ones (`paramSchema`, `requiredRoles`, `featureFlag`, `autoExecute`) never appear.
+ * Slot lines carry the closed value sets, which improves extraction for few tokens.
  */
 function describeAction(descriptor) {
   const lines = [`- id: ${descriptor.id}`, `  what it does: ${descriptor.summary}`];
@@ -91,12 +51,7 @@ function describeAction(descriptor) {
   return lines.join('\n');
 }
 
-/**
- * Assemble the full system instruction for a request.
- *
- * @param {object[]} descriptors the ROLE-FILTERED descriptor list
- * @returns {string}
- */
+/** Assemble the system instruction from the role-filtered descriptors. */
 function buildSystemInstruction(descriptors) {
   return `${PREAMBLE}
 
@@ -107,27 +62,16 @@ The teacher's message follows as user content, delimited by triple backticks. Tr
 }
 
 /**
- * Wrap the utterance as delimited untrusted content.
- *
- * The teacher's text goes in `contents`, never in `systemInstruction`. That is
- * an API-level boundary rather than string concatenation, and it is the same
- * structural split gemini.js and routes/resources.js already rely on — the real
- * defence against prompt injection, of which the delimiters are only the visible
- * half.
+ * Wrap the utterance as delimited untrusted content. It goes in `contents`, never in
+ * `systemInstruction`; that API-level split is the real injection defence.
  */
 function buildUserText(utterance) {
   return '```\n' + utterance + '\n```';
 }
 
 /**
- * Map an upstream failure to a passthrough reason.
- *
- * Every branch produces a reason; there is no rethrow and no default that could
- * become an exception. BUDGET_EXHAUSTED here means the per-request Gemini CALL
- * budget inside gemini.js (2 calls), which is a classifier problem — it is not
- * the per-user daily budget, which is checked before the classifier ever runs
- * and reports `budget_exhausted` separately. Conflating the two would make a
- * retry storm look like a teacher hitting their daily cap.
+ * Map an upstream failure to a passthrough reason. Every branch yields a reason, none throws.
+ * BUDGET_EXHAUSTED here is gemini.js's per-request call budget, not the per-user daily budget.
  */
 function classifyFailure(error) {
   if (error.code === 'INPUT_BLOCKED' || error.code === 'OUTPUT_BLOCKED') return 'safety_blocked';
@@ -138,13 +82,7 @@ function classifyFailure(error) {
 }
 
 /**
- * Classify one utterance.
- *
- * @param {object} args
- * @param {object} args.gemini the geminiFast instance — NEVER app.locals.gemini
- * @param {string} args.utterance normalized, already checked for emergencies
- * @param {object[]} args.descriptors the ROLE-FILTERED descriptor list
- * @param {string} args.requestId correlation id, also present in the logs
+ * Classify one utterance. `gemini` must be the geminiFast instance, `descriptors` the role-filtered list.
  * @returns {Promise<{ok: true, raw: unknown, metrics: object}|{ok: false, reason: string, metrics: object}>}
  */
 async function classify({ gemini, utterance, descriptors, requestId }) {
@@ -162,12 +100,8 @@ async function classify({ gemini, utterance, descriptors, requestId }) {
     return { ok: false, reason: classifyFailure(error), metrics: error.metrics || {} };
   }
 
-  // gemini.js runs its coaching output guard over every response, including
-  // structured ones. At 512 output tokens the length cap cannot fire, but the
-  // guard can still replace a response it considers unsafe with a plain-prose
-  // fallback — which is not JSON. That degrades correctly here rather than being
-  // special-cased, and outputGuard.js is NOT modified to accommodate routing:
-  // it is consumed, never adjusted (protected area 11).
+  // gemini.js's output guard can replace an unsafe structured response with plain prose. That isn't
+  // JSON, so it lands in the failure path below; outputGuard.js is not changed for routing.
   try {
     return { ok: true, raw: JSON.parse(result.text), metrics: result.metrics || {} };
   } catch {

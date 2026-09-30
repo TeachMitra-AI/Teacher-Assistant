@@ -1,16 +1,8 @@
-// The isolation guarantees of deterministic vocabulary recovery (Alternative A).
-//
-// This file asserts the CONSTRAINTS rather than the behaviour — the promises
-// that made this change approvable in the first place, each one turned into
-// something that fails loudly if it stops being true.
-//
-// It exists because the alternative that was tried before this one — describing
-// the slots in the classifier prompt — failed for a reason no unit test would
-// have caught: it moved routing, decision accuracy and topic quality all at
-// once, so the metric it was meant to improve could not be read. The defence is
-// not "we were careful". It is that this stage CANNOT reach the model, and the
-// three tests in the first block below are what make that structural rather
-// than asserted.
+// The isolation guarantees of deterministic vocabulary recovery. It asserts the constraints rather than the behaviour:
+// the promises that made the change acceptable, each failing loudly if it stops being true.
+// An earlier attempt, describing the slots in the classifier prompt, failed in a way no unit test would catch: it moved
+// routing, decision accuracy and topic quality at once, so the metric it targeted couldn't be read. The defence is that
+// this stage cannot reach the model, and the first block's three tests make that structural.
 
 const crypto = require('crypto');
 
@@ -27,17 +19,10 @@ const sha16 = (text) => crypto.createHash('sha256').update(text).digest('hex').s
 
 describe('the model is untouched', () => {
   /**
-   * The frozen prompt, byte for byte.
-   *
-   * Recorded from the restored baseline (`46d0df3`) after the prompt-based
-   * attempt was reverted, and pinned here so any edit to the preamble, to
-   * `describeAction`, or to a descriptor's summary/examples/slots fails this
-   * test rather than silently invalidating every recorded cassette and every
-   * comparison against the frozen M7a baseline.
-   *
-   * If you are changing the prompt DELIBERATELY: that is a different kind of
-   * change with a different validation path (a full live pass and a variance
-   * band, not a replay). Update this hash in the same commit and say why.
+   * The frozen prompt, byte for byte, so any edit to the preamble, `describeAction`, or a descriptor's summary,
+   * examples or slots fails here instead of silently invalidating every recorded cassette and the frozen baseline comparison.
+   * Changing the prompt deliberately is a different kind of change with a different validation path (a full live pass and
+   * a variance band, not a replay); update this hash in the same commit and say why.
    */
   const FROZEN_PROMPT_SHA16 = '6fbcd46dd0cede51';
 
@@ -51,9 +36,7 @@ describe('the model is untouched', () => {
   });
 
   test('vocab slots still render as bare names — recovery replaced that idea', () => {
-    // The reverted approach put a description after each vocab slot. If this
-    // ever reappears, the whole premise of measuring recovery in isolation is
-    // gone, because routing would move again.
+    // The reverted approach put a description after each vocab slot. If it reappears, measuring recovery in isolation is meaningless, since routing would move again.
     const described = describeAction(generateAssessment);
     expect(described).toContain('\n    grade\n');
     expect(described).toContain('\n    subject\n');
@@ -90,10 +73,8 @@ describe('the model is untouched', () => {
 
 describe('the public contract is untouched', () => {
   test('PROVENANCE_SOURCES is byte-identical — recovery adds no fourth source', () => {
-    // A recovered value travels as 'utterance', which is what it is: stated in
-    // this message. Adding a value here would change the InterpretResponse the
-    // client mirrors in its own union and badge renderer, and would be rejected
-    // by this server's own /assistant/events validator.
+    // A recovered value travels as 'utterance' (it was stated in this message). A new value would change the InterpretResponse
+    // the client mirrors and be rejected by this server's /assistant/events validator.
     expect([...PROVENANCE_SOURCES]).toEqual([
       'utterance',
       'memory',
@@ -105,8 +86,7 @@ describe('the public contract is untouched', () => {
   });
 
   test('ASSISTANT_EVENT_NAMES is byte-identical — recovery adds no event type', () => {
-    // Recovery attribution lives on the stdout decision log (CHANGE-6 channel
-    // 1), which is not a wire contract. The Event rows are.
+    // Recovery attribution lives on the stdout decision log, which isn't a wire contract; the Event rows are.
     expect(ASSISTANT_EVENT_NAMES.length).toBeGreaterThan(0);
     expect([...ASSISTANT_EVENT_NAMES]).toEqual([...ASSISTANT_EVENT_NAMES].filter(Boolean));
     expect(ASSISTANT_EVENT_NAMES).not.toContain('recovery');

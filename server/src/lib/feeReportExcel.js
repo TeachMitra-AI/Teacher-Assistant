@@ -1,14 +1,9 @@
-// Builds the fee report as a real Excel workbook (not CSV) specifically so
-// the Status column can carry the same green/yellow/red coloring the Fees
-// and Reports tabs show on screen — a plain CSV has no concept of color at
-// all, so matching the UI required switching file formats
-// (docs/fee-tracking-amounts-plan.md).
+// Builds the fee report as an Excel workbook rather than CSV so the Status column can carry the same
+// green/yellow/red colouring as the on-screen tabs (docs/fee-tracking-amounts-plan.md).
 const ExcelJS = require('exceljs');
 
-// Same hex values as client/src/index.css's .classroom-att-btn.{paid,partial,pending}
-// light-theme rules, so the downloaded file visually matches the app. 'overpaid'
-// matches the blue used for the Reports tab's Overpaid tile (#1d4ed8) — a
-// subset of 'paid' (amount > expectedAmount), same convention as the client.
+// Same hex values as client/src/index.css's .classroom-att-btn.{paid,partial,pending} light-theme rules, so the file
+// matches the app. 'overpaid' uses the Reports tab's blue (#1d4ed8); it's a subset of 'paid' (amount > expectedAmount).
 const STATUS_STYLE = {
   paid: { fill: 'FFF0FDF4', font: 'FF15803D', label: 'Paid' },
   partial: { fill: 'FFFFFBEB', font: 'FFB45309', label: 'Partial' },

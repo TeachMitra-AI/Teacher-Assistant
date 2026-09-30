@@ -1,13 +1,7 @@
-// Deterministic-ish test fixtures: two schools (different districts), one
-// user per role, and a couple of Query/Feedback rows — enough to exercise
-// RBAC and cross-school tenant isolation. Callers pass a unique `prefix`
-// (e.g. the test filename) so fixtures from different test files never
-// collide on the shared throwaway DB (School.code and User[schoolId, email]
-// are both unique).
-//
-// Fixture users are created `active` with a bcrypt-hashed PASSWORD, matching
-// what seed.js does — the approval-gated `pending` state is exercised
-// explicitly by the tests that care about it, not baked into every fixture.
+// Test fixtures: two schools (different districts), one user per role, and a couple of Query/Feedback rows, enough for
+// RBAC and cross-school isolation. Callers pass a unique `prefix` (e.g. the test filename) so fixtures from different
+// files don't collide on the shared throwaway DB (School.code and User[schoolId, email] are unique).
+// Users are `active` with a bcrypt-hashed PASSWORD, as seed.js does; the `pending` state is exercised by the tests that care.
 const bcrypt = require('bcryptjs');
 
 const PASSWORD = 'testpass123';

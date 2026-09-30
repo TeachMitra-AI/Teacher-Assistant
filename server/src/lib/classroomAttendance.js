@@ -1,21 +1,12 @@
-// Classroom Management — attendance math (docs/classroom-feature-plan.md §10).
-//
-// ONE implementation of the percentage formula and the "unmarked" derivation,
-// used by every route that reports attendance (day marking, summary, history,
-// export, analytics) — see §10: "there is one implementation of it (a shared
-// helper, not reimplemented per route) so the number can never drift between
-// the Attendance tab, the Analytics tab, and the exported CSV."
-//
-// "Unmarked" is never a stored status value (see schema.prisma's
-// AttendanceRecord doc comment) — a student with no AttendanceRecord row for
-// a given date IS unmarked for that date. Every function below derives it
-// from (roster size − present − absent), never from a database column.
+// Classroom Management attendance math (docs/classroom-feature-plan.md). One implementation of the percentage
+// formula and the "unmarked" derivation, used by every attendance route (day marking, summary, history, export,
+// analytics), so the number can't drift between tabs and the exported CSV.
+// "Unmarked" is never stored: a student with no AttendanceRecord for a date is unmarked, derived from
+// (roster size - present - absent).
 
 /**
- * attendance% = Present / (Present + Absent) * 100. Unmarked is EXCLUDED from
- * both sides — it is never counted as absent, and never dilutes the
- * percentage. Returns null when nothing has been marked yet (present+absent
- * === 0), since present-over-zero is undefined, not 0%.
+ * attendance% = Present / (Present + Absent) * 100. Unmarked is excluded from both sides. Returns null
+ * when nothing is marked yet, since present over zero is undefined, not 0%.
  * @param {number} present
  * @param {number} absent
  * @returns {number|null} rounded to one decimal place
@@ -27,10 +18,7 @@ function attendancePercentage(present, absent) {
 }
 
 /**
- * Unmarked = roster size − (present + absent), clamped at 0 as a defensive
- * floor (present+absent can't exceed rosterSize for a correctly scoped query
- * — one AttendanceRecord per student per day — so the clamp never actually
- * engages in practice).
+ * Unmarked = roster size - (present + absent), clamped at 0 as a defensive floor.
  * @param {number} rosterSize
  * @param {number} present
  * @param {number} absent
@@ -83,16 +71,10 @@ function dateKey(date) {
 }
 
 /**
- * Per-class, per-month attendance summary, broken down per active student —
- * the ONE aggregation both `attendance/summary` and `attendance/export`
- * (§13) call, so their numbers are structurally guaranteed to match.
- *
- * "Days marked" = distinct calendar days in the month with at least one
- * AttendanceRecord for this class (regardless of which student) — the
- * denominator every per-student and class-total Unmarked figure is derived
- * against. Computed from the LIVE roster (active students only), matching
- * §10's "never stored, always derived from the live roster so a student
- * added mid-month doesn't require backfilling history."
+ * Per-class, per-month attendance summary with a per-student breakdown; the single aggregation behind both
+ * `attendance/summary` and `attendance/export`, so their numbers match.
+ * "Days marked" is the distinct days in the month with at least one record for the class, and Unmarked
+ * figures are derived against it from the live roster (active students only), so nothing needs backfilling.
  *
  * @param {import('@prisma/client').PrismaClient} prisma
  * @param {{classId: string, teacherId: string, month: string}} params
@@ -110,9 +92,7 @@ async function computeClassAttendanceMonthSummary(prisma, { classId, teacherId, 
     students.map((s) => [s.id, { studentId: s.id, name: s.name, rollNumber: s.rollNumber, present: 0, absent: 0 }])
   );
   for (const r of records) {
-    // A record whose student is no longer active/no longer exists is
-    // excluded from the live-roster view — same "derive from the live
-    // roster" convention as the rest of this module.
+    // A record whose student is no longer active is excluded from the live-roster view.
     const entry = perStudentMap.get(r.studentId);
     if (!entry) continue;
     if (r.status === 'present') entry.present += 1;
@@ -141,10 +121,7 @@ async function computeClassAttendanceMonthSummary(prisma, { classId, teacherId, 
 }
 
 /**
- * Day-by-day breakdown for one class + month (§10's "Month-wise view" /
- * AttendanceHistory). Only returns days that have at least one mark — a day
- * nobody took attendance on isn't a meaningful "0 present / 0 absent / N
- * unmarked" row, it's simply absent from the list.
+ * Day-by-day breakdown for one class and month. Only days with at least one mark appear.
  */
 async function getClassAttendanceHistory(prisma, { classId, teacherId, month }) {
   const { start, end } = monthRange(month);
@@ -174,11 +151,8 @@ async function getClassAttendanceHistory(prisma, { classId, teacherId, month }) 
 }
 
 /**
- * Raw per-date records for ONE student within a month — powers only the
- * day-by-day list in the Student Attendance History view. The
- * present/absent/unmarked/percentage numbers themselves always come from
- * computeClassAttendanceMonthSummary's `perStudent` entry (one implementation
- * of that math, per §10), never recomputed here.
+ * Raw per-date records for one student in a month, for the day-by-day list in the history view. The
+ * numbers come from computeClassAttendanceMonthSummary's `perStudent` entry, never recomputed here.
  */
 async function getStudentAttendanceDates(prisma, { studentId, teacherId, month }) {
   const { start, end } = monthRange(month);

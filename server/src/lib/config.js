@@ -1,14 +1,9 @@
-// Small config-parsing helper. For numeric tunables we prefer clamp-and-warn
-// over crashing: a bad value for something like LLM_MAX_RETRIES should not
-// take the whole server down (that is reserved for truly-required secrets,
-// which keep their existing fail-fast in index.js/middleware). Local dev
-// stays runnable; production stays safe because an invalid value falls back
-// to a known-safe default instead of an unbounded one.
+// Numeric config parsing. A bad value for a tunable like LLM_MAX_RETRIES clamps to a safe bound and warns
+// rather than crashing; fail-fast is for required secrets only.
 
 /**
- * Parse an environment variable as a bounded integer.
- * - Missing/empty → default (no warning; absence is normal).
- * - Non-integer or out-of-range → clamped to [min, max] (or default) + warn.
+ * Parse an environment variable as a bounded integer. Missing/empty gives the default (no warning);
+ * a non-integer or out-of-range value is clamped to [min, max] (or the default) with a warning.
  *
  * @param {string|undefined} rawValue the raw env string
  * @param {object} opts

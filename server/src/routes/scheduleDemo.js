@@ -1,15 +1,7 @@
-// Schedule a Call — public demo-booking flow for schools/organizations
-// evaluating SarasTech. See docs/schedule-a-call-plan.md.
-//
-// SCOPE: this file owns every /api/schedule-demo/* route. All of them are
-// PUBLIC (no authRequired) — the whole point is that visitors booking a call
-// have not signed up yet. "Ownership" of a booking after creation is proven
-// by possessing its emailed `cancelToken`, the same "token instead of login"
-// shape routes/auth.js's password-reset flow already uses.
-//
-// The admin-facing list lives in routes/adminScheduleDemo.js instead of
-// here, mirroring the support.js / adminSupport.js split: a different access
-// model (super_admin-only) is easier to see correctly in its own file.
+// Schedule a Call: the public demo-booking flow for schools and organizations.
+// Owns every /api/schedule-demo/* route, all public (no authRequired) since visitors haven't signed up. After
+// creation, "ownership" of a booking is proof of its emailed `cancelToken`, the token-instead-of-login shape of the
+// password-reset flow. The admin list is in routes/adminScheduleDemo.js, as support.js / adminSupport.js are split.
 const express = require('express');
 const crypto = require('crypto');
 const { z } = require('zod');
@@ -34,8 +26,7 @@ const router = express.Router();
 const ROLE_OPTIONS = ['school_admin', 'org_leadership', 'other'];
 
 /**
- * Gate middleware — same shape as routes/support.js's
- * requireHelpSupportEnabled: runs before any work is done, so a disabled
+ * Gate middleware, like routes/support.js's requireHelpSupportEnabled: runs before any work, so a disabled
  * request never touches the database.
  */
 function requireDemoBookingEnabled() {
@@ -89,9 +80,8 @@ router.get(
   })
 );
 
-// GET /api/schedule-demo/slots?date=YYYY-MM-DD — open starts for one date.
-// Empty array (never an error) for a weekend/out-of-window/fully-booked
-// date — the client shows "No times available" rather than an error state.
+// GET /api/schedule-demo/slots?date=YYYY-MM-DD: open starts for one date. An empty array (never an error) for a
+// weekend, out-of-window or fully booked date; the client shows "No times available".
 router.get(
   '/schedule-demo/slots',
   requireDemoBookingEnabled(),
@@ -129,9 +119,8 @@ const bookingSchema = z
   .strict();
 
 /**
- * Re-validates a requested date/startTime against the current availability
- * rule and against already-taken slots — never trusts the client's
- * selection, since /slots is advisory only.
+ * Re-validates a requested date and startTime against the availability rule and already-taken slots. /slots is
+ * advisory, so the client's selection is never trusted.
  */
 async function assertSlotAvailable(date, startTime, config, prismaClient) {
   if (!isBookableDate(date, config)) return 'That date is not available.';
@@ -159,9 +148,7 @@ router.post(
     const { name, email, organization, role, phone, notes, date, startTime } = parsed.data;
     const config = getDemoBookingConfig();
 
-    // The conflict check and the create happen inside one transaction so a
-    // concurrent double-booking of the same slot can't slip through between
-    // the check and the write.
+    // The conflict check and create share one transaction so a concurrent double-booking can't slip between them.
     let booking;
     try {
       booking = await prisma.$transaction(async (tx) => {
@@ -221,9 +208,8 @@ router.post(
 );
 
 /**
- * Loads a booking by id, 404ing unless `token` matches its cancelToken —
- * same owner-scoped "missing and not-yours both 404" pattern this app uses
- * for Resources, so a guessed id can never confirm a booking exists.
+ * Loads a booking by id, 404ing unless `token` matches its cancelToken. Missing and not-yours both 404 (as for
+ * Resources), so a guessed id can't confirm a booking exists.
  */
 async function loadBookingByToken(req, res) {
   const token = typeof req.query.token === 'string' ? req.query.token : '';

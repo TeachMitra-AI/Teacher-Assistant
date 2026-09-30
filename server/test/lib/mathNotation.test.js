@@ -1,8 +1,7 @@
 const { toLatex, convertMathSegments } = require('../../src/lib/mathNotation');
 
-// This module exists to remove the root cause of every LaTeX repair layer:
-// backslashes inside JSON strings. The model now writes "5/9"; this turns it
-// into LaTeX in code we can test rather than a prompt we can only hope about.
+// This module removes the root cause of every LaTeX repair layer (backslashes inside JSON strings): the model writes
+// "5/9" and this turns it into LaTeX in code we can test.
 
 describe('toLatex — the notation a teacher would actually write', () => {
   const cases = [
@@ -74,9 +73,7 @@ describe('toLatex — integrals', () => {
     expect(toLatex('integral(0, pi, sin(x), x)')).toBe('\\int_{0}^{\\pi} \\sin(x)\\, dx');
   });
 
-  // Never guess: only exactly 2 (indefinite) or 4 (definite) arguments are a
-  // shape this module understands, and the final argument must be a bare
-  // single-letter variable, not another expression.
+  // Never guess: only exactly 2 (indefinite) or 4 (definite) arguments are understood, and the final argument must be a bare single-letter variable.
   test('rejects a variable-of-integration that is not a bare single letter', () => {
     expect(toLatex('integral(x^2, x+1)')).toBeNull();
   });
@@ -88,9 +85,7 @@ describe('toLatex — integrals', () => {
 });
 
 describe('toLatex — the safety contract', () => {
-  // Rule 1: anything already containing a backslash is LaTeX. Every saved
-  // resource in the database is in that form, and so is output from a model
-  // that ignores the new prompt.
+  // Rule 1: anything already containing a backslash is LaTeX. Every saved resource is in that form, as is output from a model that ignores the new prompt.
   test('returns null for input that is already LaTeX, so it is left alone', () => {
     expect(toLatex('\\frac{1}{2}')).toBeNull();
     expect(toLatex('\\sin\\theta')).toBeNull();
@@ -158,9 +153,7 @@ describe('convertMathSegments', () => {
     expect(convertMathSegments('The $apples$ here')).toBe('The $apples$ here');
   });
 
-  // A real MCQ shape: an indefinite integral in the question stem, a
-  // definite one in an option — the case that motivated adding integral
-  // support (a class 11/12 calculus quiz otherwise had no way to write one).
+  // A real MCQ shape: an indefinite integral in the stem and a definite one in an option, the case that motivated integral support (a class 11/12 calculus quiz had no way to write one).
   test('converts both an indefinite and a definite integral in the same document', () => {
     expect(
       convertMathSegments('Evaluate $integral(x^2, x)$. Answer: $integral(0, 2, x, x)$.')

@@ -1,6 +1,4 @@
-// Highest-value regression protection identified in the audit: a bug in
-// schoolScope() or an ownership check would leak one school's/teacher's
-// data to another. These tests assert that never happens.
+// The highest-value regression protection: a bug in schoolScope() or an ownership check would leak one school's or teacher's data to another. These tests assert that never happens.
 const request = require('supertest');
 const { app, prisma } = require('./helpers/testApp');
 const { createFixtures, PASSWORD } = require('./helpers/fixtures');
@@ -37,9 +35,7 @@ describe('tenant isolation', () => {
       .get('/api/admin/analytics')
       .set('Authorization', `Bearer ${schoolAdminAToken}`);
     expect(res.status).toBe(200);
-    // Fixture: School A only ever asked about "Mathematics"; School B only
-    // ever asked about "Science". If isolation broke, School B's subject
-    // would leak into School A's admin's aggregation.
+    // Fixture: School A only ever asked about "Mathematics" and School B only "Science". If isolation broke, B's subject would leak into A's admin's aggregation.
     const subjects = res.body.bySubject.map((s) => s.label);
     expect(subjects).toContain('Mathematics');
     expect(subjects).not.toContain('Science');
@@ -55,9 +51,7 @@ describe('tenant isolation', () => {
     expect(names).not.toContain(fx.teacherB.name); // different district
   });
 
-  // Approval endpoints are the newest way one school's admin could reach into
-  // another school's accounts, so they get the same scoping assertions as
-  // every other admin route.
+  // Approval endpoints are the newest way one school's admin could reach into another's accounts, so they get the same scoping assertions as every other admin route.
   describe('pending sign-ups', () => {
     let pendingA;
     let pendingB;

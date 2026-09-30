@@ -1,43 +1,20 @@
-// Renderable representation resolution — AI Learning Representation System,
-// Phase C (docs/learning-representation-system-adr.md, §13 Phase C).
-//
-// The composition described in the Phase B review: a representation is only
-// offered when BOTH (1) the classifier's confidence was sufficient AND (2) a
-// working renderer exists for it. Those are two independent signals and
-// neither substitutes for the other — (1) is about whether the
-// CLASSIFICATION can be trusted (mapping.js, Phase B, already approved and
-// left untouched here), (2) is about whether the IMPLEMENTATION exists yet
-// (schemas.js, Phase C, added in this phase). This module is the seam where
-// they combine; it is new Phase C code specifically because it depends on
-// schemas.js, which did not exist when Phase B was approved.
-//
-// A representation with no renderer degrades exactly the way a low-confidence
-// classification already does — abstain to verbal_explanation, same
-// {representation, source: 'abstained', reason} shape mapping.js already
-// established. This is a deliberate reuse of an existing mechanism rather
-// than a second, differently-shaped "unavailable" outcome for a caller to
-// learn separately.
+// A representation is offered only when the classifier's confidence was sufficient (mapping.js) and a working
+// renderer exists for it (schemas.js); this is where they combine. A representation with no renderer abstains
+// to verbal_explanation, the same `{representation, source: 'abstained', reason}` shape mapping.js already uses.
 
 const { resolveRepresentation } = require('../mapping');
 const { VERBAL_EXPLANATION } = require('../representations');
 const { hasRenderer } = require('./schemas');
 
 /**
- * Apply the renderer-availability gate to an already-resolved representation.
- *
- * Kept separate from resolveRenderableRepresentation() below so the gate
- * itself is testable with a synthetic `resolved` value, without needing a
- * real classifier result or a temporarily-broken registry to exercise the
- * "no renderer available" branch.
+ * Apply the renderer-availability gate to an already-resolved representation. Separate from
+ * resolveRenderableRepresentation() so the "no renderer" branch is testable with a synthetic value.
  *
  * @param {{representation: string, source: 'mapped'|'abstained', reason?: string}} resolved
  * @returns {{representation: string, source: 'mapped'|'abstained', reason?: string}}
  */
 function gateOnRenderer(resolved) {
-  // verbal_explanation never needs a renderer — the text answer already IS
-  // the representation — so it is never subject to this gate, in either
-  // direction. Whatever mapping.js decided (mapped or abstained) passes
-  // through unchanged.
+  // verbal_explanation is never rendered (the text answer is the representation), so it passes through unchanged.
   if (resolved.representation === VERBAL_EXPLANATION) return resolved;
 
   if (hasRenderer(resolved.representation)) return resolved;
@@ -46,9 +23,7 @@ function gateOnRenderer(resolved) {
 }
 
 /**
- * Resolve a Phase A classifier result all the way to a representation that
- * is both a confident classification AND something this system can actually
- * render today.
+ * Resolve a classifier result to a representation that is both confidently classified and renderable today.
  *
  * @param {{ok: true, intent: string, confidence: string}|{ok: false, reason: string}} classified
  * @returns {{representation: string, source: 'mapped'|'abstained', reason?: string}}

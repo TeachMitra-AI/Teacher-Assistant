@@ -1,5 +1,4 @@
-// The Learning Representation taxonomy — AI Learning Representation System,
-// Phase B (docs/learning-representation-system-adr.md, §4).
+// The Learning Representation taxonomy (docs/learning-representation-system-adr.md).
 
 const {
   LEARNING_REPRESENTATIONS,

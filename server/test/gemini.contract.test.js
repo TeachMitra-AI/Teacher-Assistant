@@ -1,9 +1,5 @@
-// Contract test for GeminiService (server/src/gemini.js). Originally written
-// against the pre-AI-safety flat-prompt behavior as a baseline; now updated
-// in lockstep with the systemInstruction/contents restructuring (see the
-// AI Safety plan) — the request-shape assertions below reflect the CURRENT
-// (post-restructuring) wire format. Retry/continuation-count/error-handling
-// assertions carried over unchanged, since that behavior wasn't touched.
+// Contract test for GeminiService (server/src/gemini.js). The request-shape assertions reflect the current
+// systemInstruction/contents wire format; retry, continuation-count and error-handling assertions are unchanged from the original flat-prompt baseline.
 const { GeminiService } = require('../src/gemini');
 const {
   mockGeminiFetch,
@@ -50,7 +46,7 @@ describe('GeminiService contract', () => {
     expect(body.systemInstruction.parts[0].text).toContain('expert educational coach');
     expect(body.systemInstruction.parts[0].text).not.toContain('How do I explain fractions?');
 
-    // ...and ONLY the teacher's raw question is in contents, delimited.
+    // ...and only the teacher's raw question is in contents, delimited.
     expect(body.contents).toHaveLength(1);
     expect(body.contents[0].role).toBe('user');
     expect(body.contents[0].parts[0].text).toContain('How do I explain fractions?');
@@ -264,8 +260,7 @@ describe('GeminiService contract', () => {
   });
 });
 
-// Structured-output support (Phase 1 of the quiz/worksheet generator rework
-// — see server/src/routes/resources.js and server/src/lib/assessmentSchema.js).
+// Structured-output support (see server/src/routes/resources.js and server/src/lib/assessmentSchema.js).
 describe('GeminiService.generateContent — structured output (responseSchema)', () => {
   afterEach(() => {
     vi.unstubAllGlobals();

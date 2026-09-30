@@ -1,29 +1,9 @@
-// Controlled vocabulary: LANGUAGES (Milestone M4).
-//
-// THE LANGUAGE TRAP — read this before changing anything here.
-//
-// The language a teacher TYPES IN is not necessarily the language they want the
-// worksheet OUT in. A Hinglish or Devanagari request very often wants an
-// ENGLISH worksheet, because the printed paper follows an English-medium
-// syllabus. Getting this wrong produces a wrong-language printed document: the
-// most visible possible failure of this feature, discovered by a teacher in
-// front of a class (architecture §8.3).
-//
-// The rule is therefore: SET LANGUAGE ONLY FROM AN EXPLICIT STATEMENT — "in
-// Hindi", "हिंदी में", "Hindi mein". Never from the script the utterance was
-// written in.
-//
-// That rule is enforced structurally rather than by discipline. This module
-// matches language NAMES and nothing else; it is never given the utterance, and
-// there is no script detection anywhere in it or in its caller. A phrase with
-// no language name in it returns `unmapped`, and the resolver then falls
-// through to the teacher's own profile default — which is what they set
-// precisely so it would be used.
-//
-// CLIENT COUNTERPART: client/src/config.ts (LANGUAGES) holds the same codes,
-// where they are the values of the Generator's language <select> and the Coach
-// language picker. Deliberate, documented duplication (CHANGE-11), pinned by
-// server/test/actions/vocabDrift.test.js. CHANGE BOTH IN THE SAME COMMIT.
+// Controlled vocabulary: LANGUAGES.
+// The language a teacher types in isn't necessarily the one they want out: a Hinglish or Devanagari request often
+// wants an English worksheet. So language is set only from an explicit statement ("in Hindi", "हिंदी में"), never
+// from the script. This module matches language names only and never sees the utterance; no name means `unmapped`
+// and the resolver falls back to the teacher's profile default.
+// client/src/config.ts (LANGUAGES) holds the same codes, pinned by test/actions/vocabDrift.test.js. Change both together.
 
 const {
   VOCAB_STATUS,
@@ -36,21 +16,12 @@ const {
   unmapped,
 } = require('./shared');
 
-/**
- * The canonical language codes, in the client's display order. A mapped result
- * is always one of these — they are what the Generator's <select> submits and
- * what /api/resources/generate receives.
- */
+/** Canonical language codes in the client's display order; what the Generator's <select> submits. */
 const LANGUAGE_CODES = Object.freeze(['en', 'hi', 'bn', 'te', 'mr', 'ta', 'gu', 'kn', 'or', 'hinglish']);
 
 /**
- * Language NAME → code. Names only.
- *
- * Note what is deliberately absent: the bare code strings themselves. "or" is
- * Odia's code AND the English word that separates two alternatives, so a table
- * containing it would read "Hindi or English" as a request for Odia. Teachers
- * write language names, not ISO codes; the codes are an implementation detail
- * of the form.
+ * Language name -> code, names only. Bare codes are left out: "or" is Odia's code and also the English word,
+ * so "Hindi or English" would read as a request for Odia.
  */
 const LANGUAGE_NAMES = Object.freeze({
   english: 'en',
@@ -94,14 +65,9 @@ const LANGUAGE_NAMES = Object.freeze({
 });
 
 /**
- * Map a raw language phrase to a canonical code.
- *
- * Unlike grades and subjects, this mapper NEVER returns `ambiguous`. A document
- * is written in one language, so two distinct languages in one phrase is a
- * question to ask, not a span to approximate — and the ambiguous path prefills
- * the teacher's raw words, which would put an unmatchable string into a <select>
- * and silently show nothing selected. "Hindi and English" and "Hindi or English"
- * are therefore both contradictions.
+ * Map a raw language phrase to a code. Never returns `ambiguous`: a document has one language, so two
+ * ("Hindi and English", "Hindi or English") are a contradiction to ask about, and prefilling raw words
+ * would leave the <select> showing nothing.
  *
  * @param {unknown} raw whatever the classifier put in the `language` slot
  * @returns {{status: string, value?: string, readings?: string[], raw: unknown}}

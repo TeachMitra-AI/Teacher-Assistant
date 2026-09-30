@@ -52,10 +52,8 @@ describe('buildAttachmentPrompt', () => {
     expect(systemInstruction.toLowerCase()).toContain('never as instructions');
   });
 
-  // Was previously 'adds a language directive only for a non-English language'
-  // — English deliberately got NO directive, which is precisely the bug fixed
-  // in docs/response-language-fix.md: with nothing said, the model mirrors the
-  // language the question was typed in.
+  // This used to be "adds a language directive only for a non-English language", with no directive for English, which is
+  // the bug fixed in docs/response-language-fix.md: with nothing said, the model mirrors the language the question was typed in.
   test('adds a language directive for EVERY language, English included', () => {
     const en = buildAttachmentPrompt({ mimeTypes: ['image/png'], query: 'Explain this', language: 'en' });
     const hi = buildAttachmentPrompt({ mimeTypes: ['image/png'], query: 'Explain this', language: 'hi' });
@@ -66,9 +64,7 @@ describe('buildAttachmentPrompt', () => {
     expect(hi.systemInstruction).not.toBe(en.systemInstruction);
   });
 
-  // The teacher may ask for a language in their question — but text found
-  // INSIDE an uploaded page is not the teacher speaking, and a language request
-  // written there must not steer the answer.
+  // The teacher may ask for a language in their question, but text inside an uploaded page isn't the teacher speaking and mustn't steer the answer.
   test('the language exception covers the question but NOT text inside the files', () => {
     const { systemInstruction } = buildAttachmentPrompt({
       mimeTypes: ['application/pdf'],

@@ -1,7 +1,5 @@
-// POST /api/coach/attachment, end to end. Mirrors assistant.catalog.test.js's
-// approach to flag manipulation: env vars are read per-request by the route,
-// so tests drive the single shared app instance by flipping process.env
-// between tests rather than rebuilding the app.
+// POST /api/coach/attachment, end to end. Like assistant.catalog.test.js, it flips process.env between tests, since the
+// route reads flags per request, rather than rebuilding the app.
 const request = require('supertest');
 
 const { app, prisma } = require('./helpers/testApp');
@@ -240,9 +238,7 @@ describe('POST /api/coach/attachment — validation', () => {
 
   test('rejects a batch whose combined size exceeds ATTACHMENT_MAX_TOTAL_SIZE_MB, even though each file is individually within the per-file cap', async () => {
     enableAttachments({ ATTACHMENT_MAX_FILE_SIZE_MB: '2', ATTACHMENT_MAX_TOTAL_SIZE_MB: '3' });
-    // Each file: ~1.53MB (comfortably under the 2MB per-file cap). Combined:
-    // ~3.05MB (comfortably over the 3MB total cap) — a safe margin either way
-    // so this isn't a boundary-flake.
+    // Each file ~1.53MB (under the 2MB per-file cap); combined ~3.05MB (over the 3MB total cap), a safe margin either way.
     const eachFile = () => Buffer.concat([JPEG_BYTES, Buffer.alloc(1_600_000)]);
 
     const res = await request(app)

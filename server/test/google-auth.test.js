@@ -1,14 +1,7 @@
-// Google sign-up and sign-in via POST /auth/google.
-//
-// Google's signature check is the one thing stubbed — the same "replace the
-// single network boundary, run everything else for real" approach
-// helpers/geminiMock.js takes with fetch. Every route decision, the approval
-// gate and issueSession() are exercised genuinely.
-//
-// The stub is a vi.spyOn over lib/googleAuth's exported verifyGoogleIdToken.
-// The claim rules that function applies (verified email, required sub, and so
-// on) aren't stubbed away with it — they're covered directly against the pure
-// identityFromPayload in the last describe block.
+// Google sign-up and sign-in via POST /auth/google. Google's signature check is the one thing stubbed, replacing the
+// single network boundary as helpers/geminiMock.js does with fetch; every route decision, the approval gate and
+// issueSession() run for real. The stub is a vi.spyOn over lib/googleAuth's verifyGoogleIdToken. The claim rules
+// (verified email, required sub) aren't stubbed with it; the last describe block tests the pure identityFromPayload directly.
 const bcrypt = require('bcryptjs');
 const { app, prisma } = require('./helpers/testApp');
 const { makeClient } = require('./helpers/http');
@@ -18,9 +11,7 @@ const googleAuth = require('../src/lib/googleAuth');
 // Each request gets its own synthetic client IP — see helpers/http.js.
 const http = makeClient(app);
 
-// Must match DEFAULT_REGISTRATION_SCHOOL_CODE in routes/auth.js. Created
-// (idempotently) rather than assumed present, since this file's DB is a
-// throwaway test DB that never runs seed.js.
+// Must match DEFAULT_REGISTRATION_SCHOOL_CODE in routes/auth.js. Created idempotently, since this file's throwaway DB never runs seed.js.
 const DEFAULT_REGISTRATION_SCHOOL_CODE = 'RAMPUR01';
 
 describe('Google sign-in', () => {
@@ -44,9 +35,7 @@ describe('Google sign-in', () => {
     vi.restoreAllMocks();
   });
 
-  // Makes the next verification succeed with these claims — run through the
-  // real identityFromPayload, so a payload these tests treat as valid has to
-  // actually satisfy the production rules.
+  // Makes the next verification succeed with these claims, run through the real identityFromPayload, so a payload treated as valid must satisfy the production rules.
   function googleIdentity({ sub, email, name = null, emailVerified = true }) {
     verifySpy.mockImplementation(async () =>
       googleAuth.identityFromPayload({ sub, email, name, email_verified: emailVerified })
@@ -219,16 +208,11 @@ describe('Google sign-in', () => {
       expect(second.status).toBe(409);
     });
 
-    // Finding #4: a concurrent second sign-up can pass the findFirst check
-    // above before either request creates, so the actual duplicate is only
-    // caught when prisma.user.create() throws P2002. Simulated directly
-    // since triggering it via real concurrency would be flaky. googleSub has
-    // no unique constraint of its own, so this is always the email side.
-    //
-    // Plain save/reassign/restore rather than vi.spyOn: spying on this
-    // Prisma Client's model delegate methods does not restore cleanly in
-    // this environment (mockRestore() leaves prisma.user.create undefined
-    // for the rest of the file) — see docs/ERROR_HANDLING_AUDIT.md #4.
+    // A concurrent second sign-up can pass the findFirst check before either creates, so the duplicate is only caught when
+    // prisma.user.create() throws P2002. Simulated directly (real concurrency would be flaky). googleSub has no unique
+    // constraint, so this is always the email side.
+    // Uses save/reassign/restore rather than vi.spyOn: spying on this Prisma client's delegate methods doesn't restore
+    // cleanly here (mockRestore() leaves prisma.user.create undefined for the rest of the file); see docs/ERROR_HANDLING_AUDIT.md.
     test('a P2002 unique-constraint race on create() is still a 409, not a 500', async () => {
       const originalCreate = prisma.user.create;
       const p2002 = new Error('Unique constraint failed on the fields: (`schoolId`,`email`)');
@@ -308,8 +292,7 @@ describe('Google sign-in', () => {
         idToken: 'a'.repeat(40),
         schoolCode: fx.schoolA.code,
       });
-      // Sign-up no longer produces this state on its own; simulate an admin
-      // having moved the account back into it.
+      // Sign-up no longer produces this state, so simulate an admin moving the account into it.
       await prisma.user.updateMany({ where: { email: 'goog-pending@example.com' }, data: { status: 'pending' } });
 
       googleIdentity({ sub: 'goog-pending-1', email: 'goog-pending@example.com' });
@@ -366,11 +349,9 @@ describe('Google sign-in', () => {
     });
   });
 
-  // Both methods must land on the same account model and the same gate, or
-  // approving somebody would mean different things depending on how they
-  // joined. New sign-ups start active now, so this exercises the shared
-  // pending queue/approve flow the way an admin would still use it against
-  // an account manually moved back into `pending` — e.g. a re-review.
+  // Both methods must land on the same account model and gate, or approving somebody would mean different things by how
+  // they joined. New sign-ups start active, so this exercises the shared pending queue and approve flow against an account
+  // manually moved back into `pending`, e.g. a re-review.
   test('a Google account and a password account share the same admin approval flow', async () => {
     googleIdentity({ sub: 'goog-parity-1', email: 'goog-parity-google@example.com' });
     const googleSignup = await http.post('/api/auth/google').send({
@@ -433,9 +414,7 @@ describe('Google sign-in', () => {
     expect(res.body.token).toBeTruthy();
   });
 
-  // The claim rules, tested directly rather than through the spy above — this
-  // is the half of verifyGoogleIdToken that isn't Google's network call, so it
-  // needs no mocking at all.
+  // The claim rules, tested directly rather than through the spy: this is the half of verifyGoogleIdToken that isn't Google's network call.
   describe('identityFromPayload', () => {
     const valid = { sub: '123456789', email: 'Someone@Example.COM', name: 'Some One', email_verified: true };
 

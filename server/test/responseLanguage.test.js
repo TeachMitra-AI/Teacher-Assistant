@@ -1,18 +1,8 @@
-// End-to-end verification of the response-language fix
-// (docs/response-language-fix.md).
-//
-// WHY THIS FILE EXISTS SEPARATELY from test/prompts.test.js: that file tests
-// languageDirective() in isolation — the right sentence is produced. This file
-// tests the thing that was actually broken, which is whether that sentence
-// REACHES the model on every path. The bug was never a wrong directive; it was
-// a directive that silently evaluated to '' and got appended as nothing.
-//
-// So these drive the REAL routes and the REAL GeminiService, with only the
-// outbound `fetch` stubbed, and then read the systemInstruction out of the
-// captured request body — exactly the bytes Gemini would have received.
-//
-// No live model calls: the free tier allows 20 requests/minute, and a suite
-// that spent real quota could not be run on every change.
+// End-to-end verification of the response-language fix (docs/response-language-fix.md). Separate from
+// test/prompts.test.js, which tests languageDirective() in isolation: this tests what was actually broken, whether
+// the sentence reaches the model on every path. The bug was a directive that evaluated to '' and was appended as nothing.
+// These drive the real routes and GeminiService with only the outbound `fetch` stubbed, and read the systemInstruction
+// from the captured request body, exactly the bytes Gemini would receive. No live calls: the free tier allows 20 requests/minute.
 const request = require('supertest');
 const { app, prisma } = require('./helpers/testApp');
 const { createFixtures, PASSWORD } = require('./helpers/fixtures');
@@ -45,9 +35,7 @@ describe('response language — the directive reaches the model on every path', 
   let token;
 
   beforeAll(async () => {
-    // Lowercase prefix on purpose: it becomes the fixture emails verbatim,
-    // and the login route lowercases what it receives — a camelCase prefix
-    // silently fails every login with "Incorrect email or password."
+    // Lowercase prefix on purpose: it becomes the fixture emails verbatim and the login route lowercases what it receives, so camelCase silently fails every login.
     fx = await createFixtures(prisma, 'resplang');
     token = await loginAs(app, fx.schoolA, fx.teacherA, PASSWORD);
   });
@@ -59,9 +47,7 @@ describe('response language — the directive reaches the model on every path', 
 
   const auth = (req) => req.set('Authorization', `Bearer ${token}`);
 
-  // -------------------------------------------------------------------------
-  // 1 + 2. Coach chat — the reported bug, and its continuation step.
-  // -------------------------------------------------------------------------
+  // 1 + 2. Coach chat: the reported bug, and its continuation step.
   describe('coach chat — POST /api/coach', () => {
     // THE BUG. Before the fix this instruction contained no language sentence
     // at all, and the model answered in whatever language the question used.
@@ -131,14 +117,8 @@ describe('response language — the directive reaches the model on every path', 
     });
   });
 
-  // -------------------------------------------------------------------------
-  // 3. Worksheet / quiz generation — the STRUCTURED variant.
-  //
-  // The risk here is the opposite one: over-translating. "mcq" and
-  // "True"/"False" are contract values the validator compares by exact string,
-  // so a translated one fails validation and the teacher sees an error instead
-  // of a worksheet.
-  // -------------------------------------------------------------------------
+  // 3. Worksheet/quiz generation, the structured variant. The risk here is over-translating: "mcq" and "True"/"False"
+  // are contract values compared by exact string, so a translated one fails validation and the teacher sees an error.
   describe('worksheet generation — POST /api/resources/generate', () => {
     const config = {
       format: 'quiz',
@@ -172,10 +152,7 @@ describe('response language — the directive reaches the model on every path', 
     });
   });
 
-  // -------------------------------------------------------------------------
-  // 4. Revising a saved document — the PROSE variant, because this action
-  // returns a whole Markdown document whose headings are the model's to write.
-  // -------------------------------------------------------------------------
+  // 4. Revising a saved document, the prose variant, since this action returns a whole Markdown document whose headings are the model's to write.
   describe('revising a saved document — POST /api/resources/:id/ai-action', () => {
     test('uses the prose directive in the resource\'s own language', async () => {
       const created = await auth(request(app).post('/api/resources')).send({
@@ -198,10 +175,7 @@ describe('response language — the directive reaches the model on every path', 
     });
   });
 
-  // -------------------------------------------------------------------------
-  // 5. Lesson plans — structured, and the file that used to carry its own
-  // duplicate copy of the buggy helper.
-  // -------------------------------------------------------------------------
+  // 5. Lesson plans: structured, and the file that used to carry its own duplicate of the buggy helper.
   describe('lesson plans', () => {
     test('use the shared structured directive, not a private copy', () => {
       const { systemInstruction } = buildLessonPlanPrompt({
@@ -233,10 +207,7 @@ describe('response language — the directive reaches the model on every path', 
     });
   });
 
-  // -------------------------------------------------------------------------
-  // The regression guard that matters most: NO path may send a prompt with no
-  // language instruction in it. That silent '' is the whole bug.
-  // -------------------------------------------------------------------------
+  // The regression guard that matters most: no path may send a prompt with no language instruction. That silent '' is the whole bug.
   test('no path sends a prompt without a language instruction', async () => {
     const { calls } = mockGeminiFetch([geminiSuccess('Answer.')]);
     await auth(request(app).post('/api/coach')).send({ query: 'Q', context: {}, language: 'en' });

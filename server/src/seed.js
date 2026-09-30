@@ -1,11 +1,5 @@
-// Seed the database with demo schools and accounts for local testing.
-// Run with: npm run seed
-//
-// Demo accounts are created `active` so they can sign in immediately. Real
-// signups go through POST /auth/register and start `pending` until a
-// school_admin or super_admin approves them — see server/src/routes/auth.js.
-// The addresses below are all @example.com, which is reserved for
-// documentation and can never receive real mail.
+// Seed the database with demo schools and accounts for local testing (npm run seed).
+// Demo accounts are `active` so they can sign in immediately. The addresses are all @example.com, which can never receive real mail.
 require('dotenv').config();
 
 const bcrypt = require('bcryptjs');

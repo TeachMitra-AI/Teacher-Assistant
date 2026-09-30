@@ -1,12 +1,7 @@
-// Admin Settings — GET/PATCH /api/admin/feature-flags. Covers both setting
-// kinds: the boolean Learning Representation flag and the role-list
-// Assistant Access control.
-//
-// Covers: authorization (super_admin only, matching adminSupport.js's
-// established "global, not a school's data" precedent), persistence across
-// requests, the toast-triggering PATCH response shape, the audit Event it
-// writes, and input validation (including role-name validation and the
-// deliberately-allowed empty role list).
+// Admin Settings: GET/PATCH /api/admin/feature-flags, for both setting kinds (the boolean Learning Representation
+// flag and the role-list Assistant Access control). Covers authorization (super_admin only, like adminSupport.js),
+// persistence across requests, the toast-triggering PATCH response shape, the audit Event it writes, and input
+// validation (including role names and the deliberately allowed empty role list).
 const request = require('supertest');
 
 const { app, prisma } = require('../helpers/testApp');
@@ -182,10 +177,8 @@ describe('PATCH /api/admin/feature-flags/assistant-allowed-roles', () => {
     expect(res.status).toBe(400);
   });
 
-  // Deliberate: an empty list is a VALID override meaning "no role may use
-  // the Assistant" — the same "fully disable" state the boolean flag's
-  // `false` already offers, not an error and not "no restriction". See
-  // docs/admin-feature-flags-architecture.md §4.1.
+  // Deliberate: an empty list is a valid override meaning "no role may use the Assistant", the same "fully disable" as
+  // the boolean flag's `false`, not an error and not "no restriction". See docs/admin-feature-flags-architecture.md.
   test('an empty roles array is accepted and disables the Assistant for everyone', async () => {
     const res = await as('super_admin')(
       request(app).patch('/api/admin/feature-flags/assistant-allowed-roles')

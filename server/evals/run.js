@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Evaluation runner CLI (Milestone M7a).
+// Evaluation runner CLI.
 //
 //   node evals/run.js --mode replay                     offline, free, deterministic
 //   node evals/run.js --mode live --record --repeat 3   the baseline run
@@ -7,14 +7,10 @@
 //   node evals/run.js --mode live --max-calls 500       cost circuit breaker
 //   node evals/run.js --mode replay --promote           write baselines/baseline.json
 //
-// Live mode needs GEMINI_API_KEY. It is read from server/.env through dotenv the
-// same way the app reads it — this script NEVER writes to .env and never sets a
-// flag on process.env, matching the M5/M6 verification practice.
-//
-// Exit codes: 0 all hard gates pass · 1 a hard gate failed · 2 the run itself
-// could not complete (corpus invalid, cassette miss, no key). Quality thresholds
-// do NOT affect the exit code — per the M7a authorization they are
-// informational until the first baseline has been reviewed.
+// Live mode needs GEMINI_API_KEY, read from server/.env through dotenv like the app. This script never writes to
+// .env or sets a flag on process.env.
+// Exit codes: 0 all hard gates pass, 1 a hard gate failed, 2 the run couldn't complete (corpus invalid, cassette
+// miss, no key). Quality thresholds don't affect the exit code; they're informational until a baseline has been reviewed.
 
 const fs = require('fs');
 const path = require('path');
@@ -138,10 +134,8 @@ async function main() {
   process.stdout.write(`\nreport         ${path.relative(process.cwd(), dir)}\n`);
 
   if (args.promote) {
-    // The M7a baseline is the immutable reference every future change is
-    // compared against (M7b decision D1). Overwriting it would silently rewrite
-    // the numbers a comparison is meant to be honest about, so it is refused
-    // here as well as being unreachable by accident: a bare --promote names it.
+    // The original baseline is the immutable reference every change is compared against. Overwriting it would rewrite
+    // the numbers a comparison relies on, so it's refused here; a bare --promote names it.
     const target = path.resolve(args.promote === true ? FROZEN_BASELINE : args.promote);
     if (target === path.resolve(FROZEN_BASELINE)) {
       process.stderr.write(

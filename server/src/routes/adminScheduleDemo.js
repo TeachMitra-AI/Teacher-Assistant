@@ -1,14 +1,6 @@
-// Admin visibility for Schedule a Call bookings — read-only. See
-// docs/schedule-a-call-plan.md.
-//
-// SCOPE: this file owns every /api/admin/demo-bookings route, all
-// super_admin-only. A sibling of routes/adminSupport.js, split out the same
-// way that file is split from routes/admin.js: a demo booking is a lead, not
-// a school's own data, and belongs to a different access model than the
-// rest of admin.js's school-scoped routes. No mutation endpoints — a v1
-// admin only needs visibility; cancelling/rescheduling is visitor-token-
-// driven (routes/scheduleDemo.js), and an admin acting on someone's behalf
-// uses the link from the confirmation email.
+// Admin visibility for Schedule a Call bookings, read-only. Owns every /api/admin/demo-bookings route, all
+// super_admin-only, split out of routes/admin.js like adminSupport.js: a demo booking is a lead, not a school's own
+// data. There are no mutation endpoints; cancelling and rescheduling are visitor-token driven (routes/scheduleDemo.js).
 const express = require('express');
 
 const { prisma } = require('../lib/db');
@@ -18,9 +10,7 @@ const { getDemoBookingConfig, formatDateLabel, formatTimeLabel } = require('../l
 
 const router = express.Router();
 
-// Mirrors routes/adminSupport.js's own parseListQuery exactly — same
-// documented precedent there for small per-file leaf helpers staying
-// duplicated rather than unified.
+// Mirrors routes/adminSupport.js's parseListQuery; small per-file helpers are duplicated rather than unified.
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
 const STATUSES = ['confirmed', 'cancelled'];

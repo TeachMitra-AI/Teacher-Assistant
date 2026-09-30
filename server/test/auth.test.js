@@ -1,15 +1,7 @@
-// Email + password authentication and sign-up.
-//
-// The credential model itself changed here (name + 6-digit PIN -> email +
-// password), so these cases replace the old name/PIN ones rather than
-// extending them. Identity is now the email address. schoolCode at sign-UP is
-// now OPTIONAL: a caller that supplies one is placed at that school (covered
-// below); the website no longer collects one, so a caller that omits it is
-// placed at DEFAULT_REGISTRATION_SCHOOL_CODE automatically (routes/auth.js).
-// New registrations land `active` and can sign in immediately; the
-// pending/rejected approval gate (statusGateError in routes/auth.js) still
-// exists and is still enforced for any account an admin later moves into one
-// of those states.
+// Email + password authentication and sign-up. Identity is the email. schoolCode at sign-up is optional: one supplied
+// places the account at that school, and omitting it (as the website does) uses DEFAULT_REGISTRATION_SCHOOL_CODE
+// (routes/auth.js). New registrations are `active` and can sign in at once; the pending/rejected gate
+// (statusGateError) is still enforced for accounts an admin moves into those states.
 const bcrypt = require('bcryptjs');
 const { app, prisma } = require('./helpers/testApp');
 const { makeClient } = require('./helpers/http');
@@ -18,9 +10,7 @@ const { createFixtures, PASSWORD } = require('./helpers/fixtures');
 // Each request gets its own synthetic client IP — see helpers/http.js.
 const http = makeClient(app);
 
-// Must match DEFAULT_REGISTRATION_SCHOOL_CODE in routes/auth.js. Created
-// (idempotently) rather than assumed present, since this file's DB is a
-// throwaway test DB that never runs seed.js.
+// Must match DEFAULT_REGISTRATION_SCHOOL_CODE in routes/auth.js. Created idempotently, since this file's throwaway DB never runs seed.js.
 const DEFAULT_REGISTRATION_SCHOOL_CODE = 'RAMPUR01';
 
 describe('auth', () => {
@@ -206,8 +196,7 @@ describe('auth', () => {
         email: 'auth-pending@example.com',
         password: 'a-good-password',
       });
-      // Registration no longer produces this state on its own; simulate an
-      // admin having moved the account back into it.
+      // Registration no longer produces this state, so simulate an admin moving the account into it.
       await prisma.user.updateMany({ where: { email: 'auth-pending@example.com' }, data: { status: 'pending' } });
 
       const res = await http.post('/api/auth/login')
@@ -261,15 +250,10 @@ describe('auth', () => {
       expect(res.body.error).toMatch(/already/i);
     });
 
-    // Finding #4: a concurrent second registration can pass the findUnique
-    // check above before either request creates, so the actual duplicate is
-    // only caught when prisma.user.create() throws P2002. Simulated directly
-    // since triggering it via real concurrency would be flaky.
-    //
-    // Plain save/reassign/restore rather than vi.spyOn: spying on this
-    // Prisma Client's model delegate methods does not restore cleanly in
-    // this environment (mockRestore() leaves prisma.user.create undefined
-    // for the rest of the file) — see docs/ERROR_HANDLING_AUDIT.md #4.
+    // A concurrent second registration can pass the findUnique check before either creates, so the duplicate is only caught
+    // when prisma.user.create() throws P2002. Simulated directly, since real concurrency would be flaky.
+    // Uses save/reassign/restore rather than vi.spyOn: spying on this Prisma client's delegate methods doesn't restore
+    // cleanly here (mockRestore() leaves prisma.user.create undefined for the rest of the file); see docs/ERROR_HANDLING_AUDIT.md.
     test('a P2002 unique-constraint race on create() is still a 409, not a 500', async () => {
       const originalCreate = prisma.user.create;
       const p2002 = new Error('Unique constraint failed on the fields: (`schoolId`,`email`)');
@@ -331,9 +315,7 @@ describe('auth', () => {
     });
   });
 
-  // The same email may legitimately hold accounts at more than one school, so
-  // sign-in cannot resolve it by email alone — the client gets a school picker
-  // and re-submits with an explicit schoolId.
+  // The same email may hold accounts at several schools, so sign-in can't resolve it by email alone: the client gets a school picker and re-submits with an explicit schoolId.
   describe('one email, accounts at two schools', () => {
     const shared = 'auth-two-schools@example.com';
 
@@ -437,8 +419,7 @@ describe('auth', () => {
     });
   });
 
-  // Phase 3: exam-paper letterhead defaults (school name, teacher name,
-  // default instructions, show date/time) live inside preferences.examPaperDefaults.
+  // Exam-paper letterhead defaults (school name, teacher name, default instructions, show date/time) live in preferences.examPaperDefaults.
   describe('preferences.examPaperDefaults', () => {
     let token;
 
@@ -493,10 +474,8 @@ describe('auth', () => {
     });
   });
 
-  // Phase 0 of the onboarding rework: first-run onboarding state lives inside
-  // preferences.onboarding (seenWelcomeIntro flag + dismissedTips list). No UI
-  // consumes it yet — these tests only lock in that the persistence plumbing
-  // round-trips and stays backward-compatible with existing preferences.
+  // First-run onboarding state lives in preferences.onboarding (seenWelcomeIntro flag and dismissedTips list). These
+  // tests lock in that it round-trips and stays backward-compatible with existing preferences.
   describe('preferences.onboarding', () => {
     let token;
 

@@ -1,15 +1,8 @@
-// Milestone M8 — the telemetry module's own unit tests.
-//
-// The endpoint's behaviour is covered end to end in test/assistant.events.test.js.
-// What is checked HERE is the part of the privacy rule that is structural rather
-// than validated: buildMetadata constructs its result from an explicit key list,
-// so an event carrying an unexpected key cannot leak it even if something
-// upstream let the key through. That claim is only worth anything if something
-// actually tries it.
+// The telemetry module's own unit tests. The endpoint is covered in test/assistant.events.test.js; this checks the
+// structural part of the privacy rule: buildMetadata builds its result from an explicit key list, so an event with an
+// unexpected key can't leak it even if upstream let it through.
 
-// describe/test/expect/vi and the hooks all arrive as globals (`globals: true`
-// in vitest.config.js), matching every other suite in this project. vitest is
-// ESM-only, so requiring it here would fail outright.
+// describe/test/expect/vi and the hooks are globals (`globals: true` in vitest.config.js); vitest is ESM-only, so requiring it would fail.
 
 const {
   writeAssistantEvents,
@@ -48,9 +41,7 @@ afterEach(() => {
 
 describe('the allow-lists are derived from the registry, not hardcoded', () => {
   test('knows the slots the generator descriptor declares', () => {
-    // If this list were hardcoded, adding a Phase 2 action would silently drop
-    // its corrections. Deriving it is what makes "adding an action touches no
-    // core file" true for telemetry too.
+    // If this list were hardcoded, a new action would silently drop its corrections. Deriving it means adding an action touches no core file.
     for (const slot of ['format', 'topic', 'grade', 'subject', 'questionCount']) {
       expect(KNOWN_SLOT_NAMES).toContain(slot);
     }
@@ -75,11 +66,9 @@ describe('the allow-lists are derived from the registry, not hardcoded', () => {
 
 describe('metadata is built from an explicit key list', () => {
   test('ignores a key nobody declared, rather than spreading it through', async () => {
-    // The structural half of G11. A "spread then delete the dangerous keys"
-    // implementation fails the moment somebody invents a new dangerous key;
-    // this one has nowhere to put an unknown key at all. Note the route's strict
-    // envelope would already have rejected this payload — the point is that the
-    // writer is independently safe if it is ever called from somewhere else.
+    // The structural privacy rule: a "spread then delete the dangerous keys" writer fails when someone invents a new
+    // dangerous key, where this one has nowhere to put an unknown key. The route's strict envelope would already reject
+    // this payload; the point is that the writer is safe if called from elsewhere.
     await writeAssistantEvents(
       [
         {
@@ -178,8 +167,7 @@ describe('failure posture', () => {
 
 describe('volume', () => {
   test('writes exactly one row per event — never one per correction', async () => {
-    // CHANGE-6's promise, at the layer that could break it. Six corrections
-    // arrive collapsed into one outcome event and must stay one row.
+    // Six corrections arrive collapsed into one outcome event and must stay one row.
     const corrections = KNOWN_SLOT_NAMES.slice(0, 6).map((field) => ({ field, from: 'utterance' }));
 
     await writeAssistantEvents(

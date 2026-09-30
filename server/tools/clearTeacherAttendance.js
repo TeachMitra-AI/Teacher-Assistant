@@ -1,16 +1,7 @@
-// Teacher Attendance — local dev/test convenience: clear check-in/out rows
-// without opening Prisma Studio by hand every time.
-//
-// LOCAL/DEV TOOL ONLY, same category as tools/pruneAssistantEvents.js — not
-// wired into any route or scheduled job. Unlike that script, this has no
-// retention policy behind it; it exists purely so a developer can reset
-// their own sandbox mid-testing.
-//
-// Reviews reference an attendance row by foreign key (TeacherAttendanceReview
-// -> TeacherAttendance), so a row that was ever approved/corrected can't be
-// deleted until its review rows go first — this script always clears those
-// first, in the same transaction-free two-step Prisma itself requires.
-//
+// Local dev/test tool: clear Teacher Attendance check-in/out rows without opening Prisma Studio. Not wired into any
+// route or job, and unlike tools/pruneAssistantEvents.js it has no retention policy; it resets a developer's sandbox.
+// Review rows reference an attendance row by foreign key (TeacherAttendanceReview -> TeacherAttendance), so they
+// are cleared first, in the two steps Prisma requires.
 // Usage:
 //   npm run attendance:clear-test-data                  # today (IST) only
 //   npm run attendance:clear-test-data -- --date 2026-08-29
@@ -34,13 +25,8 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  // --email alone (no --date/--all) means "this teacher, every date" — a
-  // single teacher's test history is the thing being reset, not "today
-  // across everyone," which --date's own default would otherwise imply.
-  // --all means "every date" full stop, whether or not --email narrows it
-  // to one teacher — it used to only take effect when --email was ALSO set
-  // (args.email && !args.all), so `--all` on its own silently fell back to
-  // "today," the same as passing no flags at all.
+  // --email alone means "this teacher, every date", since a single teacher's test history is what's being reset. --all
+  // means every date whether or not --email narrows it to one teacher.
   const targetDate = args.date || (args.all || args.email ? null : istDateString(new Date()));
   const where = {
     ...(targetDate ? { date: targetDate } : {}),

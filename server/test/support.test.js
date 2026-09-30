@@ -1,7 +1,5 @@
-// POST /api/support/tickets, end to end. Mirrors attachments.test.js's
-// approach to flag manipulation: env vars are read per-request by the route,
-// so tests drive the single shared app instance by flipping process.env
-// between tests rather than rebuilding the app.
+// POST /api/support/tickets, end to end. Like attachments.test.js: the route reads env flags per request, so tests
+// flip process.env on the shared app rather than rebuilding it.
 const request = require('supertest');
 
 const { app, prisma } = require('./helpers/testApp');

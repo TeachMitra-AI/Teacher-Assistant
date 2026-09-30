@@ -1,8 +1,5 @@
-// Subject canonicalization (Milestone M4).
-//
-// Simpler than grades because a synonym names exactly one canonical subject.
-// The work is breadth: English, Hinglish transliteration, Devanagari, and the
-// sub-subjects the application's coarser list folds together.
+// Subject canonicalization. Simpler than grades since a synonym names exactly one subject; the work is breadth
+// (English, Hinglish, Devanagari, and the sub-subjects the coarser list folds together).
 
 const { SUBJECTS, VOCAB_STATUS, mapSubject } = require('../../../src/actions/vocab/subjects');
 
@@ -72,9 +69,7 @@ describe('mapSubject — confident mappings', () => {
   });
 
   test('Hindi the SUBJECT and Hindi the language do not collide', () => {
-    // They are different slots resolved by different mappers. This pins the
-    // subject side: "hindi" in the subject slot is the subject, not a request
-    // for Hindi-language output.
+    // Different slots use different mappers: "hindi" in the subject slot is the subject, not a request for Hindi output.
     expect(mapSubject('hindi').value).toBe('Hindi');
   });
 });
@@ -87,8 +82,7 @@ describe('mapSubject — spanning and contradictory phrases', () => {
   });
 
   test('two subjects joined as a span is ambiguous, and keeps the raw phrase', () => {
-    // The subject field is free text in the generation schema, so "maths and
-    // science" prefilled verbatim is a legitimate, honest outcome.
+    // The subject field is free text in the generation schema, so "maths and science" prefilled verbatim is a legitimate outcome.
     const result = mapSubject('maths and science');
     expect(result.status).toBe(VOCAB_STATUS.AMBIGUOUS);
     expect(result.candidates).toEqual(['Mathematics', 'Science']);

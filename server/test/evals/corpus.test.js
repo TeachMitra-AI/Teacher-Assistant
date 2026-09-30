@@ -1,13 +1,7 @@
-// Corpus integrity (Milestone M7a).
-//
-// The corpus is DATA, and unvalidated data is how an evaluation harness ends up
-// measuring nothing. These tests are the control that keeps the labels honest:
-// they check the corpus against the REGISTRY and against the real safety guard,
-// so a label cannot claim something the application could never produce.
-//
-// The load itself is the first assertion — loadCorpus throws on a missing
-// directory, a malformed line, a duplicate id, a duplicate utterance and an
-// empty stratum.
+// Corpus integrity. The corpus is data, and unvalidated data makes an evaluation measure nothing. These tests keep the
+// labels honest by checking the corpus against the registry and the real safety guard, so a label can't claim something
+// the application could never produce. The load is the first assertion: loadCorpus throws on a missing directory,
+// malformed line, duplicate id, duplicate utterance or empty stratum.
 
 
 const { loadCorpus, STRATUM_MINIMUMS } = require('../../evals/lib/loadCorpus');
@@ -114,9 +108,8 @@ describe('corpus integrity', () => {
     }
   });
 
-  // The bidirectional form of this check matters more than the forward one.
-  // Asserting only that emergency-labelled cases trip the guard would let the
-  // three non-English cases silently claim a short-circuit they do not get.
+  // The bidirectional form matters more than the forward one: checking only that emergency-labelled cases trip the guard
+  // would let the three non-English cases claim a short-circuit they don't get.
   test('emergency labels match what the real guard actually detects, both ways', () => {
     for (const turn of allTurns) {
       const detected = detectEmergency(normalizeQuery(turn.utterance)).isEmergency;
@@ -161,9 +154,7 @@ describe('corpus integrity', () => {
   });
 
   test('every Devanagari command that names no language lists language as notStated', () => {
-    // The language trap is only measurable where the label says the teacher did
-    // not name a language. A hi-stratum case missing that entry would silently
-    // opt out of the hard gate.
+    // The language trap is measurable only where the label says the teacher named no language; a hi-stratum case missing that entry would silently opt out of the hard gate.
     for (const entry of corpus.cases) {
       if (entry.language !== 'hi' || entry.stratum !== 'commands') continue;
       if ('language' in entry.expected.slots.stated) continue;

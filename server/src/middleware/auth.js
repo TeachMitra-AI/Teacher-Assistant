@@ -1,11 +1,6 @@
-// Access-token (JWT) helpers, refresh-token (opaque, server-tracked) helpers,
-// and auth/role middleware.
-//
-// Architecture: short-lived access JWT (unchanged shape/verification, just a
-// shorter TTL) + a rotating opaque refresh token whose hash is stored in the
-// Session table. This makes the long-lived credential fully revocable
-// server-side without requiring a DB lookup on every request — authRequired
-// stays fast and stateless, exactly as before.
+// Access-token (JWT) helpers, refresh-token helpers and auth/role middleware. A short-lived access JWT plus a
+// rotating opaque refresh token whose hash is stored in the Session table, so the long-lived credential is
+// revocable server-side while authRequired stays stateless and fast.
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
@@ -23,8 +18,6 @@ if (JWT_SECRET.length < 32 || JWT_SECRET === 'change-me-to-a-long-random-secret'
 }
 
 const JWT_ALGORITHM = 'HS256';
-
-// ---- Access token (short-lived JWT) ----------------------------------------
 
 function signAccessToken(user) {
   return jwt.sign(
@@ -85,8 +78,6 @@ function requireRole(...roles) {
     return next();
   };
 }
-
-// ---- Refresh token (opaque, hashed at rest in the Session table) ----------
 
 function generateRefreshToken() {
   return crypto.randomBytes(32).toString('base64url');

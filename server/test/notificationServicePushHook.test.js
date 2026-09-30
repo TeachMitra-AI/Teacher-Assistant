@@ -1,10 +1,6 @@
-// Phase 7b — the push-dispatch hook createNotification()/createBroadcast()
-// added inside notificationService.js. Spies on pushService.dispatchPush
-// (accessed as `pushService.dispatchPush(...)`, never destructured, in
-// notificationService.js — see that file's require() comment) rather than
-// mocking the 'expo-server-sdk' module: this matches the DI-flavored style
-// the rest of this file's tests already use for socketServer, and needs no
-// module-mocking machinery for an ESM-only dependency.
+// The push-dispatch hook in createNotification()/createBroadcast(). It spies on pushService.dispatchPush (accessed as
+// `pushService.dispatchPush(...)`, never destructured, in notificationService.js) rather than mocking 'expo-server-sdk',
+// matching the DI-flavoured style used for socketServer and needing no module mocking for an ESM-only dependency.
 const { prisma } = require('./helpers/testApp');
 const { createFixtures } = require('./helpers/fixtures');
 const { createNotification, createBroadcast } = require('../src/lib/notificationService');
@@ -24,11 +20,8 @@ describe('notificationService push-dispatch hook', () => {
   test('createNotification() calls dispatchPush with the recipient and the created row, and the write still succeeds even if dispatchPush rejects', async () => {
     const spy = vi.spyOn(pushService, 'dispatchPush').mockRejectedValue(new Error('boom'));
 
-    // Belt-and-suspenders: pushService.dispatchPush() already contracts to
-    // never reject (pushService.test.js covers that), but createNotification()
-    // wraps the call in its own try/catch anyway, same as it already does for
-    // the socketServer emit — so even a broken contract can never turn into a
-    // lost write here.
+    // Belt and suspenders: dispatchPush() is meant to never reject (pushService.test.js covers that), but createNotification()
+    // wraps the call in try/catch anyway, as for the socketServer emit, so even a broken contract can't lose a write.
     const row = await createNotification({
       recipientId: fx.teacherA.id,
       type: 'reminder',

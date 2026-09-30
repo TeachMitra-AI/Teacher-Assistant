@@ -1,15 +1,6 @@
-// Corpus loader (Milestone M7a).
-//
-// THIS FILE'S REAL JOB IS TO FAIL LOUDLY. An evaluation harness that reports
-// 100% precision over an empty corpus is indistinguishable from a working one in
-// every artifact it produces, and it is the single most common failure of this
-// class of tooling. So: a missing directory, an unreadable file, a malformed
-// line, a duplicate id, an empty stratum and a zero total are all THROWN, never
-// warned about and never quietly skipped.
-//
-// The same reasoning the M2 contract-drift test recorded: a check that silently
-// matches nothing is worse than no check, because it also removes the suspicion
-// that would have led someone to look.
+// Corpus loader. Its job is to fail loudly: a harness reporting 100% precision over an empty corpus looks like a
+// working one in every artifact. A missing directory, unreadable file, malformed line, duplicate id, empty stratum
+// or zero total is thrown, never warned about or skipped, since a check that silently matches nothing is worse than no check.
 
 const fs = require('fs');
 const path = require('path');
@@ -20,12 +11,8 @@ const { caseSchema, sessionSchema, STRATA } = require('./caseSchema');
 const CORPUS_DIR = path.join(__dirname, '..', 'corpus');
 
 /**
- * Minimum case count per stratum.
- *
- * These are a FLOOR, not a target: they exist so that deleting or emptying a
- * corpus file fails a test instead of quietly shrinking what the baseline
- * covers. Raising the floor is a deliberate act; drifting below it is not
- * possible without a red test.
+ * Minimum case count per stratum, a floor and not a target, so deleting or emptying a corpus file fails a test
+ * instead of quietly shrinking the baseline's coverage.
  */
 const STRATUM_MINIMUMS = Object.freeze({
   commands: 60,

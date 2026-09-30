@@ -1,19 +1,10 @@
-// Prompt + Markdown rendering for the Lesson Plan artifact (Classroom Mode P6).
-//
-// Split out of routes/resources.js rather than added to it: that file already
-// carries the whole assessment pipeline, and a lesson plan shares none of its
-// shape. Keeping them apart is what stops renderAssessmentBody from growing a
-// "…unless it's a lesson plan" branch in every function.
-// languageDirective is the SHARED one from prompts.js, not a local copy. This
-// file used to carry its own second implementation, which meant the "no
-// directive at all for English" bug had to be found and fixed twice
-// (docs/response-language-fix.md §6).
+// Prompt and Markdown rendering for the Lesson Plan artifact. Kept out of routes/resources.js, which carries the
+// assessment pipeline, so renderAssessmentBody doesn't grow a lesson-plan branch in every function.
+// languageDirective is the shared one from prompts.js (docs/response-language-fix.md), not a local copy.
 const { LANGUAGE_NAMES, languageDirective } = require('../prompts');
 const { CLASSROOM_TYPES } = require('../actions/schemas/generateLessonPlan');
 
-// What each classroom reality actually demands of a lesson. Written as
-// instructions to the model rather than as labels, because "multi_grade" alone
-// tells it nothing it can act on.
+// What each classroom reality demands of a lesson, written as instructions since "multi_grade" alone gives the model nothing to act on.
 const CLASSROOM_TYPE_DIRECTIVES = Object.freeze({
   standard:
     'A single grade of roughly 30-40 students in one room. Differentiation should cover the faster and slower learners within that one grade.',
@@ -25,9 +16,7 @@ const CLASSROOM_TYPE_DIRECTIVES = Object.freeze({
     'ONE GRADE WITH A VERY WIDE RANGE OF LEVELS, including students reading well below grade level. Every activity needs a simpler entry point and an extension, and the Differentiation section must name both explicitly.',
 });
 
-// Fail at boot if a classroom type has no directive, same discipline
-// assessmentFormats.js applies to FORMAT_META — a type without guidance would
-// silently generate a generic plan that ignores the teacher's actual room.
+// Fail at boot if a classroom type has no directive (as assessmentFormats.js does for FORMAT_META); it would silently give a generic plan.
 const missingDirectives = CLASSROOM_TYPES.filter((t) => !CLASSROOM_TYPE_DIRECTIVES[t]);
 if (missingDirectives.length > 0) {
   throw new Error(
@@ -73,9 +62,7 @@ const LESSON_PLAN_RESPONSE_SCHEMA = {
 function buildLessonPlanPrompt(config) {
   const { topic, grade, subject, language, duration, classroomType, instructions } = config;
   const lang = language && LANGUAGE_NAMES[language] ? language : 'en';
-  // Structured variant — LESSON_PLAN_SCHEMA's field names are what the
-  // renderer looks up to build the printed page, so they stay English while
-  // the lesson content itself is translated.
+  // Structured variant: LESSON_PLAN_SCHEMA's field names are what the renderer looks up, so they stay English while the content is translated.
   const languageLine = `- ${languageDirective(lang, { structured: true })}\n`;
 
   const systemInstruction = `You are an experienced Indian government school teacher writing a lesson plan in the standard format used in Indian schools (the NCERT / B.Ed / DIET format), for your own use in class tomorrow.
@@ -122,13 +109,9 @@ const numbered = (items) => items.map((item, i) => `${i + 1}. ${item}`);
 const bulleted = (items) => items.map((item) => `- ${item}`);
 
 /**
- * Renders a validated lesson plan into the Markdown the rest of the app
- * already expects from a saved resource — the same "app owns the layout, the
- * model owns only the content" split renderAssessmentBody uses.
- *
- * The Presentation table is the one place a table is the right shape: the
- * teacher/student pairing IS the information, and two parallel lists would
- * lose it.
+ * Renders a validated lesson plan into the Markdown the app expects from a saved resource (the app owns the
+ * layout, the model only the content). The Presentation table pairs teacher and student actions, which two
+ * parallel lists would lose.
  * @param {object} doc validated lessonPlanDocumentSchema output
  * @param {{topic: string, grade: string, subject: string, duration: string}} meta
  */

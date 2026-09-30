@@ -1,6 +1,5 @@
 // Prisma schema for the Teacher Assistant.
-// SQLite for the pilot; switching to PostgreSQL later only requires changing
-// the datasource provider + DATABASE_URL and re-running migrations.
+// SQLite for the pilot; moving to PostgreSQL means changing the datasource provider and DATABASE_URL and re-running migrations.
 
 generator client {
   provider = "prisma-client-js"
@@ -26,10 +25,8 @@ model School {
   events                 Event[]
   resources              Resource[]
   supportTickets         SupportTicket[]
-  // Classroom Management (docs/classroom-feature-plan.md) — denormalized
-  // alongside SchoolClass.teacherId, NEVER used for row-level access (every
-  // Classroom query filters on teacherId only). Reserved for a possible
-  // future school-admin rollup view; unused by any V1 route.
+  // Classroom Management (docs/classroom-feature-plan.md). Denormalized beside SchoolClass.teacherId and never used
+  // for row-level access (queries filter on teacherId only); reserved for a possible school-admin rollup, unused in V1.
   schoolClasses          SchoolClass[]
   conversations          Conversation[]
   // Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md)
@@ -40,15 +37,10 @@ model School {
 }
 
 // Roles: teacher | school_admin | resource_person | super_admin
-//
-// Identity is `email` (not `name`): common teacher names collide within a
-// single school, and email unifies the manual signup path with Google
-// sign-in, which always supplies a verified email. `name` is retained purely
-// as a display field (Manage table, app header, exam letterhead) and is
-// deliberately NOT unique any more.
-//
-// `status` gates sign-in: every new signup — manual or Google — starts as
-// `pending` and only a school_admin/super_admin can move it to `active`.
+// Identity is `email`, not `name`: teacher names collide within a school, and email unifies manual sign-up with
+// Google sign-in, which always supplies a verified one. `name` is a display field (Manage table, app header, exam
+// letterhead) and isn't unique.
+// `status` gates sign-in. New sign-ups are `active`; `pending` and `rejected` are set by an admin and block sign-in.
 model User {
   id               String    @id @default(cuid())
   school           School    @relation(fields: [schoolId], references: [id])
@@ -83,39 +75,28 @@ model User {
   supportNotes           SupportNote[]
   profilePicture         ProfilePicture?
   notifications          Notification[]
-  // OS-level push registrations (Phase 7b, docs/mobile-app-plan.md §15/§26).
-  // One row per installed-app instance the teacher has signed into, not one
-  // per user — see DeviceToken's own doc comment.
+  // OS-level push registrations (docs/mobile-app-plan.md): one row per installed-app instance, not per user (see DeviceToken).
   deviceTokens           DeviceToken[]
-  // Classroom Management (docs/classroom-feature-plan.md) — a teacher's own
-  // classes. Every class/student/attendance/fee row is scoped to teacherId,
-  // never schoolId (see SchoolClass's own doc comment) — teacher A never
-  // sees teacher B's classes/students/attendance/fees, even within the same
-  // school.
+  // Classroom Management (docs/classroom-feature-plan.md): a teacher's own classes. Every class, student, attendance and
+  // fee row is scoped to teacherId, never schoolId, so one teacher never sees another's even within a school.
   schoolClasses          SchoolClass[]
   conversations          Conversation[]
-  // Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md)
-  // — this teacher's own check-in/check-out days, and (for a school_admin)
-  // the review actions they've taken on other teachers' flagged days.
+  // Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md): this teacher's own check-in/check-out
+  // days, and (for a school_admin) the review actions taken on other teachers' days.
   teacherAttendances     TeacherAttendance[]
   attendanceReviews      TeacherAttendanceReview[]
   attendanceActivityLogs TeacherAttendanceActivityLog[]
 
-  // A teacher's email is unique within a school. The same email may hold
-  // accounts at more than one school, which is why sign-in looks up by email
-  // across schools and asks the user to disambiguate when it matches several.
+  // Email is unique within a school. The same email may hold accounts at several schools, so sign-in looks up by
+  // email across schools and asks the user to choose when several match.
   @@unique([schoolId, email])
   @@index([googleSub])
 }
 
-// A teacher's custom uploaded profile picture — kept in its own table, never
-// as columns on User, so an ordinary prisma.user.findMany()/findUnique() can
-// never accidentally pull image bytes into memory; only code that explicitly
-// selects `data` (the serving route) ever touches them. One row per user
-// (upsert on upload, deleted on removal); presence/absence of the row is
-// itself the "has a custom photo" flag — see publicUser() in routes/auth.js,
-// which reads only `updatedAt` to build a cache-busted avatarUrl and never
-// loads `data` for that DTO.
+// A custom uploaded profile picture, in its own table so a normal prisma.user.findMany()/findUnique() never pulls
+// image bytes into memory; only code that explicitly selects `data` (the serving route) does. One row per user
+// (upsert on upload, deleted on removal); the row's presence is the "has a custom photo" flag. publicUser() in
+// routes/auth.js reads only `updatedAt` to build a cache-busted avatarUrl.
 model ProfilePicture {
   id        String   @id @default(cuid())
   user      User     @relation(fields: [userId], references: [id])
@@ -127,11 +108,9 @@ model ProfilePicture {
   updatedAt DateTime @updatedAt
 }
 
-// A single-use, time-limited password-reset token. Mirrors the Session model's
-// discipline exactly: the raw token goes out in the reset email and is never
-// stored — only its SHA-256 hash (see hashToken in middleware/auth.js), so a
-// database leak cannot be replayed into account takeovers. `usedAt` makes
-// redemption single-use even inside the expiry window.
+// A single-use, time-limited password-reset token. Like Session, the raw token goes out in the email and only its
+// SHA-256 hash is stored (hashToken in middleware/auth.js), so a database leak can't be replayed into takeovers.
+// `usedAt` makes redemption single-use even within the expiry window.
 model PasswordResetToken {
   id        String    @id @default(cuid())
   user      User      @relation(fields: [userId], references: [id])
@@ -144,11 +123,9 @@ model PasswordResetToken {
   @@index([userId])
 }
 
-// A refresh-token session, so a login can be revoked server-side instead of
-// only expiring after TOKEN_TTL. The raw refresh token is never stored —
-// only its SHA-256 hash. Rotated on every /auth/refresh call; `replacedBy`
-// links a session to the one that superseded it, so a reused (already
-// rotated-out) token can be detected as likely theft.
+// A refresh-token session, so a login can be revoked server-side instead of only expiring after TOKEN_TTL. Only the
+// SHA-256 hash of the raw token is stored. It's rotated on every /auth/refresh; `replacedBy` links a session to its
+// successor, so a reused (already rotated-out) token can be detected as likely theft.
 model Session {
   id         String    @id @default(cuid())
   user       User      @relation(fields: [userId], references: [id])
@@ -178,38 +155,19 @@ model Query {
   responseText       String
   responseTimeMs     Int?
   finishReason       String?
-  // Classroom Mode's plan for this turn, as a JSON string, or NULL for every
-  // ordinary question (docs/classroom-mode.md D24). Nullable and additive on
-  // purpose: a row written before this column existed, and every row written
-  // by a teacher who never uses the mode, is simply NULL — so nothing that
-  // reads a Query needs to know this column exists.
-  //
-  // Stores the PLAN (topic, grade, subject, language, which artifacts fit),
-  // never the generated artifacts themselves — those are still only saved by
-  // an explicit teacher action (D11).
+  // Classroom Mode's plan for this turn as a JSON string, NULL for ordinary questions (docs/classroom-mode.md). Nullable
+  // and additive, so nothing reading a Query needs to know about it. It stores the plan (topic, grade, subject,
+  // language, which artifacts fit), never the generated artifacts, which are saved only by an explicit teacher action.
   classroomPlan      String?
-  // The artifacts Classroom Mode generated for this turn, as a JSON object of
-  // { artifactKind: markdown } (docs/classroom-mode.md D25). NULL for every
-  // ordinary question.
-  //
-  // ⚠️ NEVER select this in a LIST query. It holds up to five full documents;
-  // a 20-row history that pulled it would move hundreds of kilobytes to render
-  // a sidebar. routes/queries.js uses an explicit `select` for exactly this
-  // reason, and the artifacts are fetched on demand for ONE turn instead.
+  // The artifacts Classroom Mode generated for this turn, as JSON { artifactKind: markdown } (docs/classroom-mode.md).
+  // NULL for ordinary questions. Never select this in a list query: it holds up to five documents, and a 20-row
+  // history would move hundreds of KB. routes/queries.js uses an explicit `select`, and fetches one turn's artifacts on demand.
   classroomArtifacts String?
   createdAt          DateTime @default(now())
-  // Teacher-set display label for this history entry (Sidebar's three-dot
-  // "Rename chat"). NULL for every row written before this column existed,
-  // and for any row the teacher has never renamed — the client falls back to
-  // showing `queryText` in that case, so nothing that reads a Query needs a
-  // migration-aware branch. Never written to or read from `queryText` itself:
-  // that field stays the original question, unedited, since it's also what
-  // reopening this entry from history replays as the turn's user message.
+  // Teacher-set display label for a history entry ("Rename chat"). NULL if never renamed, in which case the client
+  // shows `queryText`. `queryText` is never edited, since it's what reopening the entry replays as the user's message.
   title              String?
-  // "Pin chat" (Sidebar three-dot menu). Defaulted false, not nullable — a
-  // pin is a plain boolean state, not a "was this ever set" question the way
-  // `title`'s NULL-vs-empty distinction is, so every existing row backfills
-  // to the same unpinned default a freshly created one gets.
+  // "Pin chat". A plain boolean, not nullable, so existing rows backfill to the same unpinned default as new ones.
   pinned             Boolean  @default(false)
 
   feedback Feedback[]
@@ -219,16 +177,11 @@ model Query {
   @@index([createdAt])
 }
 
-// Documenting an existing table, not adding a new feature: this model (and
-// Message below) existed only in the live dev.db's applied-migrations
-// history — the migration that created them (20260720193726) was applied
-// but its file was never committed, so `schema.prisma` never described them
-// either. No route or lib in this codebase reads/writes Conversation or
-// Message (grep confirms zero references) — they appear to be an abandoned
-// prototype. Documented here as-is, matching the live table exactly, so
-// schema.prisma and the database agree and future migrations don't try to
-// drop them. Not part of any current feature; do not build on these without
-// first checking whether they're actually meant to be reused or removed.
+// Documents an existing table, not a new feature. This model (and Message) existed only in the live dev.db's
+// applied-migrations history: the migration that created them (20260720193726) was applied but its file was never
+// committed, so the schema never described them. Nothing reads or writes Conversation or Message; they look like an
+// abandoned prototype. They're documented as-is so the schema matches the database and future migrations don't
+// drop them. Check whether they should be reused or removed before building on them.
 model Conversation {
   id         String    @id @default(cuid())
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -294,13 +247,9 @@ model Event {
   @@index([createdAt])
 }
 
-// A teacher-owned saved resource: the backing store for "My Library" and
-// (later) the Lesson Plan Workspace. Ownership is always the authenticated
-// user; resources are private to their owner. `structured` holds the
-// lesson-plan fields as a JSON string (only for type = lesson_plan), mirroring
-// the JSON-in-String convention used elsewhere (preferences, context).
-// `sourceQueryId` is a soft link back to the originating history entry (NOT a
-// foreign key), so clearing history never cascades into saved resources.
+// A teacher-owned saved resource: the store for "My Library" and the Lesson Plan Workspace. Private to its owner.
+// `structured` is a JSON string (the lesson-plan fields for type = lesson_plan), like preferences and context.
+// `sourceQueryId` is a soft link to the originating history entry, not a foreign key, so clearing history never cascades to saved resources.
 model Resource {
   id            String   @id @default(cuid())
   user          User     @relation(fields: [userId], references: [id])
@@ -323,21 +272,12 @@ model Resource {
   @@index([createdAt])
 }
 
-// Help & Support: bug reports and lightweight feedback, both filed through the
-// same "Need Help?" entry point (see docs/help-support-architecture.md). One
-// model with a `type` discriminator (bug | feedback) rather than a model per
-// flow — mirrors how Resource holds several kinds under one table above,
-// since bug reports and feedback share every column and differ only in which
-// ones are required. Contact Support creates no row at all in Phase 1 (a
-// WhatsApp deep link built client-side); a future in-app fallback would reuse
-// this same table.
-//
-// `context` is a JSON string, same convention as User.preferences and
-// Query.context — auto-captured, non-sensitive diagnostic fields (route,
-// build id, browser, requestId, …). Deliberately loose-typed so a future field
-// (e.g. a diagnostics export) never needs a migration. It never carries the
-// AI prompt/answer or a screenshot; those are opt-in additions planned for
-// Phase 2, as their own explicit fields once they exist.
+// Help & Support: bug reports and feedback, both filed from the "Need Help?" entry point
+// (docs/help-support-architecture.md). One model with a `type` discriminator (bug | feedback), like Resource holds
+// several kinds, since they share every column and differ only in which are required. Contact Support creates no
+// row (it's a client-side WhatsApp link).
+// `context` is a JSON string (like User.preferences and Query.context) of auto-captured, non-sensitive diagnostics
+// (route, build id, browser, requestId, ...), loosely typed so a new field needs no migration. It never carries the AI prompt/answer or a screenshot.
 model SupportTicket {
   id          String   @id @default(cuid())
   type        String // bug | feedback
@@ -358,20 +298,15 @@ model SupportTicket {
   @@index([type])
   @@index([schoolId])
   @@index([createdAt])
-  // Both added in Phase 2 (the admin inbox) — Phase 1 never filtered or
-  // searched on either, so neither needed an index until now.
+  // Indexed for the admin inbox's filtering and search.
   @@index([category])
   @@index([userId])
 }
 
-// A single admin-configurable runtime override — e.g. a temporary
-// feature-flag toggle set from Admin Settings > Feature Management (see
-// lib/systemSettings.js). Absence of a row for a given key is a first-class
-// state, not an error: it means "no override yet", and the caller falls back
-// to that feature's existing env-var default. `updatedById` is a soft
-// reference to the acting admin (not a FK — mirrors Resource.sourceQueryId's
-// precedent above), since the durable audit trail is the Event row the same
-// write also creates, not this table.
+// A single admin-configurable runtime override, e.g. a feature-flag toggle from Admin Settings > Feature Management
+// (see lib/systemSettings.js). No row means "no override", and the caller falls back to the env-var default.
+// `updatedById` is a soft reference to the acting admin (not a FK, like Resource.sourceQueryId); the audit trail is
+// the Event row the same write creates.
 model SystemSetting {
   key         String   @id
   value       String
@@ -379,36 +314,25 @@ model SystemSetting {
   updatedById String?
 }
 
-// A single notification, one row PER RECIPIENT (fan-out on write, not a
-// broadcast + read-receipt join table) — mirrors how Event already does one
-// row per user per occurrence. Simpler to query ("my unread count" is one
-// indexed WHERE), and pilot-scale (a school's teacher count) never makes the
-// fan-out write expensive; createMany() is used for multi-recipient sends
-// (see lib/notificationService.js) so a broadcast is one INSERT, not N round
-// trips. See docs/notification-system-plan.md §3.
+// One notification per recipient (fan-out on write, not a broadcast plus read-receipt join), as Event does per user
+// per occurrence. "My unread count" is one indexed WHERE, and pilot-scale fan-out is cheap. createMany() makes a
+// broadcast one INSERT (see lib/notificationService.js). See docs/notification-system-plan.md.
 model Notification {
   id          String    @id @default(cuid())
   recipient   User      @relation(fields: [recipientId], references: [id])
   recipientId String
-  // Closed vocabulary — see lib/notificationTypes.js (server) /
-  // config.ts NOTIFICATION_TYPES (client), same CHANGE-11 duplication
-  // convention as every other closed vocabulary in this app.
+  // Closed vocabulary: lib/notificationTypes.js (server) and NOTIFICATION_TYPES in the client's config.ts.
   type        String
   title       String
   message     String
-  // Relative in-app path the client navigates to on click (e.g.
-  // "/library/<id>"), or null for a notification with nothing to open.
-  // Never an absolute URL.
+  // Relative in-app path to open on click (e.g. "/library/<id>"), or null. Never an absolute URL.
   link        String?
   read        Boolean   @default(false)
   readAt      DateTime?
   createdAt   DateTime  @default(now())
-  // Soft reference to the sending admin, or null for a system/AI-generated
-  // notification. NOT a FK — mirrors SystemSetting.updatedById: the durable
-  // record is this row itself, and an admin's account is never blocked from
-  // deletion by rows they sent. Denormalized alongside the name/role so a
-  // broadcast to hundreds of recipients never needs a join just to render
-  // "Sent by <name> (<role>)".
+  // Soft reference to the sending admin, or null for a system/AI notification. Not a FK, like SystemSetting.updatedById:
+  // this row is the durable record, and an admin's account is never blocked from deletion by rows they sent.
+  // Denormalized with the name and role so a broadcast needs no join to render "Sent by <name> (<role>)".
   senderId    String?
   senderName  String?
   senderRole  String?
@@ -421,45 +345,30 @@ model Notification {
   @@index([type])
 }
 
-// OS-level push registration (Phase 7b, docs/mobile-app-plan.md §15/§26) — one
-// row per installed mobile app instance, NOT one per user: the same teacher
-// signed into the app on two phones holds two rows, and `token` (not
-// `userId`) is the unique key so re-registering the same installation under a
-// different account (a shared/reset device) reassigns the row instead of
-// creating a duplicate (see the upsert in routes/notifications.js).
-// notificationService.js's createNotification/createBroadcast choke point
-// reads these rows to decide who gets an Expo push alongside the existing
-// realtime Socket.IO emit — additive, never a replacement for either the
-// in-app list or the realtime bell.
+// OS-level push registration (docs/mobile-app-plan.md): one row per installed mobile app instance, not per user, so
+// one teacher on two phones has two rows. `token`, not `userId`, is the unique key, so re-registering the same
+// installation under another account (a shared or reset device) reassigns the row (see the upsert in
+// routes/notifications.js). notificationService.js reads these rows to decide who gets an Expo push alongside the
+// realtime Socket.IO emit, never instead of the in-app list or the bell.
 model DeviceToken {
   id         String   @id @default(cuid())
   user       User     @relation(fields: [userId], references: [id])
   userId     String
-  // The Expo push token itself (e.g. "ExponentPushToken[xxxxxxxx]"), not a
-  // raw FCM/APNs token — Expo's push service is the delivery mechanism this
-  // phase uses (docs/mobile-app-plan.md §29 point 5), so this is what
-  // sendPushNotificationsAsync() is called with directly.
+  // The Expo push token (e.g. "ExponentPushToken[xxxxxxxx]"), not a raw FCM/APNs token: Expo's push service is the
+  // delivery mechanism (docs/mobile-app-plan.md), and this is what sendPushNotificationsAsync() takes.
   token      String   @unique
-  // 'ios' | 'android' — informational only today (nothing branches on it yet);
-  // kept for the same reason Session.userAgent is kept, in case a future
-  // "signed-in devices" style screen wants to show it.
+  // 'ios' | 'android'. Informational only today; kept like Session.userAgent for a possible "signed-in devices" screen.
   platform   String
   createdAt  DateTime @default(now())
-  // Bumped on every successful re-registration (app launch, token refresh) —
-  // not currently read by any query, but the natural place to add a staleness
-  // sweep later without a schema change if Expo's own delivery errors turn out
-  // not to be a complete enough cleanup signal on their own.
+  // Bumped on every successful re-registration (app launch, token refresh). Not read yet; the place to add a
+  // staleness sweep later without a schema change.
   lastSeenAt DateTime @default(now())
 
   @@index([userId])
 }
 
-// An admin's internal note on a SupportTicket (Phase 2: the admin inbox).
-// Never exposed to the ticket's submitter — there is no teacher-facing
-// endpoint that returns these rows, by omission rather than a per-field
-// permission check. Append-only from the UI's perspective (no edit/delete
-// exposed yet); a note can be candid ("teacher error, not a bug") without
-// that risking exposure to the person who filed the ticket.
+// An admin's internal note on a SupportTicket. Never exposed to the ticket's submitter: no teacher-facing endpoint
+// returns these rows. Append-only from the UI (no edit or delete yet), so a note can be candid without risk of the filer seeing it.
 model SupportNote {
   id        String        @id @default(cuid())
   ticket    SupportTicket @relation(fields: [ticketId], references: [id])
@@ -472,47 +381,28 @@ model SupportNote {
   @@index([ticketId])
 }
 
-// ---------------------------------------------------------------------------
-// Classroom Management — see docs/classroom-feature-plan.md.
-//
-// A teacher-first workspace: My Classes / Students / Attendance / Fees /
-// Reports. Isolation is PER TEACHER (teacherId), not per school — two
-// teachers at the same school are as isolated from each other as two
-// teachers at different schools. Every route filters strictly on
-// `teacherId: req.user.id`; there is no cross-teacher visibility in V1 (see
-// routes/classroom.js and test/classroom-tenant-isolation.test.js).
-//
-// NOT to be confused with the unrelated "Classroom Mode" AI chat feature
-// (Query.classroomPlan/classroomArtifacts, CLASSROOM_MODE_ENABLED above,
-// docs/classroom-mode.md) — that feature plans/generates lesson artifacts
-// inside a chat turn and has no classes, students, attendance, or fees.
-// ---------------------------------------------------------------------------
+// Classroom Management (docs/classroom-feature-plan.md): My Classes, Students, Attendance, Fees, Reports.
+// Isolation is per teacher (teacherId), not per school: two teachers at one school are as isolated as two at different
+// schools. Every route filters on `teacherId: req.user.id` with no cross-teacher visibility in V1 (see routes/classroom.js
+// and test/classroom-tenant-isolation.test.js).
+// Not the unrelated "Classroom Mode" AI chat feature (Query.classroomPlan/classroomArtifacts, docs/classroom-mode.md),
+// which has no classes, students, attendance or fees.
 
-// A teacher's own class (e.g. "Class 5-A"). Owned by exactly one teacher —
-// mirrors Resource's ownership model, not School's shared-tenant model: two
-// teachers at the same school each create and see only their own
-// SchoolClass rows, there is no shared "the school's 5-A" entity.
+// A teacher's own class (e.g. "Class 5-A"), owned by exactly one teacher like Resource. There's no shared "the
+// school's 5-A" entity: two teachers at one school each create and see only their own SchoolClass rows.
 model SchoolClass {
   id        String   @id @default(cuid())
   teacher   User     @relation(fields: [teacherId], references: [id])
   teacherId String
-  // Denormalized alongside teacherId, same convention as Resource.schoolId —
-  // never used for row-level access (ownership is always teacherId), only
-  // reserved for a possible later school-admin rollup (not built in V1).
+  // Denormalized beside teacherId, like Resource.schoolId. Never used for row-level access; reserved for a possible school-admin rollup.
   school    School?  @relation(fields: [schoolId], references: [id])
   schoolId  String?
   name      String // "Class 5-A"
   grade     String? // reuses the GRADES vocabulary where useful, free text otherwise
   section   String? // "A", "B" — split out since Attendance/Reports may filter by it later
-  // Expected monthly fee for every (active) student in this class, in whole
-  // rupees (no paise — school fees don't need that precision, and it avoids
-  // conversion logic everywhere). Null until a teacher sets one (existing
-  // classes are unaffected). The first time a teacher records a payment for
-  // a student+period (the first PATCH, which creates that FeeRecord row),
-  // this value is copied into the row's `expectedAmount` — see FeeRecord
-  // below — so editing feeAmount later only affects periods not yet
-  // touched; a period a teacher already recorded a payment for keeps the
-  // amount that was in effect then. See docs/fee-tracking-amounts-plan.md.
+  // Expected monthly fee for each active student, in whole rupees (no paise). Null until a teacher sets one. The first
+  // time a payment is recorded for a student and period (the PATCH that creates the FeeRecord), this is copied into the
+  // row's `expectedAmount`, so editing feeAmount later affects only untouched periods. See docs/fee-tracking-amounts-plan.md.
   feeAmount Int?
   archived  Boolean  @default(false) // soft-delete: a class with attendance history is never hard-deleted
   createdAt DateTime @default(now())
@@ -524,19 +414,13 @@ model SchoolClass {
   @@index([teacherId, archived])
 }
 
-// A student belongs to exactly one class (and transitively one teacher).
-// Deliberately minimal today (name only) per the spec, but shaped for
-// growth: `details` is an open JSON string (same convention as
-// User.preferences/Query.context) for roll number, parent contact, DOB, etc.
-// WITHOUT a migration when that's needed — the same reasoning that already
-// justifies Resource.structured.
+// A student belongs to one class (and so one teacher). Minimal today (name only); `details` is an open JSON string
+// (like User.preferences) for roll number, parent contact, DOB and so on without a migration.
 model Student {
   id          String      @id @default(cuid())
   schoolClass SchoolClass @relation(fields: [classId], references: [id])
   classId     String
-  // Denormalized for the same reason SchoolClass.teacherId is — every
-  // ownership check filters on this directly rather than joining through
-  // SchoolClass, exactly like Resource.userId does today.
+  // Denormalized like SchoolClass.teacherId: ownership checks filter on this directly rather than joining through SchoolClass, as Resource.userId does.
   teacherId   String
   name        String
   rollNumber  String? // optional now; first concrete field beyond `details`
@@ -552,12 +436,9 @@ model Student {
   @@index([teacherId])
 }
 
-// One row per student per calendar day — mirrors Event/Notification's
-// "fan-out on write, never mutate a summary" convention. A student with NO
-// row for a given date is UNMARKED for that date — "unmarked" is never
-// itself a stored status value (see routes/classroom.js). Month-wise views
-// and the percentage summary are computed by aggregation queries, not
-// stored, so the source of truth never drifts from a stale rollup.
+// One row per student per calendar day (fan-out on write, like Event/Notification). A student with no row for a date
+// is unmarked; "unmarked" is never a stored status (see routes/classroom.js). Month views and percentages are computed
+// by aggregation, not stored, so they can't drift from a stale rollup.
 model AttendanceRecord {
   id        String   @id @default(cuid())
   student   Student  @relation(fields: [studentId], references: [id])
@@ -570,37 +451,27 @@ model AttendanceRecord {
   status    String // "present" | "absent" — closed vocabulary, see routes file
   markedAt  DateTime @default(now())
 
-  // One attendance mark per student per day — the DB enforces the invariant
-  // the UI relies on ("today's attendance" is unambiguous), and a re-mark is
-  // an update, not a duplicate insert.
+  // One mark per student per day: the database guarantees "today's attendance" is unambiguous, and a re-mark is an update.
   @@unique([studentId, date])
   @@index([classId, date])
   @@index([teacherId, date])
 }
 
-// One row per student per month — a payment record, not a full ledger.
-// Modeled as one-row-per-period (like AttendanceRecord) rather than a single
-// mutable field on Student, so "review previous months" falls out of the
-// schema for free.
+// One row per student per month: a payment record, not a full ledger. One row per period (like AttendanceRecord)
+// rather than a mutable field on Student, so previous months come for free.
 model FeeRecord {
   id             String    @id @default(cuid())
   student        Student   @relation(fields: [studentId], references: [id])
   studentId      String
   teacherId      String
   classId        String
-  // "2026-08" — a plain string, not a DateTime, since a fee period is always
-  // a whole calendar month with no day/time component; avoids timezone
-  // ambiguity a DateTime would introduce for something that's really just a
-  // label.
+  // "2026-08": a string, not a DateTime, since a fee period is a whole calendar month and a DateTime would add timezone ambiguity.
   period         String
   status         String    @default("pending") // "paid" | "partial" | "pending" — derived server-side from amount vs expectedAmount, never set directly by the client (see routes/classroom.js)
   amount         Int? // amount actually paid so far this period, in whole rupees; null/0 = nothing paid yet
-  // Snapshot of SchoolClass.feeAmount taken the first time this period's
-  // record is created (routes/classroom.js's upsert `create` branch) — fixed
-  // after that even if the class's feeAmount is edited later, so a past
-  // month's "amount pending" doesn't silently change. Null if the class had
-  // no feeAmount set yet when this row was created (falls back to a
-  // status-only paid/pending read, same as pre-amount-tracking behavior).
+  // Snapshot of SchoolClass.feeAmount taken when this period's record is created (the upsert `create` branch in
+  // routes/classroom.js), fixed afterwards so a past month's "amount pending" doesn't change. Null if the class had no
+  // feeAmount then, which falls back to a paid/pending read.
   expectedAmount Int?
   paidAt         DateTime? // set to the time of the most recent payment update
   note           String?
@@ -611,22 +482,12 @@ model FeeRecord {
   @@index([teacherId, period])
 }
 
-// ---------------------------------------------------------------------------
-// Teacher Attendance — see docs/feature-teacher-attendance-implementation-plan.md
-// and docs/attendance-plan-review.md (the policy decisions this schema
-// implements).
-//
-// NOT to be confused with the unrelated Classroom Management models above
-// (SchoolClass/Student/AttendanceRecord/FeeRecord) — those record STUDENT
-// attendance a teacher marks for their own class. These models record a
-// TEACHER's own attendance, reviewed by their school's Principal
-// (role = school_admin).
-// ---------------------------------------------------------------------------
+// Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md).
+// These models record a teacher's own attendance, reviewed by their school's Principal (role = school_admin). Not the
+// Classroom Management models above, which record the student attendance a teacher marks for their class.
 
-// One row per school. Holds only what this feature needs — kept separate
-// from School itself so a school with the feature off carries no
-// attendance-specific columns, and so School's own doc comment/shape stays
-// unchanged by this feature.
+// One row per school, holding only what this feature needs, separate from School so a school with the feature off
+// carries no attendance columns and School's shape is unchanged.
 model SchoolAttendanceConfig {
   id       String @id @default(cuid())
   school   School @relation(fields: [schoolId], references: [id])
@@ -636,12 +497,9 @@ model SchoolAttendanceConfig {
   closeTime          String // "16:00"
   checkinWindowStart String // "08:30"
   checkinWindowEnd   String // "10:00"
-  // Comma-separated day-of-week numbers this school is closed every week —
-  // JS Date.getDay() convention (0=Sunday..6=Saturday), same comma-separated
-  // convention as TEACHER_ATTENDANCE_ALLOWED_SCHOOL_CODES. Default "0" —
-  // Sunday off — the common case; a school with alternate/every Saturday
-  // off too sets "0,6". Checked alongside SchoolHoliday before a check-in
-  // is allowed at all — see lib/teacherAttendance.js's isWeeklyOff().
+  // Comma-separated day-of-week numbers the school is closed each week, JS Date.getDay() style (0=Sunday..6), like
+  // TEACHER_ATTENDANCE_ALLOWED_SCHOOL_CODES. Default "0" (Sunday); "0,6" adds Saturday. Checked with SchoolHoliday
+  // before a check-in is allowed (see isWeeklyOff() in lib/teacherAttendance.js).
   weeklyOffDays      String @default("0")
 
   lateGraceMinutes           Int @default(10)
@@ -656,10 +514,7 @@ model SchoolAttendanceConfig {
   repeatPatternThreshold  Int @default(3)
   repeatPatternWindowDays Int @default(30)
 
-  // The checkout reminder's own timing (lib/teacherAttendanceReminder.js) —
-  // previously fixed at 15/30 in code with no way for a Principal to change
-  // it. Same "informational rule becomes a real setting" reasoning as every
-  // other grace-period field above.
+  // The checkout reminder's timing (lib/teacherAttendanceReminder.js), a per-school setting a Principal can change.
   reminderMinutesBeforeClose Int @default(15)
   reminderMinutesAfterClose  Int @default(30)
 
@@ -667,11 +522,9 @@ model SchoolAttendanceConfig {
   updatedAt DateTime @updatedAt
 }
 
-// One row per teacher per calendar date. Raw check-in/check-out evidence
-// (the checkIn*/checkOut* fields) is the source of truth; status and every
-// other derived field are always recomputed by the shared functions in
-// lib/teacherAttendance.js — never hand-written by a route, same discipline
-// as classroomAttendance.js's attendancePercentage()/deriveUnmarked().
+// One row per teacher per calendar date. The raw check-in/check-out evidence is the source of truth; status and
+// every derived field are recomputed by the shared functions in lib/teacherAttendance.js, never hand-written by a
+// route (as with classroomAttendance.js).
 model TeacherAttendance {
   id       String @id @default(cuid())
   user     User   @relation(fields: [userId], references: [id])
@@ -694,17 +547,14 @@ model TeacherAttendance {
   checkOutDistanceMeters Float?
   checkOutDeviceId       String?
 
-  // present | late | half_day | absent | on_leave | on_duty |
-  // pending_regularization | flagged_review — attendance-plan-review.md §4/§9.
+  // present | late | half_day | absent | on_leave | on_duty | pending_regularization | flagged_review
   status                String
   lateMinutes           Int?
   earlyDepartureMinutes Int?
   workingMinutes        Int?
   shortfallMinutes      Int?
 
-  // Free text on purpose, not a fixed enum — the official leave/duty
-  // category list is still pending from the department. Changing the
-  // allowed values later needs no migration.
+  // Free text, not an enum: the official leave/duty category list is still pending from the department.
   leaveOrDutyCategory String?
   leaveOrDutyReason   String?
 
@@ -719,10 +569,8 @@ model TeacherAttendance {
   @@index([schoolId, date])
 }
 
-// Append-only audit trail. A Principal action NEVER overwrites
-// TeacherAttendance's original fields — it adds a row here, and only then
-// updates TeacherAttendance's derived status. Mirrors Session's "never
-// delete, mark revoked" discipline already used in this schema.
+// Append-only audit trail. A Principal action never overwrites TeacherAttendance's original fields; it adds a row
+// here and then updates the derived status. Like Session, nothing is deleted.
 model TeacherAttendanceReview {
   id               String            @id @default(cuid())
   attendance       TeacherAttendance @relation(fields: [attendanceId], references: [id])
@@ -734,19 +582,14 @@ model TeacherAttendanceReview {
   action           String
   previousStatus   String
   newStatus        String
-  // Mandatory — enforced in teacherAttendanceSchema.js's Zod schema, not
-  // just documented here. attendance-plan-review.md §11: "every approval or
-  // correction must include a written reason — it can't be a blank
-  // 'approve' click."
+  // Mandatory, enforced by teacherAttendanceSchema.js's zod schema: every approval or correction needs a written reason.
   reason           String
   createdAt        DateTime          @default(now())
 
   @@index([attendanceId])
 }
 
-// A one-off non-working day for a school — department-set (the yearly
-// calendar) or Principal-set (an emergency closure). attendance-plan-review.md
-// §8/§9.
+// A one-off non-working day for a school: department-set (the yearly calendar) or Principal-set (an emergency closure).
 model SchoolHoliday {
   id        String   @id @default(cuid())
   school    School   @relation(fields: [schoolId], references: [id])
@@ -759,14 +602,9 @@ model SchoolHoliday {
   @@unique([schoolId, date])
 }
 
-// Every meaningful attendance-related event, whether or not it changed a
-// TeacherAttendance row — login, check-in, check-out, a blocked attempt,
-// a correction, a settings change, a reminder firing. Separate from
-// TeacherAttendanceReview (which stays scoped to Principal corrections
-// specifically): most rows here — a plain check-in, a blocked attempt, a
-// reminder — were never a "review" of anything, and there's no queue
-// left for a review-style audit trail to resolve against. See
-// docs/feature-teacher-attendance-implementation-plan.md §1.10/§3.
+// Every attendance-related event, whether or not it changed a TeacherAttendance row: login, check-in, check-out, a
+// blocked attempt, a correction, a settings change, a reminder. Separate from TeacherAttendanceReview (Principal
+// corrections only), since most rows here were never a "review". See docs/feature-teacher-attendance-implementation-plan.md.
 model TeacherAttendanceActivityLog {
   id       String @id @default(cuid())
   school   School @relation(fields: [schoolId], references: [id])
@@ -774,14 +612,12 @@ model TeacherAttendanceActivityLog {
   user     User   @relation(fields: [userId], references: [id])
   userId   String // whose day this event is about
 
-  // Set only when different from userId — e.g. an admin correcting
-  // someone else's record. Plain id, not a relation: this is a log, not
-  // something ever queried "give me every log row this admin performed."
+  // Set only when different from userId (e.g. an admin correcting someone else's record). A plain id, not a relation:
+  // this is a log, never queried as "every row this admin performed".
   performedBy String?
 
-  // login | check_in | check_out | check_in_blocked | check_out_blocked |
-  // missing_checkout | correction | mark_on_leave | mark_on_duty |
-  // holiday_changed | settings_changed | reminder_sent
+  // login | check_in | check_out | check_in_blocked | check_out_blocked | missing_checkout | correction | mark_on_leave |
+  // mark_on_duty | holiday_changed | settings_changed | reminder_sent
   action String
 
   result         String? // short human-readable summary, e.g. "63m from school" or "blocked, 410m away"
@@ -798,17 +634,10 @@ model TeacherAttendanceActivityLog {
   @@index([userId, createdAt])
 }
 
-// ---------------------------------------------------------------------------
-// Schedule a Call — see docs/schedule-a-call-plan.md. A public visitor's
-// request to book a demo call with the SarasTech team.
-//
-// Deliberately has NO School/User relation, unlike every other model in this
-// file: the whole point is that the person booking has not signed up yet.
-// `date`/`startTime` are plain wall-clock strings in DEMO_BOOKING_TIMEZONE
-// (see lib/demoBookingConfig.js), the same convention
-// SchoolAttendanceConfig.openTime uses instead of storing an absolute UTC
-// instant.
-// ---------------------------------------------------------------------------
+// Schedule a Call: a public visitor's request to book a demo call with the SarasTech team.
+// No School/User relation, unlike every other model, since the visitor hasn't signed up. `date`/`startTime` are
+// wall-clock strings in DEMO_BOOKING_TIMEZONE (see lib/demoBookingConfig.js), like SchoolAttendanceConfig.openTime,
+// rather than an absolute UTC instant.
 model DemoBooking {
   id           String   @id @default(cuid())
   name         String
@@ -820,16 +649,13 @@ model DemoBooking {
   date         String // "YYYY-MM-DD", wall-clock in DEMO_BOOKING_TIMEZONE
   startTime    String // "HH:MM", 24h, wall-clock in DEMO_BOOKING_TIMEZONE
   status       String   @default("confirmed") // confirmed | cancelled
-  // Lets the emailed manage (reschedule/cancel) link work with no login.
-  // Not the same value as `id` — the id alone must never be enough to
-  // manage someone else's booking.
+  // Lets the emailed manage (reschedule/cancel) link work with no login. Not the same as `id`: the id alone must never
+  // be enough to manage someone else's booking.
   cancelToken  String   @unique
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  // No @@unique([date, startTime]): a cancelled row must free that slot for
-  // reuse, and a DB-level unique index can't express "unique among
-  // non-cancelled rows" in SQLite. The conflict check instead happens in
-  // the route handler inside a transaction (see routes/scheduleDemo.js).
+  // No @@unique([date, startTime]): a cancelled row must free its slot, and SQLite can't express "unique among
+  // non-cancelled rows". The conflict check runs in the route handler inside a transaction (see routes/scheduleDemo.js).
   @@index([date, startTime, status])
 }
