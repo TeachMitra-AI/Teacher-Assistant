@@ -1,14 +1,7 @@
-// Admin Support Inbox (Phase 2) — where a super_admin reads and works every
-// SupportTicket the "Need Help?" flow (Phase 1) has been collecting.
-//
-// SCOPE: this file owns every /api/admin/support/* route. Kept SEPARATE from
-// routes/admin.js rather than folded into it: admin.js's whole model is
-// role-scoped (super_admin/resource_person/school_admin, each narrowed to a
-// slice of schools via schoolScope()); every route here is super_admin-only,
-// full stop — a ticket is product feedback, not a school's own data (see
-// docs/help-support-architecture.md), and giving it a different access model
-// than the rest of that file is easier to see correctly in its own file than
-// as an exception embedded in a shared one.
+// Admin Support Inbox: where a super_admin reads and works every SupportTicket from the "Need Help?" flow.
+// Owns every /api/admin/support/* route, separate from routes/admin.js, whose model is role-scoped through
+// schoolScope(). Every route here is super_admin-only, since a ticket is product feedback, not a school's data
+// (docs/help-support-architecture.md).
 const express = require('express');
 const { z } = require('zod');
 
@@ -18,12 +11,7 @@ const { authRequired, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Mirrors routes/admin.js's own parseListQuery/NEWEST_FIRST exactly. Kept as
-// its own copy rather than an import — admin.js doesn't export them, and
-// this app already has a documented precedent for small per-file leaf
-// helpers staying duplicated rather than unified (see routes/attachments.js's
-// sendAiError comment). Unifying them is a pre-existing refactor this
-// feature does not need to take on.
+// Mirrors routes/admin.js's parseListQuery/NEWEST_FIRST as a copy, since admin.js doesn't export them and small per-file helpers are duplicated.
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
 
@@ -42,10 +30,8 @@ const STATUSES = ['open', 'triaged', 'resolved', 'wont_fix'];
 const TYPES = ['bug', 'feedback'];
 
 /**
- * Parses an inclusive createdAt range from ?from=&to= (date or ISO strings).
- * Invalid/missing bounds are silently dropped rather than erroring — same
- * "bad filter input degrades gracefully" convention routes/admin.js already
- * uses for its role/status query-string filters.
+ * Parses an inclusive createdAt range from ?from=&to= (dates or ISO strings). Invalid or missing bounds are
+ * dropped rather than erroring, as routes/admin.js does for its filters.
  */
 function parseDateRange(query) {
   const range = {};
@@ -56,9 +42,7 @@ function parseDateRange(query) {
   if (typeof query.to === 'string' && query.to) {
     const d = new Date(query.to);
     if (!Number.isNaN(d.getTime())) {
-      // A bare date (no time component) should include the whole day, not
-      // stop at midnight — "to 2026-08-02" must still match a ticket filed
-      // at 23:59 that day.
+      // A bare date includes the whole day: "to 2026-08-02" must match a ticket filed at 23:59 that day.
       if (query.to.length <= 10) d.setHours(23, 59, 59, 999);
       range.lte = d;
     }
@@ -92,9 +76,7 @@ function safeParseContext(json) {
 router.get('/tickets', authRequired, requireRole('super_admin'), asyncHandler(async (req, res) => {
   const { limit, page, skip, q } = parseListQuery(req.query);
 
-  // Scope is trivial here — every route in this file is super_admin-only,
-  // so unlike routes/admin.js's schoolScope() there is no school-narrowing
-  // to AND in before the filters below.
+  // Every route is super_admin-only, so there's no school scope to AND in before the filters.
   const where = {};
 
   const status = typeof req.query.status === 'string' ? req.query.status : '';
@@ -103,11 +85,8 @@ router.get('/tickets', authRequired, requireRole('super_admin'), asyncHandler(as
   const type = typeof req.query.type === 'string' ? req.query.type : '';
   if (type && TYPES.includes(type)) where.type = type;
 
-  // Category has no single cross-type vocabulary to validate against here —
-  // bug and feedback each have their own (see routes/support.js). An
-  // unrecognized value just matches zero rows, which is harmless for a
-  // read-only filter (unlike a value being WRITTEN, which routes/support.js
-  // does validate against its enums).
+  // Category has no single vocabulary to validate against (bug and feedback each have their own, see routes/support.js).
+  // An unknown value just matches no rows, harmless for a read-only filter.
   const category = typeof req.query.category === 'string' ? req.query.category.trim().slice(0, 40) : '';
   if (category) where.category = category;
 
@@ -118,11 +97,8 @@ router.get('/tickets', authRequired, requireRole('super_admin'), asyncHandler(as
   if (createdAt) where.createdAt = createdAt;
 
   if (q) {
-    // Scan, not an index seek (see the note on GET /schools in
-    // routes/admin.js) — acceptable here for the same reason: super_admin
-    // only, and bounded by the page-size cap. The `endsWith` arm is what
-    // makes pasting the short reference (e.g. "q2qvh99p") a teacher was
-    // shown on the Help & Support success screen actually find the ticket.
+    // A scan, not an index seek (see GET /schools in routes/admin.js); fine for super_admin-only with a capped page.
+    // The `endsWith` arm lets a teacher paste the short reference from the Help & Support success screen.
     where.OR = [
       { description: { contains: q } },
       { id: { endsWith: q } },
@@ -148,11 +124,8 @@ router.get('/tickets', authRequired, requireRole('super_admin'), asyncHandler(as
   res.json({ tickets: tickets.map(ticketDto), total, page, limit });
 }));
 
-// GET /api/admin/support/tickets/stats — the inbox's KPI strip. A separate,
-// cheap, unfiltered aggregate endpoint (same precedent as GET
-// /admin/analytics) rather than folded into the list response, so the list
-// endpoint's shape never has to carry aggregate baggage. MUST be registered
-// before /tickets/:id below, so "stats" is never captured as an :id.
+// GET /api/admin/support/tickets/stats: the inbox's KPI strip, a cheap unfiltered aggregate kept apart from the list
+// response. Must be registered before /tickets/:id so "stats" isn't captured as an :id.
 router.get('/tickets/stats', authRequired, requireRole('super_admin'), asyncHandler(async (req, res) => {
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
@@ -210,9 +183,8 @@ router.patch('/tickets/:id/status', authRequired, requireRole('super_admin'), as
 
 const noteSchema = z.object({ body: z.string().trim().min(1).max(2000) });
 
-// POST /api/admin/support/tickets/:id/notes — an admin's internal note.
-// Never exposed to the ticket's submitter (see the SupportNote model comment
-// in schema.prisma) — there is no teacher-facing route that returns these.
+// POST /api/admin/support/tickets/:id/notes: an internal admin note. Never exposed to the ticket's submitter; no
+// teacher-facing route returns these (see SupportNote in schema.prisma).
 router.post('/tickets/:id/notes', authRequired, requireRole('super_admin'), asyncHandler(async (req, res) => {
   const parsed = noteSchema.safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: 'A non-empty note is required.' });

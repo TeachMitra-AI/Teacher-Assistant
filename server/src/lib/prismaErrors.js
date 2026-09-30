@@ -1,9 +1,5 @@
-// Predicates for Prisma's structured error codes (see
-// https://www.prisma.io/docs/orm/reference/error-reference). Route handlers
-// keep their own try/catch and their own user-facing message per call site —
-// only the repeated `err.code === 'P2002'` / `'P2025'` magic-string checks
-// are shared here, the same way lib/asyncHandler.js shares the wrapping
-// pattern without dictating what each route does with the error.
+// Predicates for Prisma's structured error codes. Routes keep their own try/catch and messages; only the
+// repeated `err.code === 'P2002'` / `'P2025'` magic-string checks are shared.
 function isUniqueConstraintError(err) {
   return !!err && err.code === 'P2002';
 }

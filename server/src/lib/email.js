@@ -1,21 +1,8 @@
-// Transactional email, used only for password resets today.
-//
-// Brevo is the provider: one authenticated POST, no SMTP configuration. It was
-// chosen over Resend because Brevo verifies a single sender ADDRESS, while
-// Resend can only send to arbitrary recipients from a verified DOMAIN — which
-// would have meant buying one. The wrapper is deliberately thin — the same
-// shape as the other single-purpose modules in this folder — so swapping
-// providers again means changing one fetch call, not every caller.
-//
-// Privacy: this module NEVER logs an email body, a reset URL, or a reset
-// token, matching the metadata-only discipline logAiEvent follows in
-// index.js. Recipient addresses are logged only as a domain (see redactEmail),
-// so an operator can still tell "all our @gmail.com sends are bouncing"
-// without the logs becoming a list of teachers' addresses.
-//
-// Unlike GEMINI_API_KEY and JWT_SECRET, a missing BREVO_API_KEY is NOT fatal
-// at boot: password reset is one feature, and the rest of the app must keep
-// running without it. Sends degrade to a logged no-op instead.
+// Transactional email (password resets and demo bookings) through Brevo: one authenticated POST, no SMTP setup.
+// Brevo verifies a single sender address, whereas Resend needs a verified domain. The wrapper is thin so swapping
+// providers means changing one fetch call.
+// Never logs an email body, reset URL or token; recipients are logged only as a domain (see redactEmail).
+// A missing BREVO_API_KEY isn't fatal at boot: sends degrade to a logged no-op so the rest of the app keeps running.
 
 const BREVO_ENDPOINT = 'https://api.brevo.com/v3/smtp/email';
 const SEND_TIMEOUT_MS = 10000;
@@ -53,8 +40,7 @@ function logEmailEvent(level, event, meta = {}) {
 }
 
 /**
- * Sends one transactional email. Never throws: a provider outage must not turn
- * into a 500 on an endpoint whose response is deliberately generic anyway.
+ * Sends one transactional email. Never throws, so a provider outage can't become a 500.
  * @returns {Promise<{sent: boolean, reason?: string}>}
  */
 async function sendEmail({ to, subject, html, text }) {
@@ -98,8 +84,7 @@ async function sendEmail({ to, subject, html, text }) {
 }
 
 /**
- * The password-reset email. `token` is the raw (unhashed) token — only ever
- * embedded in the link, never logged or persisted in the clear.
+ * The password-reset email. `token` is the raw token, only ever embedded in the link, never logged or stored.
  * @param {{to: string, token: string, name?: string, schoolName?: string, expiresInMinutes: number}} params
  */
 async function sendPasswordResetEmail({ to, token, name, schoolName, expiresInMinutes }) {
@@ -146,7 +131,7 @@ async function sendPasswordResetEmail({ to, token, name, schoolName, expiresInMi
 }
 
 /**
- * Confirmation sent to the visitor who booked a Schedule a Call demo slot.
+ * Confirmation sent to the visitor who booked a Schedule a Call slot.
  * @param {{to: string, name: string, dateLabel: string, timeLabel: string, durationMinutes: number, manageUrl: string, icsUrl: string}} params
  */
 async function sendDemoBookingConfirmation({ to, name, dateLabel, timeLabel, durationMinutes, manageUrl, icsUrl }) {
@@ -184,9 +169,7 @@ async function sendDemoBookingConfirmation({ to, name, dateLabel, timeLabel, dur
 }
 
 /**
- * Internal notification sent to the team when a new demo call is booked.
- * No-op if DEMO_BOOKING_ADMIN_EMAIL isn't configured — same non-fatal-
- * missing-config contract as a missing BREVO_API_KEY.
+ * Internal notification to the team about a new demo booking. A no-op if DEMO_BOOKING_ADMIN_EMAIL isn't set.
  * @param {{adminEmail: string|null, name: string, email: string, organization: string, role: string, phone?: string, notes?: string, dateLabel: string, timeLabel: string}} params
  */
 async function sendDemoBookingAdminAlert({ adminEmail, name, email, organization, role, phone, notes, dateLabel, timeLabel }) {

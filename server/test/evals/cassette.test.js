@@ -1,11 +1,7 @@
-// Cassette record/replay (Milestone M7a).
-//
-// The tests here defend one property: A MISS IS NEVER SILENT. That is harder
-// than it sounds, and the harness got it wrong first: interpret.js runs the
-// pipeline inside a total catch and classifier.js maps any thrown error to a
-// passthrough reason, so the miss error was swallowed and reported as
-// `classifier_error` — a model-quality result. The throw alone is not the
-// guarantee; the runner's post-run check is.
+// Cassette record/replay. The property defended is that a miss is never silent, which is harder than it sounds:
+// interpret.js runs the pipeline inside a total catch and classifier.js maps any thrown error to a passthrough reason,
+// so the miss error was once swallowed and reported as `classifier_error`, a model-quality result. The throw alone
+// isn't the guarantee; the runner's post-run check is.
 
 const fs = require('fs');
 const os = require('os');
@@ -49,9 +45,7 @@ describe('cassette keys', () => {
     expect(keyFor(body('SYS', 'u'))).toBe(keyFor(body('SYS', 'u')));
   });
 
-  // This is what makes stale cassettes impossible to replay silently. Both the
-  // system instruction and the response schema are registry-derived, so any
-  // descriptor change invalidates every key at once.
+  // This makes stale cassettes impossible to replay silently: the system instruction and response schema are both registry-derived, so any descriptor change invalidates every key.
   test('change when the system instruction changes', () => {
     expect(keyFor(body('SYS', 'u'))).not.toBe(keyFor(body('SYS-CHANGED', 'u')));
   });
@@ -68,10 +62,8 @@ describe('cassette keys', () => {
 });
 
 describe('saving', () => {
-  // The M7a recording is frozen by decision D1 and the guard is enforced in
-  // code rather than by discipline: a single careless --record would rewrite it
-  // silently, and a re-recorded cassette still replays fine — it just no longer
-  // describes the run the frozen thresholds were measured on.
+  // The original recording is frozen, and the guard is enforced in code: one careless --record would rewrite it silently,
+  // and a re-recorded cassette still replays but no longer describes the run the frozen thresholds were measured on.
   test('refuses to rewrite the frozen M7a cassette file', () => {
     expect(() => saveCassettes([entry()], { file: path.join(os.tmpdir(), 'classifier.json') })).toThrow(
       /FROZEN M7a recording/
@@ -93,9 +85,7 @@ describe('saving', () => {
     expect(stored[0].modelVersion).toBe('new');
   });
 
-  // A recorded 503 replays as a 503 forever — an upstream blip becomes a
-  // permanent, deterministic "model failure". This happened during M7a's own
-  // baseline recording, on coach.en.023.
+  // A recorded 503 replays as a 503 forever, turning an upstream blip into a permanent deterministic "model failure"; this happened once while recording a baseline.
   test('refuses to persist a non-2xx response', () => {
     saveCassettes([entry({ key: 'ok' }), entry({ key: 'bad', status: 503 })], { file: tmpFile });
     const keys = loadCassettes({ file: tmpFile }).entries.map((e) => e.key);

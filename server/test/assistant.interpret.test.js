@@ -1,20 +1,11 @@
-// Milestone M5 — POST /api/assistant/interpret, end to end.
-//
-// The pipeline's own logic is unit-tested in test/assistant/interpret.test.js.
-// What is checked HERE is everything that only exists once the endpoint is real:
-// the HTTP error contract, the rollout gates, the actual GeminiService instance
-// (geminiFast, driven through a stubbed fetch, so gemini.js and the output guard
-// are genuinely exercised), and the promise this milestone is judged on —
-//
-//     THIS ENDPOINT NEVER RETURNS A 5xx.
-//
-// It returns non-2xx for exactly three things: auth (401), a malformed envelope
-// (400), and rate limiting (429). Everything else is a 200 carrying
-// passthrough: true, because this sits in front of a text box and an error here
-// would be a toast on a feature the teacher did not knowingly invoke.
-//
-// Flags are manipulated through process.env and restored afterwards; the route
-// reads them per request, so this works against the shared app instance.
+// POST /api/assistant/interpret, end to end. The pipeline's logic is unit-tested in test/assistant/interpret.test.js;
+// here it's everything that only exists once the endpoint is real: the HTTP error contract, the rollout gates, the
+// actual geminiFast GeminiService (driven through a stubbed fetch so gemini.js and the output guard are exercised),
+// and the promise that this endpoint never returns a 5xx.
+// It returns non-2xx for exactly three things: auth (401), a malformed envelope (400) and rate limiting (429).
+// Everything else is a 200 with passthrough: true, since an error here would be a toast on a feature the teacher
+// didn't knowingly invoke.
+// Flags are set through process.env and restored afterwards; the route reads them per request.
 
 const request = require('supertest');
 
@@ -309,7 +300,7 @@ describe('the emergency short-circuit (G10)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.reason).toBe('emergency_detected');
-    // The assertion this whole milestone's safety argument rests on.
+    // The assertion the safety argument rests on.
     expect(mock).not.toHaveBeenCalled();
   });
 
@@ -367,9 +358,7 @@ describe('the model cannot escalate (G4, G8)', () => {
     })]);
 
     const res = await interpret({ utterance: 'Generate 500 questions on fractions' });
-    // 500 is refused, and the registry default stands in — visibly, in a form
-    // field the teacher can see. Clamping to 30 would look like the application
-    // understood and agreed.
+    // 500 is refused and the registry default stands in, visibly in a form field. Clamping to 30 would look like agreement.
     expect(res.body.actions[0].params.questionCount).toBe(10);
     expect(res.body.actions[0].provenance.questionCount).toBe('default');
   });
@@ -448,12 +437,8 @@ describe('NO PATH RETURNS A 5xx (G22)', () => {
   });
 
   test('a database failure during the ROLLOUT GATE degrades, it does not 500', async () => {
-    // REGRESSION, M5. This returned 500 until the gate was made to fail closed.
-    // It was missed by every other test here because the failure lives OUTSIDE
-    // the pipeline's total catch — in the school-code lookup, which only runs
-    // when a school allow-list is configured. Found by disabling the total catch
-    // and noticing the integration suite did not care, which meant something
-    // upstream of the pipeline was unprotected.
+    // Regression: this returned 500 until the gate failed closed. Every other test missed it because the failure is outside
+    // the pipeline's total catch, in the school-code lookup, which only runs when a school allow-list is configured.
     enableAssistant({ ASSISTANT_ALLOWED_SCHOOL_CODES: 'SOMECODE' });
     const spy = vi.spyOn(prisma.school, 'findUnique').mockRejectedValue(new Error('db is gone'));
 
@@ -467,9 +452,7 @@ describe('NO PATH RETURNS A 5xx (G22)', () => {
   });
 
   test('the same database failure leaves the CATALOG inert rather than erroring', async () => {
-    // The gate is shared, so the fix serves both endpoints. Asserted here
-    // because "not enabled for you" being a normal state — not an error — is
-    // the catalog's entire design, and a 500 broke that promise too.
+    // The gate is shared, so the fix serves both endpoints. "Not enabled for you" being a normal state, not an error, is the catalog's whole design.
     enableAssistant({ ASSISTANT_ALLOWED_SCHOOL_CODES: 'SOMECODE' });
     const spy = vi.spyOn(prisma.school, 'findUnique').mockRejectedValue(new Error('db is gone'));
 
@@ -500,8 +483,7 @@ describe('rate limiting and privacy', () => {
   beforeEach(() => enableAssistant());
 
   test('the assistant limiter is applied to this path', async () => {
-    // Exhausting the bucket is an M9 concern; what matters here is that the
-    // route is INSIDE it, which the standard headers prove.
+    // Exhausting the bucket is tested elsewhere; here it only matters that the route is inside it, which the standard headers prove.
     mockGeminiFetch([proposalResponse({ intent: 'coach_question', confidence: 'high' })]);
     const res = await interpret({ utterance: 'hello' });
     expect(res.headers).toHaveProperty('ratelimit-limit');

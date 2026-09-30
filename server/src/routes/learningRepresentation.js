@@ -1,32 +1,13 @@
-// AI Learning Representation System — HTTP surface (ADR Phase D).
-//
-// One endpoint: POST /api/coach/learning-representation. Given a teacher's
-// question and the answer already produced for it (by the existing
-// /api/coach flow — this endpoint is stateless and does not look it up),
-// runs the full pipeline built in Phases A-E: classify -> resolve a
-// representation (confidence gate + renderer-availability gate) -> render
-// structured content if one applies, checking the Phase E request-level
-// cache first.
-//
-// THE ERROR CONTRACT IS DELIBERATELY THE SAME SHAPE AS
-// /api/assistant/interpret (routes/assistant.js), not the same shape as
-// /api/coach/attachment. Non-2xx is reserved for exactly three things:
-// authentication (401), a malformed envelope (400), and rate limiting
-// (429). Every other outcome — the feature being off, budget exhausted, the
-// classifier abstaining, low confidence, a renderer being unavailable, a
-// render failure — collapses to the SAME 200 shape:
-// `{ requestId, representation: 'verbal_explanation', data: null }`. This
-// was a deliberate choice over attachments.js's 503-when-disabled pattern:
-// this pipeline already treats "nothing to show" as a first-class, frequent,
-// safe outcome at every layer (ADR Product Principle 1) — making "disabled"
-// the one case that behaves differently would be the one inconsistency in
-// an otherwise uniform contract, and would cost the client a special case
-// for no benefit.
-//
-// This file is a thin shell, matching routes/assistant.js's own stated
-// discipline: authenticate, check the rollout gates, validate the envelope,
-// delegate to the Phase A-C modules, shape the response, log. No business
-// rule beyond HTTP concerns lives here.
+// AI Learning Representation System: POST /api/coach/learning-representation. Given a teacher's question and the
+// answer already produced for it (stateless; it doesn't look it up), it runs classify -> resolve a representation
+// (confidence gate and renderer-availability gate) -> render structured content if one applies, checking the
+// request-level cache first.
+// The error contract matches /api/assistant/interpret, not /api/coach/attachment: non-2xx only for authentication
+// (401), a malformed envelope (400) and rate limiting (429). Everything else (feature off, budget exhausted,
+// classifier abstaining, low confidence, no renderer, render failure) is the same 200
+// `{ requestId, representation: 'verbal_explanation', data: null }`. The pipeline already treats "nothing to show"
+// as a normal outcome, so a 503 for "disabled" would be the one inconsistency and cost the client a special case.
+// A thin shell like routes/assistant.js: authenticate, check rollout gates, validate, delegate, shape the response, log.
 
 const crypto = require('crypto');
 
@@ -49,20 +30,9 @@ const router = express.Router();
 /** Mirrors MAX_QUERY_LENGTH in index.js — this IS the same question /api/coach already accepted. */
 const MAX_PROMPT_LENGTH = 500;
 /**
- * Ceiling for the answer text the client sends back.
- *
- * REVISED DURING PHASE E MANUAL QA — the original value here (6000) was an
- * estimate ("comfortably covers any real /api/coach response") that turned
- * out to be wrong: a genuine, unremarkable Coach answer (a multi-strategy
- * teaching response, nothing unusual) measured over 6000 characters and was
- * rejected with a 400 the first time this was exercised end to end in a
- * browser rather than against short, hand-written test fixtures. Raised
- * with real headroom over the observed case rather than guessed again. The
- * global 16kb JSON body limit (index.js) remains a tighter practical
- * ceiling than this once the rest of the envelope and JSON escaping
- * overhead are counted — this exists as the application-level bound, not
- * the primary control, matching how MAX_EVENT_METADATA_LENGTH is described
- * in assistant/contracts.js.
+ * Ceiling for the answer text the client sends back. Raised from 6000 after a normal multi-strategy Coach answer
+ * exceeded it and was rejected in manual QA. The global 16kb JSON body limit (index.js) is tighter in practice;
+ * this is the application-level bound, like MAX_EVENT_METADATA_LENGTH in assistant/contracts.js.
  */
 const MAX_ANSWER_LENGTH = 12000;
 
@@ -74,12 +44,8 @@ const requestSchema = z
   .strict();
 
 /**
- * A human-authored 400 message, never the raw zod issue text — matching
- * this codebase's existing convention (every other route in this app
- * returns curated, teacher-facing error strings, not validator output).
- * Also found during Phase E manual QA: the original handler surfaced
- * zod's raw "Too big: expected string to have <=6000 characters" directly
- * to the teacher, which is both unfriendly and an implementation leak.
+ * A human-authored 400 message instead of raw zod text, like the other routes. The original handler surfaced
+ * zod's "Too big: expected string to have <=6000 characters" to the teacher.
  *
  * @param {import('zod').SafeParseReturnType<unknown, unknown>} parsed a failed safeParse result
  * @returns {string}
@@ -96,17 +62,14 @@ function friendlyValidationMessage(parsed) {
 }
 
 /**
- * Is this caller inside the current rollout? Mirrors routes/assistant.js's
- * isWithinRollout, minus the role check — no allowedRoles gate exists for
- * this feature (see lib/flags.js's comment: any authenticated teacher who
- * can reach Coach can use this).
+ * Is this caller inside the current rollout? Mirrors routes/assistant.js's isWithinRollout minus the role check;
+ * any authenticated teacher who can reach Coach can use this (see lib/flags.js).
  *
  * @returns {Promise<boolean>}
  */
 async function isWithinRollout(user, flags) {
-  // The admin-configurable override (Admin Settings > Feature Management)
-  // takes precedence over the env var when set; absent, `flags.enabled` (the
-  // env-derived value) is the fallback — see lib/systemSettings.js.
+  // The admin-configurable override (Admin Settings > Feature Management) wins over the env var when set; otherwise
+  // `flags.enabled` is the fallback (see lib/systemSettings.js).
   const { enabled } = await resolveBoolSetting(LEARNING_REPRESENTATION_SETTING_KEY, flags.enabled);
   if (!enabled) return false;
   if (flags.allowedSchoolCodes.length === 0) return true;
@@ -151,15 +114,9 @@ router.post(
     }
     const { prompt, answer } = parsed.data;
 
-    // classify() uses the ROUTING instance (small, cheap, tight budget — same
-    // instance routes/assistant.js uses, for the same reason: this is a
-    // small structured classification, not a full answer). render() reuses
-    // the MAIN coaching instance instead: its 8192-token budget comfortably
-    // covers the largest structured payload any RENDER_SPECS entry allows,
-    // where geminiFast's 512-token budget (tuned for a 2-field
-    // classification) would risk truncating a 12-step diagram. Neither
-    // instance is constructed here — both already exist in index.js and are
-    // reused via app.locals, per this project's established pattern.
+    // classify() uses the routing instance (small, cheap, tight budget), like routes/assistant.js. render() uses the main
+    // coaching instance: its 8192-token budget covers the largest RENDER_SPECS payload, where geminiFast's 512 tokens
+    // (tuned for a 2-field classification) could truncate a 12-step diagram. Both come from app.locals, built in index.js.
     const geminiFast = req.app.locals.geminiFast;
     const gemini = req.app.locals.gemini;
     if (
@@ -171,15 +128,9 @@ router.post(
       return abstain('misconfigured');
     }
 
-    // Charged once per REQUEST, before it's known whether render() will hit
-    // the cache — deliberately not recalculated per actual Gemini call.
-    // Matches this codebase's existing convention exactly: assistant/
-    // budget.js's own header notes a turn that ends before the classifier
-    // "still spends a unit... over-enforcement degrades to a coaching
-    // answer, which this architecture treats as always safe." A cache hit
-    // is the same shape of over-enforcement (a unit spent for less actual
-    // Gemini usage than the budget assumes), accepted for the same reason:
-    // simple and predictable beats precisely metered.
+    // Charged once per request, before it's known whether render() hits the cache. As in assistant/budget.js, slight
+    // over-enforcement degrades to a coaching answer, which is always safe, and a cache hit is the same kind of
+    // over-enforcement. Simple and predictable beats precisely metered.
     const budget = req.app.locals.learningRepresentationBudget;
     if (budget && !budget.consume(req.user.id)) {
       return abstain('budget_exhausted');
@@ -189,16 +140,13 @@ router.post(
     const resolved = resolveRenderableRepresentation(classified);
 
     if (resolved.representation === VERBAL_EXPLANATION) {
-      // Covers three distinct causes with one shape: the classifier failed
-      // outright, confidence was too low, or the intent genuinely was
-      // no_visualization (source 'mapped', no `reason` — logged as its own
-      // value so it is not confused with an abstain-on-uncertainty case).
+      // One shape for three causes: the classifier failed, confidence was too low, or the intent was no_visualization
+      // (source 'mapped', no `reason`, logged as its own value so it isn't confused with abstaining on uncertainty).
       return abstain(resolved.reason || 'no_visualization');
     }
 
-    // Phase E: cache-aside around render() (rendering/cache.js). A missing
-    // cache local (app assembled without one) degrades to "always miss",
-    // never to an error — same posture as the budget/breaker locals above.
+    // Cache-aside around render() (rendering/cache.js). A missing cache local degrades to "always miss", never an error,
+    // like the budget and breaker locals.
     const renderCache = req.app.locals.learningRepresentationRenderCache;
     const rendered = await renderWithCache({
       gemini,
@@ -217,8 +165,7 @@ router.post(
       representation: rendered.representation,
       intent: classified.ok ? classified.intent : null,
       confidence: classified.ok ? classified.confidence : null,
-      // Lets Phase F compute real hit rate from logs — see cache.js's own
-      // note on reading this alongside deploy frequency, not in isolation.
+      // Lets cache hit rate be computed from logs; read it alongside deploy frequency (see cache.js).
       cached: rendered.cached,
     });
     return res.json({ requestId, representation: rendered.representation, data: rendered.data });

@@ -1,6 +1,4 @@
-// Verifies the Section-3 CORS fix: production fails fast on a missing
-// allowlist instead of silently reflecting any origin, and once configured,
-// only listed origins are actually allowed.
+// Verifies CORS: production fails fast on a missing allowlist instead of reflecting any origin, and once configured only listed origins are allowed.
 const path = require('path');
 const { spawnSync } = require('child_process');
 const request = require('supertest');
@@ -8,11 +6,8 @@ const { TEST_ENV } = require('./helpers/testEnv');
 
 const INDEX_PATH = path.join(__dirname, '..', 'src', 'index.js');
 
-// vi.resetModules() targets Vite's/Vitest's own module graph (mainly ESM
-// import()); it does not clear Node's native require.cache, which is what
-// plain CJS `require()` calls in this codebase actually use. Busting the
-// cache entry directly forces src/index.js to be freshly re-evaluated (with
-// whatever process.env is set at that moment) on the next require().
+// vi.resetModules() targets Vitest's module graph (ESM import()) and doesn't clear Node's require.cache, which plain
+// CJS `require()` uses. Busting the cache entry forces src/index.js to be re-evaluated with the current process.env on the next require().
 function reloadApp() {
   delete require.cache[require.resolve('../src/index')];
   return require('../src/index');
@@ -63,15 +58,10 @@ describe('CORS', () => {
     expect(res.headers['access-control-allow-origin']).toBe('https://anything.example.org');
   });
 
-  // Regression coverage for the P2-002 exploratory-QA finding
-  // (docs/enterprise-exploratory-qa-report.md): a malformed JSON body used to
-  // reach the error handler's clean 400 response WITHOUT
-  // Access-Control-Allow-Origin, because cors() was registered after the
-  // JSON body-parser and so never ran when the parser threw. That made a
-  // correct 400 unreadable to the browser, which reported a generic
-  // "Failed to fetch" instead. cors() is now registered before the
-  // body-parser (see src/index.js), so its headers are attached regardless
-  // of what a later middleware throws.
+  // Regression for a malformed JSON body (docs/enterprise-exploratory-qa-report.md): the error handler's clean 400 used
+  // to go out without Access-Control-Allow-Origin, because cors() was registered after the JSON body-parser and never ran
+  // when the parser threw, so the browser showed "Failed to fetch". cors() now registers before the body-parser
+  // (see src/index.js), so its headers are attached whatever a later middleware throws.
   describe('malformed JSON body + CORS (P2-002 regression)', () => {
     test('dev mode: malformed JSON from any origin gets 400 + the real error body + CORS header', async () => {
       process.env.NODE_ENV = 'test';
@@ -127,9 +117,7 @@ describe('CORS', () => {
         .set('Content-Type', 'application/json')
         .send('{not valid json');
 
-      // Blocked-origin behavior is unchanged by the reorder: the request
-      // never reaches the malformed-JSON branch's 400, and it must not carry
-      // an Access-Control-Allow-Origin for the disallowed origin.
+      // Blocked-origin behaviour is unchanged by the reorder: the request never reaches the malformed-JSON 400 and mustn't carry an Access-Control-Allow-Origin for the disallowed origin.
       expect(res.status).toBeGreaterThanOrEqual(400);
       expect(res.headers['access-control-allow-origin']).toBeUndefined();
 
@@ -149,9 +137,7 @@ describe('CORS', () => {
         .set('Origin', 'https://anything.example.org')
         .send({ email: 'nobody@example.com', password: 'wrong-password' });
 
-      // Valid JSON always reaches the route handler now, same as before this
-      // fix — this asserts the reorder didn't change ordinary request
-      // handling, only what happens when the parser itself throws.
+      // Valid JSON still reaches the route handler; the reorder only changes what happens when the parser itself throws.
       expect(res.status).toBe(401);
       expect(res.body).toEqual({ error: 'Incorrect email or password.' });
       expect(res.headers['access-control-allow-origin']).toBe('https://anything.example.org');

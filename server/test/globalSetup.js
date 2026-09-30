@@ -1,7 +1,5 @@
-// Vitest globalSetup: runs once before any test file. Creates a fresh
-// throwaway SQLite database (separate from prisma/dev.db) and applies the
-// current Prisma migrations to it, so tests always run against an
-// up-to-date, empty schema.
+// Vitest globalSetup, run once before any test file: creates a fresh throwaway SQLite database (separate from
+// prisma/dev.db) and applies the current Prisma migrations, so tests run against an up-to-date empty schema.
 const fs = require('fs');
 const { execSync } = require('child_process');
 const { TEST_DB_PATH, TEST_ENV, applyTestEnv } = require('./helpers/testEnv');

@@ -1,12 +1,8 @@
-// Minimal, dependency-free CSV builder — used only by Classroom Management's
-// report export (docs/classroom-feature-plan.md §13). No npm package needed
-// for what this app requires: quote/escape fields, join with CRLF (RFC 4180).
+// Minimal dependency-free CSV builder for Classroom Management's report export: quote/escape fields and join with CRLF (RFC 4180).
 
 /**
- * Escapes a single CSV field. Wraps in double quotes whenever the value
- * contains a comma, double quote, or newline; an embedded double quote is
- * doubled per RFC 4180. `null`/`undefined` become an empty field, never the
- * literal string "null"/"undefined".
+ * Escapes a single CSV field. Quotes it when it contains a comma, double quote or newline (embedded quotes
+ * are doubled); null/undefined become an empty field.
  * @param {string|number|null|undefined} value
  * @returns {string}
  */
@@ -20,7 +16,7 @@ function escapeField(value) {
 }
 
 /**
- * Builds a complete CSV document from a header row + data rows.
+ * Builds a CSV document from a header row and data rows.
  * @param {string[]} header
  * @param {Array<Array<string|number|null|undefined>>} rows
  * @returns {string}

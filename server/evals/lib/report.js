@@ -1,32 +1,16 @@
-// Report emitters (Milestone M7a). Deterministic by construction.
-//
-// REGRESSION-FRIENDLINESS IS A FORMATTING PROPERTY, and it comes down to three
-// rules that exist so `git diff` between two runs is readable:
-//
-//   1. Everything volatile lives in run.json, NEVER in summary.md's body.
-//      Timestamps, latencies and cost estimates change on every run; a summary
-//      containing them diffs on every run and stops being reviewable in a week.
-//   2. Percentages are derived from integer counts and printed to one decimal.
-//      No floating-point noise in a committed artifact.
-//   3. Case order is CORPUS order — never sorted by score, never completion
-//      order. The same case occupies the same line in every run.
-//
-// THRESHOLDS ARE INFORMATIONAL. Per the M7a authorization, the Definition of
-// Done's numbers are reported and compared but do NOT produce a pass/fail
-// verdict: they are frozen only after the first baseline has been reviewed. The
-// HARD GATES are different — they are safety properties, not quality targets,
-// and they do block.
+// Report emitters. Deterministic, so `git diff` between two runs is readable:
+//   1. Everything volatile (timestamps, latencies, cost estimates) lives in run.json, never in summary.md's body.
+//   2. Percentages are derived from integer counts and printed to one decimal, so there's no floating-point noise.
+//   3. Case order is corpus order, never score or completion order, so a case keeps its line in every run.
+// Thresholds are informational: the Definition of Done's numbers are reported and compared but give no pass/fail
+// verdict until a baseline has been reviewed. The hard gates are safety properties and do block.
 
 const fs = require('fs');
 const path = require('path');
 
 /**
- * Informational reference points, shown beside the measured value.
- *
- * Sourced from documents, not invented here: the first three are the Definition
- * of Done (spec §11), the fourth is the architecture document's Phase 2 go/no-go.
- * Marked `informational` so nothing in this file can quietly turn them into a
- * gate before the owner has seen a baseline.
+ * Informational reference points shown beside the measured value: the first three are the Definition of Done,
+ * the fourth is the architecture document's go/no-go. Marked `informational` so nothing turns them into a gate.
  */
 const REFERENCE_THRESHOLDS = Object.freeze([
   { key: 'routing.precision', label: 'Routing precision', target: 90, source: 'DoD (spec §11)' },
@@ -113,11 +97,8 @@ function gateRow(name, gate) {
 }
 
 /**
- * The human-readable summary.
- *
- * Section 10 lists EVERY failure rather than a top-N sample: at the expected
- * failure count the full list is short enough to read, and a truncated list is
- * where a systematic failure hides in the tail.
+ * The human-readable summary. Section 10 lists every failure rather than a top-N sample, since a truncated list
+ * is where a systematic failure hides.
  */
 function toMarkdown({ metrics, scored, meta }) {
   const gates = metrics.hardGates;
@@ -360,10 +341,8 @@ function writeRun({ dir, metrics, scored, meta }) {
 }
 
 /**
- * The promoted baseline: counts only, plus the four provenance hashes.
- *
- * Counts rather than percentages, because the replay gate asserts EXACT equality
- * and a rounded percentage would let a real change hide inside the rounding.
+ * The promoted baseline: counts only, plus the four provenance hashes. Counts, not percentages, since the replay
+ * gate asserts exact equality and rounding could hide a real change.
  */
 function toBaseline({ metrics, scored, meta }) {
   return {
@@ -392,9 +371,8 @@ function toBaseline({ metrics, scored, meta }) {
     hardGates: Object.fromEntries(
       Object.entries(metrics.hardGates).map(([name, gate]) => [name, gate.pass])
     ),
-    // Per-case verdicts, in corpus order. This is what lets the replay gate name
-    // the case that changed instead of only reporting that a total moved — and
-    // it is why a net-neutral change (one case fixed, one broken) still fails.
+    // Per-case verdicts in corpus order, so the replay gate names the case that changed, and a net-neutral change
+    // (one fixed, one broken) still fails.
     verdicts: scored.map((entry) => ({
       id: entry.turn ? `${entry.caseId}#${entry.turn}` : entry.caseId,
       verdict: entry.verdict,

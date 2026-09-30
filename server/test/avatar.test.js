@@ -1,6 +1,5 @@
-// Custom profile pictures — POST/DELETE /api/auth/me/avatar and
-// GET /api/users/:userId/avatar, end to end. Same scaffolding as
-// attachments.test.js: shared test app, real fixtures, real login.
+// Custom profile pictures: POST/DELETE /api/auth/me/avatar and GET /api/users/:userId/avatar, end to end. Same
+// scaffolding as attachments.test.js.
 const request = require('supertest');
 
 const { app, prisma } = require('./helpers/testApp');
@@ -100,9 +99,7 @@ describe('POST /api/auth/me/avatar — validation', () => {
     expect(res.body.code).toBe('UNSUPPORTED_FILE_TYPE');
   });
 
-  // A PDF is a valid attachment for the Coach feature, but never a valid
-  // avatar — the avatar route uses its own narrower allowlist than
-  // lib/fileValidation.js's ALLOWED_MIME_TYPES.
+  // A PDF is a valid Coach attachment but never a valid avatar: the avatar route has a narrower allowlist than lib/fileValidation.js.
   test('rejects a PDF even though the byte-level sniffer recognizes it', async () => {
     const res = await request(app)
       .post('/api/auth/me/avatar')
@@ -147,9 +144,7 @@ describe('DELETE /api/auth/me/avatar', () => {
       .attach('photo', JPEG_BYTES, 'me.jpg');
     const avatarUrl = upload.body.user.avatarUrl;
 
-    // teacherA2 deletes THEIR OWN (non-existent) avatar — there is no
-    // endpoint that takes a target user id, so this is the only way to
-    // exercise "another user's delete call" at all.
+    // teacherA2 deletes their own (non-existent) avatar. No endpoint takes a target user id, so this is the only way to exercise another user's delete.
     await request(app).delete('/api/auth/me/avatar').set('Authorization', `Bearer ${teacherA2Token}`);
 
     const served = await request(app).get(`/api${avatarUrl}`);
@@ -171,13 +166,10 @@ describe('GET /api/users/:userId/avatar', () => {
     expect(res.headers['cache-control']).toContain('immutable');
   });
 
-  // Regression test: helmet()'s app-wide default Cross-Origin-Resource-Policy
-  // is 'same-origin' (see index.js), which silently blocks a plain <img> tag
-  // loading this URL from any origin other than the API's own — exactly the
-  // deployment shape this app's README describes (client and API as two
-  // separately-hosted pieces). Supertest/fetch can't reproduce a browser's
-  // CORP enforcement, so this only guards the header is actually present —
-  // manual QA in a real browser is what caught the original bug.
+  // Regression: helmet()'s app-wide Cross-Origin-Resource-Policy is 'same-origin' (index.js), which silently blocks a
+  // plain <img> loading this URL from another origin, the deployment shape here (client and API hosted separately).
+  // Supertest/fetch can't reproduce a browser's CORP enforcement, so this only guards that the header is present;
+  // manual QA in a real browser caught the original bug.
   test('opts out of the app-wide same-origin Cross-Origin-Resource-Policy default, so it can be embedded via <img> from a different origin', async () => {
     const upload = await request(app)
       .post('/api/auth/me/avatar')

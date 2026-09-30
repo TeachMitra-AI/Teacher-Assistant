@@ -1,7 +1,5 @@
-// Notification System — GET/PATCH/POST /api/notifications*. Mirrors
-// adminSupport.test.js's shape: flag manipulation via process.env (routes
-// read it per-request, same convention as attachments.test.js), fixtures
-// from helpers/fixtures, and loginAs for real HTTP-path tokens.
+// Notification System: GET/PATCH/POST /api/notifications*. Like adminSupport.test.js: flags via process.env (routes
+// read it per request, as in attachments.test.js), fixtures from helpers/fixtures, loginAs for real tokens.
 const request = require('supertest');
 
 const { app, prisma } = require('./helpers/testApp');
@@ -183,11 +181,8 @@ describe('Notification System', () => {
 
     beforeAll(async () => {
       enableNotifications();
-      // A fully SEPARATE fixture set (own schools/users), not the shared `fx`
-      // — the scope-enforcement block above sends role/school-wide broadcasts
-      // that legitimately reach every teacher in `fx`, including teacherA2.
-      // Reusing that fixture here would make the count/list assertions below
-      // depend on execution order instead of on what this block writes.
+      // A separate fixture set (own schools and users), not the shared `fx`: the scope-enforcement block above sends
+      // role/school-wide broadcasts that reach every teacher in `fx`, including teacherA2, which would make the count and list assertions depend on execution order.
       const listFx = await createFixtures(prisma, 'notiflist');
       recipientId = listFx.teacherA.id;
       recipientToken = await loginAs(app, listFx.schoolA, listFx.teacherA, listFx.PASSWORD);

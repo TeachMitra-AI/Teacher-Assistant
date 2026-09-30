@@ -1,14 +1,8 @@
-// The untrusted-model boundary (Milestone M5).
-//
-// Everything here is about ONE question: what can a model response make the
-// application do? The answer must be "nothing it was not explicitly asked for",
-// and the tests below try to break that from every angle a real model failure
-// (or a real attack) would take — wrong shape, wrong types, extra fields,
-// fabricated action ids, slots for an action that does not declare them.
-//
-// The most important test in this file is the last group: the response schema is
-// DERIVED FROM THE REGISTRY, so adding an action widens the accepted intent set
-// with no edit here. A hand-maintained enum would be a second list to forget.
+// The untrusted-model boundary. One question: what can a model response make the application do? Nothing it wasn't
+// explicitly asked for, and these tests try to break that from every angle a real failure or attack would take (wrong
+// shape or types, extra fields, fabricated action ids, slots for an undeclared action).
+// The most important group is last: the response schema is derived from the registry, so a new action widens the
+// accepted intent set with no edit here, where a hand-maintained enum would be a second list to forget.
 
 const { CONFIDENCE_LEVELS, NON_ACTION_INTENTS } = require('../../src/assistant/contracts');
 const { DESCRIPTORS } = require('../../src/actions/registry');
@@ -26,7 +20,7 @@ const {
   parseProposal,
 } = require('../../src/assistant/proposalSchema');
 
-/** The realistic case: every Phase 1 action visible to the caller. */
+/** The realistic case: every action visible to the caller. */
 const BOTH = [generateAssessment, openGenerator];
 
 /** A well-formed proposal, so each test can vary exactly one thing. */
@@ -64,9 +58,7 @@ describe('the Gemini response schema', () => {
   const schema = buildResponseSchema(BOTH);
 
   test('asks for exactly four fields and nothing else', () => {
-    // This is the output contract. A field added here is a new thing the model
-    // is allowed to invent, so the list is asserted literally rather than by
-    // spot-checking a few keys.
+    // This is the output contract: a new field is something the model may invent, so the list is asserted literally.
     expect(Object.keys(schema.properties).sort()).toEqual([
       'alternatives',
       'confidence',
@@ -96,10 +88,8 @@ describe('the Gemini response schema', () => {
   });
 
   test('declares every slot as a STRING, including the numeric one', () => {
-    // questionCount is an integer in the generation schema. The model still
-    // reports raw text ("ten questions"); turning that into a bounded integer
-    // is the resolver's job. A NUMBER here would invite the model to do the
-    // application's canonicalization for it.
+    // questionCount is an integer in the generation schema, but the model reports raw text ("ten questions") and the
+    // resolver makes it a bounded integer. A NUMBER here would invite the model to canonicalize.
     const slots = schema.properties.slots.properties;
     expect(slots.questionCount).toEqual({ type: 'STRING' });
     for (const spec of Object.values(slots)) expect(spec.type).toBe('STRING');
@@ -122,11 +112,9 @@ describe('proposal validation — SHAPE ONLY, by design', () => {
   });
 
   test('does NOT judge catalog membership — that is gate 2b’s job', () => {
-    // Deliberate. An earlier draft put the catalog enum here as well as in
-    // parseProposal, which made the authorization check unreachable dead code:
-    // zod always rejected a bad id first, so injecting a defect into the real
-    // guard changed nothing and 123 tests still passed. Splitting shape from
-    // permission is what gives G4 teeth. See the module comment.
+    // Deliberate. An earlier draft put the catalog enum here as well as in parseProposal, which made the authorization check
+    // unreachable: zod always rejected a bad id first, so injecting a defect into the real guard changed nothing. Splitting
+    // shape from permission gives the guard teeth. See the module comment.
     expect(schema.safeParse(validProposal({ intent: 'delete_all_resources' })).success).toBe(true);
   });
 
@@ -137,9 +125,7 @@ describe('proposal validation — SHAPE ONLY, by design', () => {
   });
 
   test('rejects a float confidence', () => {
-    // Decision D9: ordinal, never a float. A model returning 0.87 is not
-    // "mostly right about the shape" — it is unusable, because nothing in the
-    // policy knows what 0.87 means.
+    // Ordinal, never a float: a model returning 0.87 is unusable, since nothing in the policy knows what it means.
     expect(schema.safeParse(validProposal({ confidence: 0.87 })).success).toBe(false);
     expect(schema.safeParse(validProposal({ confidence: 'very high' })).success).toBe(false);
   });
@@ -152,11 +138,8 @@ describe('proposal validation — SHAPE ONLY, by design', () => {
   });
 
   test('REJECTS an unexpected top-level key, rather than stripping it', () => {
-    // The cost is real: a model that helpfully adds `reasoning` loses its whole
-    // proposal and the teacher gets a coaching answer. That is the intended
-    // trade. Silently stripping would let the output contract erode with nobody
-    // noticing, and a visible logged failure is the entire defence against a
-    // model doing more than it was asked.
+    // The cost is real: a model that adds `reasoning` loses its whole proposal and the teacher gets a coaching answer. That's the
+    // intended trade, since silently stripping would let the output contract erode, and a visible logged failure is the defence.
     for (const extra of [{ reasoning: 'because' }, { decision: 'execute' }, { route: '/generator' }]) {
       expect(schema.safeParse(validProposal(extra)).success).toBe(false);
     }
@@ -196,9 +179,7 @@ describe('slot sanitization — drop the offender, keep the rest', () => {
   });
 
   test('drops a slot the descriptor does not declare, keeping the others', () => {
-    // The asymmetry with the top-level `.strict()` above is deliberate: an
-    // unexpected top-level key means the model ignored the contract, while an
-    // unexpected slot is ordinary noisy extraction.
+    // Unlike the strict top level, an unexpected slot is ordinary noisy extraction, while an unexpected top-level key means the model ignored the contract.
     const { slots, dropped } = sanitizeSlots(generateAssessment, {
       topic: 'fractions',
       instructions: 'make it fun',
@@ -283,22 +264,16 @@ describe('parseProposal — validation then AUTHORIZATION', () => {
   });
 
   test('G4 — an action the CALLER may not use is refused even though it exists', () => {
-    // The heart of the guardrail. `generate_assessment` is a real, valid,
-    // registered action — but it was not in the catalog this request was built
-    // from, so proposing it is an authorization failure, not a typo.
+    // The heart of the guardrail: `generate_assessment` is a real registered action, but it wasn't in the catalog this
+    // request was built from, so proposing it is an authorization failure, not a typo.
     const result = parseProposal(validProposal(), [openGenerator]);
     expect(result).toEqual({ ok: false, reason: 'invalid_proposal' });
   });
 
   test('G4 — the refusal NEVER falls back to another descriptor', () => {
-    // Written specifically to catch the most plausible way this guard gets
-    // broken: someone adds a `|| descriptors[0]` fallback so an unrecognised id
-    // "still does something useful". That single change would let any string the
-    // model emits execute the first action in the catalog.
-    //
-    // This assertion is the injected-defect proof for G4. Adding such a fallback
-    // must fail it — and when the catalog enum lived in the zod schema, it did
-    // NOT, because zod rejected the id first and this branch never ran.
+    // Catches the most plausible way this guard breaks: someone adds a `|| descriptors[0]` fallback so an unrecognised id
+    // "still does something useful", which would let any string the model emits execute the first catalog action. Adding
+    // it must fail this. When the catalog enum lived in the zod schema it did not, because zod rejected the id first.
     for (const list of [BOTH, [openGenerator], [generateAssessment]]) {
       const result = parseProposal({ intent: 'delete_all_resources', confidence: 'high' }, list);
       expect(result.ok).toBe(false);
@@ -315,10 +290,7 @@ describe('parseProposal — validation then AUTHORIZATION', () => {
   });
 
   test('surrounding whitespace on an otherwise valid id is tolerated', () => {
-    // Trimmed, then matched exactly. Safe because the comparison after
-    // normalization is still against the caller's own catalog — being lenient
-    // about a stray space costs nothing and avoids losing a good routing to a
-    // model's formatting quirk.
+    // Trimmed, then matched exactly. Safe since the comparison is still against the caller's own catalog, and being lenient about a stray space avoids losing a good routing.
     const result = parseProposal({ intent: '  generate_assessment  ', confidence: 'high' }, BOTH);
     expect(result.ok).toBe(true);
     expect(result.proposal.descriptor).toBe(generateAssessment);
@@ -339,14 +311,10 @@ describe('parseProposal — validation then AUTHORIZATION', () => {
 });
 
 describe('REGRESSION — the response schema is derived entirely from the registry', () => {
-  // Required at M5 sign-off. The property under test is that adding an action to
-  // the registry automatically widens what the classifier accepts, with no edit
-  // to proposalSchema.js. If someone ever replaces the derivation with a
-  // hand-written enum, these fail — which is the whole point, because a
-  // hand-written enum is a second source of truth that drifts the first time an
-  // action is added under time pressure.
+  // Adding an action to the registry must widen what the classifier accepts with no edit to proposalSchema.js. If the
+  // derivation is replaced by a hand-written enum these fail, since that would be a second source of truth that drifts.
 
-  /** A plausible Phase 2 action, registered nowhere. */
+  /** A plausible future action, registered nowhere. */
   const futureAction = {
     ...openGenerator,
     id: 'search_library',
@@ -360,9 +328,7 @@ describe('REGRESSION — the response schema is derived entirely from the regist
     const widened = [...BOTH, futureAction];
     expect(allowedIntents(widened)).toContain('search_library');
     expect(buildResponseSchema(widened).properties.intent.enum).toContain('search_library');
-    // Asserted through parseProposal, which is where authorization actually
-    // happens — buildProposalSchema validates shape only and would accept the
-    // id regardless, so asserting against it would prove nothing.
+    // Asserted through parseProposal, where authorization happens; buildProposalSchema checks shape only and would accept the id regardless.
     expect(parseProposal({ intent: 'search_library', confidence: 'high' }, widened).ok).toBe(true);
     expect(parseProposal({ intent: 'search_library', confidence: 'high' }, BOTH).ok).toBe(false);
   });

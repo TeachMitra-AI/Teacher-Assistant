@@ -1,5 +1,4 @@
-// Minimal, deliberately light lint config — catches real bugs (unused vars,
-// undefined globals) without imposing a strict style regime.
+// Deliberately light lint config: it catches real bugs (unused vars, undefined globals) without a strict style regime.
 const js = require('@eslint/js');
 
 module.exports = [

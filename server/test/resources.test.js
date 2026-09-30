@@ -1,6 +1,5 @@
-// My Library — resource CRUD, ownership scoping, cross-user isolation, and
-// validation. Ownership must always come from the token; a resource that does
-// not exist OR belongs to another user must return the same 404.
+// My Library: resource CRUD, ownership scoping, cross-user isolation and validation. Ownership must come from the
+// token; a resource that doesn't exist or belongs to another user must return the same 404.
 const request = require('supertest');
 const { app, prisma } = require('./helpers/testApp');
 const { createFixtures, PASSWORD } = require('./helpers/fixtures');
@@ -116,11 +115,8 @@ describe('My Library — /api/resources', () => {
     });
   });
 
-  // Notification System system-hook (docs/notification-system-plan.md §6):
-  // saving a resource is the "lesson generated"/"assessment ready" system
-  // event. A sibling describe block, not folded into 'create' above — it
-  // exercises a different subsystem (Notification, not Resource) as a
-  // side-effect of the same endpoint.
+  // Notification system hook (docs/notification-system-plan.md): saving a resource is the "lesson generated"/"assessment
+  // ready" system event. A sibling describe block because it exercises a different subsystem (Notification) as a side effect of the same endpoint.
   describe('notification hook on save', () => {
     let savedEnv;
     beforeAll(() => { savedEnv = process.env.NOTIFICATIONS_ENABLED; process.env.NOTIFICATIONS_ENABLED = 'true'; });
@@ -202,9 +198,8 @@ describe('My Library — /api/resources', () => {
       expect(byContent.body.resources[0].title).toBe('Gravity explained');
     });
 
-    // Classroom Mode asks "what did this turn already save?" so a set reopened
-    // from history shows its cards as Saved instead of offering to save the
-    // same quiz twice (nothing deduplicates on create).
+    // Classroom Mode asks "what did this turn already save?" so a set reopened from history shows its cards as Saved
+    // instead of offering to save the same quiz twice (nothing deduplicates on create).
     describe('sourceQueryId filter', () => {
       test('returns only resources saved from that turn', async () => {
         await createFor(teacherAToken, { title: 'Quiz from turn 1', sourceQueryId: 'query-one' });
@@ -320,10 +315,8 @@ describe('My Library — /api/resources', () => {
     });
   });
 
-  // Lesson Plan Workspace AI actions. Ownership must be enforced exactly like
-  // the rest of the resource routes; the suggestion is returned but never
-  // persisted (saving stays an explicit PATCH). Gemini's fetch is mocked so
-  // the real route + GeminiService run end-to-end without a network call.
+  // Lesson Plan Workspace AI actions. Ownership is enforced like the other resource routes; the suggestion is returned
+  // but never persisted (saving stays an explicit PATCH). Gemini's fetch is mocked so the real route and GeminiService run without a network call.
   describe('ai-action — POST /api/resources/:id/ai-action', () => {
     afterEach(() => {
       vi.unstubAllGlobals();
@@ -390,21 +383,16 @@ describe('My Library — /api/resources', () => {
     });
   });
 
-  // Phase 4: make_easier / make_harder / more_questions / simplify_wording go
-  // through the SAME structured JSON pipeline as initial generation — parse
-  // the resource's current content back into { instructions, questions },
-  // ask Gemini for a JSON revision, validate it, and re-render deterministically
-  // onto the ORIGINAL title/metadata preamble (never regenerated, never sent
-  // to the model). See handleAssessmentAction/parseAssessmentBody in
-  // server/src/routes/resources.js.
+  // make_easier / make_harder / more_questions / simplify_wording use the same structured JSON pipeline as generation:
+  // parse the current content back into { instructions, questions }, ask Gemini for a JSON revision, validate, and
+  // re-render onto the original title/metadata preamble (never regenerated or sent to the model). See
+  // handleAssessmentAction/parseAssessmentBody in server/src/routes/resources.js.
   describe('assessment AI-assist actions — structured pipeline (Phase 4)', () => {
     afterEach(() => {
       vi.unstubAllGlobals();
     });
 
-    // Exactly what renderAssessmentMarkdown/renderAssessmentBody would
-    // produce for a mixed-type 3-question quiz — the shape parseAssessmentBody
-    // must recover losslessly.
+    // What renderAssessmentMarkdown/renderAssessmentBody produce for a mixed-type 3-question quiz, the shape parseAssessmentBody must recover losslessly.
     const VALID_QUIZ_CONTENT = [
       '# Science Quiz: Photosynthesis',
       '',
@@ -492,8 +480,7 @@ describe('My Library — /api/resources', () => {
       expect(suggestion).toContain('3. Harder Q3?');
       expect(suggestion).toMatch(/## Answer Key[\s\S]*1\. C[\s\S]*2\. False[\s\S]*3\. Xanthophyll/);
 
-      // Resource.structured (Phase 3 examMeta) is never touched by an ai-action
-      // suggestion — it isn't even persisted here (saving is a separate PATCH).
+      // Resource.structured (examMeta) is never touched by an ai-action suggestion, which isn't even persisted (saving is a separate PATCH).
       const row = await prisma.resource.findUnique({ where: { id: resource.id } });
       expect(row.content).toBe(VALID_QUIZ_CONTENT); // unchanged until Save
       expect(JSON.parse(row.structured).examMeta.schoolName).toBe('Test School');
@@ -656,9 +643,7 @@ describe('My Library — /api/resources', () => {
       expect(res.body.suggestion).toBe('# Simplified\nEasy words.');
     });
 
-    // Structured Question Model (Generator v2, plan §2f): a resource with
-    // native structured questions reads/writes `structured` directly and
-    // skips parseAssessmentBody's regex round-trip entirely.
+    // A resource with native structured questions reads and writes `structured` directly and skips parseAssessmentBody's regex round-trip.
     describe('structured resources (schemaVersion 2) skip the regex round-trip', () => {
       async function createStructuredQuiz(token) {
         const res = await request(app).post('/api/resources').set('Authorization', `Bearer ${token}`).send({
@@ -679,9 +664,7 @@ describe('My Library — /api/resources', () => {
       test('make_harder succeeds even when `content` has been corrupted beyond regex-parsing', async () => {
         const resource = await createStructuredQuiz(teacherAToken);
 
-        // Corrupt content directly (bypassing the API) so parseAssessmentBody
-        // would fail — proving the ai-action below reads structured.questions
-        // instead, never falling back to (or needing) a parseable `content`.
+        // Corrupt the content directly (bypassing the API) so parseAssessmentBody would fail, proving the ai-action reads structured.questions and never needs a parseable `content`.
         await prisma.resource.update({ where: { id: resource.id }, data: { content: 'not parseable at all, no headings' } });
 
         mockGeminiFetch([geminiSuccess(JSON.stringify({
@@ -722,13 +705,9 @@ describe('My Library — /api/resources', () => {
     });
   });
 
-  // Quiz / Worksheet Generator. Builds a trusted prompt from a validated
-  // config and asks Gemini for structured JSON question data (Phase 1 —
-  // see server/src/lib/assessmentSchema.js), which the route validates,
-  // normalizes, and renders into Markdown itself. It must NEVER persist a
-  // resource itself (saving stays an explicit POST /api/resources). Gemini's
-  // fetch is mocked so the real route + GeminiService run end-to-end
-  // without a network call.
+  // Quiz / Worksheet Generator. It builds a trusted prompt from a validated config and asks Gemini for structured JSON
+  // (see server/src/lib/assessmentSchema.js), which the route validates, normalizes and renders to Markdown itself. It
+  // must never persist a resource (saving stays an explicit POST /api/resources). Gemini's fetch is mocked so the real route and GeminiService run without a network call.
   describe('generate — POST /api/resources/generate', () => {
     afterEach(() => {
       vi.unstubAllGlobals();
@@ -745,9 +724,7 @@ describe('My Library — /api/resources', () => {
       language: 'en',
     };
 
-    // Builds a schema-valid structured document matching `count` questions
-    // of `type` (mirrors what buildGeneratorPrompt/ASSESSMENT_RESPONSE_SCHEMA
-    // asks Gemini to return).
+    // Builds a schema-valid structured document of `count` questions of `type` (mirrors what buildGeneratorPrompt/ASSESSMENT_RESPONSE_SCHEMA asks for).
     function mockMcqQuestion(i) {
       return {
         type: 'mcq',
@@ -826,10 +803,8 @@ describe('My Library — /api/resources', () => {
       expect(content).toContain('## Answer Key');
     });
 
-    // The fixture strings use real JS escapes ('\t' = tab, '\f' = form feed) so
-    // JSON.stringify re-emits them as the "\t"/"\f" JSON escapes Gemini
-    // produces when it writes single-backslash LaTeX inside JSON — the exact
-    // corruption observed in real generated papers ("\tan" → tab+"an").
+    // The fixtures use real JS escapes ('\t' tab, '\f' form feed) so JSON.stringify re-emits them as the "\t"/"\f" escapes
+    // Gemini produces for single-backslash LaTeX in JSON, the corruption observed in real papers ("\tan" -> tab+"an").
     test('repairs JSON-escape-mangled LaTeX from the model before rendering', async () => {
       const doc = {
         instructions: 'Answer all questions carefully.',
@@ -866,10 +841,8 @@ describe('My Library — /api/resources', () => {
       expect(res.body.content).toContain('## Teacher Answer Key');
     });
 
-    // Phase 3: Student Name / Roll No. / Date are no longer baked into the
-    // generated Markdown as hardcoded lines — that's now a teacher-configured
-    // letterhead (Resource.structured.examMeta) rendered client-side by
-    // ExamHeader.tsx, for both quiz and worksheet alike, never AI-authored text.
+    // Student Name / Roll No. / Date aren't baked into the generated Markdown as hardcoded lines; the teacher-configured
+    // letterhead (Resource.structured.examMeta) is rendered client-side by ExamHeader.tsx, for quiz and worksheet alike.
     test('does NOT hardcode Student Name/Date lines into the document (superseded by the client-rendered letterhead)', async () => {
       mockGeminiFetch([mockAssessmentJsonResponse({ count: 3, type: 'mcq' })]);
       const res = await generate(teacherAToken, { ...validConfig, format: 'worksheet', questionCount: 3 });
@@ -943,12 +916,8 @@ describe('My Library — /api/resources', () => {
       expect(res.body.code).toBe('UPSTREAM_UNAVAILABLE');
     });
 
-    // --- Malformed / non-compliant AI response handling (Phase 1) ----------
-    // Previously (Markdown generation) there was no server-side check at all
-    // that the model's output actually matched what was asked for — these
-    // cases would have silently reached the teacher's preview looking
-    // "generated" even when broken. Now every one of these is rejected with
-    // a typed, non-200 error instead.
+    // Malformed and non-compliant AI responses. Markdown generation had no server-side check that the output matched the
+    // request, so these would have reached the preview looking "generated"; each is now rejected with a typed non-200 error.
     describe('malformed / non-compliant AI responses', () => {
       test('rejects a response that is not valid JSON at all', async () => {
         mockGeminiFetch([geminiSuccess('# Quiz: Photosynthesis\n1. Q?\n## Answer Key\n1. A')]);
@@ -1056,14 +1025,9 @@ describe('My Library — /api/resources', () => {
         });
 
         test('narrows the response schema sent to Gemini to exactly the selected types', async () => {
-          // The root cause of a real bug (issue #95 follow-up): the schema
-          // used to always allow all 6 concrete types regardless of the
-          // request, so a multi-select generation relied purely on Gemini
-          // FOLLOWING a natural-language instruction to stay within the
-          // selected types — which it did not always do, surfacing to a
-          // teacher as "The generated content did not match your request."
-          // on a multi-select generation a single-select one would not have
-          // hit. The schema itself must now forbid any other type.
+          // The root cause of a real bug: the schema used to allow all 6 concrete types whatever the request, so a multi-select
+          // generation relied on Gemini following a natural-language instruction, which it didn't always, and the teacher saw
+          // "The generated content did not match your request." The schema itself must now forbid any other type.
           const doc = {
             instructions: 'Answer everything.',
             questions: [mockMcqQuestion(1), mockTrueFalseQuestion(2), mockMcqQuestion(3)],
@@ -1116,9 +1080,7 @@ describe('My Library — /api/resources', () => {
       });
 
       test('rejects a response cut off mid-JSON (truncation is not spliced/continued for structured output)', async () => {
-        // A response that reports MAX_TOKENS with a truncated JSON body.
-        // generateContent() skips its continuation loop when responseSchema
-        // is set, so this reaches the route as invalid JSON.
+        // A response reporting MAX_TOKENS with a truncated JSON body. generateContent() skips its continuation loop when responseSchema is set, so this reaches the route as invalid JSON.
         mockGeminiFetch([
           { status: 200, json: { candidates: [{ content: { parts: [{ text: '{"instructions": "Answer all", "quest' }] }, finishReason: 'MAX_TOKENS' }] } },
         ]);
@@ -1128,18 +1090,11 @@ describe('My Library — /api/resources', () => {
       });
     });
 
-    // --- LaTeX safety guard (lib/latexGuard.js) -----------------------------
-    // Root cause: normalizeAssessmentMath only ever repairs LaTeX INSIDE an
-    // existing $...$/$$...$$ pair — by design (see assessmentSchema.test.js's
-    // "does not touch \text{...} outside math delimiters"). Gemini sometimes
-    // drops the $ delimiters entirely around a unit-bearing quantity, most
-    // often in MCQ "options" — a real Chemistry MCQ response captured live
-    // during the investigation came back as
-    // options: ["0.25 \\text{ mol}", ...] with NO delimiters at all. This
-    // guard is a second pass, run after normalizeAssessmentMath, that
-    // auto-repairs that mechanical case and rejects+regenerates anything it
-    // can't safely repair — so raw LaTeX can never reach the client
-    // regardless of what the model does, without relying on prompt wording.
+    // LaTeX safety guard (lib/latexGuard.js). normalizeAssessmentMath repairs LaTeX only inside an existing $...$/$$...$$
+    // pair (see assessmentSchema.test.js), but Gemini sometimes drops the delimiters around a unit-bearing quantity, mostly
+    // in MCQ options (a live Chemistry response came back with options: ["0.25 \\text{ mol}", ...]). This guard is a second
+    // pass after it that repairs that mechanical case and rejects and regenerates anything it can't safely repair, so raw
+    // LaTeX can't reach the client whatever the model does, without relying on prompt wording.
     describe('LaTeX safety guard (post-generation, treats Gemini output as untrusted)', () => {
       test('auto-repairs bare LaTeX (missing $ delimiters) before rendering, without regenerating', async () => {
         const doc = mockAssessmentDoc({ count: 3, type: 'mcq' });
@@ -1158,8 +1113,7 @@ describe('My Library — /api/resources', () => {
 
       test('rejects unrepairable bare LaTeX and regenerates, succeeding on a later attempt', async () => {
         const badDoc = mockAssessmentDoc({ count: 3, type: 'mcq' });
-        // Unbalanced brace — the guard deliberately does not guess at this;
-        // it must come back as a failed attempt, not a silently-broken wrap.
+        // Unbalanced brace: the guard doesn't guess; it must come back as a failed attempt, not a silently broken wrap.
         badDoc.questions[0].options = ['30\\text{ km/h', 'Option B', 'Option C', 'Option D'];
         const goodDoc = mockAssessmentDoc({ count: 3, type: 'mcq' });
 
@@ -1179,9 +1133,7 @@ describe('My Library — /api/resources', () => {
         const res = await generate(teacherAToken, { ...validConfig, questionCount: 3 });
         expect(res.status).toBe(502);
         expect(res.body.code).toBe('INVALID_AI_RESPONSE');
-        // 1 initial attempt + MAX_LATEX_REGEN_ATTEMPTS (2) retries = 3 total
-        // calls — never fewer (teacher must never see unsafe content) and
-        // never more (bounded cost/latency).
+        // 1 initial attempt + MAX_LATEX_REGEN_ATTEMPTS (2) retries = 3 calls: never fewer (a teacher must never see unsafe content) and never more (bounded cost and latency).
         expect(mock).toHaveBeenCalledTimes(3);
       });
     });
@@ -1306,11 +1258,8 @@ describe('My Library — /api/resources', () => {
       });
     });
 
-    // Structured Question Model (Generator v2) — the server-side
-    // content-re-renders-from-structured-questions rule (plan §2c), exercised
-    // through the same public create/update endpoints 'create'/'update'
-    // describe blocks above already cover for the legacy (no schemaVersion)
-    // path.
+    // Structured question model: the server-side rule that content re-renders from structured questions, exercised through
+    // the same create/update endpoints the 'create'/'update' blocks above cover for the legacy (no schemaVersion) path.
     describe('Structured Question Model — save/edit re-render rule', () => {
       function structuredPayload(overrides = {}) {
         return JSON.stringify({

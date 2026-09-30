@@ -1,10 +1,6 @@
-// Self-service password reset: POST /auth/forgot-password ->
-// POST /auth/reset-password.
-//
-// The provider call is stubbed at the `fetch` boundary (helpers/emailMock.js),
-// so these run the real endpoint, the real token generation and the real email
-// module without sending mail. The raw token is read back out of the mocked
-// email body, which is the only place it exists unhashed.
+// Self-service password reset: POST /auth/forgot-password -> POST /auth/reset-password. The provider call is stubbed at
+// the `fetch` boundary (helpers/emailMock.js), so these run the real endpoint, token generation and email module
+// without sending mail. The raw token is read from the mocked email body, the only place it exists unhashed.
 const bcrypt = require('bcryptjs');
 const { app, prisma } = require('./helpers/testApp');
 const { makeClient } = require('./helpers/http');

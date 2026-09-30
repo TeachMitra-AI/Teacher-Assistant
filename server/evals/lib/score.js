@@ -1,22 +1,9 @@
-// The scorer (Milestone M7a). PURE — results in, metrics out. No I/O, no clock.
-//
-// This is the one component in the harness whose bugs are INVISIBLE: a broken
-// scorer reports a beautiful number and nothing anywhere looks wrong. It is
-// therefore pure, unit-tested against hand-built result objects, and proven to
-// fail on an injected mis-scoring defect.
-//
-// Every metric reports INTEGER COUNTS alongside its percentage. A bare "91.4%"
-// cannot be diffed, reproduced or argued with; "64/70" can.
-//
-// ─── WHAT IS COUNTED WHERE ─────────────────────────────────────────────────
-// AMBIGUOUS cases are excluded from routing precision, routing recall and the
-// false-positive/negative counts, and are reported in their own bucket. If they
-// counted, the cheapest way to raise precision would be to relabel the awkward
-// ones — the threshold could then be met without changing behaviour.
-//
-// SLOT metrics are computed ONLY over turns routed to the CORRECT action. Slot
-// accuracy on a misrouted turn is noise: it measures extraction against a
-// descriptor the utterance was never about.
+// The scorer: results in, metrics out, pure (no I/O or clock). A broken scorer reports a good number with nothing
+// looking wrong, so it's unit-tested against hand-built results and proven to fail on an injected mis-scoring defect.
+// Every metric reports integer counts beside its percentage: "64/70" can be diffed and argued with, "91.4%" can't.
+// AMBIGUOUS cases are excluded from routing precision, recall and the false-positive/negative counts, and reported in
+// their own bucket; otherwise the cheapest way to raise precision would be to relabel the awkward cases.
+// Slot metrics are computed only over turns routed to the correct action, since slot accuracy on a misrouted turn is noise.
 
 const ALL_SLOTS = Object.freeze([
   'format',
@@ -30,11 +17,8 @@ const ALL_SLOTS = Object.freeze([
 ]);
 
 /**
- * Compare two slot values.
- *
- * Case-insensitive and NFKC-normalized because the vocabularies canonicalize to
- * a fixed casing but free text does not, and because Devanagari must compare in
- * the same normal form it was matched in.
+ * Compare two slot values, case-insensitive and NFKC-normalized: vocabularies canonicalize to a fixed casing but
+ * free text doesn't, and Devanagari must compare in the normal form it was matched in.
  */
 function sameValue(actual, expected) {
   if (actual === undefined || actual === null) return false;
@@ -46,11 +30,8 @@ function sameValue(actual, expected) {
 }
 
 /**
- * Normalize a topic for comparison.
- *
- * Strips a leading article and trailing punctuation, because "the water cycle"
- * and "water cycle" are the same topic and an article-sensitive metric would
- * spend its resolution on grammar rather than on extraction quality.
+ * Normalize a topic for comparison: strip a leading article and trailing punctuation, so "the water cycle" and
+ * "water cycle" match and the metric doesn't spend its resolution on grammar.
  */
 function normalizeTopic(value) {
   return String(value ?? '')
@@ -62,16 +43,12 @@ function normalizeTopic(value) {
 }
 
 /**
- * Classify a topic result into the three failure modes recorded live at M5/M6,
- * which have three different fixes and must not be collapsed into one rate.
- *
- *   exact   — matches
- *   dirty   — contains the expected topic plus trailing junk
- *             ("photosynthesishippo", "fractionsnsibs")
- *   crammed — several slots stuffed into the topic string
- *             ("fractions.5thsgrade.subject:maths.language:Hindi")
- *   wrong   — something else entirely
- *   missing — not filled at all
+ * Classify a topic result into three failure modes seen live, which have different fixes and aren't collapsed into one rate.
+ *   exact   - matches
+ *   dirty   - the expected topic plus trailing junk ("photosynthesishippo", "fractionsnsibs")
+ *   crammed - several slots stuffed into the topic ("fractions.5thsgrade.subject:maths.language:Hindi")
+ *   wrong   - something else entirely
+ *   missing - not filled at all
  */
 function classifyTopic(actualValue, expectedValue) {
   if (actualValue === undefined || actualValue === null || actualValue === '') return 'missing';
@@ -106,10 +83,8 @@ function isActionLabel(expected) {
 }
 
 /**
- * Score one turn.
- *
- * Returns the per-case record that lands in results.json and results.csv, with
- * the verdict and — for anything that went wrong — the attribution.
+ * Score one turn. Returns the per-case record for results.json and results.csv, with the verdict and, for
+ * anything that went wrong, the attribution.
  */
 function scoreOne(result) {
   const { expected, actual } = result;
@@ -132,9 +107,7 @@ function scoreOne(result) {
     verdict = 'correct';
   }
 
-  // Attribution exists so a failure names the layer that owns the fix. The last
-  // three values are CODE findings, not model findings, and the report lists
-  // them first for that reason.
+  // Attribution names the layer that owns the fix. The last three values are code findings, not model findings, so the report lists them first.
   let attribution = null;
   if (verdict === 'missed') {
     const reason = actual.passthroughReason;
@@ -149,12 +122,8 @@ function scoreOne(result) {
   } else if (verdict === 'wrong_action') {
     attribution = 'classifier_wrong_action';
   } else if (verdict === 'correct_action_wrong_decision') {
-    // The naive attribution here is "policy.js", and it is usually WRONG. The
-    // policy asking for `topic` when `topic` is missing is the policy working
-    // exactly as specified; the defect is upstream, in a classifier that did not
-    // extract a slot the teacher plainly stated. Attributing these to the policy
-    // would send someone to read a module with 288 exhaustively-enumerated
-    // combinations looking for a bug that is not there.
+    // The naive attribution here is "policy.js" and it's usually wrong: the policy asking for a missing `topic` is
+    // working as specified, and the defect is upstream, in a classifier that didn't extract a stated slot.
     const stated = Object.keys(expected.slots?.stated || {});
     const missedStatedSlot = (actual.missing || []).some((slot) => stated.includes(slot));
     const hallucinatedRequired = (expected.slots?.notStated || []).some(
@@ -215,10 +184,8 @@ function scoreOne(result) {
     }
   }
 
-  // --- Hard-gate observations ----------------------------------------------
-  // The language trap is checked on EVERY turn regardless of routing: a
-  // `language` set from the utterance where none was named is a violation
-  // whether or not the action was right.
+  // Hard-gate observations. The language trap is checked on every turn regardless of routing: a `language` set from
+  // the utterance where none was named is a violation whether or not the action was right.
   const languageTrapViolation =
     (expected.slots?.notStated || []).includes('language') && actual.provenance.language === 'utterance';
 

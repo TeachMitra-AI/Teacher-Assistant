@@ -1,6 +1,5 @@
-// Classroom Management — classes & students CRUD (docs/classroom-feature-plan.md).
-// Mirrors resources.test.js's shape for ownership assertions (404 not 403 on
-// a not-owned id) and notifications.test.js's shape for flag manipulation.
+// Classroom Management classes and students CRUD (docs/classroom-feature-plan.md). Follows resources.test.js for
+// ownership assertions (404, not 403, on a not-owned id) and notifications.test.js for flag manipulation.
 const request = require('supertest');
 
 const { app, prisma } = require('./helpers/testApp');
@@ -52,19 +51,12 @@ describe('Classroom Management — classes & students', () => {
       expect(listRes.status).toBe(503);
     });
 
-    // Regression test: this router is mounted at the bare `/api` (its own
-    // routes self-prefix with `/classroom/...`, see index.js), so the
-    // disabled-feature gate MUST be applied per-route (see
-    // routes/classroom.js's `gate` array), never as a router-wide
-    // `router.use()`. A router-wide gate with no path filter would run for
-    // ANY path Express hands to this router — including ones that don't
-    // match any route here — and, since the gate 503s without calling
-    // next(), would swallow unrelated unmatched paths that fall through to
-    // this router (e.g. `/api/assistant/not-a-real-endpoint`, which is
-    // mounted earlier but still cascades here when nothing matches),
-    // returning 503 instead of letting Express's normal 404 apply. Caught in
-    // CI: assistant.catalog.test.js's "unknown assistant path" assertions
-    // failed with 503 whenever CLASSROOM_MANAGEMENT_ENABLED was unset.
+    // Regression: this router mounts at the bare `/api` and its routes self-prefix with `/classroom/...` (see index.js),
+    // so the disabled-feature gate must be per route (the `gate` array in routes/classroom.js), never a router-wide
+    // `router.use()`. A router-wide gate would run for any path that falls through to this router and, since it 503s
+    // without calling next(), would swallow unrelated unmatched paths (e.g. `/api/assistant/not-a-real-endpoint`) with a 503
+    // instead of Express's 404. CI caught this when assistant.catalog.test.js's "unknown assistant path" assertions failed
+    // with 503 whenever CLASSROOM_MANAGEMENT_ENABLED was unset.
     test('a disabled Classroom does not swallow an unrelated, nonexistent API path', async () => {
       const res = await as(teacherAToken)(request(app).get('/api/definitely-not-a-real-endpoint'));
       expect(res.status).toBe(404);

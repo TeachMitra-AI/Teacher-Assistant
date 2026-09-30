@@ -1,28 +1,14 @@
-// Per-format presentation and purpose for generated assessments.
-//
-// Everything that differs BETWEEN formats lives here, in one table. These used
-// to be `format === 'worksheet' ? … : …` ternaries inside the prompt builder
-// and the renderer — correct while there were exactly two formats, and silently
-// wrong the moment there is a third, because every unknown format falls through
-// to the quiz branch and is labelled "Quiz".
-//
-// Adding a format is now three edits, each in its own concern:
-//   1. FORMATS      in actions/schemas/generateAssessment.js  (the vocabulary)
-//   2. FORMAT_META  here                                      (how it reads)
-//   3. ASSESSMENT_FORMATS in client/src/config.ts             (the picker)
-//
-// (1) and (3) must land in the SAME commit — see the drift note in both files.
-// (2) cannot be forgotten: the assertion at the bottom of this module runs at
-// require time, so a format without metadata stops the server at boot instead
-// of shipping documents labelled as the wrong thing.
+// Per-format presentation and purpose for generated assessments, in one table. Ternaries on `format` were wrong
+// the moment a third format existed: unknown formats fell through to the quiz branch and were labelled "Quiz".
+// Adding a format takes three edits: FORMATS in actions/schemas/generateAssessment.js (vocabulary), FORMAT_META
+// here (how it reads), and ASSESSMENT_FORMATS in client/src/config.ts (picker). The first and third must land together.
+// The assertion at the bottom runs at require time, so a format without metadata stops the server at boot.
 
 const { FORMATS } = require('../actions/schemas/generateAssessment');
 
 /**
- * `purpose` is the only genuinely generative field. It tells the model what the
- * document is FOR, which is what makes an exit ticket read differently from a
- * quiz of the same length — without it, a three-question exit ticket is just a
- * short quiz with a different heading.
+ * `purpose` is the only generative field: it tells the model what the document is for, which is what makes
+ * an exit ticket read differently from a short quiz.
  */
 const FORMAT_META = Object.freeze({
   quiz: Object.freeze({
@@ -52,11 +38,8 @@ const FORMAT_META = Object.freeze({
     noun: 'homework',
     title: 'Homework',
     answerKeyHeading: '## Teacher Answer Key',
-    // The setting is the whole difference from `worksheet`. A worksheet is
-    // attempted with the teacher in the room; homework is attempted alone,
-    // often late, sometimes with a parent who did not attend the lesson and may
-    // not read the language of instruction. Every clause below exists because
-    // that changes what a good question looks like — not to make it easier.
+    // The setting is the difference from `worksheet`: homework is attempted alone, often late, sometimes with a
+    // parent who may not read the language of instruction. Each clause changes what a good question looks like.
     purpose:
       'Homework: practice students complete at home, on their own, with NO teacher available to explain anything. '
       + 'Every question must be answerable from what was already taught in class — never introduce a new idea, notation or vocabulary word here. '
@@ -67,20 +50,14 @@ const FORMAT_META = Object.freeze({
 });
 
 /**
- * Metadata for a validated format. Falls back to `quiz` rather than throwing:
- * by the time this is called the format has already passed
- * generateAssessmentSchema, so an unknown value here would mean the boot
- * assertion below was bypassed — and a request in flight is the wrong place to
- * discover that. The assertion is what actually prevents it.
+ * Metadata for a validated format. Falls back to `quiz` rather than throwing, since the format has already
+ * passed generateAssessmentSchema and the boot assertion below is what prevents an unknown one.
  */
 function formatMeta(format) {
   return FORMAT_META[format] || FORMAT_META.quiz;
 }
 
-// Fail at boot, not at request time — the same discipline index.js applies to
-// the action registry. A format in FORMATS with no metadata here would
-// otherwise render as a quiz, which is the kind of bug that reaches a teacher
-// looking like a content problem rather than a code one.
+// Fail at boot: a format with no metadata would render as a quiz and look like a content bug.
 const missing = FORMATS.filter((format) => !FORMAT_META[format]);
 if (missing.length > 0) {
   throw new Error(

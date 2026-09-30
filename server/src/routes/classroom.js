@@ -1,21 +1,10 @@
-// Classroom Management — see docs/classroom-feature-plan.md.
-//
-// A teacher-first workspace: My Classes / Students / Attendance / Fees /
-// Reports. SCOPE, stated so it is not widened by accident: every route in
-// this file filters strictly on `teacherId: req.user.id` (never schoolId,
-// never the request body) — a teacher only ever sees/manages THEIR OWN
-// classes, students, attendance, and fee data, regardless of role. There is
-// no school_admin/resource_person cross-teacher visibility in V1; see
-// test/classroom-tenant-isolation.test.js for the assertions that pin this.
-//
-// NOT to be confused with the unrelated "Classroom Mode" AI chat feature
-// (routes mounted separately, see index.js's classroomPlanPromise/
-// CLASSROOM_MODE_ENABLED) — that feature has no classes, students,
-// attendance, or fees, and this file never touches it.
-//
-// Ownership pattern mirrors routes/resources.js exactly: a lookup that
-// doesn't match the caller 404s (never 403s), so existence is never leaked
-// across teachers.
+// Classroom Management (docs/classroom-feature-plan.md): a teacher-first workspace for classes, students,
+// attendance, fees and reports.
+// Every route here filters strictly on `teacherId: req.user.id` (never schoolId or the body), so a teacher only sees
+// their own classes, students, attendance and fees, whatever their role. There's no cross-teacher visibility in V1;
+// test/classroom-tenant-isolation.test.js pins this.
+// Not the unrelated "Classroom Mode" AI chat feature (see index.js's classroomPlanPromise/CLASSROOM_MODE_ENABLED).
+// Ownership follows routes/resources.js: a lookup that doesn't match the caller 404s (never 403s), so existence isn't leaked.
 const express = require('express');
 const { z } = require('zod');
 
@@ -45,25 +34,16 @@ const router = express.Router();
 
 const MAX_NAME = 200;
 const MAX_META = 60; // grade / section / roll number
-// Generous ceiling for one bulk attendance save — well above any pilot-scale
-// class size, while still comfortably fitting the app's default 16kb JSON
-// body limit (index.js does not special-case /api/classroom the way it does
-// /api/resources, so this stays under that shared limit rather than
-// requesting a larger one).
+// Ceiling for one bulk attendance save: above any pilot class size and within the default 16kb JSON body limit
+// (index.js doesn't raise it for /api/classroom as it does for /api/resources).
 const MAX_MARKS_PER_REQUEST = 120;
 const ATTENDANCE_STATUSES = ['present', 'absent', 'unmarked'];
-// A generous ceiling for a monthly class/student fee, in whole rupees — well
-// above any real school fee, just guarding against a fat-fingered/garbage
-// value (docs/fee-tracking-amounts-plan.md).
+// Ceiling for a monthly fee in whole rupees, guarding against a fat-fingered value (docs/fee-tracking-amounts-plan.md).
 const MAX_FEE_AMOUNT = 1000000;
 
 /**
- * Same rollout predicate shape as routes/attachments.js's isWithinRollout:
- * `enabled` is the gate, `allowedSchoolCodes` is a FILTER on top of it (empty
- * means every school — see readClassroomManagementFlags). Kept local rather
- * than shared, same reasoning as attachments.js's own copy — different
- * feature, different failure semantics, not worth a shared abstraction for a
- * five-line predicate.
+ * Same rollout predicate as routes/attachments.js's isWithinRollout: `enabled` is the gate and `allowedSchoolCodes`
+ * a filter (empty means every school). Kept local; a shared abstraction isn't worth a five-line predicate.
  */
 async function isWithinClassroomRollout(user, flags) {
   if (!flags.enabled) return false;
@@ -77,21 +57,10 @@ async function isWithinClassroomRollout(user, flags) {
 }
 
 /**
- * Gate middleware — same shape as routes/notifications.js's
- * requireNotificationsEnabled: flags are read LIVE (process.env), not cached
- * at boot, so the server's kill switch takes effect immediately and a test
- * suite can toggle it per-file. Applied per-route (below), NOT as a
- * router-wide `router.use()` — this router is mounted at the bare `/api`
- * (its own routes self-prefix with `/classroom/...`, see index.js's comment
- * on the mount), so a router-wide `.use()` with no path filter would run for
- * ANY path Express hands to this router, including ones that don't match any
- * route here. A disabled/out-of-rollout gate returning 503 without calling
- * next() would then swallow those unmatched paths — e.g.
- * `/api/assistant/not-a-real-endpoint`, which falls through every earlier
- * `/api`-mounted router before reaching this one — turning them into a 503
- * instead of letting Express's normal 404 fallback run. Every other flagged
- * router in this codebase (`notifications.js` included) applies its gate
- * per-route for exactly this reason; this router now matches that pattern.
+ * Gate middleware, like routes/notifications.js's requireNotificationsEnabled: flags are read live so the kill switch
+ * is immediate and tests can toggle it per file. Applied per route, not router-wide: this router mounts at the bare
+ * `/api`, so a path-less `router.use()` would run for every path that falls through to it (e.g.
+ * `/api/assistant/not-a-real-endpoint`) and its 503 would swallow what should be Express's 404.
  */
 function requireClassroomManagementEnabled() {
   return asyncHandler(async (req, res, next) => {
@@ -105,10 +74,8 @@ function requireClassroomManagementEnabled() {
 
 const gate = [authRequired, requireClassroomManagementEnabled()];
 
-// ---- Ownership helpers -----------------------------------------------------
-// Mirrors resources.js's findOwned(): returns null for "does not exist" AND
-// "belongs to someone else" alike, so callers always 404 without leaking
-// which case it was.
+// Ownership helpers
+// Like resources.js's findOwned(): null for both "doesn't exist" and "someone else's", so callers always 404.
 
 async function findOwnedClass(classId, teacherId) {
   const cls = await prisma.schoolClass.findUnique({ where: { id: classId } });
@@ -126,7 +93,7 @@ function sanitizeFilenamePart(value) {
   return String(value).replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 60) || 'export';
 }
 
-// ---- DTOs -------------------------------------------------------------------
+// DTOs
 
 function classToDto(c) {
   return {
@@ -166,7 +133,7 @@ function feeToDto(f) {
   };
 }
 
-// ---- My Classes -------------------------------------------------------------
+// My Classes
 
 const createClassSchema = z
   .object({
@@ -182,19 +149,15 @@ const updateClassSchema = z
     name: z.string().trim().min(1).max(MAX_NAME).optional(),
     grade: z.string().trim().max(MAX_META).optional(),
     section: z.string().trim().max(MAX_META).optional(),
-    // null explicitly clears a previously-set fee amount (the client can't
-    // send "" to mean "cleared" the way it does for grade/section — an
-    // empty number input has no valid numeric fallback — so null is the
-    // clear signal instead).
+    // null clears a previously-set fee amount; the client can't send "" for a number input.
     feeAmount: z.number().int().min(0).max(MAX_FEE_AMOUNT).nullable().optional(),
     archived: z.boolean().optional(),
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, { message: 'No fields to update.' });
 
-// GET /api/classroom/classes — the caller's own classes. Archived classes are
-// excluded by default (they're done, not deleted); ?includeArchived=true
-// includes them, e.g. to review a past term's history.
+// GET /api/classroom/classes: the caller's own classes. Archived ones are excluded by default (done, not deleted);
+// ?includeArchived=true includes them.
 router.get('/classroom/classes', ...gate, asyncHandler(async (req, res) => {
   const includeArchived = req.query.includeArchived === 'true';
   const where = { teacherId: req.user.id };
@@ -209,9 +172,7 @@ router.post('/classroom/classes', ...gate, asyncHandler(async (req, res) => {
     return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid class.' });
   }
   const created = await prisma.schoolClass.create({
-    // Ownership from the token — never the client. schoolId is denormalized
-    // for a possible future rollup (§19) but plays no part in any access
-    // check anywhere in this file.
+    // Ownership comes from the token. schoolId is denormalized for a possible future rollup but plays no part in access checks.
     data: { teacherId: req.user.id, schoolId: req.user.schoolId, ...parsed.data },
   });
   res.status(201).json({ class: classToDto(created) });
@@ -234,10 +195,8 @@ router.patch('/classroom/classes/:classId', ...gate, asyncHandler(async (req, re
   res.json({ class: classToDto(updated) });
 }));
 
-// DELETE always soft-deletes (archived: true) — a class's attendance/fee
-// history is never hard-deleted (schema.prisma's own doc comment on
-// SchoolClass.archived). Idempotent: archiving an already-archived class is
-// still a 200, not an error.
+// DELETE always soft-deletes (archived: true); attendance and fee history is never hard-deleted. Idempotent: archiving
+// an already-archived class is still a 200.
 router.delete('/classroom/classes/:classId', ...gate, asyncHandler(async (req, res) => {
   const existing = await findOwnedClass(req.params.classId, req.user.id);
   if (!existing) return res.status(404).json({ error: 'Class not found.' });
@@ -245,7 +204,7 @@ router.delete('/classroom/classes/:classId', ...gate, asyncHandler(async (req, r
   res.json({ class: classToDto(updated) });
 }));
 
-// ---- Students -----------------------------------------------------------
+// Students
 
 const createStudentSchema = z
   .object({
@@ -309,7 +268,7 @@ router.delete('/classroom/students/:studentId', ...gate, asyncHandler(async (req
   res.json({ student: studentToDto(updated) });
 }));
 
-// ---- Attendance -----------------------------------------------------------
+// Attendance
 
 const markAttendanceSchema = z
   .object({
@@ -319,9 +278,7 @@ const markAttendanceSchema = z
         z
           .object({
             studentId: z.string().trim().min(1),
-            // "unmarked" is a legal value here even though it's never stored
-            // — sending it deletes that student's row for the date (§10's
-            // "moving a student back to Unmarked").
+            // "unmarked" is a legal value though never stored: sending it deletes that student's row for the date.
             status: z.enum(ATTENDANCE_STATUSES),
           })
           .strict()
@@ -364,9 +321,7 @@ router.get('/classroom/classes/:classId/attendance', ...gate, asyncHandler(async
   });
 }));
 
-// POST bulk upsert for one date — see §7/§14: any student in the batch that
-// doesn't belong to this teacher's class rejects the WHOLE batch (400), never
-// a partial save.
+// Bulk upsert for one date. Any student in the batch that isn't in this teacher's class rejects the whole batch (400), never a partial save.
 router.post('/classroom/classes/:classId/attendance', ...gate, asyncHandler(async (req, res) => {
   const parsed = markAttendanceSchema.safeParse(req.body || {});
   if (!parsed.success) {
@@ -432,10 +387,8 @@ router.get('/classroom/classes/:classId/attendance/history', ...gate, asyncHandl
   res.json({ month: req.query.month, days });
 }));
 
-// GET .../attendance/export?month= — CSV download (§13). Requires class +
-// month, matching the "no unscoped export" requirement. Computed by the same
-// helper attendance/summary uses, so the CSV can never disagree with the
-// on-screen numbers.
+// GET .../attendance/export?month=: CSV download. Needs class and month (no unscoped export) and uses the same helper
+// as attendance/summary, so the CSV matches the screen.
 router.get('/classroom/classes/:classId/attendance/export', ...gate, asyncHandler(async (req, res) => {
   const cls = await findOwnedClass(req.params.classId, req.user.id);
   if (!cls) return res.status(404).json({ error: 'Class not found.' });
@@ -470,15 +423,10 @@ router.get('/classroom/classes/:classId/attendance/export', ...gate, asyncHandle
   res.status(200).send(csv);
 }));
 
-// GET one student's day-by-day history for a month (Phase 3 UI's "Student
-// Attendance History"). present/absent are tallied straight from `days`
-// (this student's own records — correct even for a deactivated student, who
-// computeClassAttendanceMonthSummary's active-only perStudent would silently
-// drop), then run through the SAME attendancePercentage/deriveUnmarked calls
-// every other attendance view uses (§10) — never a reimplementation of that
-// math. `daysMarked` (the denominator for "unmarked") is the class's own
-// count of marked days, also class-wide and not active-filtered, so it lines
-// up with the summary/export views for the same class + month.
+// One student's day-by-day history for a month. present/absent are tallied from this student's own records (right
+// even for a deactivated student, whom the summary's active-only perStudent would drop), then run through the same
+// attendancePercentage/deriveUnmarked as every other view. `daysMarked` is the class's count of marked days, not
+// active-filtered, so it lines up with the summary and export.
 router.get('/classroom/students/:studentId/attendance/history', ...gate, asyncHandler(async (req, res) => {
   const student = await findOwnedStudent(req.params.studentId, req.user.id);
   if (!student) return res.status(404).json({ error: 'Student not found.' });
@@ -507,12 +455,10 @@ router.get('/classroom/students/:studentId/attendance/history', ...gate, asyncHa
   });
 }));
 
-// ---- Fees -------------------------------------------------------------------
+// Fees
 
-// The client sends the amount actually paid so far this period — `status`
-// (paid/partial/pending) is always DERIVED server-side (classroomFees.js's
-// deriveFeeStatus), never accepted from the client, so a teacher can never
-// desync the two (docs/fee-tracking-amounts-plan.md).
+// The client sends the amount paid so far this period; `status` is always derived server-side (classroomFees.js's
+// deriveFeeStatus) and never accepted from the client (docs/fee-tracking-amounts-plan.md).
 const updateFeeSchema = z.object({ amount: z.number().int().min(0).max(MAX_FEE_AMOUNT) }).strict();
 
 router.get('/classroom/classes/:classId/fees', ...gate, asyncHandler(async (req, res) => {
@@ -543,10 +489,8 @@ router.patch('/classroom/students/:studentId/fees/:period', ...gate, asyncHandle
   const existing = await prisma.feeRecord.findUnique({
     where: { studentId_period: { studentId: student.id, period: req.params.period } },
   });
-  // expectedAmount is a one-time snapshot of the class's CURRENT feeAmount,
-  // taken only when this period's row doesn't exist yet — see
-  // SchoolClass.feeAmount's doc comment. An existing row keeps whatever
-  // snapshot it already has, even if the class's feeAmount has since changed.
+  // expectedAmount is a one-time snapshot of the class's current feeAmount, taken only when this period's row doesn't
+  // exist yet (see SchoolClass.feeAmount). An existing row keeps its snapshot even if the class fee changes later.
   const expectedAmount = existing ? existing.expectedAmount : cls?.feeAmount ?? null;
   const status = deriveFeeStatus(amount, expectedAmount);
 
@@ -565,15 +509,9 @@ router.patch('/classroom/students/:studentId/fees/:period', ...gate, asyncHandle
     update: { amount, status, paidAt },
   });
 
-  // System-generated reminder: "N students still pending fees this month",
-  // linking to this class's Reports tab (docs/fee-tracking-amounts-plan.md
-  // Step 3). Best-effort and non-blocking — a failure here must never cost
-  // the teacher the payment they just recorded — same pattern as
-  // routes/resources.js's "resource saved" notification hook. There's no
-  // scheduled-job runner in this app (see plan doc), so this fires the
-  // first time a teacher records ANY payment for a class+period, not on a
-  // recurring schedule; deduped so it never re-fires for the same
-  // class+period once sent.
+  // System reminder: "N students still pending fees this month", linking to the class's Reports tab. Best-effort like
+  // routes/resources.js's saved-resource hook; a failure must never cost the teacher the payment. There's no scheduler,
+  // so it fires the first time any payment is recorded for a class and period, and is deduped after that.
   try {
     if (cls && readNotificationsFlags(process.env).enabled) {
       const feeStatus = await getClassFeeStatus(prisma, { classId: cls.id, teacherId: req.user.id, period: req.params.period });
@@ -605,10 +543,8 @@ router.patch('/classroom/students/:studentId/fees/:period', ...gate, asyncHandle
   res.json({ fee: feeToDto(record) });
 }));
 
-// GET .../fees/export?period= — Excel (.xlsx) download (§13), including
-// real ₹ amounts AND the same Paid/Partial/Pending cell coloring the
-// Fees/Reports tabs show on screen — a plain CSV can't carry color at all,
-// so this is a real spreadsheet file, not text (docs/fee-tracking-amounts-plan.md).
+// GET .../fees/export?period=: Excel download with real amounts and the same Paid/Partial/Pending colouring as the
+// on-screen tabs, which CSV can't carry (docs/fee-tracking-amounts-plan.md).
 router.get('/classroom/classes/:classId/fees/export', ...gate, asyncHandler(async (req, res) => {
   const cls = await findOwnedClass(req.params.classId, req.user.id);
   if (!cls) return res.status(404).json({ error: 'Class not found.' });
@@ -625,7 +561,7 @@ router.get('/classroom/classes/:classId/fees/export', ...gate, asyncHandler(asyn
   res.status(200).send(Buffer.from(buffer));
 }));
 
-// ---- Analytics --------------------------------------------------------------
+// Analytics
 
 router.get('/classroom/analytics/overview', ...gate, asyncHandler(async (req, res) => {
   const teacherId = req.user.id;

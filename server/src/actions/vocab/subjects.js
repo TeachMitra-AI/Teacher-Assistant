@@ -1,21 +1,7 @@
-// Controlled vocabulary: SUBJECTS (Milestone M4).
-//
-// Easier than grades — the mapping is many-to-one but not lossy, because a
-// subject synonym names exactly one canonical subject. The work is in the
-// breadth of the synonym table: English, Hinglish transliteration and
-// Devanagari all appear in real teacher input, and so do the sub-subjects
-// ("physics", "geography") that the application's coarser list folds together.
-//
-// Folding physics/chemistry/biology into Science, and history/geography/civics
-// into Social Studies, is deliberate. The application has one Science and one
-// Social Studies; mapping to the nearest canonical subject is more useful than
-// reporting the phrase unrecognised, and the teacher can always overtype the
-// field, which is free text.
-//
-// CLIENT COUNTERPART: client/src/config.ts (SUBJECTS) holds the same canonical
-// list, where it populates the Generator's subject datalist and the Settings
-// picker. Deliberate, documented duplication (CHANGE-11), pinned by
-// server/test/actions/vocabDrift.test.js. CHANGE BOTH IN THE SAME COMMIT.
+// Controlled vocabulary: SUBJECTS. Many-to-one but not lossy, so the work is the synonym table: English,
+// Hinglish and Devanagari, plus sub-subjects the app folds together (physics/chemistry/biology -> Science,
+// history/geography/civics -> Social Studies). The nearest canonical subject beats "unrecognised", and the field is free text.
+// client/src/config.ts (SUBJECTS) holds the same list, pinned by test/actions/vocabDrift.test.js. Change both together.
 
 const {
   VOCAB_STATUS,
@@ -39,11 +25,8 @@ const SUBJECTS = Object.freeze([
 ]);
 
 /**
- * Synonym → canonical subject. Keys are matched against single normalized
- * tokens; multi-word names are collapsed to one token first (PHRASE_ALIASES).
- *
- * Kept as one flat table rather than per-subject arrays so that a duplicate key
- * is a syntax-level mistake rather than a silent precedence bug.
+ * Synonym -> canonical subject, matched against single normalized tokens (multi-word names are collapsed
+ * first via PHRASE_ALIASES). One flat table so a duplicate key is a syntax error, not a silent precedence bug.
  */
 const SYNONYMS = Object.freeze({
   // Mathematics
@@ -123,11 +106,7 @@ const SYNONYMS = Object.freeze({
   computers: 'General',
 });
 
-/**
- * Words that name a whole faculty rather than a subject. They span canonical
- * subjects, so the honest outcome is "ambiguous" — the teacher's own phrase is
- * kept and the field flagged, rather than one of two being picked.
- */
+/** Words naming a whole faculty, which span subjects: reported ambiguous, keeping the teacher's own phrase. */
 const FACULTY_WORDS = Object.freeze({
   humanities: ['Social Studies', 'Languages'],
   arts: ['Social Studies', 'Languages'],

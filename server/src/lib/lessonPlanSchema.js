@@ -1,30 +1,17 @@
-// Lesson Plan document shape and validation (Classroom Mode P6).
-//
-// WHY THIS IS NOT A generateAssessment FORMAT (the P6 endpoint decision, D21):
-// worksheet/quiz/homework/exit_ticket are all the same document — questions,
-// options, an answer key — which is exactly why they are FORMATS of one
-// endpoint and share assessmentDocumentSchema. A lesson plan has no questions
-// and no answer key; it is ten named prose sections. Making it a fourth
-// "format" would mean assessmentDocumentSchema could no longer require
-// `questions`, and every layer that consumes it (the renderer, the AI-assist
-// actions, the client's answer-key split) would need a branch for a document
-// with none. That is the ternary sprawl FORMAT_META was introduced to remove.
-// It gets its own schema, prompt, renderer and endpoint, and shares the
-// generation *machinery* (retry loop, LaTeX guard) rather than the shape.
-//
-// STRUCTURE (D15): the standard Indian government-school format teachers are
-// trained on (NCERT / B.Ed / DIET), NOT a generic Western lesson plan. Section
-// NAMES are load-bearing — a head teacher recognises the format by its
-// headings, so these are fixed vocabulary, not suggestions.
+// Lesson Plan document shape and validation.
+// Not a generateAssessment format: quizzes, worksheets, homework and exit tickets are all questions plus an answer
+// key, which is why they share assessmentDocumentSchema. A lesson plan is ten named prose sections, and making it
+// a format would force every consumer of that schema (renderer, AI-assist actions, the client's answer-key split)
+// to handle a document with no questions. It gets its own schema, prompt, renderer and endpoint, and shares the
+// generation machinery (retry loop, LaTeX guard).
+// The structure is the standard Indian government-school format (NCERT / B.Ed / DIET). The section names are fixed
+// vocabulary, since a head teacher recognises the format by its headings.
 const { z } = require('zod');
 
 const { normalizeMathText } = require('./assessmentSchema');
 
-// Presentation is the distinctive part of the Indian format: a two-column
-// walk-through of the lesson, teacher action beside the matching student
-// action. A flat list of "steps" would lose exactly what makes the format
-// recognisable, so the pairing is enforced in the schema rather than left to
-// the model's prose.
+// Presentation is the distinctive part of the format: a two-column walk-through with teacher action beside student
+// action. The pairing is enforced in the schema rather than left to the model's prose.
 const presentationStepSchema = z
   .object({
     teacherActivity: z.string().trim().min(1, 'Each presentation step needs a teacher activity.'),
@@ -44,9 +31,7 @@ const lessonPlanDocumentSchema = z
     // aligned. The prompt asks for that phrasing; this only bounds the count.
     learningObjectives: nonEmptyList(2, 6, 'learning objectives'),
     previousKnowledge: nonEmptyList(1, 5, 'previous knowledge points'),
-    // The section that decides whether this is usable in a government school.
-    // Bounded low deliberately: a plan needing nine materials is a plan a
-    // teacher cannot run tomorrow morning.
+    // Bounded low: a plan needing nine materials can't be run tomorrow morning.
     teachingLearningMaterial: nonEmptyList(1, 6, 'teaching learning materials'),
     introduction: z.string().trim().min(1, 'The introduction cannot be empty.'),
     presentation: z
@@ -63,14 +48,9 @@ const lessonPlanDocumentSchema = z
   .strict();
 
 /**
- * Applies the same LaTeX repair the assessment path uses to every text field
- * of a raw (pre-validation) lesson plan. A lesson plan carries maths in its
- * objectives, blackboard summary and recap questions just as a worksheet does,
- * and it reaches the same KaTeX renderer — so it needs the same repair, not a
- * second implementation of it.
- *
- * Tolerates any malformed shape; schema validation right after is what rejects
- * those. Mirrors normalizeAssessmentMath's contract exactly.
+ * Applies the same LaTeX repair as the assessment path to every text field of a raw lesson plan, since it
+ * carries maths and reaches the same KaTeX renderer. Tolerates any malformed shape (schema validation rejects
+ * those) and mirrors normalizeAssessmentMath's contract.
  */
 function normalizeLessonPlanMath(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
@@ -103,8 +83,7 @@ function normalizeLessonPlanMath(raw) {
 }
 
 /**
- * Every text field of a lesson plan, flattened — so the LaTeX guard can be
- * applied uniformly without latexGuard needing to know this document's shape.
+ * Every text field of a lesson plan, flattened, so the LaTeX guard can be applied without knowing this document's shape.
  * @param {object} doc
  * @returns {Array<{path: string, value: string}>}
  */
@@ -140,14 +119,9 @@ function lessonPlanTextFields(doc) {
 }
 
 /**
- * Writes the LaTeX guard's repaired values back into `doc`, in place, keyed by
- * the same paths lessonPlanTextFields produced. Paired with that function: the
- * two must agree on the path grammar, which is why they live together here
- * rather than being split across the caller.
- *
- * Silently ignores a path that no longer resolves — the guard never invents
- * paths, so that can only mean the document changed underneath, and a
- * half-applied repair is caught by schema validation immediately after.
+ * Writes the LaTeX guard's repaired values back into `doc` in place, keyed by the paths lessonPlanTextFields
+ * produced (the two share a path grammar, so they live together). A path that no longer resolves is ignored;
+ * schema validation catches a half-applied repair.
  *
  * @param {object} doc mutated in place
  * @param {Record<string, string>} repaired

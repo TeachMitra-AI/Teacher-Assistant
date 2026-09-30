@@ -1,12 +1,7 @@
-// PATCH /api/queries/:id — Sidebar three-dot menu's Rename/Pin, persisted on
-// the Query row itself (title, pinned). Also covers GET /api/queries now
-// returning both fields.
-//
-// Covers: auth, ownership (both cross-school and same-school-different-
-// teacher, since a Query's owner is a specific user, not a school), input
-// validation (trim, empty, max length, boolean type, empty payload), and that
-// this stays a narrow title/pinned-only endpoint rather than a generic Query
-// update — matching DELETE /api/queries/:id's existing ownership pattern.
+// PATCH /api/queries/:id: the Sidebar's Rename/Pin, persisted on the Query row (title, pinned), plus GET /api/queries
+// returning both fields. Covers auth, ownership (cross-school and same-school-different-teacher, since a Query's owner
+// is a user, not a school), input validation (trim, empty, max length, boolean type, empty payload), and that this
+// stays a narrow title/pinned-only endpoint, matching DELETE /api/queries/:id's ownership pattern.
 const request = require('supertest');
 
 const { app, prisma } = require('../helpers/testApp');

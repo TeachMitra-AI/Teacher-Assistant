@@ -1,8 +1,6 @@
-// Reliability + cost-control tests for GeminiService. Deterministic: a fake
-// clock (`now`) plus a `sleep` that advances that clock lets us exercise the
-// overall deadline and backoff timing WITHOUT any real waiting, and the
-// injected `rng` makes jitter predictable. No real Gemini calls — fetch is
-// either stubbed globally (mockGeminiFetch) or injected directly.
+// Reliability and cost-control tests for GeminiService. Deterministic: a fake clock (`now`) and a `sleep` that advances
+// it exercise the deadline and backoff timing without real waiting, and the injected `rng` makes jitter predictable.
+// No real Gemini calls: fetch is stubbed globally (mockGeminiFetch) or injected.
 const { GeminiService } = require('../src/gemini');
 const {
   mockGeminiFetch,

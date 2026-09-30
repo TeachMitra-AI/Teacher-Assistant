@@ -1,4 +1,4 @@
-// AI Learning Representation System — telemetry (ADR Phase D).
+// Learning Representation telemetry.
 
 const { levelForReason, NOTABLE_REASONS, logLearningRepresentationEvent } = require('../../src/learningRepresentation/telemetry');
 

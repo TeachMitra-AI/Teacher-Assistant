@@ -1,14 +1,5 @@
-// The Capability Registry.
-//
-// One place that answers: what can this application be asked to do, with what
-// parameters, by whom? Contains no AI, no HTTP and no Express — a command
-// palette, a permission matrix or a docs generator could consume it without the
-// assistant existing at all. That is deliberate: the registry is the durable
-// asset, and the AI router is one front end onto it.
-//
-// Registration is an EXPLICIT import list, never filesystem auto-discovery. The
-// set of live capabilities must be visible in one file, in a diff, in a code
-// review — not a consequence of what happens to be on disk.
+// The capability registry: what the app can be asked to do, with which parameters, by whom. No AI, HTTP or Express.
+// Registration is an explicit import list, not filesystem discovery, so the live set is visible in one file and in review.
 
 const {
   EFFECTS,
@@ -22,49 +13,25 @@ const { isFlagEnabled } = require('../lib/flags');
 const { generateAssessment } = require('./descriptors/generateAssessment');
 const { openGenerator } = require('./descriptors/openGenerator');
 
-/**
- * Every action the application knows about. Order is the order they appear in a
- * catalog response, which is also the order suggestion chips would render in.
- */
+/** Every known action, in catalog order. */
 const DESCRIPTORS = [generateAssessment, openGenerator];
 
 /**
- * Bumped BY HAND whenever a descriptor changes in a way an already-deployed
- * client must notice. Clients cache the catalog and compare this value; a
- * mismatch tells them to refetch.
- *
- * This matters more than it looks: the client is a PWA with service-worker
- * caching, so stale clients are routine rather than theoretical.
+ * Bumped by hand when a descriptor changes in a way a deployed client must notice; clients cache the
+ * catalog and refetch on a mismatch. Stale clients are routine since the client is a PWA.
  */
 const CATALOG_VERSION = 1;
 
-/**
- * The response served when the assistant is switched off, or when the caller is
- * outside the current rollout. Version 0 with an empty list is a valid INERT
- * state, not an error — the client simply never routes, and the application
- * behaves exactly as it did before the feature existed.
- */
+/** Served when the assistant is off or the caller is outside the rollout. Version 0 with no actions is a valid inert state. */
 const DISABLED_CATALOG = Object.freeze({ catalogVersion: 0, actions: [] });
 
-// ---- Startup validation ----------------------------------------------------
-
 /**
- * Assert a descriptor list is internally coherent, throwing on the first
- * problem. Runs at module load (see the bottom of this file), so a malformed
- * descriptor stops the server at boot rather than surfacing as a strange
- * routing failure at 3pm on a school day. Exported separately so tests can
- * drive it with deliberately broken input.
+ * Assert a descriptor list is coherent, throwing on the first problem. Runs at module load so a malformed
+ * descriptor stops boot. Exported so tests can pass broken input.
  *
- * Three families of check:
- *   1. Identity      — ids unique and well-formed
- *   2. Phase 1 safety— nothing may auto-execute or exceed the effect ceiling
- *   3. Schema accord — the descriptor's slots and its paramSchema agree
- *
- * (3) is the one that earns its keep. A descriptor drifting from the schema it
- * references is invisible until a teacher's request is rejected: a slot the
- * schema does not accept would be stripped by `.strict()`, and a
- * schema-required field with no slot means the router can never assemble a
- * valid payload at all. Both are caught here, at boot, for free.
+ * Checks: ids are unique and well-formed; nothing auto-executes or exceeds the effect ceiling; the slots
+ * and paramSchema agree. The last catches a slot the `.strict()` schema would strip, and a required
+ * schema field with no slot, which would make a valid payload impossible to assemble.
  *
  * @param {object[]} descriptors
  * @throws {Error} on the first violation found
@@ -100,7 +67,7 @@ function validateDescriptors(descriptors) {
       throw new Error(`${where} has an unknown effect "${d.effect}".`);
     }
 
-    // --- Phase 1 safety ceiling ---
+    // Safety ceiling
     if (EFFECTS.indexOf(d.effect) > effectCeiling) {
       throw new Error(
         `${where} declares effect "${d.effect}", above the Phase 1 ceiling "${PHASE1_MAX_EFFECT}". ` +
@@ -137,8 +104,7 @@ function validateDescriptors(descriptors) {
 }
 
 /**
- * Check a descriptor's slots against the schema it references, in both
- * directions.
+ * Check a descriptor's slots against its referenced schema, in both directions.
  * @param {object} d
  * @param {string} where prefix for error messages
  */
@@ -183,9 +149,7 @@ function validateSlotsAgainstSchema(d, where) {
       throw new Error(`${where} slot "${slot.name}" has askOptions that do not cover its values.`);
     }
 
-    // Direction 1: a slot the schema does not accept would be stripped by
-    // `.strict()`, so the router would confidently fill a field that silently
-    // never arrives.
+    // A slot the schema doesn't accept would be stripped by `.strict()`, so the router would fill a field that never arrives.
     if (!schemaKeys.includes(slot.name)) {
       throw new Error(
         `${where} declares slot "${slot.name}", which its paramSchema does not accept. ` +
@@ -208,18 +172,15 @@ function validateSlotsAgainstSchema(d, where) {
   }
 }
 
-// ---- Lookup and filtering --------------------------------------------------
-
 /** @param {string} id @returns {object|undefined} */
 function getDescriptor(id) {
   return DESCRIPTORS.find((d) => d.id === id);
 }
 
 /**
- * Is this action available to this caller right now? Three independent gates,
- * all of which must pass:
- *   - status      : deprecated actions stay defined but stop being offered
- *   - featureFlag : per-action rollout, defaulting OFF
+ * Is this action available to this caller now? All gates must pass:
+ *   - status: deprecated actions stay defined but aren't offered
+ *   - featureFlag: per-action rollout, default off
  *   - requiredRoles: empty means any authenticated user
  *
  * @param {object} descriptor
@@ -234,28 +195,17 @@ function isVisible(descriptor, role, env) {
 }
 
 /**
- * The descriptors a given role may currently use. This is the list the
- * classifier prompt is built from as well as the list the client is told about,
- * so an action a teacher could not perform never reaches their prompt — cheaper,
- * and one less way for a model to propose something it must then be refused.
+ * The descriptors a role may currently use. Both the classifier prompt and the client catalog are built
+ * from this, so an action a teacher can't perform never reaches their prompt.
  */
 function listForRole(role, env) {
   return DESCRIPTORS.filter((d) => isVisible(d, role, env));
 }
 
-// ---- Public projection -----------------------------------------------------
-
 /**
- * Strip a descriptor down to what a client is allowed to see.
- *
- * Removed entirely: paramSchema (server-internal validation), requiredRoles and
- * featureFlag (the client is told what it MAY use, never what it may not), and
- * autoExecute (a server policy decision).
- *
- * Slots are projected field by field rather than spread, so a field added to a
- * descriptor later cannot leak by accident. `defaultFrom` is dropped for the
- * same reason it exists server-side only: resolution happens on the server, and
- * publishing the strategy would invite the client to re-implement it.
+ * Strip a descriptor to what a client may see: no paramSchema, requiredRoles, featureFlag or autoExecute,
+ * and no `defaultFrom` (resolution stays on the server). Slots are projected field by field so a new
+ * descriptor field can't leak by accident.
  */
 function toCatalogAction(descriptor) {
   return {
@@ -295,9 +245,7 @@ function buildCatalog(role, env) {
   };
 }
 
-// Self-validating: requiring this module is enough to prove the registry is
-// coherent. A malformed descriptor therefore fails the server's boot and every
-// test run that touches the registry, rather than waiting to be discovered.
+// Self-validating: requiring this module proves the registry is coherent, so a bad descriptor fails boot and tests.
 validateDescriptors(DESCRIPTORS);
 
 module.exports = {

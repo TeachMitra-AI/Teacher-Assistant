@@ -1,10 +1,7 @@
-// Route-level reliability tests: the REAL POST /api/coach path (auth,
-// validation, the module-singleton GeminiService built from test env, error
-// mapping, requestId/code contract) with only Gemini's fetch mocked. The
-// deep budget/deadline/backoff mechanics are covered deterministically in
-// gemini.reliability.test.js; this file verifies the wiring + client-facing
-// error contract. testEnv sets LLM_MAX_RETRIES=1 and small timeouts so these
-// stay fast.
+// Route-level reliability tests: the real POST /api/coach path (auth, validation, the module-singleton GeminiService
+// built from test env, error mapping, requestId/code contract) with only Gemini's fetch mocked. Budget, deadline and
+// backoff mechanics are covered in gemini.reliability.test.js; this checks the wiring and client-facing error contract.
+// testEnv sets LLM_MAX_RETRIES=1 and small timeouts to keep these fast.
 const request = require('supertest');
 const { app, prisma } = require('./helpers/testApp');
 const { createFixtures, PASSWORD } = require('./helpers/fixtures');

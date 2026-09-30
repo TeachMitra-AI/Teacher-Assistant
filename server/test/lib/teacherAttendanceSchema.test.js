@@ -40,9 +40,7 @@ describe.each([
     expect(schema.safeParse({ ...VALID_EVIDENCE, accuracyMeters: -1 }).success).toBe(false);
   });
 
-  // The core "server decides, not the client" invariant — this schema has
-  // no field for a client-computed verdict, so a caller trying to send one
-  // gets rejected by .strict() rather than silently ignored.
+  // The core "server decides, not the client" invariant: the schema has no field for a client-computed verdict, so one is rejected by .strict() rather than ignored.
   test('rejects a client-supplied verdict field — there is no such field to trust', () => {
     const result = schema.safeParse({ ...VALID_EVIDENCE, insideGeofence: true });
     expect(result.success).toBe(false);

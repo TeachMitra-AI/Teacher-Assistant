@@ -1,9 +1,6 @@
-// Integration tests for the AI-safety hardening of POST /api/coach — the
-// real Express route, real auth/RBAC/persistence, with only Gemini's
-// `fetch` call mocked (see test/helpers/geminiMock.js). This is the
-// end-to-end proof that the pieces built in isolation (inputGuard,
-// outputGuard, the prompts.js/gemini.js restructuring) actually compose
-// correctly through the live route.
+// Integration tests for the AI-safety hardening of POST /api/coach: the real route, auth, RBAC and persistence, with
+// only Gemini's `fetch` mocked (test/helpers/geminiMock.js). End-to-end proof that inputGuard, outputGuard and the
+// prompts.js/gemini.js restructuring compose through the live route.
 const request = require('supertest');
 const { app, prisma } = require('./helpers/testApp');
 const { createFixtures, PASSWORD } = require('./helpers/fixtures');
@@ -128,9 +125,7 @@ describe('AI safety — POST /api/coach', () => {
     expect(res.status).toBe(200);
 
     const events = await prisma.event.findMany({ where: { userId: fx.teacherA.id, type: 'ai_safety_flag' } });
-    // Confirm this specific request did not add a new flag event with this
-    // query's queryId (rather than asserting global zero, since other tests
-    // in this file may have already created flag events for other queries).
+    // Confirm this request added no flag event for its queryId (not global zero, since other tests in this file create flag events).
     expect(events.some((e) => JSON.parse(e.metadata).queryId === res.body.queryId)).toBe(false);
   });
 
@@ -158,10 +153,7 @@ describe('AI safety — POST /api/coach', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    // No expansion of stored context beyond the existing 4 allowlisted fields
-    // (fields the client didn't send are omitted from the JSON response
-    // entirely, since they're `undefined`, not present-with-null — so this
-    // asserts a subset, not exact equality to all 4).
+    // No expansion of stored context beyond the 4 allowlisted fields. Unsent fields are omitted (undefined), so this asserts a subset, not exact equality.
     const allowedContextFields = ['classroomType', 'grade', 'issueType', 'subject'];
     for (const key of Object.keys(res.body.context)) {
       expect(allowedContextFields).toContain(key);

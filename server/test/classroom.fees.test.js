@@ -1,8 +1,5 @@
-// Classroom Management — fees, extended for real amounts
-// (docs/fee-tracking-amounts-plan.md). The client sends `amount` (rupees
-// paid so far); `status` (paid/partial/pending) is always derived
-// server-side from amount vs the class's feeAmount, never accepted from
-// the client.
+// Classroom Management fees with real amounts (docs/fee-tracking-amounts-plan.md). The client sends `amount` (rupees
+// paid so far); `status` (paid/partial/pending) is always derived server-side from amount vs the class's feeAmount and never accepted from the client.
 const request = require('supertest');
 
 const { app, prisma } = require('./helpers/testApp');
@@ -100,8 +97,7 @@ describe('Classroom Management — fees', () => {
       expect(row.paidAt).toBeNull();
     });
 
-    // Status is derived, not settable — this pins that as an enforced
-    // contract: the client can no longer flip a status directly.
+    // Status is derived, not settable; this pins that as an enforced contract.
     test('rejects a client-supplied status — the server derives it', async () => {
       const res = await as(teacherAToken)(
         request(app).patch(`/api/classroom/students/${s1}/fees/2026-08`).send({ status: 'paid' })

@@ -1,10 +1,5 @@
-// Teacher Assistant backend proxy.
-// Responsibilities:
-//   - Keep the LLM API key server-side (never exposed to the browser)
-//   - Validate and rate-limit incoming requests
-//   - Build prompts server-side and call the LLM
-//
-// Configure via environment variables (see .env.example).
+// Teacher Assistant backend proxy: keeps the LLM API key server-side, validates and rate-limits requests, and
+// builds prompts server-side before calling the LLM. Configure through environment variables (see .env.example).
 
 require('dotenv').config();
 
@@ -27,57 +22,35 @@ const authRouter = require('./routes/auth');
 const dataRouter = require('./routes/queries');
 const adminRouter = require('./routes/admin');
 const resourcesRouter = require('./routes/resources');
-// AI Action Router (Phase 1). Requiring this validates the capability registry
-// at boot, so a malformed action descriptor stops the server here rather than
-// surfacing later as a strange routing failure.
+// Routers are required at boot so a malformed module (or capability registry) stops the server here, not at a request.
+// assistantRouter's require also validates the capability registry.
 const assistantRouter = require('./routes/assistant');
-// Multimodal attachments (Coach: image/PDF upload). A sibling feature to the
-// Action Router, not part of it — see docs/multimodal-attachments-architecture.md
-// for why. Requiring it here is the same "fail at boot, not at request time"
-// reasoning as assistantRouter above.
+// Attachments are a sibling of the Action Router (docs/multimodal-attachments-architecture.md).
 const attachmentsRouter = require('./routes/attachments');
-// Custom profile pictures — a sibling feature, same "fail at boot" reasoning
-// as the routers above. Reuses auth.js's publicUser() internally (see that
-// file's exports).
+// Reuses auth.js's publicUser().
 const avatarRouter = require('./routes/avatar');
-// Help & Support (Phase 1: bug reports + feedback, no attachment upload yet).
-// A sibling feature, same "fail at boot on a malformed module" reasoning as
-// assistantRouter/attachmentsRouter above.
+// Help & Support: bug reports and feedback.
 const supportRouter = require('./routes/support');
-// Admin Support Inbox (Phase 2) — super_admin-only ticket management. A
-// sibling of adminRouter, not an extension of it (see routes/adminSupport.js
-// for why access is modeled differently here).
+// Admin Support Inbox: super_admin-only ticket management, separate from adminRouter (see routes/adminSupport.js).
 const adminSupportRouter = require('./routes/adminSupport');
 const adminSettingsRouter = require('./routes/adminSettings');
 // Notification System — a sibling feature, same "fail at boot on a malformed
 // module" reasoning as every router above. See docs/notification-system-plan.md.
 const notificationsRouter = require('./routes/notifications');
-// Classroom Management (docs/classroom-feature-plan.md) — a teacher-first
-// class/student/attendance/fee workspace. A sibling feature, same "fail at
-// boot on a malformed module" reasoning as every router above. NOT the same
-// feature as "Classroom Mode" below (planClassroom/CLASSROOM_MODE_ENABLED) —
-// that is an unrelated AI chat feature; this router never touches it.
+// Classroom Management (docs/classroom-feature-plan.md): the class/student/attendance/fee workspace. Not "Classroom
+// Mode" below (planClassroom/CLASSROOM_MODE_ENABLED), which is an unrelated AI chat feature.
 const classroomRouter = require('./routes/classroom');
-// Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md)
-// — a teacher's own check-in/check-out, reviewed by their school's
-// Principal. A sibling feature, same "fail at boot on a malformed module"
-// reasoning as every router above. NOT the same feature as classroomRouter's
-// student attendance above — that router never touches this one's tables.
+// Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md): a teacher's own check-in and
+// check-out, reviewed by their Principal. Separate from classroomRouter's student attendance; they share no tables.
 const teacherAttendanceRouter = require('./routes/teacherAttendance');
-// Schedule a Call (docs/schedule-a-call-plan.md) — public demo-booking flow
-// for schools/organizations. A sibling feature, same "fail at boot on a
-// malformed module" reasoning as every router above.
+// Schedule a Call: public demo booking for schools and organizations.
 const scheduleDemoRouter = require('./routes/scheduleDemo');
 const adminScheduleDemoRouter = require('./routes/adminScheduleDemo');
 const { runCheckoutReminderSweep, SWEEP_INTERVAL_MS: teacherAttendanceReminderIntervalMs } = require('./lib/teacherAttendanceReminder');
 const { initSocketServer } = require('./lib/socketServer');
 const { readNotificationsFlags } = require('./lib/flags');
-// AI Learning Representation System (ADR Phase D). A sibling feature, same
-// "fail at boot on a malformed module" reasoning as assistantRouter/
-// attachmentsRouter/supportRouter above. Requiring it here also validates
-// mapping.js's completeness guard and schemas.js's registry-consistency
-// guard at boot (both throw on load if their data is out of sync) rather
-// than surfacing as a strange failure on the first real request.
+// AI Learning Representation System. Requiring it also runs mapping.js's completeness guard and schemas.js's
+// registry-consistency guard, which throw on load if their data is out of sync.
 const learningRepresentationRouter = require('./routes/learningRepresentation');
 const {
   readAssistantFlags,
@@ -91,17 +64,14 @@ const { createRenderCache } = require('./learningRepresentation/rendering/cache'
 const { createRouterBreaker } = require('./assistant/breaker');
 const { createGenerateLimiter } = require('./lib/limiters');
 
-// Logs only non-sensitive metadata about an AI request/response — never the
-// raw query text, response text, upstream error body, API keys, tokens, or
-// PII. Centralizing this in one helper makes the safe pattern the path of
-// least resistance for future changes to this route, rather than relying on
-// convention alone.
+// Logs only non-sensitive metadata about an AI request/response, never the raw query, response text, upstream error
+// body, API keys, tokens or PII. One helper makes the safe pattern the easy one.
 function logAiEvent(level, event, meta = {}) {
   const fn = level === 'warn' ? console.warn : level === 'error' ? console.error : console.log;
   fn(`[ai] ${event}`, meta);
 }
 
-// ---- Configuration ---------------------------------------------------------
+// Configuration
 
 const {
   GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
@@ -110,10 +80,7 @@ const {
   RATE_LIMIT_WINDOW_MINUTES = '15',
 } = process.env;
 
-// One or more Gemini API keys, comma-separated, for automatic failover (see
-// lib/geminiKeyPool.js): if one key hits its rate limit/quota, requests
-// transparently switch to the next available key instead of erroring out.
-// A single key works exactly as before.
+// One or more comma-separated Gemini API keys for automatic failover (see lib/geminiKeyPool.js); a single key works as before.
 const GEMINI_API_KEYS = (process.env.GEMINI_API_KEY || '')
   .split(',')
   .map((k) => k.trim())
@@ -130,21 +97,14 @@ const MAX_QUERY_LENGTH = 500;
 // live) because RATE_LIMIT_MAX_REQUESTS below needs it too.
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Our own per-IP cap on POST /coach — distinct from Gemini's own quota (see
-// the 429 branch in the /coach handler below, which maps that separately).
-// Defaults are environment-aware: production keeps the existing conservative
-// 60/window unless explicitly raised, but local development defaults much
-// higher (300/window) because a single person iterating on the UI can
-// legitimately exceed 60 requests in 15 minutes, and that shouldn't produce
-// the same 429 a real high-volume/abusive client would trigger. An explicit
-// RATE_LIMIT_MAX_REQUESTS always wins in either environment.
+// Our own per-IP cap on POST /coach, separate from Gemini's quota (the /coach handler's 429 branch maps that). The
+// default is environment-aware: 60/window in production, 300 in development, where iterating on the UI can legitimately
+// exceed 60. An explicit RATE_LIMIT_MAX_REQUESTS wins in either.
 const RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.RATE_LIMIT_MAX_REQUESTS, {
   name: 'RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 60 : 300, min: 1, max: 100000,
 });
 
-// LLM reliability / cost tunables. Invalid values clamp to safe bounds with a
-// warning (see lib/config.js) rather than crashing — a bad tunable must not
-// take the whole server down, while production still gets a safe value.
+// LLM reliability and cost tunables. Invalid values clamp to safe bounds with a warning (lib/config.js) rather than crashing.
 const LLM_TIMEOUT_MS = parseIntEnv(process.env.LLM_TIMEOUT_MS, {
   name: 'LLM_TIMEOUT_MS', defaultValue: 30000, min: 1000, max: 120000,
 });
@@ -164,26 +124,21 @@ const LLM_MAX_OUTPUT_TOKENS = parseIntEnv(process.env.LLM_MAX_OUTPUT_TOKENS, {
   name: 'LLM_MAX_OUTPUT_TOKENS', defaultValue: 8192, min: 256, max: 8192,
 });
 
-// Clock time (IST) a rate-limited/quota-exhausted Gemini API key resets at
-// — matching Gemini's own fixed daily quota reset, not N hours after each
-// individual failure (see lib/geminiPolicy.js's nextDailyResetAt). Default
-// 12:30 PM IST.
+// Clock time (IST) a rate-limited Gemini key resets at, matching Gemini's fixed daily quota reset (see
+// nextDailyResetAt in lib/geminiPolicy.js). Default 12:30 PM IST.
 const GEMINI_KEY_RESET_HOUR_IST = parseIntEnv(process.env.GEMINI_KEY_RESET_HOUR_IST, {
   name: 'GEMINI_KEY_RESET_HOUR_IST', defaultValue: 12, min: 0, max: 23,
 });
 const GEMINI_KEY_RESET_MINUTE_IST = parseIntEnv(process.env.GEMINI_KEY_RESET_MINUTE_IST, {
   name: 'GEMINI_KEY_RESET_MINUTE_IST', defaultValue: 30, min: 0, max: 59,
 });
-// A 401/403 (bad/revoked key) is a distinct failure mode from quota
-// exhaustion, so it stays duration-based rather than tied to the daily
-// reset — how long a key sits out of rotation after one, in milliseconds.
+// How long a key sits out of rotation after a 401/403 (bad or revoked key), in ms. It's duration-based, not tied to the daily reset.
 const GEMINI_KEY_AUTH_COOLDOWN_MS = parseIntEnv(process.env.GEMINI_KEY_AUTH_COOLDOWN_MS, {
   name: 'GEMINI_KEY_AUTH_COOLDOWN_MS', defaultValue: 3600000, min: 60000, max: 86400000,
 });
 
-// ONE shared pool for all three GeminiService instances below (coach,
-// router, attachments) — they draw against the same underlying Google
-// quota, so a key rate-limited on one must be skipped by the others too.
+// One pool shared by all three GeminiService instances (coach, router, attachments), since they draw on the same
+// Google quota and a key rate-limited on one must be skipped by the others.
 const geminiKeyPool = new GeminiKeyPool(GEMINI_API_KEYS, {
   resetHourIst: GEMINI_KEY_RESET_HOUR_IST,
   resetMinuteIst: GEMINI_KEY_RESET_MINUTE_IST,
@@ -201,20 +156,10 @@ const gemini = new GeminiService({
   maxOutputTokens: LLM_MAX_OUTPUT_TOKENS,
 });
 
-// ---- AI Action Router: the routing model (M5) ------------------------------
-//
-// A SECOND GeminiService instance, not a modified one. gemini.js already
-// accepts every tunable per instance, so routing needs no change to a service
-// that Coach, AI Assist and the Generator all share (guardrail G21) — editing
-// it to serve routing would put three working features at risk for one new one.
-//
-// The budgets below are the whole reason this instance exists. Coaching gets 30s
-// per call and 60s overall, which is right for writing a lesson plan and
-// catastrophic for a routing decision sitting in front of a text box: the
-// teacher is waiting to send a message, not to receive an essay. Routing gets
-// ~3.5s per call and a 5s overall deadline, and EXCEEDING THAT DEADLINE IS A
-// DECISION, NOT AN ERROR — the pipeline returns passthrough and the teacher
-// gets their coaching answer (guardrail G20).
+// Routing model. A second GeminiService instance rather than a modified one: gemini.js takes every tunable per
+// instance, so routing needs no change to the service Coach, AI Assist and the Generator share.
+// Coaching gets 30s per call and 60s overall, which is wrong for a routing decision in front of a text box. Routing
+// gets ~3.5s per call and a 5s deadline, and exceeding it yields a passthrough, not an error.
 const ASSISTANT_GEMINI_ENDPOINT =
   process.env.ASSISTANT_GEMINI_ENDPOINT ||
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent';
@@ -235,16 +180,10 @@ const ASSISTANT_LLM_MAX_OUTPUT_TOKENS = parseIntEnv(process.env.ASSISTANT_LLM_MA
   name: 'ASSISTANT_LLM_MAX_OUTPUT_TOKENS', defaultValue: 512, min: 128, max: 1024,
 });
 
-// ---- AI Action Router: the cost and availability guards (M9) ---------------
-//
-// Two stateful objects, both constructed HERE and injected via app.locals in
-// the same way geminiFast is, rather than held as module state inside the
-// assistant folder (approval A4). The server suite shares one required index.js
-// per worker, so a module-level counter — or a breaker one test left open —
-// would leak into unrelated test files and make failures order-dependent.
-//
-// Neither can make a request fail. An exhausted budget and an open breaker both
-// produce a passthrough, which is a normal coaching answer (G22).
+// Cost and availability guards for the router. Both are built here and injected via app.locals, like geminiFast,
+// rather than held as module state, since the test suite shares one index.js per worker and a leaked counter or
+// open breaker would make failures order-dependent. Neither can fail a request: an exhausted budget and an open
+// breaker both produce a passthrough.
 const ASSISTANT_BREAKER_429_THRESHOLD = parseIntEnv(process.env.ASSISTANT_BREAKER_429_THRESHOLD, {
   name: 'ASSISTANT_BREAKER_429_THRESHOLD', defaultValue: 5, min: 1, max: 100,
 });
@@ -258,22 +197,11 @@ const ASSISTANT_BREAKER_COOLDOWN_MS = parseIntEnv(process.env.ASSISTANT_BREAKER_
 const assistantFlags = readAssistantFlags(process.env);
 const assistantBudget = createBudgetCounter({ limit: assistantFlags.dailyBudgetPerUser });
 
-// A SECOND counter, for telemetry ROWS — added by the M9 security review, which
-// found that POST /api/assistant/events had no per-user bound at all. Only the
-// shared IP limiter stood in front of it, and each request may carry a batch, so
-// one hostile or simply looping client could sustain writes against exactly the
-// single-writer table CHANGE-6 exists to keep quiet (threat 4).
-//
-// The limit is DERIVED rather than a new env var, because it is not an
-// independent policy: the design ceiling is two rows per routed session, so
-// twice the interpret budget covers every legitimate session a teacher can
-// have, and the constant is headroom for a client that re-delivers a batch.
-// Separate from the routing counter on purpose — telemetry must never be able
-// to eat the budget a teacher needs for actual routing.
-//
-// Exceeding it drops the batch silently (204). Telemetry is fire-and-forget by
-// contract and already fails soft, so this can lose a measurement and can never
-// cost a teacher anything.
+// A second counter for telemetry rows. POST /api/assistant/events had only the shared IP limiter in front of it, and
+// a request may carry a batch, so one looping client could sustain writes against the single-writer table.
+// The limit is derived, not a new env var: the ceiling is two rows per routed session, so twice the interpret budget
+// covers every legitimate session, with headroom for a re-delivered batch. It's separate from the routing counter so
+// telemetry can't use up the budget a teacher needs for routing. Exceeding it drops the batch silently (204).
 const assistantEventBudget = createBudgetCounter({
   limit: assistantFlags.dailyBudgetPerUser * 2 + 20,
 });
@@ -290,20 +218,15 @@ const geminiFast = new GeminiService({
   totalTimeoutMs: ASSISTANT_LLM_TOTAL_TIMEOUT_MS,
   maxRetries: ASSISTANT_LLM_MAX_RETRIES,
   maxCallsPerRequest: ASSISTANT_LLM_MAX_CALLS,
-  // Zero continuations: a classification result is a small JSON object, and
-  // gemini.js already skips the continuation loop for structured responses.
-  // Stating it here means the intent survives if that ever changes.
+  // Zero continuations: a classification is a small JSON object, and gemini.js already skips continuation for
+  // structured responses. Stated here so the intent survives if that changes.
   maxContinuations: 0,
   maxOutputTokens: ASSISTANT_LLM_MAX_OUTPUT_TOKENS,
 });
 
-// ---- Multimodal attachments: a THIRD GeminiService instance ---------------
-//
-// Same reasoning as geminiFast above: a multimodal call (image/PDF tokens)
-// is slower and more expensive than a text-only coaching call, and it is not
-// a classification decision that should ever silently degrade to
-// passthrough — so it gets its OWN tunables rather than sharing either of
-// the other two instances' budgets.
+// Multimodal attachments: a third GeminiService instance. A multimodal call (image/PDF tokens) is slower and costlier
+// than text, and mustn't silently degrade to passthrough, so it gets its own tunables rather than sharing either
+// other instance's budgets.
 const ATTACHMENT_GEMINI_ENDPOINT =
   process.env.ATTACHMENT_GEMINI_ENDPOINT || GEMINI_ENDPOINT;
 
@@ -334,84 +257,51 @@ const attachmentGemini = new GeminiService({
   maxOutputTokens: ATTACHMENT_LLM_MAX_OUTPUT_TOKENS,
 });
 
-// Per-user daily budget, reusing the router's already-generic counter
-// (assistant/budget.js has no actual dependency on the router — see its own
-// module doc). Same in-memory, per-process, resets-on-restart tradeoffs,
-// accepted for the same reason: it matches express-rate-limit's existing
-// MemoryStore behavior rather than introducing a new class of weakness.
+// Per-user daily budget using the router's generic counter (assistant/budget.js), with the same in-memory,
+// per-process trade-offs as express-rate-limit's MemoryStore.
 const attachmentFlagsAtBoot = readAttachmentFlags(process.env);
 const attachmentBudget = createBudgetCounter({ limit: attachmentFlagsAtBoot.dailyBudgetPerUser });
 
-// AI Learning Representation System (ADR Phase D). Same generic counter,
-// same per-process/in-memory tradeoffs already accepted for
-// assistantBudget/attachmentBudget above — see assistant/budget.js's own
-// header for the reasoning, which is not repeated per call site.
+// AI Learning Representation: the same generic counter and the same per-process trade-offs (see assistant/budget.js).
 const learningRepresentationFlagsAtBoot = readLearningRepresentationFlags(process.env);
 const learningRepresentationBudget = createBudgetCounter({
   limit: learningRepresentationFlagsAtBoot.dailyBudgetPerUser,
 });
 
-// Phase E — request-level render cache. In-memory, per-process, resets on
-// restart; the full reasoning (why that trade-off is accepted, and why a
-// persistent cache was rejected for V1) lives in
-// learningRepresentation/rendering/cache.js's own header rather than being
-// repeated here — the same "documented once, at the source" discipline
-// already applied to assistantBudget/attachmentBudget above.
+// Request-level render cache, in-memory and per-process (see learningRepresentation/rendering/cache.js for the trade-offs).
 const learningRepresentationRenderCache = createRenderCache();
 
-// Classroom Mode (docs/classroom-mode.md). Read once at boot, like every flag
-// above. This is the authoritative gate: the client's own
-// VITE_CLASSROOM_MODE_ENABLED decides only whether the "+" button renders, and
-// a PWA can serve a cached client whose flag is stale by hours. Turning this
-// off stops the planner and every downstream artifact call for everyone,
-// including those clients — which is what makes it a usable spend control (D13).
+// Classroom Mode (docs/classroom-mode.md), read once at boot. This is the authoritative gate: the client's
+// VITE_CLASSROOM_MODE_ENABLED only decides whether the "+" button renders, and a cached PWA client can be hours
+// stale. Turning this off stops the planner and every downstream artifact call for everyone, which makes it a usable spend control.
 const classroomModeFlagsAtBoot = readClassroomModeFlags(process.env);
 
-// ---- App setup -------------------------------------------------------------
+// App setup
 
 const app = express();
 app.disable('x-powered-by');
-// Expose the single GeminiService instance to routers (e.g. the resources
-// router's Lesson Plan Workspace AI actions) without re-constructing it or
-// leaking the API key. Read via req.app.locals.gemini.
+// Expose the GeminiService instance to routers (e.g. the Lesson Plan Workspace AI actions) without rebuilding it or
+// leaking the key. Read via req.app.locals.gemini.
 app.locals.gemini = gemini;
-// The shared multi-key failover pool (lib/geminiKeyPool.js), used by gemini,
-// geminiFast, and attachmentGemini above. Exposed the same way for parity
-// with the rest of this file's "constructed once, injected explicitly"
-// pattern, and so tests/introspection can read pool status via describe().
+// The shared key-failover pool (lib/geminiKeyPool.js), exposed so tests can read its status via describe().
 app.locals.geminiKeyPool = geminiKeyPool;
-// The routing instance, read by the assistant router as req.app.locals.geminiFast.
-// Kept a SEPARATE local rather than a field on `gemini` so that reaching for the
-// wrong one is a visibly wrong line of code rather than a subtle option.
+// The routing instance, kept a separate local from `gemini` so reaching for the wrong one is visibly wrong.
 app.locals.geminiFast = geminiFast;
-// M9 guards, read by the assistant router. Same pattern and the same reason as
-// geminiFast: constructed once, reached explicitly, never a module singleton.
+// Router guards, built once and reached explicitly, never module singletons (same reason as geminiFast).
 app.locals.assistantBudget = assistantBudget;
 app.locals.assistantEventBudget = assistantEventBudget;
 app.locals.assistantBreaker = assistantBreaker;
-// Multimodal attachments, read by routes/attachments.js as
-// req.app.locals.attachmentGemini / .attachmentBudget. Same pattern as
-// geminiFast/assistantBudget above: constructed once, injected explicitly,
-// never a module singleton (so the test suite can build its own app).
+// Attachments, read by routes/attachments.js as req.app.locals.attachmentGemini / .attachmentBudget; injected so tests can build their own app.
 app.locals.attachmentGemini = attachmentGemini;
 app.locals.attachmentBudget = attachmentBudget;
-// AI Learning Representation System, read by routes/learningRepresentation.js
-// as req.app.locals.learningRepresentationBudget. Uses the EXISTING gemini /
-// geminiFast locals above directly (no third instance) — see the route's
-// own comment for why each is the right fit for its call.
+// Read by routes/learningRepresentation.js as req.app.locals.learningRepresentationBudget. It uses the existing
+// gemini / geminiFast locals (no third instance); see the route for why.
 app.locals.learningRepresentationBudget = learningRepresentationBudget;
-// Phase E, read by rendering/cache.js's caller as
-// req.app.locals.learningRepresentationRenderCache.
+// Read by routes/learningRepresentation.js as req.app.locals.learningRepresentationRenderCache.
 app.locals.learningRepresentationRenderCache = learningRepresentationRenderCache;
-// Railway (like most PaaS) puts exactly one reverse-proxy hop in front of
-// this app. Trusting that one hop lets Express derive req.ip from the
-// X-Forwarded-For header Railway sets, which express-rate-limit needs to
-// rate-limit real client IPs instead of Railway's proxy IP for everyone —
-// and without this, express-rate-limit refuses to start with
-// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR (it won't trust a forwarded-for header
-// unless Express is explicitly configured to expect one). Trusting a fixed
-// hop count (not `true`, which would trust the whole chain) keeps req.ip
-// unspoofable by a client-supplied X-Forwarded-For value.
+// Railway puts one reverse-proxy hop in front of the app. Trusting that hop lets Express derive req.ip from
+// X-Forwarded-For, which express-rate-limit needs to limit real client IPs (otherwise it refuses to start with
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR). A fixed hop count, not `true`, keeps req.ip unspoofable by a client-supplied header.
 app.set('trust proxy', 1);
 app.use(helmet());
 
@@ -419,17 +309,10 @@ const allowedOrigins = CORS_ORIGINS.split(',')
   .map((o) => o.trim())
   .filter(Boolean);
 
-// In development we reflect ANY origin so the frontend works no matter how it
-// is served (Live Server on 5500, http-server on 8000, or the machine's LAN IP
-// like http://10.x.x.x:8000). In production, set NODE_ENV=production and list
-// the exact allowed origins in CORS_ORIGINS to lock this down.
-//
-// isProduction (computed above, near RATE_LIMIT_MAX_REQUESTS) defaults to
-// false (dev-permissive) only when NODE_ENV is unset, which is the normal
-// local-dev case. If NODE_ENV IS set to 'production' but CORS_ORIGINS is
-// empty, we refuse to boot rather than silently falling back to either
-// "block everything" (confusing) or "allow everything" (unsafe) — same
-// fail-fast pattern already used for GEMINI_API_KEY and JWT_SECRET.
+// In development any origin is reflected, so the frontend works however it's served (Live Server, http-server, a
+// LAN IP). In production, set NODE_ENV=production and list exact origins in CORS_ORIGINS.
+// isProduction (above) is false only when NODE_ENV is unset. If it is 'production' but CORS_ORIGINS is empty, we
+// refuse to boot rather than block everything or allow everything, as with GEMINI_API_KEY and JWT_SECRET.
 if (isProduction && allowedOrigins.length === 0) {
   console.error(
     'FATAL: NODE_ENV=production but CORS_ORIGINS is empty. Set it to a comma-separated allowlist of trusted frontend origins.'
@@ -444,20 +327,10 @@ function isOriginAllowed(origin) {
   return allowedOrigins.includes(origin);
 }
 
-// Registered BEFORE the JSON body-parser below (and before every router), on
-// purpose. cors() sets its response headers synchronously and then calls
-// next() — it does not touch the request body — so this ordering has no
-// effect on any successful request. What it fixes: when express.json() below
-// throws on a malformed body, Express jumps straight to the error-handling
-// middleware at the bottom of this file, skipping every regular middleware
-// in between. If cors() were still registered after the body-parser (as it
-// used to be), it would never run for that request, the error response would
-// go out with no Access-Control-Allow-Origin header, and the browser would
-// discard it as a CORS violation — surfacing to the frontend as an opaque
-// "Failed to fetch" instead of the clean 400 the error handler already sends
-// (see the SyntaxError branch below). Running cors() first means its headers
-// are already attached to `res` by the time that branch responds, for every
-// request regardless of whether a later middleware throws.
+// Registered before the JSON body-parser and every router, on purpose. cors() only sets headers, so the order doesn't
+// affect successful requests. When express.json() throws on a malformed body, Express skips to the error handler at
+// the bottom; if cors() ran after the parser it would be skipped, the error response would lack
+// Access-Control-Allow-Origin, and the browser would show an opaque "Failed to fetch" instead of the clean 400.
 app.use(
   cors({
     origin(origin, callback) {
@@ -469,27 +342,19 @@ app.use(
     },
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
-    // Without this, a cross-origin fetch() can't read Content-Disposition
-    // from the response (browsers only expose a small "simple header" list
-    // by default) — needed so a CSV download (routes/classroom.js's fee/
-    // attendance export) can read the server's suggested filename via
-    // res.headers.get() instead of falling back to a generic one.
+    // Lets a cross-origin fetch() read Content-Disposition, so CSV/Excel downloads (routes/classroom.js exports) get the server's filename.
     exposedHeaders: ['Content-Disposition'],
   })
 );
 
-// Parse JSON bodies with a 16kb limit everywhere, except the resources routes
-// (My Library), which accept up to 64kb because a saved lesson plan with
-// several structured sections can legitimately exceed 16kb. Scoping the larger
-// limit to just those paths keeps every other endpoint on the tighter bound.
+// JSON bodies are limited to 16kb, except the resources routes (My Library), which allow 64kb since a saved lesson
+// plan with several structured sections can exceed 16kb. Scoping the larger limit keeps other endpoints tight.
 const jsonSmall = express.json({ limit: '16kb' });
 const jsonLarge = express.json({ limit: '64kb' });
 app.use((req, res, next) => {
   if (req.path.startsWith('/api/resources')) return jsonLarge(req, res, next);
-  // Classroom Mode stores a turn's generated artifacts (D25) — up to five full
-  // documents in one body, which comfortably exceeds 16kb. Same reasoning as
-  // the resources routes above, scoped to the one path that needs it rather
-  // than raising the limit for all of /api/queries.
+  // Classroom Mode stores a turn's generated artifacts (up to five documents) in one body, which exceeds 16kb. Scoped to
+  // this one path rather than raising the limit for all of /api/queries.
   if (/^\/api\/queries\/[^/]+\/classroom-artifacts$/.test(req.path)) return jsonLarge(req, res, next);
   return jsonSmall(req, res, next);
 });
@@ -499,20 +364,13 @@ const limiter = rateLimit({
   max: RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
-  // Deliberately worded differently from the Gemini-upstream 429 message
-  // below (in the /coach handler's catch block) so the two are never
-  // ambiguous: this one means "you (this IP) called our API too often";
-  // that one means "the AI provider itself is rate-limiting us right now",
-  // which more patience on the client side alone doesn't fix.
+  // Worded differently from the Gemini-upstream 429 message in the /coach catch block so the two aren't ambiguous:
+  // this means "you called our API too often", that one "the AI provider is rate-limiting us", which patience alone doesn't fix.
   message: { error: 'You have made too many requests. Please wait a few minutes and try again.' },
 });
 
-// Separate bucket for the assistant, deliberately NOT the /coach limiter above.
-// Sharing one would let catalog fetches and routing decisions eat the budget a
-// teacher needs for actual coaching answers — the optional feature must never
-// degrade the core one. Higher ceiling than /coach because these calls are
-// small and frequent (a catalog fetch per session, a routing decision per
-// message) rather than large and occasional.
+// Separate bucket for the assistant, not the /coach limiter: sharing would let catalog fetches and routing eat the
+// budget a teacher needs for coaching. A higher ceiling since these calls are small and frequent.
 const ASSISTANT_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.ASSISTANT_RATE_LIMIT_MAX_REQUESTS, {
   name: 'ASSISTANT_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 120 : 600, min: 1, max: 100000,
 });
@@ -525,12 +383,8 @@ const assistantLimiter = rateLimit({
   message: { error: 'Too many assistant requests. Please wait a few minutes and try again.' },
 });
 
-// Separate bucket for POST /api/coach/attachment, deliberately NOT shared
-// with the /coach limiter above — attachment requests carry a file and cost
-// far more per call, so they must not be able to eat the budget a teacher
-// needs for ordinary text/voice questions. Lower ceiling than /coach's for
-// the same reason /resources/generate got its own (tighter) limiter: this is
-// the most expensive request shape in the product.
+// Separate bucket for POST /api/coach/attachment, with a lower ceiling than /coach since an attachment request is the
+// most expensive call shape (like /resources/generate's limiter).
 const ATTACHMENT_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.ATTACHMENT_RATE_LIMIT_MAX_REQUESTS, {
   name: 'ATTACHMENT_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 20 : 300, min: 1, max: 100000,
 });
@@ -543,19 +397,14 @@ const attachmentLimiter = rateLimit({
   message: { error: 'Too many attachment requests. Please wait a few minutes and try again.' },
 });
 
-// Separate bucket for POST /api/support/tickets — deliberately its own,
-// tighter limiter rather than reusing the general /coach `limiter`: this
-// endpoint has no per-user daily budget (see lib/flags.js's Help & Support
-// section), so the rate limiter is the only thing bounding a teacher who
-// mashes "Report a Bug" repeatedly.
+// Separate, tighter bucket for POST /api/support/tickets, which has no per-user daily budget (see lib/flags.js), so
+// this limiter is all that bounds someone repeatedly pressing "Report a Bug".
 const SUPPORT_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.SUPPORT_RATE_LIMIT_MAX_REQUESTS, {
   name: 'SUPPORT_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 20 : 300, min: 1, max: 100000,
 });
 
-// Separate bucket for POST /api/notifications (send/broadcast) — the only
-// mutating-for-OTHERS notification route; GET/PATCH on the caller's own
-// notifications stay under the general limiter, matching every other
-// "cheap, frequent, self-scoped" endpoint in this app.
+// Separate bucket for POST /api/notifications (send/broadcast), the only route that mutates for others. GET/PATCH on
+// the caller's own notifications stay under the general limiter.
 const NOTIFICATIONS_SEND_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.NOTIFICATIONS_SEND_RATE_LIMIT_MAX_REQUESTS, {
   name: 'NOTIFICATIONS_SEND_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 20 : 300, min: 1, max: 100000,
 });
@@ -568,12 +417,8 @@ const notificationsSendLimiter = rateLimit({
   message: { error: 'Too many requests. Please wait a few minutes and try again.' },
 });
 
-// Classroom Management — own bucket, matching the resourcesRouter/
-// supportRouter precedent (docs/classroom-feature-plan.md §7). Classroom
-// writes (create a class, add a student, mark a day's attendance, set a fee
-// status) are frequent-but-cheap, closer to /resources CRUD than to an AI
-// call, so this gets a generous ceiling like the general `limiter` rather
-// than a generateLimiter-style tight one.
+// Classroom Management gets its own bucket (docs/classroom-feature-plan.md). Its writes are frequent and cheap, closer
+// to /resources CRUD than an AI call, so the ceiling is generous like the general `limiter`.
 const CLASSROOM_MANAGEMENT_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.CLASSROOM_MANAGEMENT_RATE_LIMIT_MAX_REQUESTS, {
   name: 'CLASSROOM_MANAGEMENT_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 300 : 1200, min: 1, max: 100000,
 });
@@ -594,10 +439,8 @@ const supportLimiter = rateLimit({
   message: { error: 'Too many requests. Please wait a few minutes and try again.' },
 });
 
-// Teacher Attendance — own bucket, same "frequent-but-cheap CRUD" reasoning
-// as classroomLimiter above (a check-in/check-out is a small write, not an
-// AI call). Two writes a day per teacher in the normal case, so this ceiling
-// only really matters for retries/offline-queue flushes.
+// Teacher Attendance gets its own bucket, like classroomLimiter: a check-in or check-out is a small write, about two a
+// day per teacher, so the ceiling only matters for retries and offline-queue flushes.
 const TEACHER_ATTENDANCE_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.TEACHER_ATTENDANCE_RATE_LIMIT_MAX_REQUESTS, {
   name: 'TEACHER_ATTENDANCE_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 300 : 1200, min: 1, max: 100000,
 });
@@ -610,11 +453,8 @@ const teacherAttendanceLimiter = rateLimit({
   message: { error: 'Too many requests. Please wait a few minutes and try again.' },
 });
 
-// Separate bucket for POST /api/schedule-demo/bookings — deliberately its
-// own, tighter limiter rather than reusing the general `limiter`: this is a
-// fully public, unauthenticated write endpoint with no per-user budget to
-// fall back on (the visitor has no account), same reasoning as
-// SUPPORT_RATE_LIMIT_MAX_REQUESTS above.
+// Separate, tighter bucket for POST /api/schedule-demo/bookings: a public, unauthenticated write with no per-user
+// budget (the visitor has no account), as with SUPPORT_RATE_LIMIT_MAX_REQUESTS.
 const DEMO_BOOKING_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.DEMO_BOOKING_RATE_LIMIT_MAX_REQUESTS, {
   name: 'DEMO_BOOKING_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 5 : 100, min: 1, max: 100000,
 });
@@ -627,12 +467,9 @@ const demoBookingLimiter = rateLimit({
   message: { error: 'Too many requests. Please wait a few minutes and try again.' },
 });
 
-// Separate bucket for POST /api/coach/learning-representation — deliberately
-// NOT the /coach limiter above, same reasoning as assistantLimiter: an
-// optional, explicitly-triggered feature must never eat the budget a
-// teacher needs for ordinary questions. Costs up to two Gemini calls per
-// request (classify + render), so the ceiling sits between assistantLimiter
-// (cheap, one call) and attachmentLimiter (most expensive call shape).
+// Separate bucket for POST /api/coach/learning-representation, as for assistantLimiter: an optional feature mustn't
+// eat the budget for ordinary questions. Up to two Gemini calls per request, so the ceiling sits between
+// assistantLimiter (one cheap call) and attachmentLimiter (the most expensive).
 const LEARNING_REPRESENTATION_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(
   process.env.LEARNING_REPRESENTATION_RATE_LIMIT_MAX_REQUESTS,
   { name: 'LEARNING_REPRESENTATION_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 60 : 600, min: 1, max: 100000 }
@@ -646,23 +483,16 @@ const learningRepresentationLimiter = rateLimit({
   message: { error: 'Too many requests. Please wait a few minutes and try again.' },
 });
 
-// M9. The generation endpoint is the most expensive path in the product — a
-// real Gemini call with an 8-call budget behind it — and until now it was
-// guarded by authRequired and nothing else. Architecture 10.4 calls this a
-// pre-existing gap to close "regardless of this project"; the router only makes
-// reaching it one utterance cheaper. Built by a factory so the limiter test can
-// mount the real thing on a throwaway app instead of exhausting this shared one.
+// /generate is the most expensive path (a Gemini call with an 8-call budget) and was guarded by authRequired alone.
+// Built by a factory so the limiter test can mount the real one on a throwaway app instead of exhausting this shared one.
 const generateLimiter = createGenerateLimiter({
   env: process.env,
   isProduction,
   windowMinutes: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10),
 });
 
-// Separate bucket for POST/DELETE /api/auth/me/avatar. Hardcoded (not
-// env-parsed like the AI-feature limiters above) — this is a core Settings
-// capability with no rollout to tune, not a cost-tunable AI call. Uploads are
-// infrequent for a legitimate user, so this only needs to be generous enough
-// to not be annoying while still bounding someone hammering the endpoint.
+// Separate bucket for POST/DELETE /api/auth/me/avatar. Hardcoded, not env-parsed: a core Settings capability with no
+// rollout to tune. Uploads are infrequent, so it only needs to bound someone hammering the endpoint.
 const avatarLimiter = rateLimit({
   windowMs: parseInt(RATE_LIMIT_WINDOW_MINUTES, 10) * 60 * 1000,
   max: isProduction ? 20 : 300,
@@ -671,22 +501,12 @@ const avatarLimiter = rateLimit({
   message: { error: 'Too many requests. Please wait a few minutes and try again.' },
 });
 
-// Stricter limiter for auth endpoints to slow down credential guessing.
-//
-// The ceiling is env-overridable and development-aware, like every other
-// limiter in this file. It previously was not, and that was a bug rather than
-// extra strictness: this limiter is mounted on the whole /api/auth router, so
-// it counts POST /refresh and GET /me — which fire on EVERY page load — against
-// the same 30-request budget as login itself. A developer reloading the client
-// a dozen times would exhaust it without a single failed sign-in and then be
-// locked out for the full 15 minutes, with "Too many attempts" pointing at
-// their password.
-//
-// The PRODUCTION default is deliberately unchanged at 30. The security property
-// here — making online credential guessing slow — is real, and only the
-// development ceiling is raised. The 15-minute window is also unchanged (it is
-// intentionally longer than RATE_LIMIT_WINDOW_MINUTES; a guessing attack is
-// measured in minutes, not seconds).
+// Stricter limiter for auth endpoints, to slow credential guessing. The ceiling is env-overridable and development-aware
+// like the others. It's mounted on the whole /api/auth router, so POST /refresh and GET /me, which fire on every page
+// load, count against the same 30-request budget as login; a developer reloading a dozen times would be locked out
+// for 15 minutes with "Too many attempts" pointing at their password.
+// The production default stays 30, since slowing online credential guessing is the real goal; only the development
+// ceiling is raised. The 15-minute window is intentionally longer than RATE_LIMIT_WINDOW_MINUTES.
 const AUTH_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS, {
   name: 'AUTH_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 30 : 300, min: 1, max: 100000,
 });
@@ -699,7 +519,7 @@ const authLimiter = rateLimit({
   message: { error: 'Too many attempts. Please wait a few minutes and try again.' },
 });
 
-// ---- Routes ----------------------------------------------------------------
+// Routes
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -707,15 +527,9 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/auth', authLimiter, authRouter);
 
-// Is this teacher inside Classroom Mode's staged rollout? Mirrors
-// `isWithinRollout` in routes/attachments.js, including its fail-closed
-// behaviour: an empty allow-list means every school, a non-empty one costs a
-// single indexed lookup, and a lookup that throws denies rather than allows.
-//
-// Not shared with the attachments copy on purpose — that one is bound to the
-// attachment flag shape and lives behind that router's own gate middleware.
-// Two short readable functions beat one parameterised one that both features
-// must then agree on forever.
+// Is this teacher inside Classroom Mode's staged rollout? Mirrors `isWithinRollout` in routes/attachments.js, including
+// fail-closed: an empty allow-list means every school, a non-empty one costs a lookup, and a lookup that throws denies.
+// Not shared with that copy, which is bound to the attachment flag shape and behind that router's gate.
 async function isWithinClassroomRollout(user, flags) {
   if (!flags.enabled) return false;
   if (flags.allowedSchoolCodes.length === 0) return true;
@@ -728,9 +542,7 @@ async function isWithinClassroomRollout(user, flags) {
 }
 
 app.post('/api/coach', authRequired, limiter, async (req, res) => {
-  // Correlation ID for this AI request — logged with every event and returned
-  // to the client so a teacher/admin can quote it when reporting a problem.
-  // Not sensitive; contains no user data.
+  // Correlation ID for this AI request: logged with every event and returned to the client so a problem report can quote it. Contains no user data.
   const requestId = crypto.randomUUID();
 
   const { query, context = {}, language = 'en', classroomMode = false } = req.body || {};
@@ -758,46 +570,27 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
     issueType: typeof context.issueType === 'string' ? context.issueType.slice(0, 60) : undefined,
   };
 
-  // Normalize the query (Unicode NFKC + strip invisible/control characters —
-  // see safety/inputGuard.js) before it's used anywhere: prompt construction,
-  // the injection heuristic, or persistence. A query that normalizes down to
-  // nothing (e.g. it was only invisible characters) is treated the same as
-  // an empty query.
+  // Normalize the query (NFKC, strip invisible/control characters; see safety/inputGuard.js) before any use: prompts,
+  // the injection heuristic or persistence. A query that normalizes to nothing is treated as empty.
   const normalizedQuery = normalizeQuery(query.trim());
   if (normalizedQuery.length === 0) {
     return res.status(400).json({ error: 'A non-empty "query" string is required.', requestId });
   }
 
   try {
-    // ---- Classroom Mode: start the planner NOW, alongside the answer -------
-    //
-    // Issued before the answer call rather than after it, so the two overlap
-    // and the planner's latency is hidden entirely behind the (much longer)
-    // coaching call. Awaited only once the answer is in hand.
-    //
-    // `classroomMode === true` is an exact check, not truthiness: this decides
-    // whether to spend a model call, so a stray "false" string or a 1 must not
-    // buy one. The server flag is checked here too — a client sending
-    // classroomMode after the feature has been switched off gets it ignored,
-    // which is the whole point of the server being the real kill switch.
+    // Classroom Mode: start the planner now, alongside the answer, so its latency hides behind the longer coaching call.
+    // It's awaited only once the answer is ready.
+    // `classroomMode === true` is an exact check, since it decides whether to spend a model call and a stray "false" or 1
+    // mustn't buy one. The server flag is checked too, so a client sending classroomMode after the feature is off is
+    // ignored; the server is the real kill switch.
     const classroomRequested = classroomMode === true && classroomModeFlagsAtBoot.enabled;
     const classroomPlanPromise = classroomRequested
       ? isWithinClassroomRollout(req.user, classroomModeFlagsAtBoot).then((allowed) =>
           allowed
             ? planClassroom({
-                // `geminiFast`, NOT the coaching `gemini`. The planner is a
-                // small classification call returning a fixed JSON shape —
-                // structurally identical to the AI Action Router's intent
-                // classification, which is what geminiFast was built for
-                // (flash-lite, short timeouts, maxContinuations: 0).
-                //
-                // Three things follow from this, all of them wanted:
-                //   - it is much cheaper per call than the coaching model;
-                //   - it is faster, which matters for a call whose entire job
-                //     is to finish before the answer does;
-                //   - it draws on a DIFFERENT model's quota, so planning can
-                //     never starve the coaching answer of rate limit — the
-                //     answer is the thing the teacher is actually waiting for.
+                // `geminiFast`, not the coaching `gemini`: the planner is a small classification call with a fixed JSON shape, like
+                // the router's (flash-lite, short timeouts, maxContinuations: 0). It's cheaper and faster, which matters for a call
+                // that must finish before the answer, and it draws on a different model's quota, so planning can't starve the answer.
                 gemini: geminiFast,
                 query: normalizedQuery,
                 context: safeContext,
@@ -808,9 +601,8 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
             : null
         )
       : Promise.resolve(null);
-    // planClassroom already swallows its own failures; this is belt-and-braces
-    // so that an unexpected throw in the rollout lookup can never surface as an
-    // unhandled rejection while the answer call is still in flight.
+    // planClassroom swallows its own failures; this guards against an unexpected throw in the rollout lookup becoming an
+    // unhandled rejection while the answer call is in flight.
     const classroomPlanSettled = classroomPlanPromise.catch(() => null);
 
     // Read the teacher's saved response-style preference server-side so it is
@@ -839,9 +631,7 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
       { correlationId: requestId }
     );
 
-    // `metrics` is metadata-only observability — it must NOT be spread into
-    // the client response (kept internal). Pull it out before building the
-    // client payload.
+    // `metrics` is internal observability and must not be spread into the client response.
     const { metrics, ...clientResult } = result;
 
     // Metadata-only structured log for every AI request: call counts,
@@ -869,10 +659,8 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
       logAiEvent('error', 'query_persist_failed', { requestId, message: persistError.message });
     }
 
-    // Best-effort, non-blocking prompt-injection telemetry: never blocks the
-    // response, and never logs/stores the raw query or response text — only
-    // a category label plus IDs. See safety/inputGuard.js for why this is
-    // advisory-only rather than a gate.
+    // Best-effort prompt-injection telemetry: never blocks the response, and stores only a category label plus IDs,
+    // never the raw query or response. See safety/inputGuard.js for why it's advisory.
     const injectionCheck = flagPossibleInjection(normalizedQuery);
     if (injectionCheck.flagged) {
       logAiEvent('warn', 'possible_injection_flagged', { requestId, userId: req.user.id, queryId, category: injectionCheck.category });
@@ -890,33 +678,18 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
       }
     }
 
-    // The answer is ready; collect whatever the planner decided. `null` — the
-    // mode being off, a gate firing, no teachable topic, or any failure — omits
-    // the key entirely rather than sending an empty object, so a client that
-    // never uses this feature receives the response it has always received.
+    // Collect the planner's decision. `null` (mode off, a gate fired, no teachable topic, or any failure) omits the key
+    // rather than sending an empty object, so a client that never uses the feature gets the response it always did.
     const classroomPlan = await classroomPlanSettled;
 
-    // Classroom Mode telemetry (P7). Best-effort and non-blocking, exactly like
-    // the injection telemetry above: a failed write must never cost the teacher
-    // their answer. METADATA ONLY — the artifact names and counts, never the
-    // question, the topic, or any generated text.
-    //
-    // Written here rather than in the planner because this is the only place
-    // that knows all three of: the mode was requested, the rollout gate
-    // allowed it, and what the planner ultimately decided. `planned: 0` is the
-    // interesting row — it is a teacher who turned the mode on and got
-    // nothing, which is the signal that the planner's gates are too tight.
+    // Classroom Mode telemetry: best-effort, metadata-only (artifact names and counts, never the question, topic or
+    // generated text). Written here because this is the only place that knows the mode was requested, the rollout
+    // allowed it, and what the planner decided. `planned: 0` is the row to watch: the mode was on and produced
+    // nothing, which means the planner's gates may be too tight.
     if (classroomRequested) {
-      // Persist the plan on the Query row so reopening this chat can restore
-      // the artifact cards (D24). Done as an UPDATE after the fact rather than
-      // as part of the create above, deliberately: the plan settles later than
-      // the answer, and folding it in would make every ORDINARY question wait
-      // on a promise it has no interest in. Mode off is one write, exactly as
-      // before — §7 rule 3.
-      //
-      // Best-effort. A failure here costs the teacher nothing they can see
-      // right now; the cards for this turn are already on screen. It only
-      // means reopening the chat later will not restore them.
+      // Persist the plan on the Query row so reopening the chat restores the artifact cards. It's an UPDATE after the
+      // fact because the plan settles later than the answer, and folding it into the create would make every ordinary
+      // question wait on it. Best-effort: a failure only means reopening the chat won't restore the cards.
       if (queryId && classroomPlan) {
         try {
           await prisma.query.update({
@@ -954,16 +727,13 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
       queryId,
       requestId,
       ...(classroomPlan ? { classroom: classroomPlan } : {}),
-      // Distinguishes "the mode was on and found nothing to make" from "the
-      // mode was off". Only the first should show the teacher an explanation;
-      // without this the client cannot tell them apart, because both are the
-      // absence of `classroom`.
+      // Separates "the mode was on and found nothing to make" from "the mode was off"; only the first shows the teacher an
+      // explanation, and the client can't tell them apart otherwise since both lack `classroom`.
       ...(classroomRequested ? { classroomMode: true } : {}),
     });
   } catch (error) {
-    // Metadata-only failure log, including the reliability metrics the service
-    // attaches to the error (call counts, whether we timed out / were rate
-    // limited, etc.). Never the prompt, response, or upstream error body.
+    // Metadata-only failure log, including the reliability metrics attached to the error (call counts, timed out, rate
+    // limited). Never the prompt, response or upstream error body.
     logAiEvent('error', 'coach_request_failed', {
       requestId,
       status: error.status,
@@ -972,9 +742,8 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
       ...(error.metrics || {}),
     });
 
-    // Record NOTABLE reliability incidents durably (best-effort, non-blocking)
-    // — not routine failures. Rare enough not to bloat the Event table, useful
-    // for spotting upstream outages / rate-limit storms after the fact.
+    // Record notable reliability incidents durably (best-effort), not routine failures: rare enough not to bloat the
+    // Event table, and useful for spotting upstream outages and rate-limit storms afterwards.
     const notable = { DEADLINE_EXCEEDED: 'ai_deadline_exceeded', BUDGET_EXHAUSTED: 'ai_budget_exhausted' };
     let notableType = notable[error.code];
     if (!notableType && error.status === 429) notableType = 'ai_rate_limit_exhausted';
@@ -999,11 +768,8 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
       }
     }
 
-    // RATE_LIMITED/TIMEOUT/UPSTREAM_AUTH/UPSTREAM_UNAVAILABLE mapping lives in
-    // lib/sendAiError.js (shared with routes/resources.js and
-    // routes/attachments.js). /coach distinguishes DEADLINE_EXCEEDED (overall
-    // budget exhausted) from a per-call timeout with two different messages —
-    // every other caller uses one message for both.
+    // The RATE_LIMITED/TIMEOUT/UPSTREAM_AUTH/UPSTREAM_UNAVAILABLE mapping is in lib/sendAiError.js (shared with
+    // routes/resources.js and routes/attachments.js). /coach alone distinguishes DEADLINE_EXCEEDED from a per-call timeout with two messages.
     return sendAiError(res, error, requestId, {
       safetyBlockedMessage: "This question couldn't be processed — try rephrasing it.",
       deadlineExceededMessage: 'The request took too long. Please try again.',
@@ -1016,18 +782,12 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
 // Teacher history + feedback, saved resources (My Library), and admin
 // analytics/management.
 app.use('/api', dataRouter);
-// M9. Mounted on the path AHEAD of the resources router rather than inside it,
-// so routes/resources.js — protected area 1, the generation contract — is not
-// opened a second time. Order matters: this must precede the router it guards.
-// Everything else on /api/resources is untouched; only the generate path is
-// matched here.
+// Mounted ahead of the resources router rather than inside it, so routes/resources.js isn't opened again. It must
+// precede the router it guards, and only the generate path is matched.
 app.use('/api/resources/generate', generateLimiter);
 app.use('/api', resourcesRouter);
 app.use('/api/admin', adminRouter);
-// Admin Support Inbox (Phase 2). No dedicated rate limiter, matching every
-// other /api/admin/* route — this isn't a public-facing endpoint the way
-// /api/coach is, and authRequired + requireRole('super_admin') already gate
-// every route in this router.
+// Admin Support Inbox. No dedicated rate limiter, like the other /api/admin/* routes: authRequired and requireRole('super_admin') gate it.
 app.use('/api/admin/support', adminSupportRouter);
 // Schedule a Call admin inbox — same "no dedicated rate limiter" reasoning
 // as adminSupportRouter above.
@@ -1036,133 +796,72 @@ app.use('/api/admin/demo-bookings', adminScheduleDemoRouter);
 // reasoning as adminSupportRouter above.
 app.use('/api/admin/feature-flags', adminSettingsRouter);
 
-// AI Action Router. Mounted alongside the existing routers — after them, before
-// the global error handler — so no existing route's middleware chain changes.
-// Its own paths are new, so nothing here can shadow an established endpoint.
-// With ASSISTANT_ENABLED unset (the default) every response is an inert empty
-// catalog, and the application behaves exactly as it did before this line.
+// AI Action Router, mounted after the existing routers and before the global error handler, so no existing chain
+// changes and its new paths can't shadow an endpoint. With ASSISTANT_ENABLED unset every response is an inert empty catalog.
 app.use('/api/assistant', assistantLimiter, assistantRouter);
 
-// Multimodal attachments. Mounted the same way M9 scoped generateLimiter:
-// the limiter binds to the exact path ahead of the router that serves it, so
-// nothing else under attachmentsRouter (there is only the one route today)
-// is affected, and no existing router's mount changes.
+// Multimodal attachments. The limiter binds to the exact path ahead of the router, so nothing else is affected.
 app.use('/api/coach/attachment', attachmentLimiter);
 app.use('/api', attachmentsRouter);
 
-// The GET serving route inside avatarRouter is deliberately NOT behind this
-// limiter — app.use('/api/auth/me/avatar', ...) only matches that exact path
-// prefix, so it applies to the POST/DELETE upload/remove paths only, leaving
-// the cache-friendly, read-only GET /users/:id/avatar unlimited.
+// Limits the POST/DELETE upload and remove paths only: app.use matches the path prefix, so the cache-friendly
+// read-only GET /users/:id/avatar stays unlimited.
 app.use('/api/auth/me/avatar', avatarLimiter);
 app.use('/api', avatarRouter);
 
-// Help & Support. Same mounting shape as the attachment limiter above: bound
-// to the exact path ahead of the router that serves it, so nothing else on
-// /api is affected. With HELP_SUPPORT_ENABLED unset (the default) the route
-// returns 503 and the application otherwise behaves exactly as it did before
-// this line.
+// Help & Support. The limiter binds to the exact path ahead of its router. With HELP_SUPPORT_ENABLED unset the route returns 503.
 app.use('/api/support/tickets', supportLimiter);
 app.use('/api', supportRouter);
 
-// AI Learning Representation System (ADR Phase D). Same mounting shape as
-// the attachment/generate limiters above: bound to the exact path ahead of
-// the router that serves it, so nothing else on /api is affected. With
-// LEARNING_REPRESENTATION_ENABLED unset (the default) the route returns its
-// inert `{representation: 'verbal_explanation', data: null}` response and
-// the application otherwise behaves exactly as it did before this line.
+// AI Learning Representation. The limiter binds to the exact path ahead of its router. With LEARNING_REPRESENTATION_ENABLED
+// unset the route returns its inert `{representation: 'verbal_explanation', data: null}` response.
 app.use('/api/coach/learning-representation', learningRepresentationLimiter);
 app.use('/api', learningRepresentationRouter);
 
-// Notification System. Unlike every other limiter-then-router pair above,
-// GET (list, unread-count) and POST (send) share the exact same
-// /api/notifications path — app.use() matches by path only, not method, so
-// a plain prefix-mount would put the frequent, cheap, self-scoped GETs
-// behind the same tight bucket meant for the rare, mutating-for-OTHERS send
-// route. This scopes the limiter to POST only. With NOTIFICATIONS_ENABLED
-// unset (the default) every route still 503s and the application otherwise
-// behaves exactly as it did before this line. req.app.locals.socketServer
-// (set near app.listen below) is what routes/notifications.js reaches for
-// to emit realtime events.
+// Notification System. GET (list, unread-count) and POST (send) share /api/notifications, and app.use() matches by
+// path only, so a prefix mount would put the cheap self-scoped GETs behind the tight bucket meant for the send route.
+// This scopes the limiter to POST. With NOTIFICATIONS_ENABLED unset every route 503s. routes/notifications.js emits
+// realtime events through req.app.locals.socketServer (set near app.listen below).
 app.use('/api/notifications', (req, res, next) => {
   if (req.method !== 'POST') return next();
   return notificationsSendLimiter(req, res, next);
 });
 app.use('/api', notificationsRouter);
 
-// Classroom Management. Its own routes already start with "/classroom/..."
-// (see routes/classroom.js), so — same mounting shape as
-// generateLimiter/attachmentLimiter/supportLimiter above — the limiter binds
-// to that exact path prefix ahead of the router, and the router itself
-// mounts at the general "/api" (mounting it at "/api/classroom" would double
-// the prefix to "/api/classroom/classroom/..."). With
-// CLASSROOM_MANAGEMENT_ENABLED unset (the default) every /api/classroom/*
-// route returns 503 and the application otherwise behaves exactly as it did
-// before this line.
+// Classroom Management. Its routes already start with "/classroom/...", so the limiter binds to that prefix ahead of
+// the router, which mounts at the general "/api" (mounting at "/api/classroom" would double the prefix). With
+// CLASSROOM_MANAGEMENT_ENABLED unset every /api/classroom/* route returns 503.
 app.use('/api/classroom', classroomLimiter);
 app.use('/api', classroomRouter);
 
-// Teacher Attendance. Same mounting shape as Classroom Management directly
-// above: routes self-prefix with "/teacher-attendance/...", the limiter
-// binds to that exact prefix, the router mounts at the general "/api". With
-// TEACHER_ATTENDANCE_ENABLED unset (the default) every /api/teacher-attendance/*
-// route returns 503 and the application otherwise behaves exactly as it did
-// before this line.
+// Teacher Attendance, mounted like Classroom Management above: routes self-prefix "/teacher-attendance/...", the
+// limiter binds to that prefix, and the router mounts at "/api". With TEACHER_ATTENDANCE_ENABLED unset every route returns 503.
 app.use('/api/teacher-attendance', teacherAttendanceLimiter);
 app.use('/api', teacherAttendanceRouter);
 
-// Schedule a Call. Its own routes already start with "/schedule-demo/..."
-// (see routes/scheduleDemo.js). Only POST/PATCH (creating, rescheduling, or
-// cancelling a booking) go behind the tight bucket — same
-// method-scoped-inside-a-prefix-mount shape notificationsSendLimiter uses
-// above, so a visitor paging through the calendar's GET /slots requests for
-// several dates isn't throttled by a limit sized for a rare write. With
-// DEMO_BOOKING_ENABLED unset (the default) every /api/schedule-demo/* route
-// returns 503 and the application otherwise behaves exactly as it did before
-// this line.
+// Schedule a Call. Its routes already start with "/schedule-demo/...". Only POST/PATCH (create, reschedule, cancel)
+// are behind the tight bucket, as with the notifications send limiter, so paging through GET /slots isn't throttled.
+// With DEMO_BOOKING_ENABLED unset every /api/schedule-demo/* route returns 503.
 app.use('/api/schedule-demo', (req, res, next) => {
   if (req.method !== 'POST' && req.method !== 'PATCH') return next();
   return demoBookingLimiter(req, res, next);
 });
 app.use('/api', scheduleDemoRouter);
 
-// Global error handler — last line of defense. Routes wrapped in
-// asyncHandler (see lib/asyncHandler.js) forward a rejected promise here via
-// next(err) instead of letting it become an unhandled rejection, which on
-// Node 18+ would otherwise crash the whole process (this is what turned a
-// single Prisma P2021 "table does not exist" error into a full outage).
-// Must be registered after all routers. Never echoes the raw error
-// message/stack to the client — only status/path/method/error identity are
-// logged server-side.
+// Global error handler, the last line of defence. Routes wrapped in asyncHandler forward a rejected promise here via
+// next(err) instead of an unhandled rejection, which on Node 18+ crashes the process (as a single Prisma P2021 once
+// caused a full outage). Must be registered after all routers. It never echoes the raw error message or stack to
+// the client; only status, path, method and error identity are logged.
 app.use((err, req, res, _next) => {
-  // A body that is not valid JSON is a CLIENT error, and body-parser already
-  // says so — it throws a SyntaxError carrying status 400, which this handler
-  // used to flatten into a 500. Two things were wrong with that, both found by
-  // the M9 security review rather than by a user report:
-  //
-  //   1. G22. POST /api/assistant/interpret may NEVER return a 5xx, and this
-  //      was the one path that could. The client treats any 5xx as "the
-  //      endpoint is unhealthy" and opens its circuit breaker, so a single
-  //      malformed request disabled routing for a minute.
-  //
-  //   2. G11. Node's JSON parser puts a ~20-character WINDOW OF THE RAW BODY
-  //      into its message ("Unexpected token 'Z', ...\"terance\": ZZPROBEBOD\"...
-  //      is not valid JSON"), and this handler logged that message verbatim.
-  //      On this endpoint the raw body is the teacher's utterance. A probe
-  //      string was watched into the log; it is not hypothetical.
-  //
-  // So the branch answers 400 and logs the SHAPE of the failure, never its
-  // content. Applies to every endpoint, which is the point: the leak was never
-  // specific to the assistant.
-  //
-  // This response also needs to actually reach the browser: cors() is
-  // registered ABOVE, before the JSON body-parser that throws this error, so
-  // its Access-Control-Allow-Origin header is already attached to `res` by
-  // the time we get here. Without that ordering, a malformed body from a
-  // legitimate allowed origin would still get this clean 400 on the wire, but
-  // the browser would discard it as a CORS violation and the caller would see
-  // a generic "Failed to fetch" instead — see cors() registration above for
-  // the full explanation.
+  // A body that isn't valid JSON is a client error: body-parser throws a SyntaxError with status 400, which this
+  // handler used to flatten into a 500. That was wrong twice:
+  //   1. POST /api/assistant/interpret may never return a 5xx; the client treats one as "endpoint unhealthy" and opens
+  //      its circuit breaker, so a single malformed request disabled routing for a minute.
+  //   2. Node's JSON parser puts ~20 characters of the raw body in its message, which was logged verbatim, and on that
+  //      endpoint the body is the teacher's utterance.
+  // So this answers 400 and logs the shape of the failure, never its content, for every endpoint.
+  // The 400 also has to reach the browser: cors() is registered above the body-parser, so its
+  // Access-Control-Allow-Origin header is already on `res` (see the cors() registration above).
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
     console.warn('Malformed JSON body:', { method: req.method, path: req.path });
     if (res.headersSent) return;
@@ -1179,41 +878,28 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ error: 'Something went wrong. Please try again.' });
 });
 
-// ---- Notification System: Socket.IO --------------------------------------
-//
-// Wired unconditionally (not just under require.main === module below) so
-// req.app.locals.socketServer is always populated for anything that holds
-// this `app` — including a test file that wraps it in its own
-// http.createServer for a realtime test. It requires an http.Server to
-// attach to either way, so this alone does not open a listening port; only
-// httpServer.listen(...) below does that, and only when this file is run
-// directly.
+// Notification System: Socket.IO. Wired unconditionally (not just under require.main === module below) so
+// req.app.locals.socketServer is populated for anything holding this `app`, including a test that wraps it in its
+// own http.createServer. It needs an http.Server to attach to but opens no port; only httpServer.listen() below does, and only when run directly.
 const http = require('http');
 const httpServer = http.createServer(app);
 app.locals.socketServer = initSocketServer(httpServer, {
   isOriginAllowed,
-  // Read live on every handshake, not captured once here — same "the env
-  // var is the real, immediately-effective kill switch" contract every
-  // other feature flag in this app has (see lib/flags.js).
+  // Read live on every handshake, so the env var is an immediately effective kill switch (see lib/flags.js).
   isEnabled: () => readNotificationsFlags(process.env).enabled,
 });
 
-// ---- Start -----------------------------------------------------------------
+// Start
 
-// Only bind a real port when this file is run directly (`node src/index.js`,
-// which is what `npm start`/`npm run dev` do). When the test suite requires
-// this module to get `app` for Supertest, we don't want a real listening
-// socket — Supertest drives the app in-process instead.
+// Only bind a real port when this file is run directly (`node src/index.js`, i.e. `npm start`/`npm run dev`). When
+// the tests require it for Supertest, no real socket is opened; Supertest drives the app in-process.
 /* istanbul ignore next -- exercised via `npm start`, not the test suite */
 if (require.main === module) {
-  // httpServer (not app.listen) — the Socket.IO instance above is already
-  // attached to it, so this one listen() call brings up both the REST API
-  // and realtime notifications on the same port.
+  // httpServer, not app.listen: Socket.IO is already attached, so this one listen() serves both the REST API and realtime notifications.
   httpServer.listen(PORT, () => {
     console.log(`Teacher Assistant backend listening on port ${PORT}`);
-    // Note: if NODE_ENV=production and CORS_ORIGINS were empty, the process
-    // would already have exited above — reaching here means either we're in
-    // development (any origin is reflected) or the allowlist is populated.
+    // If NODE_ENV=production and CORS_ORIGINS were empty the process would already have exited above, so here we're
+    // either in development (any origin reflected) or the allowlist is populated.
     if (isProduction) {
       console.log(`CORS allowlist: ${allowedOrigins.join(', ')}`);
     } else {
@@ -1221,12 +907,9 @@ if (require.main === module) {
     }
   });
 
-  // Teacher Attendance's checkout reminder (docs/feature-teacher-attendance-implementation-plan.md
-  // §5) — only under this same require.main guard, same reasoning as the
-  // listen() call itself: a test file requiring this module for `app` must
-  // never also start a background timer no test ever tears down. A no-op
-  // per tick whenever the feature or notifications are off (checked inside
-  // the sweep itself, read live).
+  // Teacher Attendance's checkout reminder (docs/feature-teacher-attendance-implementation-plan.md), only under this
+  // require.main guard like listen(): a test requiring this module for `app` must not start a background timer nothing
+  // tears down. Each tick is a no-op when the feature or notifications are off (checked live in the sweep).
   setInterval(() => {
     runCheckoutReminderSweep(new Date(), app.locals.socketServer).catch((err) => {
       console.error('[teacher-attendance] checkout reminder sweep failed', { message: err.message });

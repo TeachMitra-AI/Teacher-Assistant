@@ -1,52 +1,18 @@
-// The resolver (Milestone M4).
-//
-// Takes the model's untrusted, raw-string proposal and turns it into a
-// parameter object the application is willing to stand behind. Deterministic:
-// no AI, no HTTP, no database, no clock. Everything it needs — the teacher's
-// profile, their session memory, the turn number — arrives as an argument, so
-// the whole module is exercisable from a unit test with no fixtures and no
-// server. That is the point of building it before the classifier.
-//
-// Four responsibilities, in order:
-//
-//   1. CANONICALIZE  raw strings -> the application's own vocabularies, in code
-//                    (decision D10). "class 5" becomes "Class 3-5" here, never
-//                    in a prompt.
-//   2. MERGE         utterance > memory > profile > registry default. First hit
-//                    wins; sources are never blended.
-//   3. PROVENANCE    record where every single value came from. This is
-//                    infrastructure, not decoration: it drives the prefill UI,
-//                    the undo behaviour, the decision policy, and the
-//                    field-edit rate that gates launch.
-//   4. VALIDATE      against the SAME zod schema the real endpoint uses. Never
-//                    a copy (G1, G2).
-//
-// GUARDRAIL G3, which will bite whoever forgets it: provenance, confidence and
-// every other piece of router metadata are returned as SIBLINGS of `params`.
-// The generation schema is `.strict()`, so metadata folded into params makes
-// every downstream generation request fail with a 400.
+// Turns the model's untrusted raw-string proposal into params the application will stand behind.
+// Deterministic: no AI, HTTP, database or clock; profile, memory and turn arrive as arguments.
+// In order: canonicalize raw strings into our vocabularies (in code, never in a prompt); merge with
+// precedence utterance > memory > profile > default (first hit wins, never blended); record provenance for
+// every value; validate against the same zod schema the real endpoint uses, never a copy.
+// Provenance, confidence and other router metadata are returned as siblings of `params`: the generation
+// schema is `.strict()`, so metadata inside params would 400.
 
 const { mapVocabulary } = require('../actions/vocab');
 const { VOCAB_STATUS } = require('../actions/vocab/shared');
 
 /**
- * How long a remembered slot stays usable, in turns, by how fast it goes stale.
- * `null` means session-lived: it expires when the tab does, not on a turn count.
- *
- * `topic` is the short one on purpose. A stale topic is worse than no topic,
- * because it produces a confident, plausible, WRONG worksheet — the teacher
- * asked for something else three turns ago and gets that instead (architecture
- * §6.3 rule 2).
- *
- * The client owns session memory in Phase 1 and the server is stateless, so
- * these are applied to whatever memory the client SENDS. A stale or older
- * client can present an expired slot; expiry is re-applied here so the pipeline
- * does not depend on the client having done it.
- *
- * NOTE FOR M6: the client will need the same numbers to expire its own store.
- * Publish them through the catalog rather than re-declaring them in TypeScript
- * — this project already carries three documented duplications, and the
- * guardrails say to stop and consolidate rather than add a fourth.
+ * How many turns a remembered slot stays usable; `null` lasts the session. `topic` is short because a stale
+ * topic yields a confident, plausible, wrong worksheet. The client owns memory and the server is stateless,
+ * so expiry is re-applied here to whatever the client sends.
  */
 const MEMORY_TTL_TURNS = Object.freeze({
   grade: null,
@@ -56,27 +22,15 @@ const MEMORY_TTL_TURNS = Object.freeze({
   topic: 2,
 });
 
-/**
- * TTL for a slot not named above. Deliberately the SHORTEST of the configured
- * values rather than session-lived: a new slot should have to earn a long
- * memory, not inherit one by being forgotten about here.
- */
+/** TTL for unlisted slots: the shortest, so a new slot has to earn a longer memory. */
 const DEFAULT_MEMORY_TTL_TURNS = 2;
 
-/**
- * Effects for which a remembered value may never satisfy a required slot
- * (architecture §6.3 rule 3). Module-private: the rule is asserted through
- * `resolveSlots` against a synthetic `write` action, which is the only way it
- * can be observed in Phase 1 anyway — no such action exists in the registry.
- */
+/** Effects for which a remembered value may never satisfy a required slot. */
 const MEMORY_RESTRICTED_EFFECTS = Object.freeze(['write', 'destructive']);
 
 /**
- * Is a remembered slot still usable on this turn?
- *
- * A value set on turn T is usable on turns T+1 … T+ttl. Anything with a missing
- * or nonsensical turn number is treated as expired: memory is an optimization,
- * and an optimization that cannot prove its own freshness should not be used.
+ * Is a remembered slot still usable this turn? A value set on turn T works for turns T+1..T+ttl.
+ * A missing or nonsensical turn counts as expired.
  */
 function isMemoryFresh(slotName, entry, turn) {
   const ttl = slotName in MEMORY_TTL_TURNS ? MEMORY_TTL_TURNS[slotName] : DEFAULT_MEMORY_TTL_TURNS;
@@ -86,20 +40,9 @@ function isMemoryFresh(slotName, entry, turn) {
 }
 
 /**
- * Would the action's own schema accept this value for this field?
- *
- * Per FIELD rather than per object, and that distinction is load-bearing: a
- * perfectly legitimate prefill is often INCOMPLETE (no topic yet — the form is
- * the question), which a whole-object parse cannot tell apart from invalid.
- * Validating field by field lets a bad value be dropped while everything else
- * survives, which is exactly the "drop offending slots, downgrade" behaviour
- * the spec's validation gate 3 calls for.
- *
- * Uses the same `.shape` access the registry's startup validation already
- * relies on, against the same schema object the endpoint validates with.
- *
- * Module-private: every drop-don't-guess case is asserted through
- * `resolveSlots`, which is where the behaviour actually matters.
+ * Would the action's own schema accept this value for this field? Checked per field, since a legitimate
+ * prefill is often incomplete (no topic yet) and a whole-object parse can't tell that from invalid;
+ * this lets a bad value drop while the rest survive.
  */
 function fieldAccepts(paramSchema, key, value) {
   const field = paramSchema.shape ? paramSchema.shape[key] : undefined;
@@ -108,11 +51,8 @@ function fieldAccepts(paramSchema, key, value) {
 }
 
 /**
- * Read a slot's raw utterance value into a canonical one.
- *
- * Returns the vocabulary result contract (see actions/vocab/shared.js) for
- * every slot type, so the caller has one shape to branch on regardless of
- * whether the value came from a mapper, an enum or a number.
+ * Canonicalize a slot's raw value. Returns the vocabulary result shape (actions/vocab/shared.js)
+ * for every slot type, so callers branch on one shape.
  */
 function canonicalizeSlot(slot, raw) {
   if (typeof raw !== 'string' || raw.trim() === '') {
@@ -125,10 +65,8 @@ function canonicalizeSlot(slot, raw) {
   }
 
   if (slot.type === 'enum') {
-    // Case-insensitive because a model that has been told the values will still
-    // occasionally return "Worksheet". Anything not in the closed set is
-    // UNMAPPED rather than guessed at: "test paper" is not a format, and the
-    // right outcome is one chip question, not a coin flip (spec §7.4).
+    // Case-insensitive, since the model sometimes returns "Worksheet". Anything outside the closed set is
+    // unmapped rather than guessed.
     const match = (slot.values || []).find((value) => value.toLowerCase() === trimmed.toLowerCase());
     return match
       ? { status: VOCAB_STATUS.MAPPED, value: match, raw }
@@ -138,9 +76,7 @@ function canonicalizeSlot(slot, raw) {
   if (slot.type === 'number') {
     const digits = /-?\d+/.exec(trimmed);
     const parsed = digits ? Number(digits[0]) : NaN;
-    // Out of range is DROPPED, never clamped. Clamping "50 questions" to 30
-    // looks like the application understood and agreed; dropping it leaves the
-    // registry default, which is honest and visible in the form.
+    // Out of range is dropped, not clamped: clamping "50 questions" to 30 would look like agreement.
     const withinBounds =
       Number.isInteger(parsed) &&
       (typeof slot.min !== 'number' || parsed >= slot.min) &&
@@ -150,20 +86,13 @@ function canonicalizeSlot(slot, raw) {
       : { status: VOCAB_STATUS.UNMAPPED, raw };
   }
 
-  // 'text' — free text. Length bounds belong to the schema, which validates
-  // every candidate value a few lines further down, so there is nothing to
-  // enforce here beyond "is there anything at all".
+  // Free text: the schema validates length below, so only non-emptiness is checked here.
   return { status: VOCAB_STATUS.MAPPED, value: trimmed, raw };
 }
 
 /**
- * Resolve a descriptor's `defaultFrom` reference.
- *
- *   'prefs.defaultGrade' -> the teacher's saved preference
- *   'const:medium'       -> a literal, coerced to the slot's type
- *
- * The numeric coercion is not cosmetic: `const:10` reaching the schema as the
- * string "10" fails `z.number()`, and the field would silently go unfilled.
+ * Resolve a descriptor's `defaultFrom`: 'prefs.defaultGrade' reads the teacher's saved preference,
+ * 'const:medium' is a literal coerced to the slot's type (a string "10" would fail `z.number()`).
  */
 function readDefault(slot, profile) {
   const from = slot.defaultFrom;
@@ -172,10 +101,7 @@ function readDefault(slot, profile) {
   if (from.startsWith('prefs.')) {
     const key = from.slice('prefs.'.length);
     const value = profile ? profile[key] : undefined;
-    // Profile values are the application's own stored settings, chosen from the
-    // same pickers the vocabularies feed, so they are used as-is rather than
-    // pushed back through a mapper. They are still schema-validated below like
-    // every other candidate.
+    // Profile values come from the same pickers as the vocabularies, so they're used as-is (still schema-validated below).
     return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
   }
 
@@ -192,14 +118,12 @@ function readDefault(slot, profile) {
 }
 
 /**
- * Turn a proposal's raw slots into validated params, provenance and the signals
- * the policy needs.
+ * Turn a proposal's raw slots into validated params, provenance and the signals the policy needs.
  *
  * @param {object} args
  * @param {object} args.descriptor the action descriptor (registry-owned, trusted)
- * @param {Record<string, string>} [args.slots] the model's RAW slot strings (untrusted)
- * @param {Record<string, string>} [args.recovered] canonical values the deterministic
- *   recovery stage read out of THIS turn's utterance (assistant/slotRecovery.js)
+ * @param {Record<string, string>} [args.slots] the model's raw slot strings (untrusted)
+ * @param {Record<string, string>} [args.recovered] canonical values that slotRecovery.js read from this turn's utterance
  * @param {Record<string, {value: unknown, source?: string, turn?: number}>} [args.memory] client session memory
  * @param {Record<string, unknown>} [args.profile] the teacher's saved preferences
  * @param {number} [args.turn] the current turn number, for memory expiry
@@ -235,10 +159,7 @@ function resolveSlots({
   const preferences = profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {};
   const memoryRestricted = MEMORY_RESTRICTED_EFFECTS.includes(descriptor.effect);
 
-  // Only slot names are ever written into `params`, and the registry has
-  // already proven at boot that every slot name is a key the schema accepts.
-  // That is what makes a `.strict()` violation structurally impossible here
-  // rather than merely unlikely.
+  // Only descriptor slot names are written into `params`, and the registry proves at boot that each is a schema key.
   for (const slot of descriptor.slots) {
     const accept = (value, source) => {
       if (!fieldAccepts(descriptor.paramSchema, slot.name, value)) return false;
@@ -251,12 +172,8 @@ function resolveSlots({
     const fromUtterance = canonicalizeSlot(slot, rawSlots[slot.name]);
 
     if (fromUtterance.status === VOCAB_STATUS.CONTRADICTION) {
-      // Two distinct readings were stated. Never resolved by guessing — a wrong
-      // guess here produces a plausible-looking wrong worksheet that may not be
-      // noticed until it is printed. The slot is left unfilled and the
-      // contradiction reported; the policy turns it into one question showing
-      // both readings. Deliberately no fall-through to memory: quietly using a
-      // remembered value would hide the fact that the teacher said two things.
+      // Two distinct readings were stated. Leave the slot unfilled and report the contradiction so the policy
+      // asks one question showing both. Don't fall through to memory, which would hide that two things were said.
       contradictions.push({ slot: slot.name, readings: [...fromUtterance.readings] });
       if (slot.required) missing.push(slot.name);
       continue;
@@ -270,37 +187,18 @@ function resolveSlots({
     }
 
     if (fromUtterance.status === VOCAB_STATUS.AMBIGUOUS) {
-      // Understood, but it spans canonical values ("class 5-6", "primary").
-      // Prefill the teacher's OWN words and flag the field, which is both more
-      // honest than picking one and safe: the fields this can happen to are
-      // free text in the schema, and a raw phrase that the schema will not
-      // accept is dropped by the same validation as everything else.
+      // Spans several canonical values ("class 5-6", "primary"). Prefill the teacher's own words and flag the
+      // field; the schema drops a phrase it won't accept.
       if (accept(fromUtterance.raw, 'utterance')) {
         lowConfidenceFields.push(slot.name);
         continue;
       }
     }
 
-    // --- 1b. Deterministic recovery — a SECOND READER OF THE SAME SOURCE.
-    //
-    // The value was stated in this message; the model simply did not report it,
-    // and assistant/slotRecovery.js read it out of the utterance with the same
-    // vocabulary mappers used above. So it carries provenance 'utterance': that
-    // frozen value means "stated in this message — strongest", and recovery
-    // changes only WHO NOTICED, not where the value came from. Introducing a
-    // fourth provenance for it would change a wire contract the client mirrors,
-    // to describe an implementation detail the teacher cannot act on.
-    //
-    // BELOW the model and ABOVE memory, and both halves matter. Below, because
-    // when both fire the model saw the whole sentence and its syntax while the
-    // scanner saw a token window — the better-informed reader wins, and this is
-    // also what makes "never overwrite Gemini" structural rather than a rule
-    // someone has to remember. Above, because a value said NOW must beat one
-    // remembered from an earlier turn; ranking it under memory would reproduce
-    // exactly the stale-prefill bug the short `topic` TTL exists to prevent.
-    //
-    // Remembered like any other utterance value: a grade the teacher stated is
-    // worth carrying to the next turn whether the model or this pipeline read it.
+    // 1b. Recovery: slotRecovery.js read a value the model didn't report, using the same mappers. It keeps
+    // provenance 'utterance', since only who noticed changed, and a new provenance would change a wire contract.
+    // Ranked below the model, which saw the whole sentence (so Gemini is never overwritten), and above memory,
+    // so a value said now beats a stale one. Remembered like any other utterance value.
     const recoveredValue = recoveredSlots[slot.name];
     if (recoveredValue !== undefined && accept(recoveredValue, 'utterance')) {
       memoryUpdates[slot.name] = { value: recoveredValue, source: 'utterance', turn };
@@ -329,10 +227,8 @@ function resolveSlots({
     if (slot.required) missing.push(slot.name);
   }
 
-  // A completed parameter set is asserted against the whole schema, not just
-  // field by field, because that is the object the endpoint would actually
-  // receive. An incomplete one legitimately cannot pass — the form is the
-  // question — so it is reported incomplete rather than invalid.
+  // A complete set is checked against the whole schema, the object the endpoint would receive.
+  // An incomplete set is reported as incomplete rather than invalid.
   const complete = missing.length === 0 && descriptor.paramSchema.safeParse(params).success;
 
   return { params, provenance, missing, lowConfidenceFields, contradictions, memoryUpdates, complete };

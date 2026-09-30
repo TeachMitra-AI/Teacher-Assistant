@@ -1,22 +1,8 @@
-// Baseline resolution and the dev/holdout split (Milestone M7b).
-//
-// ─── WHY THERE IS MORE THAN ONE BASELINE FILE ──────────────────────────────
-// The M7a baseline is FROZEN (M7b decision D1): its counts, its cassettes and
-// its corpus are the immutable reference every future change is compared
-// against. But M7b changes the prompt, which changes `promptHash`, which changes
-// every cassette key — so the frozen baseline cannot also be the thing CI
-// asserts current code against. Those are two different jobs:
-//
-//   REFERENCE  — "what did the router do when we froze it?"  -> baseline.json,
-//                never rewritten, used by compare.js
-//   ACTIVE     — "does the current code still do what it did
-//                when last recorded?"                        -> whichever
-//                baseline file matches the current hashes
-//
-// So baselines are RESOLVED by hash rather than by filename. A run finds the
-// baseline that describes the code it is running; if none matches, that is a
-// loud failure, never a silent skip — the same rule the corpus loader and the
-// cassette store follow.
+// Baseline resolution and the dev/holdout split.
+// There's more than one baseline file because the original (frozen) baseline is the immutable reference for
+// compare.js, but later prompt changes alter `promptHash` and so every cassette key, so it can't also be what CI
+// asserts current code against. Baselines are resolved by hash, not filename: a run finds the baseline describing the
+// code it runs, and no match is a loud failure, never a silent skip.
 
 const fs = require('fs');
 const path = require('path');
@@ -34,7 +20,7 @@ function listBaselines({ dir = BASELINE_DIR } = {}) {
     .map((name) => ({ file: path.join(dir, name), data: JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')) }));
 }
 
-/** The frozen M7a reference. Throws if it is missing — it is not optional. */
+/** The frozen original reference. Throws if missing; it isn't optional. */
 function loadFrozenBaseline({ file = FROZEN_BASELINE } = {}) {
   if (!fs.existsSync(file)) {
     throw new Error(`The frozen M7a baseline is missing at ${file}. It is the reference for every comparison.`);
@@ -43,11 +29,8 @@ function loadFrozenBaseline({ file = FROZEN_BASELINE } = {}) {
 }
 
 /**
- * Find the baseline describing the code that produced `meta`.
- *
- * Matched on all four provenance hashes, not just the prompt: a descriptor or
- * registry change with an unchanged preamble is still a different system, and a
- * corpus change makes the counts incomparable.
+ * Find the baseline describing the code that produced `meta`. It matches all four provenance hashes, not just
+ * the prompt: a descriptor or registry change is a different system, and a corpus change makes counts incomparable.
  */
 function resolveActiveBaseline(meta, { dir = BASELINE_DIR } = {}) {
   const candidates = listBaselines({ dir });
@@ -62,26 +45,12 @@ function resolveActiveBaseline(meta, { dir = BASELINE_DIR } = {}) {
 }
 
 /**
- * Split the corpus into a dev half to iterate on and a holdout half to check
- * generalization against.
- *
- * ─── WHY THIS EXISTS ───────────────────────────────────────────────────────
- * After M7b the corpus will have been both the tuning set and the test set.
- * Iterating prompts against the same turns we then report on makes the reported
- * numbers optimistic by an unknown amount, and no metric in the harness can
- * detect that. Splitting does not fix it — it makes it VISIBLE: if dev improves
- * far more than holdout, the gap is the overfitting.
- *
- * ─── HOW ───────────────────────────────────────────────────────────────────
- * Deterministic and stratified: within each (stratum, language) group, cases are
- * sorted by id and assigned alternately. No randomness and no seed, so the same
- * corpus always produces the same split and two runs are comparable.
- *
- * Sessions are split WHOLE. Their turns are dependent — memory threads through
- * them — so half a session would measure nothing.
- *
- * THIS DOES NOT MODIFY THE CORPUS (M7b decision D7). It is a filter over the
- * frozen files, computed at load time.
+ * Split the corpus into a dev half to iterate on and a holdout half to check generalization.
+ * Tuning prompts against the same turns we report on makes the numbers optimistic by an unknown amount; the split
+ * makes that visible, since a dev improvement far above holdout is the overfitting.
+ * It's deterministic and stratified: within each (stratum, language) group, cases are sorted by id and assigned
+ * alternately, with no randomness, so the same corpus always gives the same split. Sessions are split whole, since
+ * their turns are dependent (memory threads through them). This doesn't modify the corpus; it's a filter applied at load time.
  */
 function splitCorpus(corpus, { half = 'all' } = {}) {
   if (half === 'all') return { cases: corpus.cases, sessions: corpus.sessions };

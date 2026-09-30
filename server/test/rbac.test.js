@@ -17,9 +17,7 @@ describe('RBAC', () => {
       resource_person: await loginAs(app, fx.schoolA, fx.resourcePersonA, PASSWORD),
       super_admin: await loginAs(app, fx.schoolA, fx.superAdmin, PASSWORD),
     };
-    // Classroom Management routes below need the flag on to assert real 200s
-    // rather than the flag's own 503 — restored in afterAll so it doesn't
-    // leak into any test file that runs after this one.
+    // Classroom Management routes below need the flag on to assert real 200s rather than the flag's 503; restored in afterAll so it doesn't leak into later files.
     savedClassroomEnv = process.env.CLASSROOM_MANAGEMENT_ENABLED;
     process.env.CLASSROOM_MANAGEMENT_ENABLED = 'true';
   });
@@ -133,10 +131,8 @@ describe('RBAC', () => {
     });
 
     test('the last super_admin cannot be demoted', async () => {
-      // The guard counts super admins globally, so this case only means
-      // anything when the fixture super admin really is the only one left —
-      // other test files seed their own. Test files run sequentially
-      // (fileParallelism: false), so borrowing them for one request is safe.
+      // The guard counts super admins globally, so this only means anything when the fixture super admin is the only one
+      // left; other files seed their own. Files run sequentially (fileParallelism: false), so borrowing them for one request is safe.
       const others = await prisma.user.findMany({
         where: { role: 'super_admin', id: { not: fx.superAdmin.id } },
         select: { id: true },
@@ -146,9 +142,7 @@ describe('RBAC', () => {
         data: { role: 'teacher' },
       });
       try {
-        // Acting as the fixture super admin on itself would hit the
-        // self-change guard first, so the request comes from a second super
-        // admin created only for this check.
+        // Acting as the fixture super admin on itself would hit the self-change guard first, so the request comes from a second super admin created for this check.
         const actor = await makeUser('super_admin');
         const token = await loginAs(app, fx.schoolA, actor, PASSWORD);
 
@@ -315,12 +309,9 @@ describe('RBAC', () => {
     }
   });
 
-  // Classroom Management (docs/classroom-feature-plan.md) is not role-gated
-  // beyond authRequired — every role manages its OWN classroom data, same as
-  // GET /api/queries above. Cross-teacher denial (no role, including admin
-  // roles, can reach another teacher's data) is covered separately and more
-  // thoroughly in classroom-tenant-isolation.test.js; this block only proves
-  // every role can reach ITS OWN, empty, classroom workspace.
+  // Classroom Management (docs/classroom-feature-plan.md) isn't role-gated beyond authRequired: every role manages its
+  // own classroom data, as with GET /api/queries. Cross-teacher denial is covered in classroom-tenant-isolation.test.js;
+  // this block only proves every role can reach its own empty workspace.
   describe('Classroom Management — every role can use its own workspace', () => {
     test.each(['teacher', 'school_admin', 'resource_person', 'super_admin'])(
       '%s can list, create, and read back their own class',

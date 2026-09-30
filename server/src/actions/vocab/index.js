@@ -1,20 +1,7 @@
-// Controlled-vocabulary registry (Milestone M4).
-//
-// Maps a vocabulary id — the value a descriptor's slot carries in its `vocab`
-// field — to the mapper that canonicalizes it. The resolver looks a mapper up
-// by id and never imports a specific vocabulary, so adding GRADES_SECONDARY or
-// BOARDS in a later phase means adding a mapper and one line here, and touching
-// no core file (the four-artifact rule, spec §8.3).
-//
-// The ids themselves live in assistant/contracts.js (VOCABULARIES) because they
-// are part of the frozen wire contract — a slot's `vocab` is projected into the
-// catalog. This module is the only place that knows what each id *does*.
-//
-// Deliberately NOT imported by actions/registry.js: the registry validates that
-// a slot's vocabulary id is a known id, which it can do from contracts.js
-// alone. Requiring an implementation at registry-validation time would couple
-// startup to M4 code that production never calls in Phase 1. The coupling that
-// does matter — every id having a mapper — is asserted by this folder's tests.
+// Controlled-vocabulary registry: maps a vocabulary id (a slot's `vocab`) to its mapper. The resolver looks
+// mappers up by id, so a new vocabulary is a mapper plus one line here. The ids live in assistant/contracts.js
+// (VOCABULARIES) as part of the wire contract. Not imported by registry.js, which only needs the ids; this
+// folder's tests assert every id has a mapper.
 
 const { VOCABULARIES } = require('../../assistant/contracts');
 const { VOCAB_STATUS, unmapped } = require('./shared');
@@ -37,13 +24,8 @@ const VALUES = Object.freeze({
 });
 
 /**
- * Canonicalize a raw phrase against a named vocabulary.
- *
- * An unknown id returns `unmapped` rather than throwing. A descriptor cannot
- * reach this state — the registry rejects an unknown vocabulary id at boot —
- * but the pipeline's job in every unexpected case is to degrade to the
- * teacher's default, never to take the request down (guardrail G22's spirit:
- * this endpoint sits in front of a text box).
+ * Canonicalize a raw phrase against a named vocabulary. An unknown id returns `unmapped` rather than
+ * throwing; the registry rejects one at boot, but the pipeline should degrade, not fail the request.
  *
  * @param {string} vocabularyId one of VOCABULARIES
  * @param {unknown} raw

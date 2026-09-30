@@ -1,6 +1,5 @@
-// Classroom Management — attendance (docs/classroom-feature-plan.md §10).
-// Mirrors classroom.test.js's shape: flag manipulation via process.env,
-// fixtures from helpers/fixtures, loginAs for real HTTP-path tokens.
+// Classroom Management attendance (docs/classroom-feature-plan.md). Like classroom.test.js: flags via process.env,
+// fixtures from helpers/fixtures, loginAs for real tokens.
 const request = require('supertest');
 
 const { app, prisma } = require('./helpers/testApp');
@@ -173,11 +172,8 @@ describe('Classroom Management — attendance', () => {
     });
   });
 
-  // The exact worked example from the approved plan: 30 students, 25 present,
-  // 3 absent, 2 unmarked → 89.3%, NOT 25/30 = 83.3%. Pinned against BOTH the
-  // summary endpoint and the exported CSV, so a future edit can never
-  // silently fold unmarked back into the denominator without breaking this
-  // test.
+  // The worked example from the plan: 30 students, 25 present, 3 absent, 2 unmarked gives 89.3%, not 25/30 = 83.3%. Pinned
+  // against both the summary endpoint and the exported CSV, so folding unmarked back into the denominator fails this.
   describe('attendance percentage formula — present / (present + absent) * 100, unmarked excluded', () => {
     let classId;
     let studentIds;
@@ -192,7 +188,7 @@ describe('Classroom Management — attendance', () => {
       const marks = [
         ...studentIds.slice(0, 25).map((studentId) => ({ studentId, status: 'present' })),
         ...studentIds.slice(25, 28).map((studentId) => ({ studentId, status: 'absent' })),
-        // studentIds[28] and studentIds[29] are deliberately never marked — unmarked.
+        // studentIds[28] and studentIds[29] are never marked.
       ];
       const res = await as(teacherAToken)(
         request(app).post(`/api/classroom/classes/${classId}/attendance`).send({ date: '2026-03-10', marks })
@@ -278,9 +274,7 @@ describe('Classroom Management — attendance', () => {
       await as(teacherAToken)(
         request(app).post(`/api/classroom/classes/${classId}/attendance`).send({ date: '2026-05-02', marks: [{ studentId: s1, status: 'absent' }] })
       );
-      // A third marked day where this student was never touched — counts
-      // toward daysMarked (denominator) but not toward this student's
-      // present/absent, so it should surface as one "unmarked" day.
+      // A third marked day this student was never touched: it counts toward daysMarked (the denominator) but not this student's present/absent, so it surfaces as one "unmarked" day.
       const other = await addStudent(teacherAToken, classId, 'Gita');
       await as(teacherAToken)(
         request(app).post(`/api/classroom/classes/${classId}/attendance`).send({ date: '2026-05-03', marks: [{ studentId: other, status: 'present' }] })

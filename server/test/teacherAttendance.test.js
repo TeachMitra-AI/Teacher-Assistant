@@ -1,18 +1,10 @@
-// Teacher Attendance — routes/teacherAttendance.js.
-// Mirrors classroom.attendance.test.js's shape: flag manipulation via
-// process.env, fixtures from helpers/fixtures, loginAs for real HTTP-path
-// tokens. System time is controlled with vi.setSystemTime() so arrival
-// classification (on time / late / outside window) and working-time math
-// are deterministic regardless of when this suite actually runs — the
-// route always reads `new Date()` for the server's own clock (never trusts
-// a client-sent time), so that's the clock this suite has to control.
-//
-// This file was rewritten for the redesigned plan
-// (docs/feature-teacher-attendance-implementation-plan.md) — geofence and
-// check-in/out-window failures are now hard blocks with no attendance row
-// and no Principal review queue (removed entirely), not an allowed-but-
-// flagged record. Corrections are still testable directly via
-// POST /:id/review, just no longer reachable only through a queue.
+// Teacher Attendance: routes/teacherAttendance.js. Like classroom.attendance.test.js: flags via process.env, fixtures
+// from helpers/fixtures, loginAs for real tokens. System time is controlled with vi.setSystemTime() so arrival
+// classification and working-time math are deterministic; the route reads `new Date()` and never trusts a
+// client-sent time, so that's the clock to control.
+// Geofence and check-in/out-window failures are hard blocks with no attendance row and no Principal review queue,
+// not an allowed-but-flagged record (docs/feature-teacher-attendance-implementation-plan.md). Corrections are still
+// testable directly via POST /:id/review.
 const request = require('supertest');
 const ExcelJS = require('exceljs');
 
@@ -21,10 +13,7 @@ const { createFixtures } = require('./helpers/fixtures');
 const { loginAs } = require('./helpers/auth');
 const { istDateString } = require('../src/lib/teacherAttendance');
 
-// supertest/superagent only auto-buffers a handful of built-in content
-// types into `res.body` — an .xlsx response's MIME type isn't one of them,
-// so without this it gets silently mis-decoded as text. Same helper as
-// test/classroom.export.test.js.
+// supertest only auto-buffers a few content types into `res.body`; an .xlsx response isn't one, so without this it's mis-decoded as text. Same helper as test/classroom.export.test.js.
 function binaryParser(res, callback) {
   res.setEncoding('binary');
   let data = '';
@@ -160,9 +149,7 @@ describe('Teacher Attendance', () => {
       expect(today.body.attendance).toBeNull();
     });
 
-    // Decided rule: check-in has no earliest time, only a latest one — an
-    // early arrival (still at the school's location) is never blocked on
-    // its own, only arriving after checkinWindowEnd is.
+    // Check-in has no earliest time, only a latest: an early arrival at the school's location is never blocked, only arriving after checkinWindowEnd.
     test('1:16 AM — hours before opening, still succeeds (present, on time) — only the window\'s close and location are enforced', async () => {
       vi.setSystemTime(istDateTime('2026-08-05', 1, 16)); // a Wednesday — not a weekly-off day
       const res = await as(teacherBToken)(
@@ -202,9 +189,8 @@ describe('Teacher Attendance', () => {
     });
 
     test('a weekly off day (default: Sunday) blocks check-in entirely', async () => {
-      // 2026-08-23 is a Sunday; schoolA's config defaults to weeklyOffDays "0".
-      // (A date before "today" — vi.setSystemTime moving the clock PAST the
-      // real current date would make the already-issued JWT look expired.)
+      // 2026-08-23 is a Sunday; schoolA's config defaults to weeklyOffDays "0". (A date before "today": moving the clock
+      // past the real date would make the issued JWT look expired.)
       vi.setSystemTime(istDateTime('2026-08-23', 9, 0));
       const res = await as(teacherA2Token)(
         request(app).post('/api/teacher-attendance/check-in').send({ lat: 12.9716, lon: 77.5946, accuracyMeters: 15 })
@@ -278,21 +264,16 @@ describe('Teacher Attendance', () => {
       expect(res.body.attendance.earlyDepartureMinutes).toBe(0);
     });
 
-    // Decided rule: checkout has no time-of-day gate at all — a teacher
-    // physically at school can check out whenever they actually leave.
-    // Only location can block it. earlyDepartureMinutes is still recorded
-    // (informational — shown in Reports/History), it just no longer blocks
-    // the action itself.
+    // Checkout has no time-of-day gate: a teacher at school can leave whenever, and only location can block it.
+    // earlyDepartureMinutes is still recorded (shown in Reports/History) but never blocks the action.
     test('checking out well before the early-departure grace succeeds — location is the only gate', async () => {
       vi.setSystemTime(istDateTime('2026-08-12', 9, 0));
       await as(teacherBToken)(
         request(app).post('/api/teacher-attendance/check-in').send({ lat: 12.9716, lon: 77.5946, accuracyMeters: 15 })
       );
 
-      // closeTime 16:00, checked in 09:00 -> checking out at 11:00 is only
-      // 120 working minutes, under the half-day threshold (210 of the
-      // 420-minute required day) — well past the old early-departure
-      // cutoff too, and it succeeds anyway.
+      // closeTime 16:00, checked in 09:00: checking out at 11:00 is only 120 working minutes, under the half-day threshold
+      // (210 of the 420-minute day), and it succeeds anyway.
       vi.setSystemTime(istDateTime('2026-08-12', 11, 0));
       const res = await as(teacherBToken)(
         request(app)
@@ -672,15 +653,9 @@ describe('Teacher Attendance', () => {
     const REPORT_MONTH = '2026-07'; // isolated from every other date used elsewhere in this file
 
     beforeAll(async () => {
-      // schoolA's config was created at real test-run "now" (top-of-file
-      // beforeAll, unfaked) — which is chronologically AFTER 2026-07, so
-      // without this, sinceDateFor would (correctly, by design) treat July
-      // as "before tracking started" and exclude it entirely. Forced back
-      // to a fixed early date so this describe block's month is safely
-      // "after config existed," independent of whatever the real clock
-      // happens to read when this suite runs.
-      // Same reasoning for the teachers' own account creation dates — also
-      // real test-run "now" from createFixtures(), also after 2026-07.
+      // schoolA's config was created at the real test-run "now" (top-of-file beforeAll, unfaked), which is after 2026-07, so
+      // sinceDateFor would treat July as "before tracking started" and exclude it. Forced back to a fixed early date so this
+      // block's month is safely after the config existed, and the same for the teachers' own account creation dates.
       await prisma.schoolAttendanceConfig.update({
         where: { schoolId: fx.schoolA.id },
         data: { createdAt: new Date('2026-01-01T00:00:00.000Z') },
@@ -802,11 +777,8 @@ describe('Teacher Attendance', () => {
   });
 
   describe('today-summary (Reports dashboard cards)', () => {
-    // Whatever real calendar day these tests happen to run on could be a
-    // Sunday — schoolA's config defaults weeklyOffDays to "0" — which would
-    // make the endpoint correctly return all-zero "non-working day" counts
-    // regardless of the records seeded below. Cleared for this block only,
-    // so the test is deterministic no matter what day it's actually run.
+    // The real day these tests run on could be a Sunday (schoolA defaults weeklyOffDays to "0"), making the endpoint
+    // return all-zero "non-working day" counts regardless of the seeded records. Cleared for this block so it's deterministic.
     let savedWeeklyOffDays;
     beforeAll(async () => {
       const config = await prisma.schoolAttendanceConfig.findUnique({ where: { schoolId: fx.schoolA.id } });
@@ -895,10 +867,7 @@ describe('Teacher Attendance', () => {
     });
 
     test('a wider day range does surface it', async () => {
-      // pageSize large enough to guarantee the deliberately-old row (oldest
-      // in the window, so last in newest-first order) isn't pushed off the
-      // first page by everything else this file's many check-ins/corrections
-      // have already logged for schoolA.
+      // pageSize large enough that the deliberately old row (last in newest-first order) isn't pushed off the first page by everything else logged for schoolA.
       const res = await as(adminAToken)(request(app).get('/api/teacher-attendance/activity-log?days=90&pageSize=100'));
       expect(res.status).toBe(200);
       expect(res.body.entries.some((e) => e.result === 'old event')).toBe(true);

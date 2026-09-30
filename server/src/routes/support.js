@@ -1,15 +1,7 @@
-// Help & Support — bug reports and lightweight feedback.
-//
-// SCOPE: this file owns exactly one endpoint, POST /api/support/tickets.
-// Phase 1 only (see docs/help-support-architecture.md): no file upload, no
-// admin inbox, no AI-conversation opt-in yet — those are Phase 2. Contact
-// Support has no route here at all: it's a WhatsApp deep link built entirely
-// client-side.
-//
-// Deliberately makes no LLM call and carries no per-user daily budget, unlike
-// routes/attachments.js / routes/assistant.js — the shared per-IP rate
-// limiter mounted in index.js is what bounds this endpoint, the same way
-// routes/queries.js's POST /feedback has no budget of its own.
+// Help & Support: bug reports and lightweight feedback. Owns one endpoint, POST /api/support/tickets (no file
+// upload or AI-conversation opt-in yet; see docs/help-support-architecture.md). Contact Support is a client-side WhatsApp link.
+// It makes no LLM call and has no per-user daily budget; the shared per-IP limiter in index.js bounds it, as with
+// POST /feedback in routes/queries.js.
 const express = require('express');
 const { z } = require('zod');
 
@@ -22,19 +14,13 @@ const router = express.Router();
 
 const MAX_DESCRIPTION_LENGTH = 1000;
 
-// Closed vocabularies, one per ticket type — the same "fixed picker list, not
-// free text" convention as GRADES/SUBJECTS in client/src/config.ts. Keep in
-// step with that file's BUG_CATEGORIES / FEEDBACK_CATEGORIES (same
-// duplication convention already used there for LANGUAGES/GRADES/SUBJECTS).
+// Closed vocabularies per ticket type, a fixed picker list like GRADES/SUBJECTS. Keep in step with BUG_CATEGORIES /
+// FEEDBACK_CATEGORIES in client/src/config.ts.
 const BUG_CATEGORIES = ['crash', 'connection_issue', 'slow_timeout', 'wrong_answer', 'upload_failed', 'account', 'other'];
 const FEEDBACK_CATEGORIES = ['feature_request', 'suggestion', 'praise', 'other'];
 
-// Auto-captured context — a closed, known-safe set of fields (see the design
-// doc's privacy section). Every field optional and independently bounded so
-// a missing or oversized one degrades gracefully rather than failing the
-// whole submission. Deliberately excludes the AI prompt/answer and any
-// screenshot — those are opt-in, Phase 2 additions, never folded into this
-// auto-captured blob.
+// Auto-captured context: a closed set of known-safe fields (see the design doc's privacy section), each optional and
+// bounded so a missing or oversized one degrades gracefully. It excludes the AI prompt/answer and screenshots, which are opt-in.
 const contextSchema = z
   .object({
     route: z.string().max(200),
@@ -62,18 +48,15 @@ const ticketSchema = z
     if (!data.category || !validCategories.includes(data.category)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['category'], message: 'Please choose a valid category.' });
     }
-    // A bug report needs enough for a developer to act on without a
-    // follow-up question; feedback is deliberately allowed to be just a type
-    // with no message (see the design doc's §5 — forcing text there produces
-    // empty/junk submissions instead of a quick "I like this").
+    // A bug report needs enough to act on without a follow-up; feedback may be just a type with no message, since
+    // forcing text produces empty or junk submissions.
     if (data.type === 'bug' && (!data.description || data.description.trim().length === 0)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['description'], message: 'Please describe what happened.' });
     }
   });
 
 /**
- * Gate middleware — same shape as routes/attachments.js's
- * requireAttachmentsEnabled: runs before any work is done, so a disabled or
+ * Gate middleware, like routes/attachments.js's requireAttachmentsEnabled: runs before any work, so a disabled or
  * out-of-rollout request never touches the database.
  */
 function requireHelpSupportEnabled() {

@@ -1,16 +1,9 @@
-// The classifier (Milestone M5).
-//
-// Two things are checked here, and the second matters more than it looks:
-//
-//   1. WHAT GOES OUT — the prompt is generated from the registry, carries no
-//      server-internal field, and never puts the teacher's words where the
-//      model reads instructions.
-//   2. WHAT COMES BACK — every upstream failure becomes a passthrough reason.
-//      Nothing throws. A timeout is a decision.
-//
-// `gemini` is injected, so these run with no network, no key and no real
-// GeminiService. The real service is exercised through the route in
-// test/assistant.interpret.test.js, against a stubbed fetch.
+// The classifier. Two things are checked:
+//   1. What goes out: the prompt is generated from the registry, carries no server-internal field, and never puts the
+//      teacher's words where the model reads instructions.
+//   2. What comes back: every upstream failure becomes a passthrough reason and nothing throws; a timeout is a decision.
+// `gemini` is injected, so these run with no network or key. The real service is exercised through the route in
+// test/assistant.interpret.test.js against a stubbed fetch.
 
 const { generateAssessment } = require('../../src/actions/descriptors/generateAssessment');
 const { openGenerator } = require('../../src/actions/descriptors/openGenerator');
@@ -109,11 +102,8 @@ describe('the teacher’s text never reaches the instructions', () => {
   });
 
   test('the call puts the utterance in userText and the actions in systemInstruction', async () => {
-    // Deliberately a phrase that appears nowhere in the registry. An earlier
-    // draft used "make a worksheet", which is a substring of open_generator's
-    // own example ("I want to make a worksheet") — the assertion failed on the
-    // registry's text rather than on the utterance, which would have made this
-    // test prove nothing while looking like it did.
+    // A phrase that appears nowhere in the registry. An earlier draft used "make a worksheet", a substring of open_generator's
+    // own example, so the assertion failed on the registry's text and proved nothing.
     const utterance = 'quadrilaterals for my Tuesday remedial group';
     const gemini = okGemini(PROPOSAL);
     await classify({ gemini, utterance, descriptors: BOTH, requestId: 'r1' });
@@ -180,19 +170,15 @@ describe('every failure becomes a reason, never an exception (G22)', () => {
   });
 
   test('the per-request CALL budget is not confused with the per-user DAILY budget', () => {
-    // Both are "budget exhausted" in English and they mean completely different
-    // things: one is a retry storm inside a single request, the other is a
-    // teacher's daily cap checked before the classifier ever runs. Conflating
-    // them would make an upstream incident look like normal quota usage.
+    // Both mean "budget exhausted" but differ: one is a retry storm inside a request, the other the teacher's daily cap
+    // checked before the classifier runs. Conflating them would make an upstream incident look like normal quota use.
     expect(classifyFailure(Object.assign(new Error('b'), { code: 'BUDGET_EXHAUSTED' })))
       .toBe('classifier_error');
   });
 
   test('a non-JSON response is a classifier_error, not a crash', async () => {
-    // This is the realistic shape of the outputGuard risk: gemini.js runs its
-    // coaching output guard over structured responses too, and a suppressed
-    // response comes back as prose. It must degrade, and outputGuard.js must NOT
-    // be modified to accommodate routing.
+    // The realistic outputGuard risk: gemini.js runs its coaching output guard over structured responses too, and a
+    // suppressed response comes back as prose. It must degrade, and outputGuard.js mustn't be modified for routing.
     const gemini = fakeGemini({ text: "I'm sorry, I can't help with that." });
     const result = await classify({ gemini, utterance: 'x', descriptors: BOTH, requestId: 'r1' });
     expect(result).toMatchObject({ ok: false, reason: 'classifier_error' });
@@ -215,10 +201,8 @@ describe('every failure becomes a reason, never an exception (G22)', () => {
 });
 
 describe('REGRESSION — the prompt is derived from the registry, not hand-written', () => {
-  // The companion to the response-schema derivation test in
-  // proposalSchema.test.js. Together they prove the whole classifier surface —
-  // what the model is TOLD it can do, and what it is ALLOWED to answer — comes
-  // from one list. Adding an action must require no edit to classifier.js.
+  // Companion to the response-schema derivation test in proposalSchema.test.js: together they prove what the model is told
+  // it can do and what it may answer both come from one list, so adding an action needs no edit to classifier.js.
 
   const futureAction = {
     ...openGenerator,
@@ -239,9 +223,7 @@ describe('REGRESSION — the prompt is derived from the registry, not hand-writt
   });
 
   test('what the app advertises and what it understands cannot drift apart', async () => {
-    // The catalog endpoint and the classifier prompt are built from the same
-    // descriptor list, so an action the teacher can see is an action the router
-    // can recognise — by construction, not by anyone remembering.
+    // The catalog endpoint and the classifier prompt share one descriptor list, so a visible action is one the router recognises by construction.
     const gemini = okGemini(PROPOSAL);
     await classify({ gemini, utterance: 'x', descriptors: [...BOTH, futureAction], requestId: 'r1' });
 

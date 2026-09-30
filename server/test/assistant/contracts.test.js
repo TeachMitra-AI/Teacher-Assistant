@@ -1,19 +1,9 @@
-// Milestone M0 — the contract freeze, made executable.
-//
-// These tests exist so that "frozen" means something enforceable rather than a
-// promise in a document. Two things are checked:
-//
-//   1. The vocabularies themselves hold their Phase 1 shape (the effect ceiling,
-//      the decision subset, immutability).
-//   2. The example payloads published in docs/ai-action-router-phase1-spec.md §7
-//      — kept executable in test/helpers/assistantFixtures.js — actually conform
-//      to those vocabularies. A documented example that no longer validates is
-//      the usual way a spec quietly stops being true.
-//
-// Several assertions here encode guardrails that no implementation exists to
-// violate yet (the strict-params rule, the effect ceiling). That is deliberate:
-// the cheapest moment to make a rule executable is before the code that could
-// break it is written.
+// The contract freeze, made executable so "frozen" is enforceable. Two things are checked:
+//   1. The vocabularies hold their shape (effect ceiling, decision subset, immutability).
+//   2. The example payloads in docs/ai-action-router-phase1-spec.md, kept executable in test/helpers/assistantFixtures.js,
+//      conform to those vocabularies; a documented example that no longer validates is how a spec quietly stops being true.
+// Some assertions encode rules no implementation can violate yet (strict params, the effect ceiling), since the
+// cheapest time to make a rule executable is before the code that could break it exists.
 
 const contracts = require('../../src/assistant/contracts');
 const fixtures = require('../helpers/assistantFixtures');
@@ -34,7 +24,7 @@ const {
   NON_ACTION_INTENTS,
 } = contracts;
 
-/** Router metadata that must never appear INSIDE a params object (see guardrail G3). */
+/** Router metadata that must never appear inside a params object. */
 const METADATA_KEYS = ['provenance', 'confidence', 'decision', 'effect', 'requestId', 'actionId', 'missing'];
 
 const ALL_VOCABULARIES = [
@@ -88,18 +78,15 @@ describe('assistant contracts — frozen vocabularies', () => {
     for (const decision of PHASE1_DECISIONS) {
       expect(DECISIONS).toContain(decision);
     }
-    // 'execute' stays defined so the client can defensively downgrade it;
-    // 'suggest' stays defined so Phase 2 is additive rather than breaking.
-    // Neither may ever be emitted in Phase 1.
+    // 'execute' stays defined so the client can downgrade it, and 'suggest' so it can be added later without breaking
+    // anything. Neither may be emitted today.
     expect(PHASE1_DECISIONS).not.toContain('execute');
     expect(PHASE1_DECISIONS).not.toContain('suggest');
     expect(PHASE1_DECISIONS).toEqual(['prefill', 'ask', 'passthrough']);
   });
 
   test('non-action intents do not collide with real action ids', () => {
-    // 'unknown' and 'coach_question' are reserved: an action may never claim
-    // either as its id, or a correct "no action here" answer would be
-    // indistinguishable from a real routing.
+    // 'unknown' and 'coach_question' are reserved: an action claiming either as its id would make "no action here" indistinguishable from a real routing.
     expect(NON_ACTION_INTENTS).toEqual(['unknown', 'coach_question']);
   });
 });
@@ -131,9 +118,8 @@ describe('assistant contracts — documented catalog example', () => {
   });
 
   test('server-internal descriptor fields are never projected into the catalog', () => {
-    // The client is told what it may use, never what it may not. Leaking
-    // requiredRoles would hand an attacker the permission map; leaking
-    // paramSchema would invite the client to re-implement validation.
+    // The client is told what it may use, never what it may not. Leaking requiredRoles would hand an attacker the
+    // permission map, and paramSchema would invite the client to re-implement validation.
     for (const action of actions) {
       expect(action).not.toHaveProperty('paramSchema');
       expect(action).not.toHaveProperty('requiredRoles');
@@ -214,9 +200,7 @@ describe('assistant contracts — documented interpret examples', () => {
 
   test.each(resolvedExamples)('the %s example records provenance for every param', (_label, response) => {
     const action = response.actions[0];
-    // Provenance drives the prefill markers, the "clear AI fields" undo, and the
-    // correction metric that gates launch — a param without it is invisible to
-    // all three.
+    // Provenance drives the prefill markers, the "clear AI fields" undo and the correction metric; a param without it is invisible to all three.
     for (const key of Object.keys(action.params)) {
       expect(PROVENANCE_SOURCES, `${key} provenance`).toContain(action.provenance[key]);
     }
@@ -224,9 +208,7 @@ describe('assistant contracts — documented interpret examples', () => {
   });
 
   test.each(resolvedExamples)('the %s example keeps router metadata OUT of params (guardrail G3)', (_label, response) => {
-    // The generation schema is `.strict()`. Metadata folded into params would
-    // make every downstream generation request fail with a 400 — a mistake that
-    // is easy to make because the two objects travel together.
+    // The generation schema is `.strict()`, so metadata folded into params would make every generation request 400; an easy mistake since the two objects travel together.
     const action = response.actions[0];
     for (const key of METADATA_KEYS) {
       expect(action.params, `params must not contain "${key}"`).not.toHaveProperty(key);

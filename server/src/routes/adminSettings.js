@@ -1,21 +1,9 @@
-// Admin Settings — temporary, runtime overrides of existing env-var
-// configuration (lib/flags.js), toggleable without a redeploy. Two kinds of
-// setting, both driven by the same allowlisted registry
-// (lib/systemSettings.js's ADMIN_SETTINGS_REGISTRY):
-//   - Feature Management (type: 'boolean')   — e.g. Learning Representation
-//   - AI Access (type: 'role_list')          — e.g. Assistant allowed roles
-//
-// SCOPE: like adminSupport.js, every route here is super_admin-only — these
-// are global, app-wide switches, not a school's own data, the same reasoning
-// adminSupport.js already established for the ticket inbox (kept as its own
-// file for the same reason: a different access model than routes/admin.js's
-// role-scoped rest, easier to see correctly on its own).
-//
-// Each setting is a temporary OVERRIDE, never a replacement: the underlying
-// env var remains the safe default/fallback (see lib/systemSettings.js) — a
-// deployment that never opens this screen is unaffected. Only settings
-// present in ADMIN_SETTINGS_REGISTRY are reachable through this API — no
-// other env var or secret is ever exposed here.
+// Admin Settings: runtime overrides of env-var config (lib/flags.js), toggleable without a redeploy. Two kinds,
+// both from the allowlisted ADMIN_SETTINGS_REGISTRY (lib/systemSettings.js): Feature Management (boolean, e.g.
+// Learning Representation) and AI Access (role_list, e.g. Assistant allowed roles).
+// Every route is super_admin-only: these are global switches, not a school's data, so it's its own file like
+// adminSupport.js. An override never replaces the env var, which stays the default; only registry settings are
+// reachable, so no other env var or secret is exposed.
 const express = require('express');
 const { z } = require('zod');
 
@@ -35,10 +23,8 @@ router.get('/', authRequired, requireRole('super_admin'), asyncHandler(async (re
 }));
 
 const booleanBodySchema = z.object({ enabled: z.boolean() }).strict();
-// An EMPTY roles array is accepted deliberately — it's a valid override
-// meaning "no role may use the Assistant" (see ADMIN_SETTINGS_REGISTRY's
-// comment on this setting). Every entry must be a real, known role; an
-// unrecognized name is a 400, never silently dropped or ignored.
+// An empty roles array is accepted on purpose: it means "no role may use the Assistant" (see ADMIN_SETTINGS_REGISTRY).
+// Every entry must be a known role; an unknown name is a 400, never silently dropped.
 const roleListBodySchema = z.object({ roles: z.array(z.enum(APP_ROLES)) }).strict();
 
 function bodySchemaFor(type) {
@@ -47,9 +33,7 @@ function bodySchemaFor(type) {
   return null;
 }
 
-// PATCH /api/admin/feature-flags/:id — update one setting's override. Writes
-// an Event audit row, same convention routes/admin.js's decidePendingUser
-// already uses for admin-mutating actions (who did what, durably).
+// PATCH /api/admin/feature-flags/:id: update one setting's override. Writes an Event audit row, as admin.js's decidePendingUser does.
 router.patch('/:id', authRequired, requireRole('super_admin'), asyncHandler(async (req, res) => {
   const entry = ADMIN_SETTINGS_REGISTRY[req.params.id];
   if (!entry) {
@@ -65,10 +49,7 @@ router.patch('/:id', authRequired, requireRole('super_admin'), asyncHandler(asyn
   }
 
   const value = entry.type === 'boolean' ? parsed.data.enabled : parsed.data.roles;
-  // Belt-and-braces re-check against the registry's own validator (role
-  // membership is already enforced by the zod z.enum above; `validate`
-  // exists so a future entry with a richer rule doesn't need route-level
-  // changes here).
+  // Re-check against the registry's validator (role membership is already enforced by z.enum), so a richer rule needs no route change.
   if (entry.validate && !entry.validate(value)) {
     return res.status(400).json({ error: 'Invalid value for this setting.' });
   }
@@ -78,11 +59,8 @@ router.patch('/:id', authRequired, requireRole('super_admin'), asyncHandler(asyn
     data: {
       userId: req.user.id,
       type: 'feature_flag_updated',
-      // The actual SystemSetting key (not the route id), so this audit
-      // record matches what's queryable in the SystemSetting table itself.
-      // `enabled` for a boolean setting (unchanged shape, matches the
-      // original Learning Representation audit exactly); `roles` for a
-      // role_list setting.
+      // The real SystemSetting key (not the route id), so the audit record matches the table. `enabled` for a boolean
+      // setting, `roles` for a role_list.
       metadata: JSON.stringify(
         entry.type === 'boolean' ? { key: entry.settingKey, enabled: value } : { key: entry.settingKey, roles: value }
       ),

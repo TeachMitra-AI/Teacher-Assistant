@@ -1,12 +1,6 @@
-// Per-user daily budget counter (M9).
-//
-// Pure module, injected clock, no database and no Express — so every case below
-// is exact rather than approximate. Time is a parameter here, which is what lets
-// the day-rollover cases be asserted instead of hoped for.
-//
-// The behaviours that matter operationally, and why each is tested:
-//   - the boundary (limit-th call allowed, limit+1-th refused) is the whole
-//     contract, and off-by-one is the classic way a cost control is wrong;
+// Per-user daily budget counter. A pure module with an injected clock and no database or Express, so every case is exact.
+// Why each behaviour is tested:
+//   - the boundary (limit-th call allowed, limit+1-th refused) is the whole contract, and off-by-one is the classic cost-control bug;
 //   - users are independent, or one busy teacher silences a staff room;
 //   - the day rolls over, or the budget is a one-time allowance;
 //   - the map is bounded, or the counter is a memory-growth vector.
@@ -79,10 +73,8 @@ describe('consume — the boundary', () => {
   });
 
   test('a limit of 0 refuses the FIRST call', () => {
-    // The new-user path originally granted one call before looking at the
-    // limit, so a zero budget still spent a model call. Unreachable through the
-    // env (parseIntEnv clamps at 1) and fixed anyway: a control that is wrong at
-    // its own boundary is not worth trusting elsewhere.
+    // The new-user path once granted a call before checking the limit, so a zero budget still spent a model call.
+    // Unreachable through the env (parseIntEnv clamps at 1), but fixed anyway.
     const budget = createBudgetCounter({ limit: 0, now: () => NOON_UTC });
     expect(budget.consume('u1')).toBe(false);
     expect(budget.size()).toBe(0);

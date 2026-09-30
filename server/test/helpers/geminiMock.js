@@ -1,21 +1,13 @@
-// Shared test helper: stubs the global `fetch` that GeminiService (server/src/gemini.js)
-// calls directly, so tests can drive the real GeminiService/route code
-// end-to-end without making a real network call. No changes to gemini.js
-// are needed for this to work.
-//
-// `vi` is not require()'d here — Vitest's CJS entry point refuses to be
-// require()'d directly. Instead this relies on `vi` being available as a
-// real global, which vitest.config.js's `test.globals: true` provides for
-// every test file (and, transitively, plain CJS helpers they require()).
+// Stubs the global `fetch` that GeminiService (server/src/gemini.js) calls, so tests can drive the real
+// GeminiService/route code end to end with no network call.
+// `vi` isn't require()'d: Vitest's CJS entry refuses to be required. It relies on `vi` being a real global from
+// `test.globals: true` in vitest.config.js, which reaches the CJS helpers test files require().
 
 /**
  * @param {Array<{status?: number, json?: object, text?: string, reject?: Error, headers?: object}>} responseQueue
- *   One entry consumed per fetch call, in order. If there are more calls
- *   than entries, the LAST entry repeats for every subsequent call — handy
- *   for "always fails" or "always succeeds" scenarios without listing every
- *   call explicitly. `headers` is a plain object of response headers (e.g.
- *   { 'retry-after': '2' }); `reject` makes the fetch itself throw (network
- *   error / timeout).
+ *   One entry is consumed per fetch call, in order. With more calls than entries the last entry repeats, handy for
+ *   "always fails"/"always succeeds". `headers` is a plain object (e.g. { 'retry-after': '2' }); `reject` makes the
+ *   fetch itself throw (network error / timeout).
  * @returns {{ mock: import('vitest').Mock, calls: Array<{url: string, body: any, headers: any}> }}
  */
 function mockGeminiFetch(responseQueue) {

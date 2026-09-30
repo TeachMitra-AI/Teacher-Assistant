@@ -1,11 +1,6 @@
-// The scorer's own tests (Milestone M7a).
-//
-// A BROKEN SCORER REPORTS A BEAUTIFUL NUMBER. Nothing else in the harness has
-// that property: a broken loader throws, a broken runner throws, a missing
-// cassette now invalidates the run — but a scorer that counts a wrong action as
-// correct produces a report that looks exactly like a good one. So it is pure,
-// it is tested against hand-built results, and the tests below are proven to
-// fail when a mis-scoring defect is injected (see the M7a completion report).
+// The scorer's own tests. A broken scorer reports a beautiful number: a broken loader or runner throws and a missing
+// cassette invalidates the run, but a scorer that counts a wrong action as correct produces a report that looks good.
+// So it's pure, tested against hand-built results, and these tests are proven to fail when a mis-scoring defect is injected.
 
 
 const { scoreOne, aggregate, score, classifyTopic, sameValue } = require('../../evals/lib/score');
@@ -317,12 +312,9 @@ describe('aggregate', () => {
     expect(metrics.hardGates.emergencyClassifierCalls.pass).toBe(false);
   });
 
-  // ADDED AFTER AN INJECTED-DEFECT PROOF FAILED TO FAIL. Hardcoding
-  // `hardGates.languageTrap.pass` to true broke nothing: `scoreOne`'s
-  // per-turn `languageTrapViolation` flag was tested, but the AGGREGATE that
-  // actually gates a release was not, so the gate could not fail. Every other
-  // hard gate had this test; this one did not. A guard that cannot fail is not
-  // a guard (the M5 G4 precedent, found the same way).
+  // Added after an injected-defect proof failed to fail: hardcoding `hardGates.languageTrap.pass` to true broke nothing,
+  // since scoreOne's per-turn `languageTrapViolation` was tested but the aggregate that gates a release wasn't. Every
+  // other hard gate had this test. A guard that cannot fail is not a guard.
   test('a language-trap violation fails the gate and names the offender', () => {
     const { metrics } = score([
       result({

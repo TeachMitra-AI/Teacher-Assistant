@@ -1,13 +1,7 @@
-// Multi-key failover for the Gemini API. A GeminiKeyPool holds one or more
-// API keys and hands one out per call via getKey(), skipping any key that
-// recently hit a rate-limit/quota (429) or auth (401/403) error and is still
-// "cooling down". This lets GeminiService switch keys immediately when one
-// is exhausted, instead of surfacing an error to the teacher, while a
-// single-key pool behaves exactly like a fixed key always did.
-//
-// Deliberately synchronous and dependency-free (like geminiPolicy.js) so it
-// composes cleanly with gemini.js's own retry loop rather than introducing a
-// second async control flow. `now` is injectable for deterministic tests.
+// Multi-key failover for Gemini. getKey() hands out one key per call, skipping keys cooling down after a
+// rate-limit/quota (429) or auth (401/403) error, so GeminiService can switch keys instead of surfacing an error.
+// A single-key pool behaves like a fixed key. Synchronous and dependency-free (like geminiPolicy.js) so it fits
+// gemini.js's retry loop; `now` is injectable for tests.
 
 const { classifyGeminiError, nextDailyResetAt } = require('./geminiPolicy');
 
@@ -15,15 +9,11 @@ class GeminiKeyPool {
   /**
    * @param {string[]} keys one or more API keys, in the order given.
    * @param {object} [opts]
-   * @param {number} [opts.resetHourIst=12] hour (IST, 24h clock) a
-   *   rate-limited/quota-exhausted key resets at, matching Gemini's own
+   * @param {number} [opts.resetHourIst=12] hour (IST, 24h) a rate-limited key resets at, matching Gemini's
    *   fixed daily quota reset rather than N hours after each failure.
-   * @param {number} [opts.resetMinuteIst=30] minute component of the above.
-   *   Default 12:30 PM IST.
-   * @param {number} [opts.authCooldownMs=3600000] cooldown after an auth
-   *   (401/403) failure — a distinct failure mode from quota exhaustion
-   *   (a bad/revoked key), so it stays duration-based rather than tied to
-   *   the daily reset.
+   * @param {number} [opts.resetMinuteIst=30] minute component of the above (default 12:30 PM IST).
+   * @param {number} [opts.authCooldownMs=3600000] cooldown after an auth failure, a bad or revoked key,
+   *   so it's duration-based rather than tied to the daily reset.
    * @param {() => number} [opts.now=Date.now]
    */
   constructor(keys, opts = {}) {
@@ -52,11 +42,8 @@ class GeminiKeyPool {
   }
 
   /**
-   * Returns the next usable key, continuing round-robin from wherever the
-   * last call left off (so the key right after a failed one is tried next —
-   * the "nearest" available key), skipping anything still cooling down. If
-   * every key is currently cooling down, returns whichever recovers soonest;
-   * the caller's existing backoff/retry logic is the backstop for that case.
+   * Returns the next usable key, round-robin from where the last call left off, skipping keys still cooling down.
+   * If all are cooling down it returns whichever recovers soonest; gemini.js's backoff is the backstop.
    */
   getKey() {
     const n = this.keys.length;
@@ -76,14 +63,11 @@ class GeminiKeyPool {
   }
 
   /**
-   * Record a failed call for `key`. Only rate-limit and auth failures put
-   * the key in cooldown — network/timeout/5xx errors aren't key-specific
-   * problems, so they don't affect rotation.
+   * Record a failed call for `key`. Only rate-limit and auth failures start a cooldown; network, timeout and 5xx
+   * aren't key-specific.
    * @param {string} key
    * @param {object} error same shape classifyGeminiError expects
-   * @param {{retryAfterMs?: number|null}} [opts] `retryAfterMs`, when Gemini
-   *   sends an explicit Retry-After, still wins over the daily reset time —
-   *   it's a more specific, authoritative instruction for THIS response.
+   * @param {{retryAfterMs?: number|null}} [opts] an explicit Retry-After wins over the daily reset time
    */
   reportFailure(key, error, opts = {}) {
     const state = this.state.get(key);
@@ -104,10 +88,7 @@ class GeminiKeyPool {
     if (state) state.cooldownUntil = 0;
   }
 
-  /**
-   * Timestamp (ms) at which the soonest-recovering key becomes available.
-   * Returns now() immediately if a key is already free.
-   */
+  /** Timestamp (ms) when the soonest-recovering key is available; now() if one is already free. */
   nextAvailableAt() {
     if (this.hasAvailableKey()) return this.now();
     return Math.min(...this.keys.map((key) => this.state.get(key).cooldownUntil));

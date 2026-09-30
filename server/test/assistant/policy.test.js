@@ -1,19 +1,8 @@
-// The decision policy (Milestone M4).
-//
-// The policy's input space is finite and small, so this file ENUMERATES IT
-// COMPLETELY: every effect class × every confidence level × both margins ×
-// every completeness case × contradiction present or absent. That is a stronger
-// claim than instrumented branch coverage — it exercises every combination of
-// inputs, not merely every line — and it needs no coverage tooling to make it,
-// which is why no new dependency was added for this milestone.
-//
-// Two layers, deliberately:
-//
-//   1. An explicit table of named rows with LITERAL expected outputs. No logic.
-//      This is the specification, pinned.
-//   2. The exhaustive sweep, asserting the safety invariants that must hold for
-//      every input whatsoever — most importantly that no combination, at any
-//      confidence, can produce `execute`.
+// The decision policy. The input space is small, so this file enumerates it completely: every effect class x confidence
+// x margin x completeness case x contradiction. That's stronger than branch coverage and needs no coverage tooling.
+// Two layers:
+//   1. A table of named rows with literal expected outputs and no logic: the pinned specification.
+//   2. An exhaustive sweep asserting the safety invariants for every input, above all that no combination, at any confidence, produces `execute`.
 
 const { PHASE1_DECISIONS, CONFIDENCE_LEVELS, EFFECTS } = require('../../src/assistant/contracts');
 const { generateAssessment } = require('../../src/actions/descriptors/generateAssessment');
@@ -27,7 +16,7 @@ const {
   decide,
 } = require('../../src/assistant/policy');
 
-/** A descriptor with an arbitrary effect — including ones Phase 1 forbids in the registry. */
+/** A descriptor with an arbitrary effect, including ones the registry forbids today. */
 const withEffect = (effect, extra = {}) => ({ ...generateAssessment, effect, ...extra });
 
 const CONTRADICTION = { slot: 'grade', readings: ['Class 3-5', 'Class 6-8'] };
@@ -65,10 +54,8 @@ describe('Rule 0 — the effect ceiling', () => {
   });
 
   test('the draft graduation branch exists and requires everything at once', () => {
-    // architecture §8.4: flipping autoExecute is the ONE field that turns on
-    // auto-generation. Testing it now means that change is a flag flip rather
-    // than a policy to design under deadline pressure — and it is still clamped
-    // away by Phase 1 below.
+    // Flipping autoExecute is the one field that turns on auto-generation. Testing it now makes that a flag flip rather
+    // than a policy designed under deadline pressure, and it's still clamped away below.
     const graduated = { autoExecute: true, confidence: 'high', missingCount: 0 };
     expect(effectCeiling('draft', graduated)).toBe('execute');
 
@@ -245,9 +232,8 @@ describe('the decision table — exhaustive enumeration', () => {
   }
 
   /**
-   * The approved ordering (architecture §5.2), transcribed as rules rather than
-   * as code paths. Kept independent of the implementation on purpose: if the two
-   * disagree, one of them is wrong and the disagreement is visible.
+   * The approved ordering, transcribed as rules rather than code paths and kept independent of the implementation, so
+   * a disagreement between the two is visible.
    */
   function expectedDecision({ confidence, margin, missing, contradictions }) {
     if (!CONFIDENCE_LEVELS.includes(confidence)) return 'passthrough';
@@ -259,9 +245,7 @@ describe('the decision table — exhaustive enumeration', () => {
   }
 
   test('the enumeration covers the whole input space', () => {
-    // 4 effects × 3 confidences × 2 margins × 3 completeness × 2 contradiction
-    // × 2 autoExecute. Asserted so a later edit that narrows a dimension cannot
-    // quietly shrink the sweep.
+    // 4 effects x 3 confidences x 2 margins x 3 completeness x 2 contradiction x 2 autoExecute; asserted so narrowing a dimension can't quietly shrink the sweep.
     expect(COMBINATIONS).toHaveLength(4 * 3 * 2 * 3 * 2 * 2);
   });
 
@@ -296,8 +280,7 @@ describe('the decision table — exhaustive enumeration', () => {
   });
 
   test('no combination ever throws', () => {
-    // This function sits in a pipeline that must always return an answer,
-    // because it is in front of a text box (G22).
+    // This function sits in front of a text box, so it must always return an answer.
     for (const combination of COMBINATIONS) {
       expect(() =>
         decide({
@@ -372,9 +355,8 @@ describe('the question that gets asked', () => {
   });
 
   test('a required slot with no question falls back to prefill rather than asking nothing', () => {
-    // The registry rejects a required slot with no `ask` at boot, so this is
-    // reachable only if that validation is ever weakened. It degrades to a
-    // prefilled form, never to a question with no text.
+    // The registry rejects a required slot with no `ask` at boot, so this is reachable only if that validation weakens. It
+    // degrades to a prefilled form, never a question with no text.
     const broken = {
       ...generateAssessment,
       slots: [{ name: 'topic', type: 'text', required: true }],

@@ -1,23 +1,11 @@
-// The single choke point every notification send path goes through — the
-// REST send route (routes/notifications.js), and every system/AI call site
-// elsewhere in the server (e.g. routes/resources.js on a saved resource).
-// Centralizing this is what docs/notification-system-plan.md §6 means by
-// "don't scatter notification-creation logic across route handlers" — a
-// future Web Push dispatch is one more call inside createNotification(),
-// not a change at every call site.
+// The single choke point for sending notifications: the REST send route (routes/notifications.js) and every
+// system/AI call site (e.g. routes/resources.js on a saved resource). See docs/notification-system-plan.md.
 const { prisma } = require('./db');
 const { schoolScope } = require('./notificationScope');
-// Referenced as `pushService.dispatchPush(...)` throughout this file, never
-// destructured — that keeps the call sites test-spyable (`vi.spyOn(pushService,
-// 'dispatchPush')`) without any module-mocking machinery, matching this
-// module's existing "pass dependencies in, don't hide them behind a mock"
-// style (see socketServer, already a plain parameter on both functions below).
+// Referenced as `pushService.dispatchPush(...)`, never destructured, so tests can `vi.spyOn` it without module mocking.
 const pushService = require('./pushService');
 
-// Hard ceiling on a single broadcast's recipient count. Not a tunable env var
-// (unlike the AI-feature budgets elsewhere in lib/flags.js) — this is a
-// safety rail against a fat-fingered "send to all" on a future, much larger
-// deployment, not a cost control, so a fixed constant is the right shape.
+// Hard ceiling on one broadcast's recipients: a safety rail against a fat-fingered "send to all", not a tunable cost control.
 const MAX_BROADCAST_RECIPIENTS = 5000;
 
 function toDto(row) {
@@ -44,10 +32,8 @@ function safeParseMetadata(json) {
 }
 
 /**
- * Creates one notification for one recipient, persists it, and best-effort
- * emits it over the recipient's live socket (if any). Never throws on the
- * emit half — a socket-layer failure must never roll back a write the
- * recipient will still see on next page load / GET /api/notifications.
+ * Creates one notification for one recipient, persists it, and best-effort emits it on their live socket.
+ * A socket failure never throws or rolls back the write; the recipient still sees it via GET /api/notifications.
  *
  * @param {object} input
  * @param {string} input.recipientId
@@ -84,13 +70,8 @@ async function createNotification(input, socketServer = null) {
     }
   }
 
-  // Phase 7b: OS-level push, additive alongside the realtime emit above.
-  // pushService.dispatchPush() already contracts to never throw, but this is
-  // wrapped defensively anyway — same belt-and-suspenders shape as the
-  // socketServer emit above — so a bug in that contract can never turn into
-  // a failed write the caller already committed to. A no-op when
-  // MOBILE_PUSH_ENABLED is off (the default) or the recipient has no
-  // registered device.
+  // OS-level push, best-effort alongside the realtime emit. dispatchPush shouldn't throw, but the try/catch keeps a
+  // bug in that contract from failing a write already committed. A no-op when MOBILE_PUSH_ENABLED is off or no device is registered.
   try {
     await pushService.dispatchPush([input.recipientId], toDto(row));
   } catch (err) {
@@ -101,12 +82,8 @@ async function createNotification(input, socketServer = null) {
 }
 
 /**
- * Resolves a validated send target into the list of eligible recipient user
- * ids, CLAMPED to the sender's own schoolScope() — never trusting the
- * request body's schoolIds/userIds beyond that intersection (see
- * docs/notification-system-plan.md §7). Degrades gracefully on an
- * out-of-scope id (matches zero rows) rather than erroring, same convention
- * routes/adminSupport.js's filters already use for bad filter input.
+ * Resolves a validated send target into eligible recipient ids, clamped to the sender's schoolScope(); the
+ * request body's schoolIds/userIds are never trusted beyond that intersection. An out-of-scope id matches zero rows.
  *
  * @param {{ id: string, role: string, schoolId: string }} sender
  * @param {{ scope: 'all'|'school'|'role'|'users', schoolIds?: string[], roles?: string[], userIds?: string[] }} target
@@ -116,10 +93,8 @@ async function resolveRecipients(sender, target) {
   const allowedSchoolIds = await schoolScope(sender); // null = every school (super_admin only)
 
   if (target.scope === 'all' && sender.role !== 'super_admin') {
-    // A non-super_admin can never reach platform-wide scope. Their own
-    // schoolScope() stands in for "all" instead of rejecting outright, so a
-    // school_admin's "Send to all" (meaning: everyone I can see) still works
-    // as their own maximum scope.
+    // A non-super_admin never gets platform-wide scope: their own schoolScope() stands in for "all", so
+    // a school_admin's "Send to all" means everyone they can see.
     target = { scope: 'school', schoolIds: allowedSchoolIds || [] };
   }
 
@@ -155,8 +130,7 @@ async function resolveRecipients(sender, target) {
 }
 
 /**
- * Sends one notification to many recipients in a single INSERT
- * (createMany), then best-effort emits to whichever of them are online.
+ * Sends one notification to many recipients in a single createMany INSERT, then best-effort emits to whoever is online.
  *
  * @param {object} input
  * @param {{ id: string, role: string, schoolId: string }} input.sender
@@ -190,11 +164,7 @@ async function createBroadcast(input, socketServer = null) {
   });
 
   if (socketServer) {
-    // createMany() doesn't return the created rows' ids (SQLite/Prisma), and
-    // the client needs a real id to key the row and to later call
-    // PATCH /:id/read — so one bulk SELECT keyed on the exact `createdAt`
-    // this batch just wrote fetches them back. Still one INSERT + one SELECT
-    // for the whole broadcast, not N round trips.
+    // createMany() doesn't return ids on SQLite/Prisma, and the client needs real ids, so one SELECT on this batch's exact `createdAt` fetches them.
     const created = await prisma.notification.findMany({
       where: { recipientId: { in: recipientIds }, createdAt },
       select: { id: true, recipientId: true },
@@ -219,14 +189,8 @@ async function createBroadcast(input, socketServer = null) {
     }
   }
 
-  // Phase 7b: OS-level push for the whole batch in one dispatch call — same
-  // additive, best-effort shape as createNotification()'s call, defensively
-  // try/caught for the same belt-and-suspenders reason (see that function's
-  // comment). Unlike the realtime emit (which needs each row's own id to key
-  // the client-side list), a broadcast's push payload has no single
-  // per-recipient notification id to attach, so `id` is left null; every
-  // recipient still gets the SAME title/message/link, which is all
-  // NotificationsScreen's tap-to-navigate (the `link` field) needs.
+  // OS-level push for the whole batch in one dispatch, best-effort like createNotification's. A broadcast has no
+  // per-recipient notification id, so `id` is null; every recipient gets the same title/message/link, which is all tap-to-navigate needs.
   try {
     await pushService.dispatchPush(recipientIds, {
       id: null,

@@ -1,10 +1,5 @@
-// Milestone M2 — the Capability Registry.
-//
-// Two things are under test: that the real descriptors are coherent, and that
-// the validator actually rejects the incoherent ones. The second half matters
-// more than it looks — a startup validator that never says no is decoration,
-// and it is the only thing standing between a typo in a descriptor and a
-// capability that silently cannot work.
+// The capability registry. Tests that the real descriptors are coherent and that the validator rejects incoherent
+// ones; a startup validator that never says no is decoration.
 
 const {
   DESCRIPTORS,
@@ -64,9 +59,7 @@ describe('registry — the real descriptors', () => {
   });
 
   test('generate_assessment references the SAME schema object the route validates with', () => {
-    // Identity, not equality. If this ever becomes a structural copy, the router
-    // and POST /api/resources/generate can start disagreeing about what is
-    // valid — the exact failure milestone M1 existed to make impossible.
+    // Identity, not equality: a structural copy would let the router and POST /api/resources/generate disagree about what is valid.
     expect(getDescriptor('generate_assessment').paramSchema).toBe(generateAssessmentSchema);
   });
 

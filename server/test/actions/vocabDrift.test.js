@@ -1,34 +1,11 @@
-// Vocabulary drift guard — CHANGE-11, pair C (Milestone M4).
-//
-// M4 creates the first SERVER-side copy of three lists that until now existed
-// only in client/src/config.ts: GRADES, SUBJECTS and the LANGUAGES codes. The
-// duplication is deliberate and documented (CommonJS server vs ESM client; a
-// shared package would need a monorepo restructure larger than this project),
-// and spec §8.4 accepts it for Phase 1 with mandatory cross-referencing
-// comments. This file converts that convention into a control, exactly as
-// M2 did for the two pairs before it.
-//
-//   Pair A  server/src/assistant/contracts.js <-> client/src/assistant/types.ts
-//   Pair B  server/src/actions/schemas/generateAssessment.js <-> client/src/config.ts
-//   Pair C  server/src/actions/vocab/* <-> client/src/config.ts        <- HERE
-//
-// Pairs A and B are guarded by test/assistant/contractDrift.test.js, which this
-// file deliberately does not modify: those two are M2 acceptance criteria and a
-// milestone should not edit a control it inherited. The extractors below are
-// therefore a small, knowing duplication of that file's — worth folding into a
-// shared helper when a fourth pair appears, and NOT worth editing a passing
-// guard to achieve today.
-//
-// WHY THIS PAIR IS THE MOST DANGEROUS OF THE THREE. The other two drift into a
-// 400 the teacher cannot act on. This one drifts silently: the resolver
-// canonicalizes "class 5" to a band string, the Generator's datalist offers a
-// different set, and the prefilled value simply looks like a typo the teacher
-// made. Nothing errors. Nobody finds out.
-//
-// The client file is TypeScript and this suite is CommonJS, so it is read as
-// TEXT. That is acceptable ONLY because every extraction fails loudly when it
-// finds nothing — a drift test that silently compares two empty lists reports
-// success forever.
+// Vocabulary drift guard for the GRADES, SUBJECTS and LANGUAGES lists, which exist in client/src/config.ts and as
+// server copies (CommonJS server vs ESM client, no shared package). This test turns the cross-referencing comments
+// into a control. Its pair is server/src/actions/vocab/* <-> client/src/config.ts; the other two pairs (contracts.js
+// <-> assistant/types.ts, generateAssessment.js <-> config.ts) are guarded by test/assistant/contractDrift.test.js,
+// whose extractors this file duplicates; fold them into a helper if a fourth pair appears.
+// This pair drifts silently: the resolver canonicalizes "class 5" to a band, the Generator's datalist offers a
+// different set, and the prefilled value looks like the teacher's typo. The client file is TypeScript, so it's read as
+// text, which is safe only because every extraction fails loudly on finding nothing.
 
 const fs = require('fs');
 const path = require('path');
@@ -105,9 +82,7 @@ describe('vocabulary drift — pair C: server vocab mappers vs client config', (
   const config = readFile(CONFIG_PATH);
 
   test('grades match exactly, including order', () => {
-    // Order is asserted here, unlike the wire vocabularies in pair A, because
-    // this list is rendered: it is the order of the Generator's datalist and the
-    // Settings picker, and the server's own list is documented as school order.
+    // Order is asserted, unlike the wire vocabularies in contracts.js, because this list is rendered (the Generator's datalist and Settings picker) in school order.
     expect(extractStringArray(config, 'GRADES')).toEqual([...GRADES]);
   });
 
@@ -121,10 +96,7 @@ describe('vocabulary drift — pair C: server vocab mappers vs client config', (
 });
 
 describe('vocabulary drift — the cross-reference comments survive', () => {
-  // The comments are how the next developer discovers the counterpart file at
-  // all. A refactor that strips them leaves someone editing one side with no
-  // pointer to the other — which is precisely how M1 nearly shipped a stale
-  // reference (README §9).
+  // The comments are how the next developer finds the counterpart file; stripping them leaves someone editing one side with no pointer to the other.
   const config = readFile(CONFIG_PATH);
 
   test('each server mapper names client/src/config.ts', () => {

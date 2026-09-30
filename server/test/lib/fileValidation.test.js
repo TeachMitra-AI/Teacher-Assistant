@@ -158,9 +158,7 @@ describe('fileValidation.validateAttachmentBatch', () => {
   test('rejects a batch whose COMBINED size exceeds maxTotalBytes, even though each file is under the per-file cap', () => {
     const big = (n) => Buffer.concat([JPEG_BYTES, Buffer.alloc(n)]);
     const tight = { ...batchLimits, maxTotalBytes: 1.5 * 1024 * 1024 };
-    // Two files, each ~0.9MB (under the 1MB per-file cap) but ~1.8MB combined
-    // (over the 1.5MB total cap) — this is exactly the case a per-file cap
-    // alone cannot catch.
+    // Two files, each ~0.9MB (under the 1MB per-file cap) but ~1.8MB combined (over the 1.5MB total cap): the case a per-file cap alone can't catch.
     const result = validateAttachmentBatch([big(900 * 1024), big(900 * 1024)], tight);
     expect(result.ok).toBe(false);
     expect(result.code).toBe('BATCH_TOO_LARGE');

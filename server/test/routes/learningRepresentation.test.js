@@ -1,22 +1,10 @@
-// AI Learning Representation System — POST /api/coach/learning-representation,
-// end to end (ADR Phase D).
-//
-// The pipeline's own logic is unit-tested in test/learningRepresentation/.
-// What is checked HERE is everything that only exists once the endpoint is
-// real: the HTTP error contract, the rollout gate, and the real
-// GeminiService instances (geminiFast for classify, gemini for render)
-// driven through a stubbed fetch — so gemini.js and the output guard are
-// genuinely exercised, and the TWO-CALL sequence (classify then render) is
-// proven to happen in that order.
-//
-// Mirrors test/assistant.interpret.test.js's central promise:
-//
-//     THIS ENDPOINT NEVER RETURNS A 5xx.
-//
-// Non-2xx is reserved for exactly three things: auth (401), a malformed
-// envelope (400), and rate limiting (429). Everything else is a 200 —
-// either a real representation or the universal
-// `{representation: 'verbal_explanation', data: null}` shape.
+// POST /api/coach/learning-representation, end to end. The pipeline's logic is unit-tested in test/learningRepresentation/;
+// here it's everything that only exists once the endpoint is real: the HTTP error contract, the rollout gate, and the
+// real GeminiService instances (geminiFast for classify, gemini for render) driven through a stubbed fetch, so
+// gemini.js and the output guard are exercised and the two-call sequence (classify then render) is proven in order.
+// Like test/assistant.interpret.test.js, the central promise is that this endpoint never returns a 5xx: non-2xx only
+// for auth (401), a malformed envelope (400) and rate limiting (429). Everything else is a 200, a real representation
+// or the universal `{representation: 'verbal_explanation', data: null}`.
 
 const request = require('supertest');
 
@@ -83,12 +71,9 @@ afterAll(() => {
 beforeEach(() => {
   clearEnv();
   vi.unstubAllGlobals();
-  // Phase E: the render cache is a singleton on the shared app instance
-  // (constructed once in index.js), so without a reset a successful render
-  // in one test would silently short-circuit a later test's mocked Gemini
-  // call via a cache hit — several tests below deliberately reuse
-  // VALID_BODY + the same intent to test different render OUTCOMES for
-  // what would otherwise be an identical cache key.
+  // The render cache is a singleton on the shared app (built once in index.js), so without a reset a successful render
+  // would short-circuit a later test's mocked Gemini call with a cache hit; several tests reuse VALID_BODY and the same
+  // intent to test different outcomes for what would be an identical cache key.
   app.locals.learningRepresentationRenderCache?.clear();
 });
 
@@ -124,10 +109,8 @@ describe('the kill switch — default OFF', () => {
 
 describe('Admin Settings > Feature Management override precedence', () => {
   afterEach(async () => {
-    // These tests set a SystemSetting override directly, which the shared
-    // beforeEach's clearEnv() doesn't touch — clean it up here so it can
-    // never leak into a later test in this file that assumes the env var
-    // alone controls the gate.
+    // These tests set a SystemSetting override directly, which the shared beforeEach's clearEnv() doesn't touch; cleaned
+    // up here so it can't leak into a later test that assumes the env var alone controls the gate.
     await prisma.systemSetting.deleteMany({ where: { key: LEARNING_REPRESENTATION_SETTING_KEY } });
   });
 
@@ -185,10 +168,7 @@ describe('request validation', () => {
     expect(res.status).toBe(400);
   });
 
-  // Regression coverage for a bug found during Phase E manual QA: a real,
-  // unremarkable Coach answer (~6.5k characters, nothing unusual) exceeded
-  // the original 6000-character bound and surfaced zod's raw validation
-  // text directly to the teacher.
+  // Regression for a bug found in manual QA: a normal ~6.5k-character Coach answer exceeded the original 6000-character bound and surfaced zod's raw validation text to the teacher.
   describe('the answer length bound and its error message (found via manual QA)', () => {
     test('a real-world-length answer (~7000 chars) is accepted, not rejected', async () => {
       enableFeature();
@@ -246,9 +226,7 @@ describe('the happy path — two calls, in order: classify then render', () => {
       data: PROCESS_DATA,
     });
 
-    // Two calls were made, and the second (render) is grounded in the
-    // ANSWER — proving the pipeline actually threaded it through, not just
-    // the prompt.
+    // Two calls were made and the second (render) is grounded in the answer, proving the pipeline threaded it through, not just the prompt.
     expect(calls).toHaveLength(2);
     const secondCallBody = JSON.stringify(calls[1].body);
     expect(secondCallBody).toContain(VALID_BODY.answer);
@@ -293,23 +271,16 @@ describe('Phase E — request-level cache, exercised through the real shared app
     expect(res1.body).toMatchObject({ representation: 'process_diagram', data: PROCESS_DATA });
     expect(first.calls).toHaveLength(2);
 
-    // Second, IDENTICAL request. Only one response queued (for classify) —
-    // if render() were called again, gemini.js would run out of queued
-    // responses and the last one (classify's) would repeat, producing a
-    // classification result where a render result was expected, which
-    // would fail response validation. A genuine cache hit never gets that
-    // far: render() is skipped entirely.
+    // A second identical request with only one response queued (for classify). If render() were called again, gemini.js
+    // would repeat classify's response, which fails render validation; a real cache hit never gets that far.
     const second = mockGeminiFetch([geminiSuccess(JSON.stringify(HIGH_CONFIDENCE_PROCESS))]);
     const res2 = await post(VALID_BODY);
 
     expect(res2.status).toBe(200);
-    // Same representation and data — requestId is a fresh UUID per request
-    // by design, so it's excluded from the comparison rather than expected
-    // to match.
+    // Same representation and data; requestId is a fresh UUID per request by design, so it's excluded from the comparison.
     expect(res2.body.representation).toBe(res1.body.representation);
     expect(res2.body.data).toEqual(res1.body.data);
-    // Exactly one call — classify still runs (caching wraps render() only,
-    // per the frozen Phase E architecture); render() itself was skipped.
+    // Exactly one call: classify still runs (caching wraps render() only); render() was skipped.
     expect(second.calls).toHaveLength(1);
   });
 
@@ -331,10 +302,8 @@ describe('Phase E — request-level cache, exercised through the real shared app
   });
 
   test('a cache hit still consumes the per-user daily budget', async () => {
-    // The budget LIMIT is read once at app boot (index.js), not per
-    // request, so it cannot be reconfigured via env mid-test the way the
-    // enabled/allow-list gates can — inspect the counter directly instead,
-    // the same way budget.test.js asserts on its own module via peek().
+    // The budget limit is read once at boot (index.js), not per request, so it can't be reconfigured via env mid-test like
+    // the enabled/allow-list gates; inspect the counter directly, as budget.test.js does via peek().
     enableFeature();
     const budget = app.locals.learningRepresentationBudget;
     const before = budget.peek(fixtures.teacherA.id);
@@ -347,9 +316,7 @@ describe('Phase E — request-level cache, exercised through the real shared app
     const res2 = await post(VALID_BODY); // the cache hit
     expect(res2.body.representation).toBe('process_diagram');
 
-    // Charged per request, not per actual Gemini call — the hit (one
-    // Gemini call, not two) still spent a full unit, matching the
-    // documented design in routes/learningRepresentation.js.
+    // Charged per request, not per Gemini call: the hit (one call, not two) still spent a full unit, per routes/learningRepresentation.js.
     expect(budget.peek(fixtures.teacherA.id)).toBe(before + 2);
   });
 });

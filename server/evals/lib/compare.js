@@ -1,28 +1,16 @@
-// Run-to-run comparison (Milestone M7a).
-//
-// THE OUTPUT IS A FLIP TABLE, NOT A DELTA, and the aggregate is printed LAST.
-//
-// "Precision went from 91.4% to 92.9%" is the least useful true sentence
-// available about a change: it is equally consistent with three cases fixed and
-// with four fixed and three broken. A net-positive aggregate that broke a
-// previously-working case is a regression, and only a per-case comparison can
-// see it. So FIXED and BROKEN come first, by case id, and the percentages come
-// after them as context.
-//
-// Any BROKEN case in the emergency, adversarial or language-trap strata fails
-// the comparison outright, regardless of what the aggregate did.
+// Run-to-run comparison, printed as a flip table (FIXED and BROKEN by case id) with the aggregate last.
+// "Precision went from 91.4% to 92.9%" is equally consistent with three cases fixed and with four fixed and three
+// broken, and only a per-case comparison sees the regression. Any BROKEN case in the emergency or adversarial
+// strata fails the comparison regardless of the aggregate.
 
 const BLOCKING_STRATA = Object.freeze(['emergency', 'adversarial']);
 
 const idOf = (entry) => (entry.turn ? `${entry.caseId}#${entry.turn}` : entry.caseId);
 
 /**
- * Adapt a promoted baseline into the shape `compareRuns` consumes.
- *
- * The baseline artifact is TRACKED and the run directories are gitignored, so
- * the frozen M7a reference has to be readable from the baseline itself or it
- * would not survive a fresh clone. `verdicts` carries exactly what a flip table
- * needs; `stratum` comes from the corpus, which is also tracked and frozen.
+ * Adapt a promoted baseline into the shape `compareRuns` consumes. The baseline artifact is tracked but run
+ * directories are gitignored, so the frozen reference must be readable from the baseline itself to survive a fresh
+ * clone. `verdicts` carries what a flip table needs; `stratum` comes from the tracked corpus.
  */
 function baselineAsRun(baseline, corpus) {
   const stratumById = new Map();

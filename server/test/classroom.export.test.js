@@ -1,18 +1,12 @@
-// Classroom Management — CSV report export (docs/classroom-feature-plan.md
-// §13). Attendance export's percentage-formula consistency is pinned
-// separately in classroom.attendance.test.js; this file covers the export
-// mechanics themselves: headers/rows/escaping, required class+month
-// filtering, Content-Type/Content-Disposition, and ownership (404, never a
-// way to probe another teacher's data).
+// Classroom Management CSV report export (docs/classroom-feature-plan.md). The attendance percentage formula is pinned
+// in classroom.attendance.test.js; this covers the export mechanics: headers, rows, escaping, required class+month
+// filtering, Content-Type/Content-Disposition, and ownership (404, never a way to probe another teacher's data).
 const request = require('supertest');
 const ExcelJS = require('exceljs');
 
 const { app, prisma } = require('./helpers/testApp');
 
-// supertest/superagent only auto-buffers a handful of built-in content
-// types (json, text/*, a couple of image types) into `res.body` as a
-// Buffer — an .xlsx response's MIME type isn't one of them, so without this
-// it gets silently mis-decoded as text and JSZip can't read it back.
+// supertest only auto-buffers a few content types into `res.body`; an .xlsx response isn't one, so without this it's mis-decoded as text and JSZip can't read it.
 function binaryParser(res, callback) {
   res.setEncoding('binary');
   let data = '';
@@ -146,10 +140,8 @@ describe('Classroom Management — CSV export', () => {
       expect(res.status).toBe(400);
     });
 
-    // The fee export is a real Excel file, not CSV — specifically so the
-    // Status cell can carry the same green/yellow/red coloring the Fees/
-    // Reports tabs show on screen (docs/fee-tracking-amounts-plan.md); a
-    // plain CSV has no concept of color at all.
+    // The fee export is an Excel file, not CSV, so the Status cell can carry the same green/yellow/red colouring as the
+    // on-screen tabs (docs/fee-tracking-amounts-plan.md).
     async function loadExportWorkbook() {
       const res = await as(teacherAToken)(
         request(app).get(`/api/classroom/classes/${classId}/fees/export?period=2026-09`).buffer(true).parse(binaryParser)
@@ -183,10 +175,8 @@ describe('Classroom Management — CSV export', () => {
       sheet.eachRow((row, rowNumber) => { if (rowNumber > 1) rows.push(row); });
       const hemaRow = rows.find((r) => String(r.values[2]) === '10');
       const irfanRow = rows.find((r) => String(r.values[2]) === '11');
-      // Column 3 = Status. Loading a workbook back from its file bytes drops
-      // the in-memory column `key` metadata (not part of the .xlsx format),
-      // so cells are addressed by column number here, not by key.
-      // ARGB fill colors from lib/feeReportExcel.js's STATUS_STYLE.
+      // Column 3 is Status. Loading a workbook back from file bytes drops the in-memory column `key` metadata, so cells are
+      // addressed by number. ARGB fills come from STATUS_STYLE in lib/feeReportExcel.js.
       expect(hemaRow.getCell(3).fill.fgColor.argb).toBe('FFF0FDF4'); // paid = green
       expect(irfanRow.getCell(3).fill.fgColor.argb).toBe('FFFEF2F2'); // pending = red
     });
@@ -205,11 +195,9 @@ describe('Classroom Management — CSV export', () => {
       expect(res.status).toBe(404);
     });
 
-    // An overpaid student is a subset of 'paid' (amount > expectedAmount) —
-    // the export marks them distinctly (label + color + Extra Paid amount),
-    // and the TOTAL row's "still owed" figure must be the sum of each
-    // student's own shortfall, never net against another student's
-    // overpayment (docs/report-feature-fix.md — same fix as the Reports tab).
+    // An overpaid student is a subset of 'paid' (amount > expectedAmount). The export marks them distinctly (label, colour,
+    // Extra Paid amount), and the TOTAL row's "still owed" is the sum of each student's own shortfall, never netted against
+    // another's overpayment (docs/report-feature-fix.md, same fix as the Reports tab).
     test('marks an overpaid student distinctly and never lets their overpayment hide another student\'s pending amount', async () => {
       const feeClassRes = await as(teacherAToken)(
         request(app).post('/api/classroom/classes').send({ name: 'Overpay Test Class', feeAmount: 1000 })

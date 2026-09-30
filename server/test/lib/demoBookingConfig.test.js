@@ -1,10 +1,7 @@
-// Regression coverage for the timezone math in lib/demoBookingConfig.js.
-// zonedTimeToUtc previously used `new Date(someLocaleString)` to measure a
-// zone's UTC offset, which silently re-parses that string using the SERVER
-// PROCESS's own local timezone — so the result was only correct by
-// coincidence on a host whose OS timezone happened to match the target zone
-// (Asia/Kolkata). These assertions pin the absolute UTC instant, which must
-// hold no matter what timezone this test runner's own machine is in.
+// Regression coverage for the timezone math in lib/demoBookingConfig.js. zonedTimeToUtc used `new Date(someLocaleString)`
+// to measure a zone's offset, which re-parses the string in the server process's own timezone, so it was right only
+// when the host's timezone matched the target (Asia/Kolkata). These assertions pin the absolute UTC instant, which
+// must hold whatever timezone the runner is in.
 const { zonedTimeToUtc, generateSlotStarts, isBookableDate } = require('../../src/lib/demoBookingConfig');
 
 describe('zonedTimeToUtc', () => {

@@ -1,32 +1,8 @@
-// Educational Intent taxonomy — AI Learning Representation System, Phase A.
-//
-// Frozen wire vocabulary for this feature, per the approved ADR
-// (docs/learning-representation-system-adr.md, §3). This module is the single
-// definition of the taxonomy: what the classifier prompt describes and what
-// the parser accepts are both built from the list below, so they cannot drift
-// apart — the same discipline server/src/assistant/contracts.js applies to
-// the AI Action Router's own intent set.
-//
-// Seven intents, deliberately non-overlapping (ADR §3 explains the merges
-// that got the list this small — e.g. "explain structure" absorbs what were
-// three separate, unstably-separable candidates in earlier drafts).
-// `no_visualization` is a first-class, frequently-correct outcome, not a
-// residual "none of the above" bucket (ADR Product Principle 1).
-//
-// Deliberately self-contained rather than importing CONFIDENCE_LEVELS from
-// assistant/contracts.js: the two features are independent systems that
-// happen to share an ordinal-confidence idea, and assistant/contracts.js's
-// own header documents this project's preference for a small documented
-// duplication over cross-feature coupling when the two are not the same
-// system (see its note on the client/server type duplication).
-//
-// Every intent's examples include at least one Hinglish or Hindi phrasing,
-// deliberately, matching src/actions/descriptors/generateAssessment.js
-// ("Hinglish is represented deliberately — it is how a large share of the
-// target teachers actually type"). Gemini classifies code-mixed input
-// correctly without special handling, but the EXAMPLES are what teach it
-// what each intent looks like — an English-only example set would silently
-// under-represent how this taxonomy needs to perform for its real users.
+// Educational Intent taxonomy: the single definition of the intents, so the classifier prompt and the parser can't drift.
+// Seven non-overlapping intents (see docs/learning-representation-system-adr.md). `no_visualization` is a
+// first-class, frequently correct outcome, not a catch-all.
+// Self-contained rather than importing CONFIDENCE_LEVELS from assistant/contracts.js, since the two features are independent.
+// Every intent's examples include Hindi or Hinglish phrasing, because the examples are what teach Gemini how code-mixed input looks.
 
 const EDUCATIONAL_INTENTS = Object.freeze([
   Object.freeze({
@@ -105,12 +81,7 @@ const EDUCATIONAL_INTENTS = Object.freeze([
 
 const EDUCATIONAL_INTENT_IDS = Object.freeze(EDUCATIONAL_INTENTS.map((intent) => intent.id));
 
-/**
- * Model-reported confidence. Ordinal, not a float — LLMs are poorly
- * calibrated at self-reported numeric confidence but adequately ordered at
- * categorical confidence. Mirrors assistant/contracts.js's CONFIDENCE_LEVELS
- * (same reasoning, independently defined — see the header note above).
- */
+/** Model-reported confidence; ordinal rather than a float, as in assistant/contracts.js. */
 const CONFIDENCE_LEVELS = Object.freeze(['high', 'medium', 'low']);
 
 module.exports = {

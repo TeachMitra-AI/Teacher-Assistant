@@ -1,12 +1,10 @@
 #!/usr/bin/env node
-// Run comparison CLI (Milestone M7a).
+// Run comparison CLI.
 //
 //   node evals/compare.js runs/<before> runs/<after>
 //
-// Prints a flip table: which cases were FIXED, which were BROKEN, and only then
-// what happened to the aggregate. Exits 1 when a case in a blocking stratum
-// broke or a hard gate regressed — a net-positive precision change does not
-// rescue a newly-broken emergency case.
+// Prints a flip table (which cases were FIXED, which BROKEN) before the aggregate. Exits 1 when a case in a blocking
+// stratum broke or a hard gate regressed; a net-positive precision change doesn't rescue a newly broken emergency case.
 
 const fs = require('fs');
 const path = require('path');

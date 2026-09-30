@@ -1,24 +1,10 @@
-// Milestone M9 — the security review, executed rather than written down.
-//
-// The specification names one acceptance test for this milestone: "a deliberate
-// attempt to reach a destructive action". This file is that attempt, plus the
-// rest of the threat model from architecture 10.1, driven through the REAL
-// endpoint with a hostile model on the other end of the wire.
-//
-// ─── THE POSTURE THAT MAKES THIS MEANINGFUL ────────────────────────────────
-// Every test below assumes the classifier has been fully compromised. The model
-// is not merely wrong; it is actively trying to make the application do
-// something. That is the correct assumption for a component whose input is a
-// text box a teacher types into and whose training data is the open internet,
-// and it is the assumption the architecture was built on: the model PROPOSES,
-// and the application DISPOSES.
-//
-// If any test here can be made to pass by improving the prompt, it is testing
-// the wrong thing. Every one of them must hold because of a STRUCTURAL property
-// — the registry declares the effect, the app owns the catalog, the schema is
-// the route's own — and not because the model behaved.
-//
-// Threat coverage (architecture 10.1):
+// The security review, executed rather than written down: a deliberate attempt to reach a destructive action, plus the
+// rest of the threat model, driven through the real endpoint with a hostile model on the other end.
+// Every test assumes the classifier is fully compromised, which is right for a component whose input is a text box and
+// whose training data is the open internet: the model proposes and the application disposes. A test that passes by
+// improving the prompt is testing the wrong thing; each must hold because of a structural property (the registry
+// declares the effect, the app owns the catalog, the schema is the route's own).
+// Threat coverage:
 //   1 prompt injection via stored/echoed content .... "a hostile model" below
 //   2 privilege escalation via action id ............ "the catalog is the app's"
 //   3 cross-tenant reference resolution ............. "no identifier is emitted"
@@ -92,16 +78,14 @@ beforeEach(() => {
   vi.unstubAllGlobals();
 });
 
-// ---- the deliberate attempt to reach a destructive action -------------------
+// the deliberate attempt to reach a destructive action
 
 describe('a destructive action is structurally unreachable', () => {
   beforeEach(() => enableAssistant());
 
   test('the registry contains no action above `draft`, at all', () => {
-    // The first line of the defence, and the reason the rest holds: there is
-    // nothing dangerous in the catalog for a compromised model to select.
-    // Validated at boot too; asserted here because a security review that trusts
-    // a startup check it never observed is a review of a comment.
+    // The first line of defence: there's nothing dangerous in the catalog for a compromised model to select. It's validated
+    // at boot too, but a review that trusts a startup check it never observed is a review of a comment.
     for (const descriptor of DESCRIPTORS) {
       expect(['read', 'draft']).toContain(descriptor.effect);
       expect(descriptor.autoExecute).toBe(false);
@@ -124,11 +108,8 @@ describe('a destructive action is structurally unreachable', () => {
   });
 
   test('a model DECLARING a destructive effect is rejected outright', async () => {
-    // Stronger than expected when this was written, and worth recording: the
-    // proposal boundary is `.strict()`, so a model that ADDS a field does not
-    // merely have it ignored — the whole proposal is refused and the turn falls
-    // through to the coach. An over-helpful model and a hostile one get the same
-    // answer.
+    // The proposal boundary is `.strict()`, so a model that adds a field doesn't just have it ignored: the whole proposal
+    // is refused and the turn falls through to the coach. An over-helpful model and a hostile one get the same answer.
     modelReturns({
       intent: 'generate_assessment',
       confidence: 'high',
@@ -166,9 +147,7 @@ describe('a destructive action is structurally unreachable', () => {
   });
 
   test('no response, on any input, carries `execute`', async () => {
-    // Rule 0 states the effect ceiling caps the decision at ANY confidence. The
-    // policy's full input space is enumerated in policy.test.js; this asserts the
-    // same promise survives the whole HTTP path.
+    // The effect ceiling caps the decision at any confidence. policy.test.js enumerates the input space; this asserts the promise survives the HTTP path.
     for (const confidence of ['high', 'medium', 'low']) {
       modelReturns({
         intent: 'generate_assessment',
@@ -183,9 +162,7 @@ describe('a destructive action is structurally unreachable', () => {
   });
 
   test('routing writes nothing a teacher owns (threat 7 — confused deputy)', async () => {
-    // The interpret endpoint RESOLVES; it does not mutate. Counted rather than
-    // reasoned about, because "this code contains no write" is a claim about a
-    // file and this is a claim about the request.
+    // The interpret endpoint resolves and never mutates. This counts rows, since "this code contains no write" is a claim about a file and this is about the request.
     const before = {
       resources: await prisma.resource.count(),
       queries: await prisma.query.count(),
@@ -209,8 +186,7 @@ describe('a destructive action is structurally unreachable', () => {
   });
 
   test('routing does not generate: the generation endpoint is never called', async () => {
-    // A prefill is a form with values in it. Nothing is produced, nothing is
-    // spent, and the teacher still has to press the button (D3, D6, G25).
+    // A prefill is a form with values in it: nothing is produced or spent, and the teacher still presses the button.
     const { calls } = modelReturns({
       intent: 'generate_assessment',
       confidence: 'high',
@@ -226,7 +202,7 @@ describe('a destructive action is structurally unreachable', () => {
   });
 });
 
-// ---- threat 2: privilege escalation via action id ---------------------------
+// threat 2: privilege escalation via action id
 
 describe('the application owns the catalog, not the model', () => {
   test('a fabricated action id yields a passthrough (G4)', async () => {
@@ -240,9 +216,8 @@ describe('the application owns the catalog, not the model', () => {
   });
 
   test('an action whose flag is OFF cannot be selected even if the model names it', async () => {
-    // Re-authorisation after parsing is the point (G4): the responseSchema's
-    // enum is a hint the model may ignore, and the catalog it was built from may
-    // not be the catalog that is live a moment later.
+    // Re-authorisation after parsing is the point: the responseSchema enum is a hint the model may ignore, and the catalog it
+    // was built from may not be the live one a moment later.
     enableAssistant({ ASSISTANT_ACTION_GENERATE_ASSESSMENT: 'false' });
     modelReturns({
       intent: 'generate_assessment',
@@ -282,7 +257,7 @@ describe('the application owns the catalog, not the model', () => {
   });
 });
 
-// ---- threats 3 and 5: identifiers and exfiltration --------------------------
+// threats 3 and 5: identifiers and exfiltration
 
 describe('the model emits criteria, never identifiers', () => {
   beforeEach(() => enableAssistant());
@@ -301,9 +276,8 @@ describe('the model emits criteria, never identifiers', () => {
     const res = await interpret({ utterance: 'make a class 5 fractions worksheet' });
     const body = JSON.stringify(res.body);
 
-    // The server never emits a path (D11) — the client holds the handler map,
-    // so the reachable route set is a compile-time constant. Here the proposal
-    // is refused wholesale; either way none of it reaches the wire.
+    // The server never emits a path: the client holds the handler map, so the reachable route set is a compile-time
+    // constant. Here the proposal is refused wholesale; either way none of it reaches the wire.
     expect(res.body.passthrough).toBe(true);
     expect(body).not.toContain('/admin');
     expect(body).not.toContain('example.invalid');
@@ -311,10 +285,9 @@ describe('the model emits criteria, never identifiers', () => {
   });
 
   test('an id smuggled INSIDE a slot cannot become a param', async () => {
-    // The narrower attack that survives the strict boundary: `slots` is an open
-    // record, so a hostile model can put anything in it. Gate 3 validates the
-    // merged params against the ROUTE'S OWN schema, which is `.strict()` and has
-    // no such field — so it is dropped rather than carried.
+    // The narrower attack that survives the strict boundary: `slots` is an open record, so a hostile model can put
+    // anything in it. Gate 3 validates the merged params against the route's own `.strict()` schema, which has no such
+    // field, so it's dropped.
     modelReturns({
       intent: 'generate_assessment',
       confidence: 'high',
@@ -335,9 +308,8 @@ describe('the model emits criteria, never identifiers', () => {
   });
 
   test('injected instructions in a slot value cannot change the decision', async () => {
-    // Threat 1, in the form it would actually arrive: the app already feeds
-    // saved resource content to Gemini elsewhere, so an instruction can reach
-    // the model. It has nowhere to land because the effect is registry-declared.
+    // Threat 1 as it would arrive: saved resource content already goes to Gemini elsewhere, so an instruction can reach the
+    // model. It has nowhere to land because the effect is registry-declared.
     modelReturns({
       intent: 'generate_assessment',
       confidence: 'high',
@@ -357,9 +329,7 @@ describe('the model emits criteria, never identifiers', () => {
   });
 
   test('params contain only keys the route schema accepts (G3)', async () => {
-    // Router metadata as a SIBLING of params, never inside it: the generation
-    // schema is .strict(), so a stray key would make the teacher's eventual
-    // Generate request fail with a 400.
+    // Router metadata is a sibling of params, never inside it: the generation schema is .strict(), so a stray key would make the eventual Generate request 400.
     modelReturns({
       intent: 'generate_assessment',
       confidence: 'high',
@@ -376,7 +346,7 @@ describe('the model emits criteria, never identifiers', () => {
   });
 });
 
-// ---- the safety short-circuit ----------------------------------------------
+// the safety short-circuit
 
 describe('the emergency path is never classified', () => {
   test('an emergency utterance reaches no model call (G10)', async () => {

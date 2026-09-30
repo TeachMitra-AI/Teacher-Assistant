@@ -1,15 +1,7 @@
-// Socket.IO wiring for realtime notification delivery — the ONE new runtime
-// dependency this feature adds (see docs/notification-system-plan.md §5: no
-// realtime layer existed anywhere in this codebase before this feature).
-//
-// Deliberately minimal: one room per user (`user:<id>`), an in-memory
-// connected-user set for observability, and nothing else. Same
-// in-memory/per-process/resets-on-restart tradeoff this codebase already
-// accepts for assistant/budget.js, assistant/breaker.js and
-// learningRepresentation/rendering/cache.js — there is no Redis pub/sub here
-// because this app runs a single Railway instance today (see index.js's
-// `trust proxy` comment); revisit BEFORE scaling to multiple instances, not
-// after, same caveat those modules already state for their own state.
+// Socket.IO wiring for realtime notification delivery (docs/notification-system-plan.md). Minimal: one room per
+// user (`user:<id>`) and an in-memory connected-user set for observability. State is per process and resets on
+// restart, as with assistant/budget.js, assistant/breaker.js and rendering/cache.js; there's no Redis pub/sub
+// because the app runs a single instance today (see index.js's `trust proxy` note). Revisit before going multi-instance.
 const { Server } = require('socket.io');
 const { decode } = require('../middleware/auth');
 
@@ -30,19 +22,12 @@ function initSocketServer(httpServer, { isOriginAllowed, isEnabled }) {
     },
   });
 
-  // userId -> Set<socket.id>. A user can have more than one live socket (two
-  // tabs, or desktop + mobile), so this is a set, not a single value — every
-  // member of it receives the emit.
+  // userId -> Set<socket.id>. A user can have several live sockets (two tabs, desktop plus mobile) and all receive the emit.
   const socketsByUser = new Map();
 
-  // The gate. NOTIFICATIONS_ENABLED off rejects every handshake — matching
-  // the REST routes' own requireNotificationsEnabled() gate, so a disabled
-  // deployment has ZERO realtime surface, not just an inert REST API.
-  // `isEnabled()` is called FRESH on every handshake, not read once at boot
-  // — same "read the env var live" discipline every other feature flag in
-  // this app follows (lib/flags.js), and the reason flipping
-  // NOTIFICATIONS_ENABLED is a real, immediately-effective kill switch
-  // rather than one that needs a process restart to take hold.
+  // The gate. NOTIFICATIONS_ENABLED off rejects every handshake, matching the REST routes' gate, so a disabled
+  // deployment has no realtime surface. `isEnabled()` is read on every handshake, not once at boot, so flipping
+  // the flag takes effect without a restart.
   io.use((socket, next) => {
     if (!isEnabled()) return next(new Error('Notifications are not enabled.'));
     const token = socket.handshake.auth && socket.handshake.auth.token;
@@ -71,9 +56,7 @@ function initSocketServer(httpServer, { isOriginAllowed, isEnabled }) {
   });
 
   function emitToUser(userId, event, payload) {
-    // Best-effort, fire-and-forget — a user with no live socket simply has
-    // no room to receive this, which is the normal "offline" case, not an
-    // error. The caller (notificationService.js) never awaits this.
+    // Fire-and-forget: a user with no live socket has no room, the normal offline case. The caller never awaits this.
     io.to(`user:${userId}`).emit(event, payload);
   }
 

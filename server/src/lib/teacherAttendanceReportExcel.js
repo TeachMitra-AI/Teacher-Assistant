@@ -1,6 +1,4 @@
-// Builds the school-wide attendance report as a real Excel workbook — same
-// approach as lib/feeReportExcel.js (one row per person, a bold TOTAL row),
-// reusing that established convention rather than inventing a new one.
+// Builds the school-wide attendance report as an Excel workbook, like lib/feeReportExcel.js (one row per person, a bold TOTAL row).
 const ExcelJS = require('exceljs');
 
 /**

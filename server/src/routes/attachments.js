@@ -1,23 +1,9 @@
-// Multimodal attachments — POST /api/coach/attachment.
-//
-// A SIBLING of /api/coach, not an extension of it: same response envelope,
-// same auth, same normalization discipline, but its own route so the
-// existing, most-used /api/coach handler is never touched by this feature
-// (approved design — see docs/multimodal-attachments-architecture.md).
-//
-// FILES ARE NEVER PERSISTED. multer buffers the upload in PROCESS MEMORY
-// only (memoryStorage — diskStorage is never used anywhere in this file, on
-// purpose: Railway's filesystem is ephemeral, and writing an upload to disk
-// here would be a silent landmine for that deployment target). The buffer is
-// discarded when the request completes; there is nothing to clean up because
-// nothing is ever stored.
-//
-// SCOPE: this file owns exactly this one endpoint, the same way
-// routes/assistant.js owns the router's three endpoints. It reuses
-// lib/fileValidation.js (byte-level validation), attachments/describeAttachment.js
-// (the Gemini call), and assistant/budget.js's generic per-user counter
-// (already file-agnostic despite its folder) rather than re-implementing any
-// of them.
+// Multimodal attachments: POST /api/coach/attachment, a sibling of /api/coach rather than an extension, with the same
+// response envelope, auth and normalization, so the most-used /coach handler is untouched
+// (docs/multimodal-attachments-architecture.md).
+// Files are never persisted: multer uses memoryStorage and the buffer is discarded when the request completes. Never
+// use diskStorage here; Railway's filesystem is ephemeral.
+// It reuses lib/fileValidation.js, attachments/describeAttachment.js and assistant/budget.js's generic per-user counter.
 
 const crypto = require('crypto');
 const express = require('express');
@@ -35,28 +21,18 @@ const { prisma } = require('../lib/db');
 
 const router = express.Router();
 
-// Mirrors MAX_QUERY_LENGTH in index.js (the /coach bound). Not imported from
-// there — index.js does not export it, and duplicating one constant here is
-// cheaper and safer than reaching into the app's entry-point module for it.
-// Promote to a shared leaf module if a third file ever needs the same bound
-// (see lib/resourceFields.js for the precedent on when that trigger fires).
+// Mirrors MAX_QUERY_LENGTH in index.js (the /coach bound), which index.js doesn't export. Promote to a shared leaf
+// module if a third file needs it (see lib/resourceFields.js).
 const MAX_QUERY_LENGTH = 500;
 
 let uploadMiddleware = null;
 let cachedKey = null;
 
 /**
- * Builds (and caches) the multer instance for the currently configured
- * per-file size cap and file-count cap. Flags are read per-request elsewhere
- * in this app (so a flag flip + restart is the whole procedure); multer's own
- * `limits` are fixed at middleware-construction time, so this rebuilds only
- * when either configured value actually changes — in practice once, at first
- * use, and again only if a test deliberately varies the env between requests.
- *
- * `.array('files', maxFiles)` accepts one-to-many uploads under the SAME
- * field name ('files') — a single file is just a one-element array, which is
- * how backward compatibility with a single upload is preserved without a
- * second code path for the singular case.
+ * Builds and caches the multer instance for the configured per-file size and file-count caps. Flags are read
+ * per request, but multer's `limits` are fixed at construction, so this rebuilds only when a configured value changes.
+ * `.array('files', maxFiles)` takes one or many files under the same field name, so a single upload is just a
+ * one-element array with no separate code path.
  */
 function getUploadMiddleware(maxFileSizeMb, maxFiles) {
   const key = `${maxFileSizeMb}:${maxFiles}`;
@@ -70,12 +46,8 @@ function getUploadMiddleware(maxFileSizeMb, maxFiles) {
 }
 
 /**
- * Same rollout predicate shape as routes/assistant.js's isWithinRollout,
- * scoped to attachments' own flags. Kept local (not shared) since the two
- * features gate on different flag sets and different failure semantics
- * (the router degrades to an inert catalog; this endpoint degrades to a
- * plain 503, matching how routes/resources.js already reports "AI features
- * are unavailable right now" when its own gemini instance is unset).
+ * Same rollout predicate as routes/assistant.js's isWithinRollout, on attachments' own flags. Kept local since the
+ * two features gate differently: the router degrades to an inert catalog, this endpoint to a plain 503.
  */
 function isWithinRollout(user, flags) {
   if (!flags.enabled) return false;
@@ -120,10 +92,7 @@ function handleMulterError(err, req, res, next) {
   return next(err);
 }
 
-// Wording for this route's Gemini-failure responses, passed into the shared
-// sendAiError mapper (lib/) — the RATE_LIMITED/TIMEOUT/UPSTREAM_AUTH mapping
-// logic itself (previously copy-pasted here, in routes/resources.js, and in
-// index.js's /coach handler) now lives in exactly one place.
+// Wording for this route's Gemini-failure responses, passed to the shared sendAiError mapper (lib/).
 const AI_ERROR_MESSAGES = {
   safetyBlockedMessage: "This couldn't be processed — try rephrasing your question.",
   upstreamUnavailableMessage: 'Failed to process the attachment. Please try again.',
@@ -167,11 +136,8 @@ router.post(
       return res.status(400).json({ error: 'A non-empty "query" string is required.', requestId });
     }
 
-    // Per-user daily budget, same shape as the router's (assistant/budget.js
-    // is already generic — reused directly rather than copied). One unit per
-    // REQUEST regardless of how many files it carries — a batch of files is
-    // still one message the teacher sent, and the per-request size/count caps
-    // below already bound the worst case a single unit of budget can cost.
+    // Per-user daily budget using assistant/budget.js's generic counter. One unit per request however many files it
+    // carries; the per-request size and count caps bound the worst case.
     const budget = req.app.locals.attachmentBudget;
     if (budget && !budget.consume(req.user.id)) {
       return res.status(429).json({

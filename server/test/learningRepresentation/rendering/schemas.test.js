@@ -1,4 +1,4 @@
-// Structured render specs — AI Learning Representation System, Phase C.
+// Structured render specs.
 
 const { LEARNING_REPRESENTATION_IDS, VERBAL_EXPLANATION } = require('../../../src/learningRepresentation/representations');
 const {

@@ -1,24 +1,10 @@
-// Milestone M9 — the log audit, executed as an ATTACK.
-//
-// ─── WHY THIS FILE EXISTS IN THIS FORM ─────────────────────────────────────
-// M9's checklist calls for a "log audit — no utterance text or slot values
-// anywhere". The obvious way to do that is to read the logging code and confirm
-// it looks careful. M8 is the reason that is not good enough: `actionId` and
-// `requestId` had passed exactly that kind of review, were bounded strings and
-// nothing else, and an integration test found teacher text travelling through
-// them into a stored row. A LENGTH BOUND IS NOT A PRIVACY CONTROL.
-//
-// So this file does not read the code. It pushes a distinctive probe string
-// through every field on every assistant surface that will accept a string, and
-// then looks at what was actually written — both the stdout channel and the
-// database. Whatever survives is a leak, whoever wrote it and however careful
-// they were being.
-//
-// It complements rather than repeats the M8 suite: assistant.events.test.js
-// attacks the /events envelope. This one covers all three endpoints, the
-// DECISION LOG (channel 1, which M8 did not attack), and the fields that carry
-// data the client controls — memory slots and pendingAsk — which no earlier
-// milestone probed at all.
+// The log audit, executed as an attack. "No utterance text or slot values anywhere in the logs" can't be checked by
+// reading the logging code and confirming it looks careful: `actionId` and `requestId` passed that kind of review, were
+// bounded strings, and teacher text still travelled through them into a stored row. A length bound isn't a privacy control.
+// So this file pushes a distinctive probe string through every string-accepting field on every assistant surface, then
+// inspects what was written, in both the stdout channel and the database. Whatever survives is a leak.
+// It complements assistant.events.test.js (the /events envelope) by covering all three endpoints, the decision log,
+// and the client-controlled fields (memory slots and pendingAsk).
 
 const request = require('supertest');
 
@@ -36,9 +22,7 @@ const ASSISTANT_ENV_KEYS = [
 ];
 
 /**
- * Probe strings, chosen to be things a teacher would plausibly type AND to be
- * impossible to produce by accident. If one of these appears anywhere, it got
- * there from the request body.
+ * Probe strings a teacher might plausibly type but can't be produced by accident; if one appears anywhere, it came from the request body.
  */
 const PROBES = Object.freeze({
   utterance: 'ZZPROBEUTTER photosynthesis worksheet for class 7',
@@ -68,12 +52,8 @@ function clearAssistantEnv() {
 }
 
 /**
- * Capture everything written to stdout/stderr, serialised the way a log
- * aggregator would see it.
- *
- * Serialising with JSON.stringify rather than inspecting objects matters: the
- * decision log passes a metadata OBJECT, and a leak nested three levels inside
- * it would be invisible to a naive string check on the first argument.
+ * Capture everything written to stdout/stderr, serialised as a log aggregator would see it. JSON.stringify
+ * matters: the decision log passes a metadata object, and a leak nested deep inside would be invisible to a check on the first argument.
  */
 function captureConsole() {
   const lines = [];
@@ -140,7 +120,7 @@ afterEach(() => {
   restoreConsole();
 });
 
-// ---- channel 1: the decision log -------------------------------------------
+// channel 1: the decision log
 
 describe('the decision log carries no teacher text', () => {
   beforeEach(() => enableAssistant());
@@ -171,9 +151,7 @@ describe('the decision log carries no teacher text', () => {
   });
 
   test('a MODEL-SUPPLIED slot value does not appear either', async () => {
-    // The topic above came back from the model and was resolved into params. It
-    // is teacher-derived content by the time it lands, and it is exactly the
-    // value a debug line would be most tempted to include.
+    // The topic came back from the model and was resolved into params, so it's teacher-derived content by the time it lands, and the value a debug line would most want to include.
     mockGeminiFetch([
       geminiSuccess(
         JSON.stringify({
@@ -193,9 +171,7 @@ describe('the decision log carries no teacher text', () => {
   });
 
   test('client-supplied MEMORY is not logged', async () => {
-    // Never probed before M9. `memory.raw` is the teacher's own phrasing, held
-    // client-side and sent on every turn, so it is the largest teacher-authored
-    // payload the interpret endpoint accepts after the utterance itself.
+    // `memory.raw` is the teacher's own phrasing, held client-side and sent every turn: the largest teacher-authored payload after the utterance itself.
     mockGeminiFetch([geminiSuccess(JSON.stringify({ intent: 'coach_question', confidence: 'high' }))]);
 
     await request(app)
@@ -233,23 +209,17 @@ describe('the decision log carries no teacher text', () => {
   });
 
   test('a MALFORMED JSON body leaks no fragment of itself into the log', async () => {
-    // THE FINDING THIS FILE EXISTS FOR, and it was nearly missed. Node's JSON
-    // parser embeds a ~20-character window of the RAW BODY in its message, and
-    // the global error handler logged that message verbatim — so a malformed
-    // request put part of the teacher's utterance in the log. The first probe
-    // appeared TRUNCATED ("ZZPROBEBOD"), so a naive assertion on the full probe
-    // string passed while the leak was real.
-    //
-    // Hence the short marker: a fragment is a leak. Assert on the shortest
-    // distinctive prefix, never on the whole value.
+    // Node's JSON parser embeds a ~20-character window of the raw body in its message, and the global error handler logged
+    // it verbatim, so a malformed request put part of the utterance in the log. The first probe appeared truncated
+    // ("ZZPROBEBOD"), so asserting on the full probe passed while the leak was real. Assert on the shortest distinctive
+    // prefix: a fragment is a leak.
     const res = await request(app)
       .post('/api/assistant/interpret')
       .set('Authorization', `Bearer ${teacherToken}`)
       .set('Content-Type', 'application/json')
       .send('{"utterance": ZZPRB photosynthesis worksheet}');
 
-    // Also the G22 half: this path used to be the one 5xx /interpret could
-    // produce, and any 5xx opens the client's circuit breaker.
+    // This path used to be the one 5xx /interpret could produce, and any 5xx opens the client's circuit breaker.
     expect(res.status).toBe(400);
     expect(res.status).toBeLessThan(500);
     expect(loggedText()).not.toContain('ZZPRB');
@@ -270,9 +240,7 @@ describe('the decision log carries no teacher text', () => {
   });
 
   test('an internal error does not carry the utterance into the log', async () => {
-    // interpret.js reports a bug in our own code as `classifier_error` and puts
-    // the message on the log line. That message must never be built from the
-    // request.
+    // interpret.js reports a bug in our own code as `classifier_error` and puts the message on the log line; it must never be built from the request.
     mockGeminiFetch([{ reject: new Error('fetch failed') }]);
 
     await request(app)
@@ -284,14 +252,13 @@ describe('the decision log carries no teacher text', () => {
   });
 });
 
-// ---- the /events surface, re-attacked --------------------------------------
+// the /events surface, re-attacked
 
 describe('the telemetry endpoint refuses to store teacher text', () => {
   beforeEach(() => enableAssistant());
 
   test('an actionId carrying a topic reaches neither the log nor a row', async () => {
-    // M8's finding, kept as a standing regression: this is the exact shape of
-    // the hole that was open until an integration test found it.
+    // A standing regression for the hole an integration test once found in the /events envelope.
     await request(app)
       .post('/api/assistant/events')
       .set('Authorization', `Bearer ${teacherToken}`)
@@ -337,7 +304,7 @@ describe('the telemetry endpoint refuses to store teacher text', () => {
   });
 });
 
-// ---- the catalog surface ----------------------------------------------------
+// the catalog surface
 
 describe('the catalog endpoint logs nothing teacher-derived', () => {
   test('a catalog fetch writes no request content to the log', async () => {
@@ -352,14 +319,11 @@ describe('the catalog endpoint logs nothing teacher-derived', () => {
   });
 });
 
-// ---- the positive control ---------------------------------------------------
+// the positive control
 
 describe('the audit can actually detect a leak', () => {
   test('the capture and search mechanism finds a planted probe', async () => {
-    // WITHOUT THIS, every assertion above is indistinguishable from a broken
-    // harness that captures nothing. M3 established the precedent: seven
-    // negative results mean nothing until one positive proves the instrument
-    // works.
+    // Without this, every assertion above is indistinguishable from a broken harness that captures nothing; negative results mean nothing until a positive proves the instrument works.
     console.log('[assistant] planted_leak', { note: PROBES.utterance });
     expect(loggedText()).toContain('ZZPROBEUTTER');
   });

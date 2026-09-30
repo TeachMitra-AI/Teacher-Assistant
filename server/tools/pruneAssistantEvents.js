@@ -1,29 +1,11 @@
-// AI Action Router — `Event` retention for assistant telemetry (M8).
-//
-// An OPERATIONAL SCRIPT. Retention is a policy the project did not previously
-// have at all: `Event` held rare incidents (safety flags, notable upstream
-// failures, user approvals) where unbounded growth was harmless. Routine
-// telemetry changes that, and spec §4.8 requires the policy to exist BEFORE
-// telemetry is enabled — which is why this lands in M8 with the writers rather
-// than later as cleanup.
-//
-// ─── WHY A SCRIPT AND NOT A SWEEPER ON THE REQUEST PATH ────────────────────
-// Opportunistic pruning ("delete a few old rows whenever we write one") would
-// put DELETE statements on the very path CHANGE-6 exists to keep clear. The
-// backing store is single-writer SQLite serving every authenticated request; the
-// entire point of the two-rows-per-session ceiling is to keep that path quiet.
-// Trading a bounded, scheduled deletion for an unbounded, request-time one would
-// undo the milestone's main safety property.
-//
-// ─── THE SCOPING RULE — READ BEFORE CHANGING ANYTHING HERE ─────────────────
-// This script deletes ONLY the two `assistant_*` types. It must never be able to
-// reach `ai_safety_flag`, `user_approved`, `user_rejected`, `ai_deadline_exceeded`
-// or any other row: those are institutional records with different (and longer)
-// retention needs, and a prune that widened by accident would destroy them
-// silently and irrecoverably. The allow-list is an explicit `in` filter over the
-// frozen ASSISTANT_EVENT_TYPES, never a prefix LIKE and never a bare date filter,
-// and a test seeds a safety-flag row and asserts it survives.
-//
+// Operational script: `Event` retention for assistant telemetry. `Event` used to hold only rare incidents, where
+// unbounded growth was harmless; routine telemetry needs a retention policy, which has to exist before it is enabled.
+// It's a script, not a sweeper on the request path: pruning there would put DELETEs on the path the two-rows-per-session
+// ceiling keeps quiet on single-writer SQLite.
+// Scoping rule: it deletes only the two `assistant_*` types. It must never reach `ai_safety_flag`, `user_approved`,
+// `user_rejected`, `ai_deadline_exceeded` or any other row, which are institutional records with longer retention.
+// The allow-list is an explicit `in` filter over the frozen ASSISTANT_EVENT_TYPES, never a prefix LIKE or a bare date
+// filter, and a test seeds a safety-flag row and asserts it survives.
 // Usage:  npm run assistant:prune-events -- [--days 90] [--dry-run]
 
 const { prisma } = require('../src/lib/db');
@@ -34,14 +16,9 @@ const {
 } = require('../src/assistant/contracts');
 
 /**
- * Retention in days, in precedence order: an explicit --days flag, then
- * ASSISTANT_EVENT_RETENTION_DAYS, then the documented default.
- *
- * The env var is read through the same clamp-and-warn helper the rest of the
- * server uses, so a typo produces a warning and the safe default rather than an
- * accidental `--days 0`. It is read here rather than in contracts.js because
- * contracts.js is a frozen, pure vocabulary module with no environment
- * dependency, and giving it one would make the wire contracts configurable.
+ * Retention in days, in precedence order: an explicit --days flag, then ASSISTANT_EVENT_RETENTION_DAYS, then the
+ * default. The env var goes through the clamp-and-warn helper, so a typo warns and uses the default instead of
+ * becoming `--days 0`. It's read here, not in contracts.js, which is a pure vocabulary module.
  *
  * @param {string[]} argv
  * @param {Record<string, string|undefined>} [env]
@@ -59,18 +36,14 @@ function parseArgs(argv, env = process.env) {
     if (argv[i] === '--days' && argv[i + 1]) args.days = Number(argv[i + 1]);
     if (argv[i] === '--dry-run') args.dryRun = true;
   }
-  // A non-numeric --days must not silently become "delete everything". Falling
-  // back to the documented default is the safe direction; 0 stays legal because
-  // "prune everything assistant-written" is a legitimate operation when
-  // decommissioning the feature, and it is still scoped to the two types.
+  // A non-numeric --days must not become "delete everything", so it falls back to the default. 0 stays legal: pruning
+  // everything assistant-written is valid when decommissioning, and it's still scoped to the two types.
   if (!Number.isFinite(args.days) || args.days < 0) args.days = fromEnv;
   return args;
 }
 
 /**
- * The `where` clause, built in one place and exported so a test can assert its
- * SHAPE rather than only its effect. A retention bug is not the kind of thing to
- * discover from its effect.
+ * The `where` clause, built in one place and exported so a test can assert its shape, not just its effect.
  */
 function buildPruneWhere(cutoff) {
   return { type: { in: [...ASSISTANT_EVENT_TYPES] }, createdAt: { lt: cutoff } };

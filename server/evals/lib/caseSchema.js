@@ -1,12 +1,5 @@
-// The labelled-case schema (Milestone M7a).
-//
-// The corpus is DATA, and unvalidated data is how an evaluation harness ends up
-// measuring nothing at all. Every case is parsed through these schemas at load
-// time; a case that does not validate stops the run rather than being skipped,
-// for the same reason the M2 drift test asserts a non-zero member count before
-// comparing: a check that silently matches nothing is worse than no check.
-//
-// Uses zod, which is already a server dependency — M7 adds no new package.
+// The labelled-case schema. The corpus is data, and unvalidated data makes an evaluation measure nothing, so every
+// case is parsed at load time and an invalid one stops the run instead of being skipped. Uses zod, already a server dependency.
 
 const { z } = require('zod');
 
@@ -23,35 +16,24 @@ const STRATA = Object.freeze([
 ]);
 
 /**
- * The three languages a target teacher actually types in.
- *
- * `hinglish` means romanized Hindi/English code-mixing, `hi` means Devanagari.
- * They are separated rather than merged because the go/no-go threshold in the
- * architecture document is stated for Hinglish specifically, and because the
- * two exercise completely different code: `hi` exercises the NFKC/combining-mark
- * handling that M6 found a real tokenizer bug in, `hinglish` exercises the
- * phonetic-spelling tables.
+ * The three languages teachers type in. `hinglish` is romanized Hindi/English code-mixing and `hi` is Devanagari.
+ * They're separate because the go/no-go threshold is stated for Hinglish, and they exercise different code: `hi`
+ * the NFKC/combining-mark handling, `hinglish` the phonetic-spelling tables.
  */
 const LANGUAGES = Object.freeze(['en', 'hinglish', 'hi']);
 
 /**
- * What the labeller expects to come back for one utterance.
- *
- * THE `stated` / `notStated` SPLIT IS THE LOAD-BEARING PART. Without an explicit
- * "the teacher did not say this" list, slot hallucination is unmeasurable: there
- * is no way to tell a correct extraction from a plausible guess that happened to
- * look right. That distinction is exactly the gap recorded live at M5 (the model
- * inferring `format: worksheet` from "I need something on photosynthesis") and
- * again at M6, so the corpus format is built to make it countable.
+ * What the labeller expects for one utterance. The `stated` / `notStated` split is what makes slot hallucination
+ * measurable: without an explicit "the teacher did not say this" list, a correct extraction can't be told from a
+ * plausible guess (e.g. the model inferring `format: worksheet` from "I need something on photosynthesis").
  */
 const expectedSchema = z
   .object({
     // The single outcome the labeller considers correct.
     decision: z.enum(['prefill', 'ask', 'passthrough']),
 
-    // AMBIGUOUS CASES ONLY: the full set of outcomes a competent human would
-    // accept. Its presence is what moves a case into the quarantined bucket, so
-    // it is never set on a case that has one right answer.
+    // Ambiguous cases only: the outcomes a competent human would accept. Its presence moves a case into the
+    // quarantined bucket, so never set it on a case with one right answer.
     acceptable: z.array(z.enum(['prefill', 'ask', 'passthrough'])).min(2).optional(),
 
     actionId: z.string().min(1).nullable(),
@@ -59,10 +41,8 @@ const expectedSchema = z
     // Which slot the clarifying question must be about, when decision is 'ask'.
     askSlot: z.string().min(1).optional(),
 
-    // Asserted only where it is genuinely determined by the label — an emergency
-    // case must report `emergency_detected`, but a coaching question may
-    // legitimately arrive as `not_an_action` or `low_confidence` and demanding
-    // one would be measuring the model's mood.
+    // Asserted only where the label determines it: an emergency case must report `emergency_detected`, but a coaching
+    // question may arrive as `not_an_action` or `low_confidence`, and demanding one would measure the model's mood.
     passthroughReason: z.enum(PASSTHROUGH_REASONS).optional(),
 
     slots: z

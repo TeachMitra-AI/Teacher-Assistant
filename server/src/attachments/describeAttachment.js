@@ -1,42 +1,11 @@
-// The attachment "understanding" seam — one narrow function, not yet a
-// formal layer (see docs/multimodal-attachments-architecture.md for the
-// reasoning). Its only job: given validated file bytes (one or many) and a
-// prompt about them, ask Gemini ONCE and return the answer as plain text.
-//
-// WHY A FUNCTION AND NOT A CLASS/SERVICE: it holds no state of its own — the
-// GeminiService instance is passed in by the caller, exactly like every other
-// prompt-building helper in this codebase (buildGeneratorPrompt,
-// buildWorkspacePrompt in routes/resources.js are plain functions too). A
-// class would be justified once there is real per-format state to hold
-// (config, a pluggable OCR provider, etc.) — there isn't yet.
-//
-// WHY ONE GEMINI CALL FOR THE WHOLE BATCH, NOT ONE CALL PER FILE: a teacher
-// attaching several pages of the same worksheet, or a photo plus a PDF of the
-// same lesson, is asking ONE question about the COMPLETE set — "explain
-// these together" needs Gemini to see everything in one reasoning pass, not
-// stitched-together answers to N independent questions it never knew were
-// related. gemini.js's `attachments` array puts every file in the same
-// `contents` block for exactly this reason.
-//
-// WHY ONE GEMINI CALL, NOT "EXTRACT THEN ANSWER": for Phase 1 (a teacher's
-// direct question about attachments), asking Gemini to describe the files
-// and then asking a second time to answer the question would double the
-// cost and latency for no benefit, and would lose visual fidelity between
-// the two calls. Instead this function takes the PROMPT as a parameter: today
-// the caller passes the teacher's own question ("Solve Question 5"); a future
-// Phase 2 caller (feeding the AI Action Router) can pass a neutral
-// extraction prompt ("Describe these files' content in plain text") to get
-// derived text instead of a direct answer — same function, same one call,
-// different instruction. This is the seam Phase 2 reuses rather than
-// redesigns (see the architecture doc's "evolution path" section).
-//
-// WHY THE ATTACHMENTS THEMSELVES ARE UNTRUSTED CONTENT, NOT AN INSTRUCTION:
-// exactly like the teacher's typed text, the file bytes go into `contents`
-// (the user-turn block), never into `systemInstruction` (the trusted,
-// app-authored block). An image containing adversarial text ("ignore your
-// instructions") gets no special privilege — the same structural boundary
-// gemini.js already relies on for prompt-injection defense covers this by
-// construction, for one file or several alike.
+// Given validated file bytes (one or many) and a prompt, asks Gemini once and returns plain text
+// (docs/multimodal-attachments-architecture.md). A function, not a service: it holds no state, and the GeminiService is passed in.
+// One call for the whole batch, so "explain these together" is answered in a single reasoning pass
+// (gemini.js's `attachments` array puts every file in the same `contents` block).
+// One call, not extract-then-answer, which would double cost and latency and lose visual fidelity. The prompt is a
+// parameter: today the teacher's question, later possibly a neutral extraction prompt, through the same call.
+// Attachments are untrusted content: file bytes go in `contents`, never `systemInstruction`, so text inside an
+// image gets no special privilege.
 
 const { languageDirective, LANGUAGE_NAMES } = require('../prompts');
 
@@ -52,9 +21,8 @@ function aOrAn(word) {
 }
 
 /**
- * Turns a list of mimeTypes into a natural-language phrase — "an image",
- * "3 images", "2 images and a PDF document" — so the systemInstruction reads
- * naturally whether the teacher attached one file or several of mixed types.
+ * Turns mime types into a phrase ("an image", "3 images", "2 images and a PDF document") so the
+ * systemInstruction reads naturally for one file or several.
  * @param {string[]} mimeTypes
  */
 function describeAttachmentSet(mimeTypes) {
@@ -70,9 +38,8 @@ function describeAttachmentSet(mimeTypes) {
 }
 
 /**
- * Builds the trusted systemInstruction + delimited untrusted userText for an
- * attachment-grounded request. Mirrors the systemInstruction/delimited-
- * userText split used throughout routes/resources.js and prompts.js.
+ * Builds the trusted systemInstruction and the delimited untrusted userText for an attachment-grounded
+ * request, using the same split as routes/resources.js and prompts.js.
  * @param {{ mimeTypes: string[], query: string, language: string }} params
  */
 function buildAttachmentPrompt({ mimeTypes, query, language }) {
@@ -96,8 +63,7 @@ If the TEACHER'S QUESTION states which language they want the answer written in 
 }
 
 /**
- * Answers a teacher's question about one or more attached images/PDFs, all
- * in a SINGLE Gemini call so the model reasons over the complete set.
+ * Answers a teacher's question about one or more attached images/PDFs in a single Gemini call.
  * @param {{
  *   gemini: import('../gemini').GeminiService,
  *   attachments: Array<{ buffer: Buffer, mimeType: string }>,

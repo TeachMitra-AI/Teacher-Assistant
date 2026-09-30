@@ -1,12 +1,7 @@
-// Admin Settings — runtime override layer on top of existing env-var
-// configuration (lib/flags.js). Covers both setting kinds: boolean feature
-// flags (Learning Representation) and role-list access controls (Assistant
-// allowed roles).
-//
-// What's under test: the precedence (override row wins; no row falls back to
-// the caller's env default; a DB error, or an unparseable row, also falls
-// back to the env default, never throws) and the registry-driven helpers the
-// admin route and the session-bootstrap responses build on.
+// Admin Settings: the runtime override layer on top of env-var config (lib/flags.js), for both setting kinds
+// (boolean feature flags and role-list access controls). Under test: precedence (an override row wins, no row falls
+// back to the env default, and a DB error or unparseable row falls back and never throws) and the registry-driven
+// helpers the admin route and session-bootstrap responses use.
 const { prisma } = require('../helpers/testApp');
 const {
   resolveBoolSetting,
@@ -55,10 +50,8 @@ describe('resolveBoolSetting', () => {
   });
 
   test('a DB error while reading falls back to the default rather than throwing', async () => {
-    // A direct, manually-restored swap rather than vi.spyOn: Prisma's model
-    // delegates (prisma.systemSetting) are Proxy-backed, and vi.spyOn /
-    // restoreAllMocks do not reliably restore a property on them — leaving
-    // a broken findUnique for the rest of this file if left to that path.
+    // A manually restored swap rather than vi.spyOn: Prisma's model delegates are Proxy-backed and spyOn/restoreAllMocks
+    // don't reliably restore a property on them, leaving findUnique broken for the rest of the file.
     const original = prisma.systemSetting.findUnique;
     prisma.systemSetting.findUnique = () => Promise.reject(new Error('connection lost'));
     try {

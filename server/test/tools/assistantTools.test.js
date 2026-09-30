@@ -1,17 +1,8 @@
-// Milestone M8 — the two operational scripts.
-//
-// These are the least glamorous files in the milestone and two of the most
-// consequential:
-//
-//   assistantMetrics.js    computes the number that GATES THE LAUNCH. A metric
-//                          nobody tested is the one number in a project that can
-//                          be quietly wrong forever, because nothing contradicts
-//                          it.
-//
-//   pruneAssistantEvents.js DELETES ROWS. Its scoping rule is the only thing
-//                          standing between a retention run and the safety-flag
-//                          and user-approval records, which have entirely
-//                          different retention needs and no backup.
+// The two operational scripts.
+//   assistantMetrics.js     computes the number that gates the launch. An untested metric can be quietly wrong
+//                           forever, since nothing contradicts it.
+//   pruneAssistantEvents.js deletes rows. Its scoping rule is all that stands between a retention run and the
+//                           safety-flag and user-approval records, which have different retention needs and no backup.
 
 const { computeMetrics } = require('../../tools/assistantMetrics');
 const { parseArgs, buildPruneWhere } = require('../../tools/pruneAssistantEvents');
@@ -42,9 +33,7 @@ describe('the field-edit rate', () => {
   });
 
   test('is null rather than zero when nothing was delivered', () => {
-    // A rate over an empty denominator is undefined. Printing "0.0%" for it
-    // would look like a perfect score in exactly the situation where there is no
-    // evidence at all — the failure mode this project keeps calling out.
+    // A rate over an empty denominator is undefined; "0.0%" would look like a perfect score where there's no evidence.
     expect(computeMetrics([]).fieldEditRate).toBeNull();
   });
 
@@ -82,9 +71,7 @@ describe('abandonment is derived from absence', () => {
   });
 
   test('excludes unjoinable deliveries instead of assuming they were abandoned', () => {
-    // A hand-written draft, or one written by a client older than M8, carries no
-    // requestId. Counting "we cannot tell" as a failure would be pessimistic in
-    // exactly the way a beacon would be optimistic.
+    // A hand-written draft, or one from an older client, carries no requestId. Counting "we cannot tell" as a failure would be pessimistic, as a beacon would be optimistic.
     const metrics = computeMetrics([row(DELIVERED, { fieldCount: 8 })]);
 
     expect(metrics.abandoned).toBe(0);
@@ -94,9 +81,7 @@ describe('abandonment is derived from absence', () => {
 
 describe('the diagnostic breakdown', () => {
   test('separates corrections by provenance, which is what makes the rate actionable', () => {
-    // Edits concentrated in `utterance` mean the classifier is misreading
-    // teachers; edits concentrated in `default` mean the defaults are stale.
-    // Those call for opposite fixes and the aggregate cannot tell them apart.
+    // Edits concentrated in `utterance` mean the classifier misreads teachers; in `default`, stale defaults. Those need opposite fixes and the aggregate can't tell them apart.
     const metrics = computeMetrics([
       row(DELIVERED, { requestId: 'r1', fieldCount: 8 }),
       row(OUTCOME, {
@@ -172,11 +157,8 @@ describe('retention, actually executed against the database', () => {
   test('deletes aged assistant rows and leaves every other type untouched', async () => {
     const old = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000);
 
-    // Tracked by ID rather than by counting rows of each type: other suites in
-    // this run legitimately create safety-flag and approval rows, and a count
-    // would make this test's verdict depend on what else ran first. The suite
-    // shares one SQLite file (fileParallelism: false), so isolation has to come
-    // from the assertion, not from the table being empty.
+    // Tracked by ID rather than by counting rows of each type: other suites legitimately create safety-flag and approval
+    // rows, and a count would depend on what ran first. The suite shares one SQLite file (fileParallelism: false), so isolation comes from the assertion.
     const doomedIds = [];
     const protectedIds = [];
     for (const type of ASSISTANT_EVENT_TYPES) {
@@ -191,10 +173,8 @@ describe('retention, actually executed against the database', () => {
     const where = buildPruneWhere(new Date(Date.now() - 90 * 24 * 60 * 60 * 1000));
     await prisma.event.deleteMany({ where });
 
-    // THE ASSERTION THIS WHOLE FILE EXISTS FOR. These rows are institutional
-    // records — a prune that widened by accident would destroy them silently
-    // and irrecoverably. Note they are the same age as the deleted ones, so
-    // only the type filter can be what saved them.
+    // The assertion this file exists for: these are institutional records, and a prune that widened by accident would
+    // destroy them silently and irrecoverably. They're the same age as the deleted rows, so only the type filter saved them.
     const survivors = await prisma.event.findMany({ where: { id: { in: protectedIds } } });
     expect(survivors).toHaveLength(OTHER_TYPES.length);
 

@@ -1,49 +1,13 @@
-// Structured render specs — AI Learning Representation System, Phase C
-// (docs/learning-representation-system-adr.md, §6, §13 Phase C).
-//
-// One entry per Learning Representation that can actually be rendered. This
-// module IS the renderer-availability registry the Phase B review asked
-// about: a representation id is "supported" precisely when it has an entry
-// here (RENDERABLE_REPRESENTATION_IDS / hasRenderer() below are trivial
-// derivations of RENDER_SPECS' keys, not a separately maintained list that
-// could drift from it).
-//
-// `verbal_explanation` deliberately has NO entry. It is the one
-// representation that is never rendered — the text answer already IS the
-// representation — so "does verbal_explanation have a renderer" is not a
-// question this registry needs to answer; rendering/resolve.js short-circuits
-// before ever asking it.
-//
-// Every schema here is STRUCTURED DATA (nodes, rows, points), never a pixel
-// image — the ADR §6 decision this whole feature is built around. Two
-// bounds exist on every text field and every array, for the same reason
-// assistant/proposalSchema.js bounds free-text slots (see its own
-// comment): an unbounded field gives the decoder nowhere to stop, and a
-// model that degenerates mid-generation produces truncated, unparseable
-// JSON instead of a diagram. The REQUESTED bound (sent to Gemini via
-// responseSchema) gives the decoder a stopping point; the ACCEPT bound
-// (enforced by the zod schema below it) is what the application actually
-// trusts, and is deliberately a little looser so tightening the requested
-// bound later can never start rejecting output it previously accepted.
-//
-// Array bounds are enforced ONLY in the zod layer, not in the Gemini
-// responseSchema — matching assistant/proposalSchema.js's MAX_ALTERNATIVES,
-// which is a zod `.max()` with no corresponding `maxItems` in the
-// responseSchema sent to the model. Gemini's structured-output support for
-// array length constraints is inconsistent enough that this project's
-// existing convention is to not depend on it.
-//
-// Every entry also carries a `version` (ADR Phase E). Bump it whenever a
-// change to that entry's `instructions`, `responseSchema` or `resultSchema`
-// could plausibly change rendered output for input that was previously
-// cached — the same granularity assistant/contracts.js's
-// `ActionDescriptor.version` already documents ("bumped on breaking slot
-// changes"). `version` is part of rendering/cache.js's cache key, so a bump
-// IS the invalidation mechanism: every previously-cached entry for that
-// representation becomes permanently unreachable under the new version,
-// with no explicit purge step required. A change to renderer.js's shared
-// PREAMBLE (common to all six types) means bumping every entry's version
-// together, by discipline rather than a second version dimension.
+// Render specs: one entry per representation that can actually be rendered. A representation is supported
+// exactly when it has an entry here; RENDERABLE_REPRESENTATION_IDS and hasRenderer() derive from the keys.
+// `verbal_explanation` has no entry because it is never rendered (resolve.js short-circuits).
+// Every schema is structured data (nodes, rows, points), never a pixel image.
+// Text fields and arrays are bounded twice: a requested bound sent to Gemini gives the decoder a stopping
+// point, and a slightly looser accept bound in zod is what we trust, so tightening the request never rejects
+// output previously accepted. Array bounds live only in zod, since Gemini's maxItems support is inconsistent.
+// Each entry carries a `version`, part of rendering/cache.js's key. Bump it when a change to `instructions`,
+// `responseSchema` or `resultSchema` could change cached output; the bump invalidates old entries. A change to
+// renderer.js's shared PREAMBLE means bumping every entry.
 
 const { z } = require('zod');
 const { LEARNING_REPRESENTATION_IDS, VERBAL_EXPLANATION } = require('../representations');
@@ -280,10 +244,8 @@ const RENDER_SPECS = Object.freeze({
 const RENDERABLE_REPRESENTATION_IDS = Object.freeze(Object.keys(RENDER_SPECS));
 
 /**
- * Whether a representation id has a working structured renderer. This is the
- * check Phase D (and any earlier caller) must run ALONGSIDE the confidence
- * check already enforced by mapping.js#resolveRepresentation — see
- * rendering/resolve.js, which composes the two.
+ * Whether a representation id has a working structured renderer. Callers must check this alongside the
+ * confidence check in mapping.js; rendering/resolve.js composes the two.
  *
  * @param {string} representationId
  * @returns {boolean}
@@ -293,9 +255,7 @@ function hasRenderer(representationId) {
 }
 
 /**
- * The current version of a representation's render contract — see the
- * module header. Callers (rendering/cache.js) use this to build a cache key
- * that a version bump automatically invalidates.
+ * The current version of a representation's render contract, used by rendering/cache.js to build keys.
  *
  * @param {string} representationId a RENDERABLE_REPRESENTATION_IDS member
  * @returns {number}
@@ -304,17 +264,9 @@ function getRenderVersion(representationId) {
   return RENDER_SPECS[representationId].version;
 }
 
-// ---- Consistency guard, enforced at load time --------------------------
-// Every RENDER_SPECS key must be a real, non-verbal representation id.
-// Deliberately NOT a completeness guard (unlike mapping.js's): Phase C is
-// explicitly allowed to cover only some representations over time (that is
-// the entire premise of hasRenderer() existing), so a missing key is
-// expected, not an error. A STRAY key — one that doesn't match the
-// taxonomy at all, e.g. a typo — is the failure mode worth catching early.
-// Every entry must also carry a valid `version` (ADR Phase E) — a missing
-// or malformed one would silently break cache invalidation rather than
-// fail loudly, which is exactly the kind of mistake this guard exists to
-// catch at boot instead of in production.
+// Consistency guard at load time: every RENDER_SPECS key must be a real non-verbal representation id and carry
+// a valid `version`. Missing keys are fine (coverage is partial by design); a stray key or bad version would
+// silently break the taxonomy or cache invalidation, so it throws on boot instead.
 {
   const stray = RENDERABLE_REPRESENTATION_IDS.filter(
     (id) => !LEARNING_REPRESENTATION_IDS.includes(id) || id === VERBAL_EXPLANATION

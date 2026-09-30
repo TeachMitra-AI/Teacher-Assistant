@@ -1,16 +1,11 @@
-// Pure reliability-policy helpers for the Gemini integration. No I/O, no
-// state, no clock/random of their own (callers inject rng where needed) — so
-// every function here is deterministic and trivially unit-testable in
-// isolation. gemini.js composes these; keeping them separate keeps the
-// service lean and the retry/backoff logic independently verifiable.
+// Pure reliability helpers for the Gemini integration: no I/O, state or clock (callers inject rng), so each
+// function is deterministic and unit-testable. gemini.js composes them.
 
 /**
- * Parse an HTTP `Retry-After` header value into milliseconds.
- * Supports both forms allowed by the spec: an integer number of seconds, or
- * an HTTP-date. Returns null when absent or unparseable, so the caller can
- * fall back to computed backoff.
+ * Parse an HTTP `Retry-After` value into milliseconds. Handles both integer seconds and an HTTP-date;
+ * returns null when absent or unparseable so the caller falls back to computed backoff.
  * @param {string|null|undefined} headerValue
- * @param {number} [nowMs] current time in ms (injectable for deterministic date math)
+ * @param {number} [nowMs] current time in ms (injectable)
  * @returns {number|null} milliseconds to wait, or null
  */
 function parseRetryAfter(headerValue, nowMs = Date.now()) {
@@ -33,14 +28,9 @@ function parseRetryAfter(headerValue, nowMs = Date.now()) {
 }
 
 /**
- * Bounded exponential backoff with full jitter.
- *
- * Base delay for a given zero-indexed attempt is `baseMs * 2^attempt`, capped
- * at `capMs`. Full jitter then picks a random value in [0, cappedBase] to
- * de-synchronize concurrent clients (avoids retry storms). If a server-
- * provided Retry-After (ms) is present it takes precedence over the computed
- * value (a rate-limited server knows better than our heuristic), but is still
- * subject to `capMs` unless `respectRetryAfterAboveCap` is true.
+ * Bounded exponential backoff with full jitter: `baseMs * 2^attempt` capped at `capMs`, then a random value
+ * in [0, cappedBase] so concurrent clients don't retry in lockstep. A server Retry-After (ms) takes precedence
+ * but is still capped unless `respectRetryAfterAboveCap` is true.
  *
  * @param {number} attempt zero-indexed retry attempt (0 = first retry)
  * @param {object} [opts]
@@ -54,9 +44,7 @@ function computeBackoffMs(attempt, opts = {}) {
   const { baseMs = 500, capMs = 8000, retryAfterMs = null, rng = Math.random } = opts;
 
   if (retryAfterMs != null && retryAfterMs >= 0) {
-    // Honor the server's instruction, but never wait longer than the cap so a
-    // pathological/hostile header can't stall a request (the overall deadline
-    // in gemini.js is the ultimate backstop regardless).
+    // Honor the server's instruction but cap it so a hostile header can't stall a request.
     return Math.min(Math.round(retryAfterMs), capMs);
   }
 
@@ -70,10 +58,8 @@ function computeBackoffMs(attempt, opts = {}) {
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
 /**
- * The next moment that is `hour:minute` IST at or after `nowMs` (tomorrow's
- * occurrence if `nowMs` is already at or past today's). Used for the Gemini
- * key pool's daily quota reset (see geminiKeyPool.js) — Gemini's real daily
- * quota resets at a fixed clock time, not N hours after each failure.
+ * The next moment that is `hour:minute` IST at or after `nowMs` (tomorrow's if already past). Used for the key
+ * pool's daily quota reset, since Gemini's quota resets at a fixed clock time.
  * @param {number} nowMs
  * @param {{hour?: number, minute?: number}} [opts] IST hour/minute, 24h clock. Default 12:30.
  * @returns {number} epoch ms of the next occurrence
@@ -94,12 +80,10 @@ function nextDailyResetAt(nowMs, opts = {}) {
 const RETRIABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 
 /**
- * Classify an error/response condition from a Gemini call into a retry
- * decision plus a stable machine-readable reason code. This is the single
- * source of truth for "what is retryable" — see the plan's decision matrix.
+ * Classify a Gemini error or response condition into a retry decision and a stable reason code. The single
+ * source of truth for what is retryable.
  *
- * @param {object} error an Error, optionally with `.status` (HTTP) and/or
- *   `.code` (app-level, e.g. INPUT_BLOCKED) and/or `.name` (e.g. TimeoutError)
+ * @param {object} error an Error, optionally with `.status` (HTTP), `.code` (app-level, e.g. INPUT_BLOCKED) and/or `.name` (e.g. TimeoutError)
  * @returns {{ retriable: boolean, reason: string }}
  */
 function classifyGeminiError(error) {

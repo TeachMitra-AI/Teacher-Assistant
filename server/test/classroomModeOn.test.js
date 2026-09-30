@@ -1,19 +1,9 @@
-// Classroom Mode ON, through the REAL route.
-//
-// The gap this closes: nothing anywhere sent `classroomMode: true` to
-// /api/coach. `shouldSkipPlanning` had thorough unit tests
-// (test/lib/classroomPlan.test.js) and the mode-OFF path had route tests
-// (test/classroomModeOff.test.js), but the wiring BETWEEN them — that the route
-// actually consults the gates, actually honours the server flag, and actually
-// declines to spend a model call — was covered only by reading the code.
-//
-// The emergency case below is the one that matters most. A teacher describing a
-// child who has collapsed must not have worksheets generated underneath the
-// safety guidance, and "the unit test says detectEmergency works" is not the
-// same claim as "the route refuses to plan". This asserts the second.
-//
-// No real model calls: every Gemini response is stubbed by helpers/geminiMock,
-// and the call COUNT is the assertion in most cases.
+// Classroom Mode ON, through the real route. Nothing else sent `classroomMode: true` to /api/coach: shouldSkipPlanning
+// has unit tests (test/lib/classroomPlan.test.js) and the OFF path has route tests, but the wiring between them (the
+// route consults the gates, honours the server flag, and declines to spend a model call) was covered only by reading code.
+// The emergency case matters most: a teacher describing a collapsed child must not have worksheets generated beneath
+// the safety guidance, and "detectEmergency works" isn't the claim "the route refuses to plan".
+// No real model calls: every Gemini response is stubbed by helpers/geminiMock, and the call count is the assertion in most cases.
 const path = require('path');
 const request = require('supertest');
 const { prisma } = require('../src/lib/db');
@@ -21,19 +11,11 @@ const { createFixtures, PASSWORD } = require('./helpers/fixtures');
 const { loginAs } = require('./helpers/auth');
 const { toFetchResponse, geminiSuccess } = require('./helpers/geminiMock');
 
-// A mock that routes by ENDPOINT rather than by call order.
-//
-// mockGeminiFetch's ordered queue cannot express this route: the answer and the
-// planner are issued IN PARALLEL (that is the whole point of D7), so whichever
-// call the event loop reaches first takes the first queued response. Worse, the
-// coach's generateResponse may retry or continue, so the call count is not
-// fixed either. An ordered queue therefore hands the planner's JSON to the
-// answer at random — which is a bug in the test, not the route.
-//
-// Routing on the URL is stable because the planner runs on `geminiFast`
-// (flash-lite, D19) while the answer runs on the coaching model. It also gives
-// a directly meaningful assertion: `calls.planner === 0` IS the claim "no model
-// call was spent deciding", which is what the gates are for.
+// A mock that routes by endpoint, not call order. mockGeminiFetch's ordered queue can't express this route: the answer
+// and planner run in parallel, so whichever call the event loop reaches first takes the first queued response, and
+// generateResponse may retry or continue so the count isn't fixed. Routing on the URL is stable since the planner
+// runs on `geminiFast` (flash-lite) and the answer on the coaching model, and `calls.planner === 0` is the claim "no
+// model call was spent deciding".
 function mockRouted({ answer, planner }) {
   const calls = { answer: 0, planner: 0, all: [] };
   const mock = vi.fn(async (url, opts) => {
@@ -50,24 +32,17 @@ function mockRouted({ answer, planner }) {
   return calls;
 }
 
-// Same cache-busting reload as cors.test.js: CLASSROOM_MODE_ENABLED is read
-// ONCE at module load into `classroomModeFlagsAtBoot`, so a test that needs the
-// flag on has to re-evaluate src/index.js with it set. See that file's comment
-// for why require.cache and not vi.resetModules.
+// Same cache-busting reload as cors.test.js: CLASSROOM_MODE_ENABLED is read once at module load into
+// `classroomModeFlagsAtBoot`, so turning it on means re-evaluating src/index.js. See that file for why require.cache and not vi.resetModules.
 function reloadApp() {
   delete require.cache[require.resolve('../src/index')];
   return require('../src/index');
 }
 
-// Whatever the developer happens to have in server/.env, captured before any
-// test touches it, and restored at the end.
-//
-// This matters more than it looks. `delete process.env.CLASSROOM_MODE_ENABLED`
-// does NOT give you "flag off": src/index.js calls dotenv.config() on every
-// reload, which repopulates the variable straight back out of server/.env. A
-// test written that way asserts the developer's local .env, not the code — it
-// passed while .env said `false` and failed the moment someone set it `true`
-// to try the feature. Both states below are therefore set EXPLICITLY.
+// Whatever is in the developer's server/.env, captured before any test touches it and restored at the end. `delete
+// process.env.CLASSROOM_MODE_ENABLED` doesn't give "flag off": src/index.js calls dotenv.config() on every reload,
+// which repopulates it from server/.env, so such a test asserted the local .env and failed once someone set it `true`.
+// Both states are therefore set explicitly.
 const ORIGINAL_FLAG = process.env.CLASSROOM_MODE_ENABLED;
 
 function restoreOriginalFlag() {
@@ -146,7 +121,7 @@ describe('Classroom Mode ON — the route honours every gate', () => {
     });
   });
 
-  // ─── GATE 1: the one that must never fail ────────────────────────────────
+  // Gate 1: an active emergency, which must never fail
   describe('an active emergency', () => {
     const EMERGENCIES = [
       'A student collapsed and is not breathing',
@@ -179,7 +154,7 @@ describe('Classroom Mode ON — the route honours every gate', () => {
     });
   });
 
-  // ─── GATE 2: the free shortcut ───────────────────────────────────────────
+  // Gate 2: the free shortcut
   describe('Focus = Classroom Management', () => {
     test('produces no materials and spends no planner call', async () => {
       const gemini = mockRouted({ answer: geminiSuccess('Try a seating change.') });
@@ -200,7 +175,7 @@ describe('Classroom Mode ON — the route honours every gate', () => {
     });
   });
 
-  // ─── The planner declining, and failing ──────────────────────────────────
+  // The planner declining, and failing
   describe('when there is nothing to make', () => {
     test('no teachable topic ⇒ classroomMode true but no classroom key', async () => {
       mockRouted({
@@ -226,7 +201,7 @@ describe('Classroom Mode ON — the route honours every gate', () => {
   });
 });
 
-// ─── The server flag is the real kill switch (D13) ─────────────────────────
+// The server flag is the real kill switch
 describe('Classroom Mode ON in the client, OFF on the server', () => {
   let app;
   let fx;
@@ -239,9 +214,7 @@ describe('Classroom Mode ON in the client, OFF on the server', () => {
     token = await loginAs(app, fx.schoolA, fx.teacherA, PASSWORD);
   });
 
-  // The whole point of the server flag: a PWA can serve a cached client whose
-  // own flag is stale by hours, and it will keep asking. The server must refuse
-  // regardless of what it is asked for.
+  // A PWA can serve a cached client whose own flag is hours stale and keep asking; the server must refuse regardless.
   test('a client asking for Classroom Mode is ignored entirely', async () => {
     const gemini = mockRouted({ answer: geminiSuccess(ANSWER) });
     const res = await request(app)

@@ -1,12 +1,7 @@
-// Notification System — realtime delivery over Socket.IO.
-//
-// Supertest drives every OTHER test file in-process (no real listening
-// socket — see src/index.js's own comment on this), but Socket.IO needs an
-// actual TCP connection to test. This file wraps the SAME shared `app` in
-// its own http.Server + Socket.IO instance, listens on an ephemeral port,
-// and overwrites app.locals.socketServer for its duration — restored
-// afterAll. Vitest gives each test file its own module registry (see
-// vitest.config.js), so this never leaks into another file's run.
+// Notification System: realtime delivery over Socket.IO. Supertest drives every other test in-process with no real
+// socket (see src/index.js), but Socket.IO needs a real TCP connection. This file wraps the shared `app` in its own
+// http.Server and Socket.IO instance on an ephemeral port and overwrites app.locals.socketServer, restored in afterAll.
+// Vitest gives each test file its own module registry (see vitest.config.js), so this doesn't leak into other files.
 const http = require('http');
 const { io: ioClient } = require('socket.io-client');
 const request = require('supertest');

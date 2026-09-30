@@ -1,35 +1,17 @@
-// Attachment file validation — magic-byte sniffing, allowlist, size caps.
-//
-// SCOPE: this module exists for exactly one thing — deciding whether an
-// uploaded buffer is safe to hand to Gemini as an inline attachment. It never
-// touches disk, never persists anything, and has no knowledge of HTTP,
-// multer, or the route that calls it (a leaf module, same convention as
-// lib/geminiPolicy.js and lib/resourceFields.js).
-//
-// WHY MAGIC BYTES, NOT THE DECLARED Content-Type: multer's fileFilter only
-// sees what the CLIENT claims the mimetype is, which is trivially spoofable
-// (a teacher's browser sets it from the file extension, and a hostile client
-// can set it to anything). The only trustworthy signal is the actual leading
-// bytes of the file, checked against each format's published signature. This
-// is the ONE validation layer in the pipeline that is not just a courtesy —
-// everything upstream of it (client-side checks, multer's fileFilter) is a
-// fast, friendly rejection; this is the real gate.
+// Attachment file validation: magic-byte sniffing, allowlist and size caps. It decides whether an uploaded
+// buffer is safe to hand to Gemini inline. It never touches disk and knows nothing about HTTP or multer.
+// It uses magic bytes rather than the declared Content-Type, which the client controls. The leading bytes are the
+// only trustworthy signal, so this is the real gate; client checks and multer's fileFilter are just fast rejections.
 
 const MIME_JPEG = 'image/jpeg';
 const MIME_PNG = 'image/png';
 const MIME_WEBP = 'image/webp';
 const MIME_PDF = 'application/pdf';
 
-// Hard allowlist. Deliberately not env-configurable (unlike most tunables in
-// this app) — widening the set of formats Gemini receives raw bytes for is a
-// code change with its own review, not a runtime flag flip.
+// Hard allowlist, not env-configurable: widening the formats Gemini receives raw is a code change with its own review.
 const ALLOWED_MIME_TYPES = Object.freeze([MIME_JPEG, MIME_PNG, MIME_WEBP, MIME_PDF]);
 
-/**
- * Each signature is checked at a fixed byte offset. WEBP needs two checks
- * (the RIFF container at 0 and the "WEBP" tag at 8) because RIFF alone is not
- * specific to WebP.
- */
+/** Each signature is checked at a fixed byte offset. WEBP needs two checks (RIFF at 0, "WEBP" at 8) since RIFF alone isn't specific. */
 const SIGNATURES = [
   { mimeType: MIME_JPEG, offset: 0, bytes: [0xff, 0xd8, 0xff] },
   { mimeType: MIME_PNG, offset: 0, bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] },
@@ -48,9 +30,8 @@ function matchesSignature(buffer, { offset, bytes }) {
 }
 
 /**
- * Sniffs the actual file format from its leading bytes. Returns null if the
- * buffer doesn't match any allowed signature — the caller treats that as a
- * hard rejection regardless of what the client declared.
+ * Sniffs the real file format from its leading bytes; null means no allowed signature matched, and the
+ * caller treats that as a hard rejection whatever the client declared.
  * @param {Buffer} buffer
  * @returns {string|null} one of ALLOWED_MIME_TYPES, or null
  */
@@ -69,17 +50,9 @@ function sniffMimeType(buffer) {
 }
 
 /**
- * Cheap PDF page-count estimate — NOT a real parse. Counts occurrences of the
- * `/Type /Page` object marker, which is present once per page in the vast
- * majority of PDFs (including scanned/photographed documents, which is the
- * realistic case here). This exists because a byte-size cap alone does not
- * bound Gemini's per-page processing cost for a PDF — a well-compressed
- * multi-hundred-page PDF can be small in bytes while expensive to process.
- * Deliberately conservative: if the marker can't be found (an unusual PDF
- * structure, e.g. object streams), this returns null and the caller treats
- * an unknown page count as "allow" rather than "reject" — this is a cost
- * guard, not a correctness gate, and a false rejection would block a
- * legitimate small file for no reason.
+ * Cheap PDF page-count estimate (not a real parse): counts `/Type /Page` markers, since a byte cap alone doesn't
+ * bound Gemini's per-page cost. If the marker isn't found (e.g. object streams) it returns null and the caller
+ * allows it: this is a cost guard, and a false rejection would block a legitimate file.
  * @param {Buffer} buffer
  * @returns {number|null}
  */
@@ -132,29 +105,11 @@ function validateAttachment(buffer, limits) {
 }
 
 /**
- * Validates a BATCH of attachment buffers for one request — the true
- * multi-attachment case, where every file in the batch is sent to Gemini
- * together (see attachments/describeAttachment.js). Reuses validateAttachment
- * per file rather than duplicating its checks; adds exactly two checks that
- * only make sense at the batch level: how many files, and how much combined
- * weight they carry.
- *
- * THE COUNT CHECK RUNS BEFORE PER-FILE WORK, so a request with too many files
- * fails fast without sniffing bytes it's about to reject anyway. THE
- * AGGREGATE-SIZE CHECK IS NOT REDUNDANT WITH maxBytes x maxFiles: Gemini's
- * inline-data request ceiling is a property of the WHOLE request (base64
- * encoding adds ~33% on top of raw bytes), so five files each just under the
- * per-file cap could still produce a request too large for Gemini to accept,
- * or slow enough to hurt latency — this check is what actually protects
- * against that, independent of the per-file cap.
- *
- * Fails on the FIRST problem found (empty/oversized/unsupported file, too
- * many files, or too much combined weight) rather than collecting every
- * issue — matches validateAttachment's own "one clear reason" contract, and
- * a partial batch is not a case this app tries to salvage (see
- * routes/attachments.js: the whole request is one message, so a bad file in
- * it means the whole message failed to attach, not that N-1 of them quietly
- * went through).
+ * Validates a batch of attachment buffers sent to Gemini together (see attachments/describeAttachment.js).
+ * Reuses validateAttachment per file and adds two batch-level checks: file count (run first, so too many files
+ * fails fast) and combined size. The aggregate check isn't redundant with maxBytes x maxFiles: Gemini's
+ * inline ceiling applies to the whole request, and base64 adds ~33%.
+ * It fails on the first problem found; a partial batch isn't salvaged (see routes/attachments.js).
  * @param {Buffer[]} buffers
  * @param {{ maxBytes: number, maxPdfPages: number, maxFiles: number, maxTotalBytes: number }} limits
  * @returns {{ ok: true, files: Array<{ mimeType: string }> } | { ok: false, code: string, message: string }}

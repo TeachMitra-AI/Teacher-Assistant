@@ -172,10 +172,8 @@ describe('checkAgainstRequest', () => {
   });
 });
 
-// The mangled inputs below are written with real JS escapes so they contain the
-// ACTUAL control characters JSON.parse produces from Gemini's single-backslash
-// LaTeX: '\t' is a tab ("\tan" eaten), '\f' a form feed ("\frac" eaten), etc.
-// Every fixture shape was observed verbatim in a real generated paper.
+// The mangled inputs use real JS escapes so they hold the actual control characters JSON.parse produces from Gemini's
+// single-backslash LaTeX ('\t' tab for "\tan", '\f' form feed for "\frac"). Each fixture shape was observed in a real generated paper.
 describe('normalizeMathText', () => {
   test('repairs JSON-eaten \\t and \\f commands inside inline math', () => {
     expect(normalizeMathText('If $\tan \theta = \frac{3}{4}$, find it.'))
@@ -257,13 +255,9 @@ describe('normalizeAssessmentMath', () => {
   });
 });
 
-// --- Regressions from the live Class 4 fractions quiz, 2026-08-07 -------------
-//
-// A teacher received a quiz reading "In the fraction f r a c 59, which number
-// is the numerator?" and questions numbered "1. 1.". Both are model-output
-// manglings that every layer downstream passed through, because both produce
-// documents that are structurally valid and (for the LaTeX one) render without
-// error. These tests pin the repairs.
+// Regressions from a live Class 4 fractions quiz: a teacher received "In the fraction f r a c 59, which number is the
+// numerator?" and questions numbered "1. 1.". Both are model-output manglings every layer passed through, since the
+// documents are structurally valid and the LaTeX renders without error. These tests pin the repairs.
 
 describe('restoreBareCommands — backslash-less LaTeX', () => {
   test('repairs the reported case: $frac59$ renders as italic letters, not a fraction', () => {

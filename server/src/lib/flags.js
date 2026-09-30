@@ -1,37 +1,19 @@
-// Feature-flag parsing for the AI Action Router (Phase 1, Milestone M0).
-//
-// Deliberately mirrors lib/config.js: the helpers are PURE (the caller reads
-// process.env and passes the raw string in), and an invalid value falls back to
-// a known-safe default with a warning rather than crashing. Fail-fast is
-// reserved for genuinely-required secrets (GEMINI_API_KEY, JWT_SECRET); a typo
-// in a feature flag must never take the server down.
-//
-// The safe default for EVERY flag here is OFF. A deployment that sets none of
-// these ships a completely inert assistant, which is the correct failure mode:
-// forgetting to configure the feature can only under-enable it, never
-// over-enable it.
-//
-// Note on where the kill switch really lives: the client is a PWA with
-// service-worker caching (registerType 'autoUpdate'), so a client-side flag
-// change propagates on some later page load rather than immediately. That makes
-// ASSISTANT_ENABLED here the only reliable incident control — see the
-// guardrails document, G28.
+// Feature-flag parsing. The helpers are pure (the caller passes the raw env string), and an invalid value falls back
+// to a safe default with a warning rather than crashing; fail-fast is for required secrets only.
+// Every flag defaults OFF, so forgetting to configure a feature can only under-enable it.
+// The client is a PWA with service-worker caching, so a client-side flag changes on some later page load. The
+// server-side flags (e.g. ASSISTANT_ENABLED) are therefore the only reliable incident controls.
 
 const { parseIntEnv } = require('./config');
 
-// Accepted spellings, chosen to match what people actually type in a .env file.
-// Anything else non-empty is a typo, not a value: it warns and uses the default
-// rather than being silently coerced (a stray "ASSISTANT_ENABLED=ture" must not
-// read as false-because-not-true when the default is false and the author
-// clearly meant true — the warning is what surfaces it).
+// Accepted spellings. Anything else non-empty is treated as a typo: it warns and uses the default rather than
+// being coerced, so "ASSISTANT_ENABLED=ture" surfaces instead of silently reading as false.
 const TRUE_VALUES = ['true', '1', 'yes', 'on'];
 const FALSE_VALUES = ['false', '0', 'no', 'off'];
 
 /**
- * Parse an environment variable as a boolean.
- * - Missing/empty  → default (no warning; absence is normal and expected).
- * - Recognized     → the parsed value.
- * - Anything else  → default + warn.
+ * Parse an environment variable as a boolean: missing/empty gives the default (no warning),
+ * a recognized spelling gives its value, anything else gives the default plus a warning.
  *
  * @param {string|undefined} rawValue the raw env string
  * @param {object} opts
@@ -57,13 +39,8 @@ function parseBoolEnv(rawValue, { name, defaultValue, warn = console.warn }) {
 }
 
 /**
- * Parse an environment variable as a comma-separated list. Entries are trimmed
- * and empties dropped, so "a, b,, c" and "a,b,c" are the same list.
- *
- * An empty/missing value yields the default rather than an empty list, because
- * for these flags "unset" and "explicitly empty" mean the same thing and the
- * caller decides what an empty list signifies (for allow-lists here it means
- * "no restriction" — see readAssistantFlags).
+ * Parse an environment variable as a comma-separated list; entries are trimmed and empties dropped.
+ * Unset and explicitly empty both yield the default; for allow-lists, an empty list means "no restriction".
  *
  * @param {string|undefined} rawValue
  * @param {object} opts
@@ -82,13 +59,8 @@ function parseListEnv(rawValue, { name: _name, defaultValue }) {
 }
 
 /**
- * Is a single named flag on? Used for the PER-ACTION gate: each action
- * descriptor names its own env var in its `featureFlag` field, so this helper
- * never needs to know which actions exist. That keeps lib/flags.js free of any
- * dependency on the registry (and the registry free of any hardcoded env
- * names), which is what lets a new action be added without touching this file.
- *
- * Defaults to false — an action whose flag is unset is off.
+ * Is a single named flag on? Each action descriptor names its own env var in `featureFlag`, so this
+ * needs no knowledge of the registry. Defaults to false.
  *
  * @param {Record<string, string|undefined>} env
  * @param {string} flagName
@@ -100,10 +72,7 @@ function isFlagEnabled(env, flagName, { warn = console.warn } = {}) {
   return parseBoolEnv(env[flagName], { name: flagName, defaultValue: false, warn });
 }
 
-// Documented defaults, in one place, so the .env.example and the tests can be
-// checked against the same source. Every gate is closed by default; the two
-// allow-lists are the only entries where the default is permissive in shape,
-// and both are still gated behind `enabled` being false by default.
+// Defaults live in one place so .env.example and the tests can be checked against them.
 const ASSISTANT_FLAG_DEFAULTS = Object.freeze({
   enabled: false,
   // Which roles may use the assistant at all. Coarse rollout control that
@@ -119,11 +88,8 @@ const ASSISTANT_FLAG_DEFAULTS = Object.freeze({
 const DAILY_BUDGET_BOUNDS = Object.freeze({ min: 1, max: 100000 });
 
 /**
- * Read the assistant's global flags from an environment object.
- *
- * Takes `env` as a parameter rather than reading process.env directly so it
- * stays pure and testable, matching how index.js already calls parseIntEnv.
- * Per-action flags are NOT read here — see isFlagEnabled.
+ * Read the assistant's global flags from an env object (passed in, not process.env, to stay pure).
+ * Per-action flags are read by isFlagEnabled.
  *
  * @param {Record<string, string|undefined>} env
  * @param {{warn?: (msg: string) => void}} [opts]
@@ -154,31 +120,18 @@ function readAssistantFlags(env, { warn = console.warn } = {}) {
   };
 }
 
-// ---- Multimodal attachments (Coach: image/PDF upload) ----------------------
-//
-// Mirrors the assistant flags above exactly: every gate defaults OFF/closed,
-// ATTACHMENTS_ENABLED is the one reliable kill switch (same PWA-caching
-// reasoning as ASSISTANT_ENABLED — G28 applies here too), and the school
-// allow-list is a filter, not a gate.
+// Multimodal attachments. Same defaults as above; ATTACHMENTS_ENABLED is the reliable kill switch and
+// the school allow-list is a filter, not a gate.
 
 const ATTACHMENT_FLAG_DEFAULTS = Object.freeze({
   enabled: false,
   allowedSchoolCodes: Object.freeze([]),
-  // Attachment requests are the most expensive call in the product (image/PDF
-  // tokens), so the default daily ceiling is deliberately lower than the
-  // router's own text-only classification budget.
+  // Attachments are the most expensive call in the product, so the daily ceiling is lower than the router's.
   dailyBudgetPerUser: 20,
   maxFileSizeMb: 8,
   maxPdfPages: 30,
-  // Multi-attachment batch limits (a single message may attach several
-  // files, sent to Gemini together — see attachments/describeAttachment.js).
-  // maxFiles keeps the per-request Gemini call bounded in count; maxTotalSizeMb
-  // is a SEPARATE guard from maxFileSizeMb x maxFiles (see the reasoning in
-  // lib/fileValidation.js's validateAttachmentBatch): five files each just
-  // under the per-file cap could still add up to a request too large or too
-  // slow for Gemini's inline-data path. 15MB raw is comfortably under
-  // Gemini's ~20MB inline-request ceiling once base64's ~33% overhead is
-  // added.
+  // Batch limits. maxTotalSizeMb is a separate guard from maxFileSizeMb x maxFiles (see
+  // validateAttachmentBatch): 15MB raw stays under Gemini's ~20MB inline ceiling after ~33% base64 overhead.
   maxFiles: 5,
   maxTotalSizeMb: 15,
 });
@@ -252,14 +205,7 @@ function readAttachmentFlags(env, { warn = console.warn } = {}) {
   };
 }
 
-// ---- Help & Support (bug reports + feedback) -------------------------------
-//
-// Same shape and same "default OFF" reasoning as the flags above — a
-// deployment that sets nothing ships zero new UI or endpoints. Unlike the
-// assistant/attachment flags, this feature makes no LLM call, so there is no
-// daily-budget-per-user tunable here: the shared per-IP rate limiter mounted
-// in index.js is what bounds abuse, the same way routes/queries.js's
-// /feedback endpoint has no budget of its own either.
+// Help & Support. Makes no LLM call, so there's no daily budget; the shared per-IP limiter bounds abuse.
 
 const HELP_SUPPORT_FLAG_DEFAULTS = Object.freeze({
   enabled: false,
@@ -288,17 +234,8 @@ function readHelpSupportFlags(env, { warn = console.warn } = {}) {
   };
 }
 
-// ---- AI Learning Representation System (ADR Phase D) -----------------------
-//
-// Same shape and same "default OFF" reasoning as the flags above. Unlike
-// the assistant/attachment flags, this feature makes at most TWO Gemini
-// calls per request (classify, then render — see
-// routes/learningRepresentation.js) rather than one, so the default daily
-// ceiling sits between the assistant's (100, one call each) and the
-// attachment feature's (20, the most expensive call shape in the product).
-// No `allowedRoles`: any authenticated teacher who can reach Coach can use
-// this, matching /api/coach itself and the attachment endpoint, neither of
-// which restricts by role.
+// AI Learning Representation. Up to two Gemini calls per request (classify, then render), so the default
+// daily ceiling sits between the assistant's and the attachments'. No `allowedRoles`, matching /api/coach.
 
 const LEARNING_REPRESENTATION_FLAG_DEFAULTS = Object.freeze({
   enabled: false,
@@ -336,25 +273,10 @@ function readLearningRepresentationFlags(env, { warn = console.warn } = {}) {
   };
 }
 
-// ---- Classroom Mode --------------------------------------------------------
-//
-// See docs/classroom-mode.md. Same shape and same "default OFF" reasoning as
-// every flag above.
-//
-// This one matters more than most, because the feature is the only place in the
-// app where ONE teacher action costs several model calls instead of one (a
-// coaching answer, a planner call, then one generation per applicable
-// artifact). CLASSROOM_MODE_ENABLED is therefore a real spend control as well
-// as a kill switch: flipping it false stops that fan-out for everyone in under
-// a minute, including already-loaded PWA clients that still have the client
-// flag baked in. The client's VITE_CLASSROOM_MODE_ENABLED only decides whether
-// the "+" button renders — it is NOT the incident control (G28's reasoning
-// applies here exactly as it does to the assistant and attachment flags).
-//
-// No daily-budget-per-user tunable here yet: the pilot ships uncapped by owner
-// decision D9, with usage measured first (P7 telemetry) so any future cap is
-// set from real numbers rather than a guess. allowedSchoolCodes is what bounds
-// exposure until then.
+// Classroom Mode (docs/classroom-mode.md). One teacher action costs several model calls, so
+// CLASSROOM_MODE_ENABLED is a spend control as well as the kill switch; VITE_CLASSROOM_MODE_ENABLED only
+// decides whether the "+" button renders. No daily budget yet: the pilot is uncapped with usage measured first,
+// and allowedSchoolCodes bounds exposure.
 
 const CLASSROOM_MODE_FLAG_DEFAULTS = Object.freeze({
   enabled: false,
@@ -383,14 +305,8 @@ function readClassroomModeFlags(env, { warn = console.warn } = {}) {
   };
 }
 
-// ---- Notifications ----------------------------------------------------------
-//
-// Same shape and same "default OFF" reasoning as every flag above.
-// NOTIFICATIONS_ENABLED is the ONE reliable kill switch — it gates both the
-// REST routes (routes/notifications.js) and the Socket.IO handshake
-// (lib/socketServer.js), same PWA-caching reasoning as every other feature's
-// server-side gate (G28): the client's VITE_NOTIFICATIONS_ENABLED only
-// decides whether the bell renders on an already-loaded client.
+// Notifications. NOTIFICATIONS_ENABLED gates both the REST routes (routes/notifications.js) and the
+// Socket.IO handshake (lib/socketServer.js); VITE_NOTIFICATIONS_ENABLED only decides whether the bell renders.
 
 const NOTIFICATIONS_FLAG_DEFAULTS = Object.freeze({
   enabled: false,
@@ -412,24 +328,10 @@ function readNotificationsFlags(env, { warn = console.warn } = {}) {
   };
 }
 
-// ---- Classroom Management ---------------------------------------------------
-//
-// See docs/classroom-feature-plan.md. Same shape and same "default OFF"
-// reasoning as every flag above. NOT the same feature as "Classroom Mode"
-// above (CLASSROOM_MODE_ENABLED) — that is an unrelated AI chat feature; this
-// is the class/student/attendance/fee management workspace. Deliberately
-// distinct env var names so the two can never be confused or accidentally
-// toggled together.
-//
-// MASTER KILL SWITCH. When false, every /api/classroom/* route returns 503
-// and touches no table. The client's VITE_CLASSROOM_MANAGEMENT_ENABLED only
-// hides the nav entry on an already-cached PWA build — same "not the real
-// kill switch" caveat as every other VITE_*_ENABLED constant (G28).
-//
-// No daily-budget-per-user tunable: this feature makes no LLM call, so
-// CLASSROOM_MANAGEMENT_ALLOWED_SCHOOL_CODES (a rollout filter, not a gate —
-// empty means all schools) plus the shared classroomLimiter (index.js) are
-// what bound it, matching Help & Support's reasoning above.
+// Classroom Management (docs/classroom-feature-plan.md), the class/student/attendance/fee workspace. Not
+// Classroom Mode above (an AI chat feature); the env var names are kept distinct.
+// Master kill switch: when false every /api/classroom/* route returns 503 and touches no table.
+// No LLM call, so no daily budget; the school-code filter (empty = all schools) and classroomLimiter bound it.
 
 const CLASSROOM_MANAGEMENT_FLAG_DEFAULTS = Object.freeze({
   enabled: false,
@@ -456,18 +358,9 @@ function readClassroomManagementFlags(env, { warn = console.warn } = {}) {
   };
 }
 
-// ---- Structured Question Model (Generator v2) ------------------------------
-//
-// Same shape and same "default OFF" reasoning as NOTIFICATIONS_ENABLED above —
-// a single master kill switch, no allow-list yet (add one later if a staged
-// school-by-school rollout turns out to be needed; NOT required to ship this
-// gate). STRUCTURED_QUESTIONS_ENABLED gates only the THREE NEW question types
-// (descriptive/fill_blank/match) and the PATCH/POST structured-questions
-// re-render rule in routes/resources.js — the existing mcq/true_false/
-// short_answer/mixed generator behavior is never gated by this flag. The
-// client's VITE_STRUCTURED_QUESTIONS_ENABLED only hides the new picker options
-// on an already-cached PWA build — same "not the real kill switch" caveat as
-// every other VITE_*_ENABLED constant (G28).
+// Structured Question Model (docs/generator-v2-plan.md). One master switch, no allow-list yet. It gates only
+// the three new question types (descriptive/fill_blank/match) and the structured-questions re-render rule in
+// routes/resources.js; the existing types are never gated.
 
 const STRUCTURED_QUESTIONS_FLAG_DEFAULTS = Object.freeze({
   enabled: false,
@@ -490,19 +383,9 @@ function readStructuredQuestionsFlags(env, { warn = console.warn } = {}) {
   };
 }
 
-// ---- Mobile Push (Phase 7b) -------------------------------------------------
-//
-// Same shape and same "default OFF" reasoning as every flag above.
-// MOBILE_PUSH_ENABLED is a SEPARATE gate from NOTIFICATIONS_ENABLED, layered
-// on top of it rather than merged into it: NOTIFICATIONS_ENABLED controls
-// whether a Notification is created/emitted at all (every call site already
-// checks it before ever reaching notificationService.js), while
-// MOBILE_PUSH_ENABLED controls only the ADDITIONAL Expo push dispatch a
-// created notification triggers, plus the device-token registration routes
-// themselves (routes/notifications.js). This lets push be switched on/off
-// independently of in-app/realtime notifications — e.g. to finish Expo/FCM
-// credential setup (docs/mobile-app-plan.md §26 Phase 7b) without touching
-// the already-shipped Phase 7 behavior at all.
+// Mobile push. A separate gate layered on NOTIFICATIONS_ENABLED: that one controls whether a notification is
+// created at all, this one controls only the extra Expo push dispatch and the device-token routes
+// (routes/notifications.js). That lets push be switched independently of in-app notifications.
 
 const MOBILE_PUSH_FLAG_DEFAULTS = Object.freeze({
   enabled: false,
@@ -524,19 +407,9 @@ function readMobilePushFlags(env, { warn = console.warn } = {}) {
   };
 }
 
-// ---- Teacher Attendance ------------------------------------------------------
-//
-// See docs/feature-teacher-attendance-implementation-plan.md. Same shape and
-// same "default OFF" reasoning as every flag above. MASTER KILL SWITCH: when
-// false, every /api/teacher-attendance/* route returns 503 and touches no
-// table — same contract as CLASSROOM_MANAGEMENT_ENABLED, and deliberately a
-// SEPARATE env var from it: this is teacher self check-in/out, not the
-// unrelated Classroom Management student-attendance feature.
-//
-// No daily-budget-per-user tunable: this feature makes no LLM call, so
-// TEACHER_ATTENDANCE_ALLOWED_SCHOOL_CODES (a rollout filter, empty = all
-// schools) is what bounds exposure during rollout, same reasoning as
-// Classroom Management's own flag.
+// Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md). Master kill switch: when false
+// every /api/teacher-attendance/* route returns 503 and touches no table. A separate env var from Classroom
+// Management, which is student attendance. No LLM call, so no daily budget; the school-code filter bounds rollout.
 
 const TEACHER_ATTENDANCE_FLAG_DEFAULTS = Object.freeze({
   enabled: false,
@@ -564,18 +437,9 @@ function readTeacherAttendanceFlags(env, { warn = console.warn } = {}) {
   };
 }
 
-// ---- Schedule a Call (demo booking) -----------------------------------------
-//
-// See docs/schedule-a-call-plan.md. Same shape and same "default OFF"
-// reasoning as every flag above. MASTER KILL SWITCH: when false, every
-// /api/schedule-demo/* route returns 503 and touches no table.
-//
-// No allowedSchoolCodes here, unlike most other flags — this feature is for
-// visitors who have NOT signed up yet, so there is no school to scope a
-// rollout by. The rest of the feature's tunables (timezone, work hours, slot
-// length, lookahead window, admin notification address) are availability
-// CONFIGURATION, not a rollout flag, so they live in lib/demoBookingConfig.js
-// instead of here.
+// Schedule a Call (demo booking). Master kill switch: when false every /api/schedule-demo/* route returns 503
+// and touches no table. No allowedSchoolCodes, since visitors haven't signed up. Availability settings
+// (timezone, hours, slot length) are configuration and live in lib/demoBookingConfig.js.
 
 const DEMO_BOOKING_FLAG_DEFAULTS = Object.freeze({
   enabled: false,

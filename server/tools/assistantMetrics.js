@@ -1,28 +1,10 @@
-// AI Action Router — the field-edit rate, computed from telemetry (M8).
-//
-// An OPERATIONAL SCRIPT, not application code. It is here rather than behind an
-// admin endpoint because routes/admin.js is on the explicitly-untouched list
-// (spec §2.3), and because this number is read during a rollout decision by
-// someone with shell access, not by a teacher in a browser.
-//
-// ─── WHY THIS NUMBER IS THE LAUNCH GATE ────────────────────────────────────
-// Decision D16: instrument the CORRECTION signal, not model confidence. A router
-// reporting "high confidence" on every utterance while teachers rewrite half the
-// fields is a bad router that looks excellent in its own logs. The honest metric
-// is the share of prefilled fields a teacher changes before generating.
-//
-//   field-edit rate = corrected fields / delivered fields
-//
-// Launch gate: < 20%. Sustained < 15% before auto-generation is even discussed.
-//
-// ─── WHY `abandoned` IS DERIVED HERE AND NOT EMITTED ───────────────────────
-// A delivered prefill with no outcome row IS the abandonment. Emitting it would
-// mean an unload beacon, and beacons are unreliable on exactly the low-end
-// mobile browsers this product targets — so an emitted `abandoned` would
-// undercount, which reads as good news. Deriving it from absence cannot.
-//
-// Read-only. This script never writes or deletes anything.
-//
+// Operational script: the AI Action Router's field-edit rate, computed from telemetry. Read-only; it never writes or deletes.
+// It's a script rather than an admin endpoint because it's read during a rollout decision by someone with shell access.
+// The metric is the share of prefilled fields a teacher changes before generating (corrected / delivered fields). It
+// measures correction, not model confidence, because a router can report "high confidence" while teachers rewrite half the
+// fields. Launch gate: under 20%, and sustained under 15% before auto-generation is discussed.
+// `abandoned` is derived here, not emitted: a delivered prefill with no outcome row is the abandonment, and an
+// unload beacon would undercount on low-end mobile browsers, which reads as good news.
 // Usage:  npm run assistant:metrics -- [--days 30] [--school DPS001]
 
 const { prisma } = require('../src/lib/db');
@@ -53,11 +35,7 @@ function parseMetadata(row) {
 }
 
 /**
- * Turn raw rows into the metrics.
- *
- * Exported and pure so its arithmetic is unit-tested rather than eyeballed in a
- * terminal — a metric that gates a launch should not be the one number in the
- * project nobody wrote a test for.
+ * Turn raw rows into the metrics. Exported and pure so the arithmetic of a launch-gating number is unit-tested.
  *
  * @param {{type: string, metadata: string|null}[]} rows
  */
@@ -78,20 +56,15 @@ function computeMetrics(rows) {
     if (meta.outcome in outcomeMix) outcomeMix[meta.outcome] += 1;
   }
 
-  // Abandonment by absence: a delivered row whose requestId never appears on an
-  // outcome row. Deliveries with no requestId at all (a hand-written draft, or a
-  // client older than this field) cannot be joined and are excluded from the
-  // denominator rather than assumed abandoned — counting "we cannot tell" as a
-  // failure would make the number pessimistic in a way that is just as dishonest
-  // as a beacon making it optimistic.
+  // Abandonment by absence: a delivered row whose requestId never appears on an outcome row. Deliveries with no
+  // requestId (a hand-written draft, or an older client) can't be joined, so they're excluded from the denominator
+  // rather than assumed abandoned, which would make the number pessimistic.
   const outcomeRequestIds = new Set(outcomes.map((meta) => meta.requestId).filter(Boolean));
   const joinable = delivered.filter((meta) => Boolean(meta.requestId));
   const abandoned = joinable.filter((meta) => !outcomeRequestIds.has(meta.requestId)).length;
 
-  // WHICH provenance produces the corrections is the diagnostic half. Edits
-  // concentrated in `utterance` mean the classifier is misreading teachers;
-  // edits concentrated in `profile` or `default` mean the defaults are stale.
-  // Those call for opposite fixes, and the aggregate rate cannot tell them apart.
+  // Which provenance produces the corrections is the diagnostic half: edits concentrated in `utterance` mean the
+  // classifier misreads teachers, and in `profile` or `default` mean stale defaults. The fixes are opposite, and the aggregate rate can't tell them apart.
   const correctionsByField = {};
   const correctionsBySource = {};
   for (const meta of outcomes) {
@@ -106,9 +79,7 @@ function computeMetrics(rows) {
     deliveredFields,
     correctedFields,
     lowConfidenceFields,
-    // Null rather than 0 when nothing was delivered: a rate over an empty
-    // denominator is undefined, and printing "0.0%" for it would look like a
-    // perfect score in the exact situation where there is no evidence at all.
+    // Null rather than 0 when nothing was delivered: a rate over nothing is undefined, and "0.0%" would look like a perfect score.
     fieldEditRate: deliveredFields > 0 ? correctedFields / deliveredFields : null,
     outcomeMix,
     abandoned,

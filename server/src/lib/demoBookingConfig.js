@@ -1,11 +1,6 @@
-// Availability rule for Schedule a Call. A fixed rule, not a real calendar —
-// see docs/schedule-a-call-plan.md's scope note: no Google Calendar
-// integration, one operating timezone for everyone (DEMO_BOOKING_TIMEZONE),
-// deliberately not per-visitor-converted (see routes/scheduleDemo.js).
-//
-// Pure functions, same "caller passes env in" shape as lib/flags.js, so both
-// the /config and /slots routes (and tests) validate against the identical
-// rule instead of two copies drifting apart.
+// Availability rule for Schedule a Call: a fixed rule, not a real calendar, with one operating timezone
+// (DEMO_BOOKING_TIMEZONE) that isn't converted per visitor (see routes/scheduleDemo.js).
+// Pure functions that take env as an argument (like lib/flags.js), so /config, /slots and tests share one rule.
 
 const { parseIntEnv } = require('./config');
 
@@ -81,9 +76,7 @@ function getDemoBookingConfig(env = process.env, { warn = console.warn } = {}) {
   };
 }
 
-// "YYYY-MM-DD" for a Date, read in the config's fixed timezone rather than
-// the server's local time — matters when the server itself isn't running in
-// IST (e.g. most hosting regions/CI).
+// "YYYY-MM-DD" for a Date in the config's timezone rather than the server's (which may not be IST).
 function dateKeyInTimezone(date, timezone) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 }
@@ -95,9 +88,8 @@ function isoWeekdayInTimezone(date, timezone) {
 }
 
 /**
- * Is `dateStr` ("YYYY-MM-DD") a bookable working day at all, ignoring
- * already-taken slots? Checks: valid calendar date, a configured work day,
- * and within [today, today + lookaheadDays] in the configured timezone.
+ * Is `dateStr` ("YYYY-MM-DD") a bookable day, ignoring taken slots? It must be a valid calendar date, a
+ * configured work day, and within [today, today + lookaheadDays] in the configured timezone.
  */
 function isBookableDate(dateStr, config, now = new Date()) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
@@ -115,9 +107,8 @@ function isBookableDate(dateStr, config, now = new Date()) {
 }
 
 /**
- * Every "HH:MM" slot start between config.startTime and config.endTime
- * (exclusive of a start that would run past endTime), regardless of
- * bookings — callers filter out already-taken/past-cutoff slots themselves.
+ * Every "HH:MM" slot start from config.startTime up to endTime (excluding a start that would run past it),
+ * ignoring bookings; callers filter out taken and past-cutoff slots.
  */
 function generateSlotStarts(config) {
   const [startH, startM] = config.startTime.split(':').map(Number);
@@ -135,15 +126,9 @@ function generateSlotStarts(config) {
 }
 
 /**
- * The offset of `timeZone` from UTC at `instant`, in milliseconds (positive
- * for a zone ahead of UTC, e.g. +19800000 for Asia/Kolkata's fixed +05:30).
- *
- * Deliberately does NOT use `new Date(someLocaleString)` to measure this —
- * that re-parses the string using the *server process's own* local
- * timezone, so the result would silently depend on the host's OS/TZ
- * setting rather than only on `timeZone`. `Intl.DateTimeFormat.formatToParts`
- * gives the target zone's wall-clock digits directly, with no such
- * dependency.
+ * The offset of `timeZone` from UTC at `instant`, in ms (positive when ahead of UTC). Uses
+ * `Intl.DateTimeFormat.formatToParts` rather than `new Date(localeString)`, which would re-parse using the
+ * server's own timezone.
  */
 function timeZoneOffsetMs(instant, timeZone) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -158,34 +143,24 @@ function timeZoneOffsetMs(instant, timeZone) {
 }
 
 /**
- * Converts a wall-clock "YYYY-MM-DD" + "HH:MM" pair in `timeZone` to the
- * absolute UTC instant it represents. Good enough for scheduling a call;
- * not meant for DST-boundary precision (immaterial here — Asia/Kolkata has
- * no DST, and no timezone-math dependency exists in this codebase — see
- * docs/schedule-a-call-plan.md's scope note).
+ * Converts a "YYYY-MM-DD" + "HH:MM" wall-clock pair in `timeZone` to the UTC instant it represents. Good
+ * enough for scheduling; not precise across DST boundaries (Asia/Kolkata has none).
  */
 function zonedTimeToUtc(dateStr, timeStr, timeZone) {
-  // The wall-clock digits, read as if they were themselves a UTC instant —
-  // used only as a reference point to look up the zone's offset (fine
-  // without DST) and to recover the calendar digits below.
+  // The wall-clock digits read as a UTC instant, used only as a reference for the zone's offset and calendar digits.
   const naiveUtc = new Date(`${dateStr}T${timeStr}:00Z`);
   const offsetMs = timeZoneOffsetMs(naiveUtc, timeZone);
   return new Date(naiveUtc.getTime() - offsetMs);
 }
 
-/**
- * Is `date`+`startTime` still far enough in the future to satisfy
- * minNoticeHours?
- */
+/** Is `date`+`startTime` far enough in the future to satisfy minNoticeHours? */
 function meetsMinNotice(dateStr, startTime, config, now = new Date()) {
   const slotInstant = zonedTimeToUtc(dateStr, startTime, config.timezone);
   const hoursUntilSlot = (slotInstant.getTime() - now.getTime()) / (60 * 60 * 1000);
   return hoursUntilSlot >= config.minNoticeHours;
 }
 
-// "2026-09-30" -> "Wednesday, 30 September 2026" — shared by the public and
-// admin routes so a booking's date reads identically in the visitor's
-// confirmation and the admin inbox.
+// "2026-09-30" -> "Wednesday, 30 September 2026"; shared by the public and admin routes so dates read alike.
 function formatDateLabel(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', {

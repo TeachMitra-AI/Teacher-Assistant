@@ -1,37 +1,11 @@
-// The structured renderer — AI Learning Representation System, Phase C
-// (docs/learning-representation-system-adr.md, §6, §13 Phase C).
-//
-// THE ONLY FILE IN THIS FEATURE THAT GENERATES REPRESENTATION CONTENT. One
-// generic function, data-driven from schemas.js's RENDER_SPECS, the same way
-// classifier.js is data-driven from contracts.js's EDUCATIONAL_INTENTS —
-// adding a seventh representation type means adding a RENDER_SPECS entry,
-// not editing this file.
-//
-// THE SINGLE MOST IMPORTANT RULE IN THIS FILE (ADR §11's hallucination
-// mitigation, made concrete): the model is given the ANSWER ALREADY PRODUCED
-// for the teacher's question and told to restructure it, not to answer the
-// question a second time from its own knowledge. A diagram that silently
-// re-derives facts independently of the text answer could disagree with it —
-// two different, unreconciled claims on one screen — which is worse than not
-// having a diagram at all. Grounding in the existing answer is what keeps a
-// wrong structured field a restructuring bug rather than a second,
-// independent hallucination.
-//
-// Same reliability discipline as classifier.js, deliberately kept identical:
-//
-// 1. EVERY FAILURE BECOMES A REASON, NEVER AN EXCEPTION.
-// 2. THE SCHEMA IS A STRONG HINT, NOT A GUARANTEE — parsed output is
-//    re-validated against the representation's own zod schema, including the
-//    structural invariants zod alone can express (e.g. hierarchy_diagram's
-//    single-root, all-parents-resolve check) that Gemini's responseSchema
-//    cannot.
-//
-// No GeminiService instance is constructed or referenced here. The caller
-// injects one (dependency injection, same as classify()) — which concrete
-// instance that should be (geminiFast is deliberately token-starved for a
-// 2-field classification and is very likely the WRONG instance for this
-// heavier structured output) is a wiring decision left to whichever later
-// phase adds a route.
+// The structured renderer: the only place this feature generates representation content. One generic function
+// driven by RENDER_SPECS in schemas.js, so a new representation type is a spec entry, not an edit here.
+// Grounding: the model gets the answer already produced and restructures it rather than answering again, so a
+// diagram can't contradict the text answer beside it.
+// Same reliability rules as classifier.js: every failure becomes a reason, never an exception, and parsed output
+// is re-validated against the representation's zod schema, including structural invariants (e.g. hierarchy_diagram
+// single root, all parents resolve) that responseSchema can't express.
+// The caller injects the Gemini instance; geminiFast is likely too token-starved for this heavier output.
 
 const { RENDER_SPECS, hasRenderer } = require('./schemas');
 
@@ -50,8 +24,8 @@ ${spec.instructions}`;
 }
 
 /**
- * Wrap the question and the existing answer as delimited untrusted content,
- * clearly labelled so the model restructures the ANSWER, not the question.
+ * Wrap the question and the existing answer as delimited untrusted content, labelled so the model
+ * restructures the answer rather than the question.
  *
  * @param {string} prompt the teacher's original question
  * @param {string} answer the answer already produced for it
@@ -68,12 +42,8 @@ function buildUserText(prompt, answer) {
 }
 
 /**
- * Map an upstream failure to a passthrough reason. Identical shape to
- * classifier.js#classifyFailure — kept as a separate copy rather than a
- * shared import because the two classifiers are independent call sites that
- * happen to fail the same way GeminiService always fails, not because they
- * share a concept that would need to change together (same reasoning as
- * contracts.js's CONFIDENCE_LEVELS duplication).
+ * Map an upstream failure to a reason. Same as classifier.js#classifyFailure but kept as a separate copy,
+ * since the two call sites only happen to fail the same way.
  *
  * @param {Error} error
  * @returns {string}
@@ -87,11 +57,10 @@ function renderFailure(error) {
 }
 
 /**
- * Render structured content for one representation, grounded in the answer
- * already given.
+ * Render structured content for one representation, grounded in the answer already given.
  *
  * @param {object} args
- * @param {object} args.gemini a GeminiService-shaped instance (injected — see module header)
+ * @param {object} args.gemini a GeminiService-shaped instance, injected
  * @param {string} args.representation a RENDERABLE_REPRESENTATION_IDS member
  * @param {string} args.prompt the teacher's original question
  * @param {string} args.answer the answer already produced for it

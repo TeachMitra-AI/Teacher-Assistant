@@ -1,10 +1,6 @@
-// Logs in as a fixture user via the real HTTP endpoint (not by importing
-// internal signing functions) so tests exercise the actual auth path.
-//
-// Sign-in itself needs only an email + password — no school code. The
-// fixture's schoolId is still sent as the explicit disambiguator so this
-// helper stays deterministic even if a future fixture reuses one email across
-// two schools (the case that otherwise returns needsSchoolSelection).
+// Logs in as a fixture user through the real HTTP endpoint (not internal signing functions), so tests exercise the
+// actual auth path. Sign-in needs only email and password; the fixture's schoolId is still sent as the explicit
+// disambiguator so this stays deterministic if a fixture reuses one email across two schools.
 const request = require('supertest');
 
 async function loginAs(app, school, user, password) {

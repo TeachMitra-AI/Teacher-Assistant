@@ -1,8 +1,5 @@
-// Admin Support Inbox (Phase 2) — GET/PATCH/POST /api/admin/support/tickets*.
-// Every route is super_admin-only, full stop (unlike routes/admin.js's other
-// endpoints, which resource_person/school_admin can also reach in a narrower
-// scope) — so the access-control tests here check that the OTHER two admin
-// roles are rejected just as firmly as a plain teacher.
+// Admin Support Inbox: GET/PATCH/POST /api/admin/support/tickets*. Every route is super_admin-only, unlike other
+// admin endpoints, so the access tests check that the other two admin roles are rejected as firmly as a teacher.
 const request = require('supertest');
 const { app, prisma } = require('./helpers/testApp');
 const { createFixtures, PASSWORD } = require('./helpers/fixtures');
@@ -171,9 +168,7 @@ describe('Admin Support Inbox', () => {
     });
 
     test('is not shadowed by the /:id route (a literal "stats" id would 404, not match)', async () => {
-      // If routing order were wrong, GET /tickets/stats would be captured by
-      // GET /tickets/:id instead and return a 404 "ticket not found" shape.
-      // Asserting the actual stats shape here catches that regression.
+      // If routing order were wrong, GET /tickets/stats would be captured by /tickets/:id and return a 404 "ticket not found".
       const res = await asSuper(request(app).get('/api/admin/support/tickets/stats'));
       expect(res.body.open).not.toBeUndefined();
     });
@@ -261,9 +256,7 @@ describe('Admin Support Inbox', () => {
     });
 
     test('never appears on any teacher-facing endpoint', async () => {
-      // There is no route a teacher can call that returns SupportNote rows —
-      // asserting the negative directly on the one endpoint a teacher CAN
-      // reach for their own history.
+      // No route a teacher can call returns SupportNote rows; asserted on the one endpoint a teacher can reach for their own history.
       const res = await request(app)
         .get('/api/queries')
         .set('Authorization', `Bearer ${teacherAToken}`);

@@ -43,10 +43,8 @@ describe('GeminiKeyPool', () => {
   });
 
   test('two keys failing within the same reset window share the same recovery time', () => {
-    // Unlike a rolling per-key cooldown, a fixed daily reset means every key
-    // that fails before the boundary recovers AT THE SAME INSTANT — the next
-    // occurrence of 12:30 PM IST — regardless of exactly when within that
-    // window each one failed.
+    // Unlike a rolling per-key cooldown, a fixed daily reset means every key failing before the boundary recovers at the
+    // same instant (the next 12:30 PM IST), whenever within that window each failed.
     const clock = makeClock(0);
     const pool = new GeminiKeyPool(['a', 'b'], { now: clock.now });
     pool.reportFailure('a', { status: 429 });
@@ -56,9 +54,7 @@ describe('GeminiKeyPool', () => {
   });
 
   test('reportFailure honors an explicit retryAfterMs over the daily reset time', () => {
-    // Gemini's own Retry-After is a specific instruction for THIS response
-    // (e.g. a short per-minute rate limit) and wins over the much later
-    // daily-reset fallback.
+    // Gemini's own Retry-After is specific to this response (e.g. a short per-minute limit) and wins over the later daily-reset fallback.
     const clock = makeClock(0);
     const pool = new GeminiKeyPool(['a', 'b'], { now: clock.now });
     pool.reportFailure('a', { status: 429 }, { retryAfterMs: 5000 });
@@ -127,11 +123,8 @@ describe('GeminiKeyPool', () => {
     });
 
     test('with the daily-reset default, two keys exhausted on the same day recover together', () => {
-      // The scenario from the original request (many keys, staggered
-      // failures over hours) plays out differently under a FIXED daily reset
-      // than under a rolling per-key cooldown: every key that fails before
-      // the boundary shares the same recovery instant — see the "share the
-      // same recovery time" test above for the detailed walkthrough.
+      // Many keys failing over hours play out differently under a fixed daily reset than a rolling cooldown: every key that
+      // fails before the boundary shares one recovery instant (see the "share the same recovery time" test above).
       const clock = makeClock(0);
       const pool = new GeminiKeyPool(['key1', 'key20'], { now: clock.now });
       pool.reportFailure('key1', { status: 429 });

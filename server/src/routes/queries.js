@@ -11,13 +11,9 @@ const router = express.Router();
 // GET /api/queries — the signed-in user's own history (most recent first).
 router.get('/queries', authRequired, asyncHandler(async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
-  // EXPLICIT select, not the default "every column".
-  //
-  // `classroomArtifacts` holds up to five full documents (D25). A 20-row
-  // history that pulled it would move hundreds of kilobytes to render a
-  // sidebar that shows none of it. The plan IS included — it is small, and the
-  // client needs it to know a turn has materials at all; the artifacts
-  // themselves are fetched on demand for one turn below.
+  // Explicit select, not every column: `classroomArtifacts` holds up to five full documents, and a 20-row history
+  // that pulled it would move hundreds of KB to render a sidebar that shows none of it. The plan is included (small,
+  // and tells the client a turn has materials); the artifacts are fetched on demand per turn below.
   const rows = await prisma.query.findMany({
     where: { userId: req.user.id },
     orderBy: { createdAt: 'desc' },
@@ -48,11 +44,8 @@ router.get('/queries', authRequired, asyncHandler(async (req, res) => {
     rating: q.feedback[0]?.rating || null,
     title: q.title,
     pinned: q.pinned,
-    // Classroom Mode's plan for this turn (D24), or omitted entirely for an
-    // ordinary question. Spread rather than set to null so a history payload
-    // for a teacher who never uses the mode is byte-for-byte what it has
-    // always been — §7 rule 3 applies to responses this feature touches, not
-    // just to /api/coach.
+    // Classroom Mode's plan for this turn, omitted for an ordinary question. Spread rather than set to null so a history
+    // payload for a teacher who never uses the mode is unchanged.
     ...(q.classroomPlan ? { classroom: safeParse(q.classroomPlan) } : {}),
   }));
 
@@ -80,25 +73,16 @@ router.post('/feedback', authRequired, asyncHandler(async (req, res) => {
   res.status(201).json({ success: true });
 }));
 
-// Classroom Mode artifacts for ONE turn (D25).
-//
-// Kept off the history list deliberately — see the select above. A teacher
-// opening a chat fetches the artifacts for that turn only.
+// Classroom Mode artifacts for one turn. Kept off the history list (see the select above); opening a chat fetches one turn's artifacts.
 
-// Total size of the stored blob. Five documents at a realistic 3-5KB each sit
-// well under this; the cap exists so a pathological generation cannot put a
-// megabyte on a row that other queries read.
-//
-// Kept BELOW the 64kb body-parser limit this path is routed to (see index.js),
-// so an oversized payload gets this route's clear 413 rather than the parser's
-// opaque failure earlier in the stack.
+// Total stored blob size. Five documents of 3-5KB sit well under it; it stops a pathological generation putting a
+// megabyte on a row other queries read. Below the 64kb body-parser limit this path uses (index.js), so an oversized
+// payload gets this route's clear 413 instead of the parser's opaque failure.
 const MAX_ARTIFACTS_BYTES = 60000;
 
 const artifactsSchema = z.object({
-  // artifact kind -> rendered Markdown. Kinds are not enumerated here on
-  // purpose: this route stores what Classroom Mode produced and the client
-  // decides what to do with it, so adding a sixth artifact needs no change
-  // here. The size cap below is what bounds it.
+  // artifact kind -> rendered Markdown. Kinds aren't enumerated: the route stores what Classroom Mode produced and the
+  // client decides what to do, so a sixth artifact needs no change. The size cap bounds it.
   artifacts: z.record(z.string(), z.string()),
 });
 
@@ -108,10 +92,8 @@ router.get('/queries/:id/classroom-artifacts', authRequired, asyncHandler(async 
     where: { id: req.params.id },
     select: { userId: true, classroomArtifacts: true },
   });
-  // Same 404 for "missing" and "not yours", so one teacher cannot probe for
-  // another's history — the rule routes/resources.js already follows. A
-  // null userId (e.g. the owning User row was deleted, which SetNulls this
-  // FK) is treated as "not yours" for everyone, not as "no check needed".
+  // Same 404 for "missing" and "not yours", so one teacher can't probe another's history (as in routes/resources.js).
+  // A null userId (owning User deleted, which SetNulls the FK) counts as "not yours" for everyone.
   if (!row || !row.userId || row.userId !== req.user.id) {
     return res.status(404).json({ error: 'Query not found.' });
   }
@@ -119,11 +101,8 @@ router.get('/queries/:id/classroom-artifacts', authRequired, asyncHandler(async 
   res.json({ artifacts: row.classroomArtifacts ? safeParse(row.classroomArtifacts) : {} });
 }));
 
-// PUT /api/queries/:id/classroom-artifacts — owner only.
-//
-// Replaces the whole map rather than merging: the client always sends every
-// artifact it currently holds for the turn, so a merge would resurrect one the
-// teacher regenerated into a failure.
+// PUT /api/queries/:id/classroom-artifacts: owner only. Replaces the whole map rather than merging: the client
+// sends every artifact it holds for the turn, and a merge would resurrect one the teacher regenerated into a failure.
 router.put('/queries/:id/classroom-artifacts', authRequired, asyncHandler(async (req, res) => {
   const parsed = artifactsSchema.safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid artifacts payload.' });
@@ -148,9 +127,7 @@ router.put('/queries/:id/classroom-artifacts', authRequired, asyncHandler(async 
   res.json({ success: true });
 }));
 
-// DELETE /api/queries — clear the signed-in user's entire history.
-// NOTE: declared before the "/queries/:id" route so "/queries" is not captured
-// as an :id param.
+// DELETE /api/queries: clear the signed-in user's entire history. Declared before "/queries/:id" so "/queries" isn't captured as an :id.
 router.delete('/queries', authRequired, asyncHandler(async (req, res) => {
   const userId = req.user.id;
   // Feedback has a required FK to Query (no cascade in the schema), so remove
@@ -180,11 +157,8 @@ router.delete('/queries/:id', authRequired, asyncHandler(async (req, res) => {
 
 const MAX_TITLE = 200;
 
-// Deliberately narrow to exactly the two fields the Sidebar's three-dot menu
-// writes (Rename chat / Pin chat) — never a generic "patch any Query field"
-// shape. Same trim/min/max convention routes/resources.js already uses for
-// its own title field (MAX_TITLE = 200 there too), so a rejected title looks
-// and behaves the same way across both save flows.
+// Narrow to the two fields the Sidebar menu writes (rename, pin), not a generic "patch any Query field". Same
+// trim/min/max as routes/resources.js's title (MAX_TITLE = 200) so rejections behave alike.
 const patchQuerySchema = z
   .object({
     title: z.string().trim().min(1).max(MAX_TITLE).optional(),
@@ -194,11 +168,8 @@ const patchQuerySchema = z
     message: 'Provide a title or pinned value to update.',
   });
 
-// PATCH /api/queries/:id — rename/pin a history entry (owner only).
-//
-// Same ownership check as DELETE /queries/:id above, on purpose: this and
-// DELETE are the two ways a teacher mutates one history row, and a stricter
-// or looser check here would be a silent inconsistency between them.
+// PATCH /api/queries/:id: rename or pin a history entry (owner only). Same ownership check as DELETE /queries/:id,
+// since a stricter or looser check between the two would be a silent inconsistency.
 router.patch('/queries/:id', authRequired, asyncHandler(async (req, res) => {
   const parsed = patchQuerySchema.safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid request.' });
@@ -210,9 +181,8 @@ router.patch('/queries/:id', authRequired, asyncHandler(async (req, res) => {
     return res.status(403).json({ error: 'You cannot modify this entry.' });
   }
 
-  // Built field-by-field from the validated payload, never by spreading
-  // req.body — this is what actually keeps the route to just these two
-  // columns, independent of whatever the zod schema above happens to allow.
+  // Built field by field from the validated payload, never by spreading req.body, so the route writes just these two
+  // columns whatever the zod schema allows.
   const data = {};
   if (parsed.data.title !== undefined) data.title = parsed.data.title;
   if (parsed.data.pinned !== undefined) data.pinned = parsed.data.pinned;

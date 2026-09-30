@@ -1,17 +1,8 @@
-// The Educational Intent classifier — AI Learning Representation System,
-// Phase A (docs/learning-representation-system-adr.md, §13).
-//
-// Mirrors server/test/assistant/classifier.test.js in shape: `gemini` is
-// injected, so these run with no network, no key and no real GeminiService.
-// Two things are checked, and the second matters more than it looks:
-//
-//   1. WHAT GOES OUT — the prompt is generated from the frozen taxonomy,
-//      names every intent with its examples, and never leaks
-//      representation/rendering vocabulary into the classification decision
-//      (ADR Product Principle 2 — intent must not be biased by
-//      representation-shaped thinking).
-//   2. WHAT COMES BACK — every upstream failure becomes a passthrough
-//      reason. Nothing throws. A timeout is a decision, not an error.
+// The Educational Intent classifier. Like test/assistant/classifier.test.js: `gemini` is injected, so these run with
+// no network or key. Two things are checked:
+//   1. What goes out: the prompt is generated from the frozen taxonomy, names every intent with its examples, and never
+//      leaks representation/rendering vocabulary into the classification (intent mustn't be biased by representation-shaped thinking).
+//   2. What comes back: every upstream failure becomes a passthrough reason and nothing throws; a timeout is a decision.
 
 const {
   EDUCATIONAL_INTENTS,
@@ -88,13 +79,9 @@ describe('the prompt does not leak representation/rendering concerns (ADR Princi
   const prompt = buildSystemInstruction();
 
   test('never instructs the model to think about presentation, images or rendering', () => {
-    // These are rendering-layer words that should never appear in an intent
-    // classifier's instructions — their presence would mean representation
-    // choice is leaking upstream into intent classification, which ADR §2
-    // Principle 2 and §5 both depend on never happening. Deliberately does
-    // NOT check for words like "diagram" or "graph": those can legitimately
-    // appear inside a teacher's own EXAMPLE phrasing (e.g. "Graph y = x
-    // squared"), so checking for them would produce false failures.
+    // Rendering-layer words that must never appear in the classifier's instructions, since their presence would mean
+    // representation choice leaking into intent classification. It doesn't check "diagram" or "graph", which can legitimately
+    // appear in a teacher's own example phrasing ("Graph y = x squared") and would produce false failures.
     for (const forbidden of ['render', 'pixel', 'diffusion', 'generate an image', 'draw a picture']) {
       expect(prompt.toLowerCase()).not.toContain(forbidden);
     }
@@ -181,9 +168,7 @@ describe('parseResult — shape then membership, kept as two separate checks', (
   });
 
   test('rejects an intent outside the taxonomy even if the shape is valid', () => {
-    // This is the membership check earning its place: a schema-shaped object
-    // with a hallucinated or stale intent id must not be trusted just because
-    // it parses. Mirrors assistant/contracts.js's G4 discipline.
+    // The membership check earning its place: a schema-shaped object with a hallucinated or stale intent id mustn't be trusted just because it parses.
     expect(parseResult({ intent: 'generate_a_video', confidence: 'high' })).toEqual({
       ok: false,
       reason: 'invalid_result',
@@ -231,10 +216,8 @@ describe('every failure becomes a reason, never an exception', () => {
   });
 
   test('a non-JSON response is a classifier_error, not a crash', async () => {
-    // Realistic shape of the outputGuard risk: gemini.js runs its coaching
-    // output guard over structured responses too, and a suppressed response
-    // comes back as prose. It must degrade, and outputGuard.js must NOT be
-    // modified to accommodate this feature.
+    // The realistic outputGuard risk: gemini.js runs its coaching output guard over structured responses too, and a
+    // suppressed response comes back as prose. It must degrade, and outputGuard.js mustn't be modified for this feature.
     const gemini = fakeGemini({ text: "I'm sorry, I can't help with that." });
     const result = await classify({ gemini, prompt: 'x', requestId: 'r1' });
     expect(result).toMatchObject({ ok: false, reason: 'classifier_error' });

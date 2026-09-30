@@ -1,17 +1,8 @@
-// Deterministic vocabulary recovery (Alternative A).
-//
-// The balance of this file is deliberate: there are more NEGATIVE cases than
-// positive ones, because the whole risk of this stage sits on one side. A missed
-// recovery leaves today's behaviour — a blank field the teacher fills in. A false
-// recovery prefills a confident WRONG class or subject that a teacher may not
-// notice until the worksheet is printed, and it arrives wearing the same badge a
-// correct one would.
-//
-// The negative table is also the reason the module exists in this shape at all:
-// handing the whole utterance to `mapGrade` (the obvious implementation) maps
-// "I have 5 students" to Class 3-5, and `mapSubject` maps "Math teacher" to
-// Mathematics. Those two lines are pinned below so nobody re-simplifies the
-// module back into the bug.
+// Deterministic vocabulary recovery. There are more negative cases than positive, because the risk sits on one side: a
+// missed recovery leaves a blank field the teacher fills in, while a false one prefills a confident wrong class or
+// subject, with the same badge as a correct one, that may not be noticed until the worksheet is printed.
+// The negative table is also why the module works on spans: handing the whole utterance to `mapGrade` maps "I have 5
+// students" to Class 3-5, and `mapSubject` maps "Math teacher" to Mathematics. Those are pinned so nobody re-simplifies it.
 
 const { generateAssessment } = require('../../src/actions/descriptors/generateAssessment');
 const { openGenerator } = require('../../src/actions/descriptors/openGenerator');
@@ -82,9 +73,7 @@ describe('grade — NEGATIVE: a number is only a class when the sentence says so
   });
 
   test('the whole-utterance shortcut this module exists to avoid IS broken', () => {
-    // Not testing our code — testing the premise. If these ever stop mapping,
-    // the span machinery could be simplified, and this test is how anyone would
-    // find that out rather than assuming it.
+    // Testing the premise, not our code: if these stop mapping, the span machinery could be simplified.
     expect(mapGrade('I have 5 students').value).toBe('Class 3-5');
     expect(mapGrade('Chapter 5').value).toBe('Class 3-5');
     expect(mapSubject('Math teacher').value).toBe('Mathematics');
@@ -149,10 +138,8 @@ describe('subject — NEGATIVE: the word names a person, not the worksheet', () 
 });
 
 describe('subject — NEGATIVE: governed by a preposition, so it names something else', () => {
-  // ALL FIVE OF THESE ARE REAL CORPUS CASES. They were found by the replay gate
-  // after the role-noun guard was already in place, and together they were the
-  // whole of this change's hallucination regression (subject 0/58 -> 5/58).
-  // They are pinned verbatim so the guard cannot be quietly narrowed later.
+  // All five are real corpus cases, found by the replay gate after the role-noun guard was in place, and were the whole
+  // of this change's hallucination regression (subject 0/58 -> 5/58). Pinned verbatim so the guard can't be quietly narrowed.
 
   test.each([
     // The output LANGUAGE, not the subject — English word order.
@@ -161,9 +148,8 @@ describe('subject — NEGATIVE: governed by a preposition, so it names something
     // …and the Hindi/Hinglish postposition, which sits AFTER the word.
     ['cmd.hi.010', 'कक्षा 3 के लिए वर्कशीट बनाओ और हिंदी में लिखो'],
     ['cmd.hin.015', 'Decimals par worksheet banao aur hindi mein likho'],
-    // The TOPIC, not the subject: subjects.js maps "algebra" to Mathematics, so
-    // without the guard this recovers a subject INFERRED FROM THE TOPIC — which
-    // this stage is explicitly forbidden to do.
+    // The topic, not the subject: subjects.js maps "algebra" to Mathematics, so without the guard this infers a subject from
+    // the topic, which this stage mustn't do.
     ['cmd.hin.020', 'Ek hard worksheet banao algebra par class 10 ke liye'],
   ])('%s recovers no subject', (_id, utterance) => {
     expect(recover(utterance).recovered.subject).toBeUndefined();
@@ -178,9 +164,8 @@ describe('subject — NEGATIVE: governed by a preposition, so it names something
   });
 
   test('a span may never BEGIN on a governing word', () => {
-    // `mapSubject('in hindi')` maps, because the mapper ignores tokens it does
-    // not recognise. A pair probe starting at "in" therefore swallowed the
-    // preposition and the guard looked for it past the span. This is that bug.
+    // `mapSubject('in hindi')` maps because the mapper ignores tokens it doesn't recognise, so a pair probe starting at "in"
+    // swallowed the preposition and the guard looked for it past the span. This is that bug.
     expect(recover('write it in Hindi').recovered.subject).toBeUndefined();
     expect(recover('likho hindi mein').recovered.subject).toBeUndefined();
   });
@@ -236,14 +221,10 @@ describe('scope — only grade and subject, ever', () => {
   });
 
   test('never fills topic, format, difficulty, questionType, questionCount or language', () => {
-    // `topic` is free text with no vocabulary to validate against; `language`
-    // must come only from an explicit request (descriptor comment); the rest the
-    // model already extracts well. A recovered value in any of them is scope
-    // creep that this assertion is here to stop.
-    // Deliberately dense: a difficulty, a question type, a topic, a count and a
-    // format all sit in this sentence alongside the two recoverable slots.
-    // Note the subject is written WITHOUT a governing preposition — "in Hindi"
-    // would be the output language, which is a different test above.
+    // `topic` is free text with no vocabulary to validate against, `language` must come only from an explicit request, and
+    // the model already extracts the rest well, so a recovered value in any of them is scope creep. The sentence is
+    // deliberately dense (difficulty, question type, topic, count and format beside the two recoverable slots). The subject
+    // has no governing preposition, since "in Hindi" would be the output language, tested above.
     const result = recover(
       'make an easy mcq maths worksheet on fractions with 10 questions for class 5'
     );
@@ -263,9 +244,8 @@ describe('scope — only grade and subject, ever', () => {
 
 describe('the length cap that whole-utterance scanning would have hit', () => {
   test('recovers from an utterance well past the mappers’ 120-character bound', () => {
-    // shared.js#normalize returns '' above MAX_RAW_LENGTH, so a whole-utterance
-    // implementation degrades silently on exactly the long, detailed requests
-    // most worth routing. Spans are a few tokens, so the cap is out of reach.
+    // shared.js#normalize returns '' above MAX_RAW_LENGTH, so a whole-utterance implementation degrades silently on the
+    // long, detailed requests most worth routing. Spans are a few tokens, so the cap is out of reach.
     const long =
       'Please could you generate a printable worksheet for class 5 mathematics ' +
       'on the topic of equivalent fractions, with an answer key for my students';

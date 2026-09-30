@@ -1,31 +1,16 @@
-// Structured contract for AI-generated quiz/worksheet questions (Phase 1 of
-// the quiz/worksheet generator rework — see the architecture review this
-// implements).
-//
-// Gemini's job shrinks to question CONTENT only: it returns this JSON shape,
-// never a formatted document. The server owns numbering, option-letter
-// rendering, the answer-key heading, and the title/metadata block entirely
-// itself — none of that is sourced from the model's own text anymore, so it
-// can't drift, get mislabeled, or leak literal Markdown syntax.
-//
-// `correctOptionIndex` (not a letter) is the authoritative signal for MCQ
-// correctness — an integer is unambiguous, where a letter risks an
-// off-by-one mismatch against `options` if the model miscounts.
+// Structured contract for AI-generated quiz/worksheet questions. Gemini returns question content only, as this JSON;
+// the server owns numbering, option letters, the answer-key heading and the title block, so none of it can drift or leak Markdown.
+// `correctOptionIndex` (not a letter) is the authoritative MCQ signal; an integer can't be off by one against `options`.
 const { z } = require('zod');
 
 const { convertMathSegments } = require('./mathNotation');
 
-// Structured Question Model (Generator v2) — see docs/generator-v2-plan.md.
-// `descriptive`/`fill_blank`/`match` are the three genuinely new response
-// types; `mixed` (actions/schemas/generateAssessment.js) is a REQUEST-only
-// modifier meaning "draw from any of these", never a value stored on a
-// question itself.
+// Structured question model (docs/generator-v2-plan.md). `descriptive`, `fill_blank` and `match` are the new response
+// types. `mixed` (actions/schemas/generateAssessment.js) is a request-only modifier, never stored on a question.
 const QUESTION_TYPES = ['mcq', 'true_false', 'short_answer', 'descriptive', 'fill_blank', 'match'];
 const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
 
-// fill_blank's blank marker — three or more underscores, the same convention
-// already used for a blank field placeholder elsewhere in this app
-// (client's ExamHeaderView.tsx uses '____________' for an unset field).
+// fill_blank's blank marker: three or more underscores, as the client's ExamHeaderView.tsx uses for an unset field.
 const BLANK_MARKER_RE = /_{3,}/;
 
 const MAX_MODEL_ANSWER = 2000; // descriptive's open-ended suggested answer
@@ -33,26 +18,14 @@ const MAX_PAIR_TEXT = 200; // match's per-side text
 const MIN_MATCH_PAIRS = 3;
 const MAX_MATCH_PAIRS = 8;
 
-// --- LaTeX-in-JSON repair -----------------------------------------------------
-// Gemini is told to write LaTeX between $...$ delimiters, but inside a JSON
-// string a single-backslash command is a JSON escape sequence: JSON.parse
-// silently turns "\tan" into TAB+"an", "\frac" into FORMFEED+"rac", "\theta"
-// into TAB+"heta", and so on for all of \t \f \b \n \r. And because Gemini's
-// constrained JSON decoding CANNOT emit an invalid escape like "\s", the model
-// swerves around \sin/\sqrt into degenerate forms: "\text{sin }",
-// "\text{sqrt}(3)", "60^\text{o}". Both failure modes were observed verbatim
-// in real generated papers. The prompt now demands double-backslash escaping,
-// but a model instruction is a request, not a guarantee — this repairs the
-// deterministic manglings after parse, before validation/storage.
+// LaTeX-in-JSON repair. Gemini writes LaTeX between $...$, but in a JSON string a single-backslash command is an
+// escape: JSON.parse turns "\tan" into TAB+"an" and "\frac" into FORMFEED+"rac". Constrained decoding also can't emit
+// an invalid escape like "\s", so the model dodges \sin/\sqrt into "\text{sin }", "\text{sqrt}(3)", "60^\text{o}".
+// The prompt asks for double backslashes but can't guarantee them, so these manglings are repaired after parse.
 
-// A control character followed by a lowercase letter inside question text is
-// never legitimate content — it is the corpse of a JSON-eaten LaTeX command.
-// Restoring the backslash escape it came from reconstructs the command
-// exactly: TAB+"an" → \tan, FORMFEED+"rac" → \frac, CR+"ight" → \right.
-//
-// Backspace (the "\b" of a JSON-eaten \beta/\binom) is handled with a plain
-// string scan rather than a regex: a regex can only express that character
-// as the \x08 control-character escape, which no-control-regex forbids.
+// A control character followed by a lowercase letter in question text is never real content: it is a JSON-eaten
+// LaTeX command. Restoring the backslash rebuilds it (TAB+"an" -> \tan, FORMFEED+"rac" -> \frac).
+// Backspace (from \beta/\binom) is found by string scan, since a regex would need \x08, which no-control-regex forbids.
 function repairBackspaceLatex(text) {
   if (!text.includes('\b')) return text;
   let out = '';
@@ -73,26 +46,12 @@ function repairControlCharLatex(text) {
   );
 }
 
-// --- Bare (backslash-less) commands -------------------------------------------
-// A THIRD mangling, distinct from the two above and far nastier because it is
-// silent: the command arrives with its backslash simply gone — "$frac59$"
-// rather than "$\frac59$".
-//
-// The other two manglings leave evidence. A JSON-eaten \frac leaves a FORMFEED
-// control character; a degenerate \text{sqrt} leaves a \text. This one leaves
-// nothing: "frac59" is PERFECTLY VALID KaTeX. It renders, without error, as the
-// five italic variables f·r·a·c·59 — which is why latexGuard's render check
-// (findUnrenderableSegments) passes it and a teacher receives a question
-// reading "In the fraction f r a c 59, which number is the numerator?".
-// Observed 2026-08-07 in a live Class 4 fractions quiz.
-//
-// Only ever applied INSIDE $...$ math segments, and never inside a \text{...}
-// argument — "the sum of" is English prose there, and turning its "sum" into
-// \sum would be the same class of corruption in reverse.
-//
-// Deliberately excludes two-letter commands (\pm, \mp, \mu, \ln) except \pi:
-// in math mode "pm" really can be the product p·m, and a wrong repair is worse
-// than a missed one. \pi is kept because p·i is vanishingly rare next to π.
+// Bare (backslash-less) commands: the backslash is simply gone ("$frac59$" for "$\frac59$"). Unlike the other two
+// manglings it leaves no evidence, and "frac59" is valid KaTeX that renders as italic f·r·a·c·59, so latexGuard's
+// render check passes it.
+// Applied only inside $...$ segments and never inside a \text{...} argument, where "the sum of" is prose.
+// Two-letter commands (\pm, \mp, \mu, \ln) are excluded except \pi, since "pm" may really be p·m and a wrong repair
+// is worse than a missed one.
 const BARE_COMMANDS = [
   'dfrac', 'tfrac', 'frac', 'sqrt', 'times', 'div', 'cdots', 'cdot', 'ldots',
   'leq', 'geq', 'neq', 'approx', 'equiv', 'propto', 'infty',
@@ -103,9 +62,7 @@ const BARE_COMMANDS = [
   'quad', 'left', 'right',
 ].sort((a, b) => b.length - a.length); // longest first: \dfrac before \frac
 
-// Not preceded by a backslash OR a letter (so "\frac" and the "frac" inside
-// "\dfrac" are both skipped), and not followed by a letter (so the English
-// word "fraction" is never mistaken for a mangled \frac).
+// Not preceded by a backslash or letter (so "\frac" and "dfrac" are skipped), nor followed by a letter ("fraction" stays).
 const BARE_COMMAND_RE = new RegExp(`(?<![\\\\a-zA-Z])(${BARE_COMMANDS.join('|')})(?![a-zA-Z])`, 'g');
 
 // Spans whose contents are prose by design and must never be repaired.
@@ -124,67 +81,45 @@ function restoreBareCommands(mathSource) {
   return out + mathSource.slice(cursor).replace(BARE_COMMAND_RE, '\\$1');
 }
 
-// Degenerate command forms the model produces to dodge invalid JSON escapes
-// (\s, \c, \o...). Only applied INSIDE $...$ math segments, where \text{sin}
-// can only mean the \sin the model couldn't emit.
+// Degenerate forms the model produces to dodge invalid escapes (\s, \c, \o). Applied only inside $...$, where \text{sin} can only mean \sin.
 function normalizeDegenerateLatex(mathSource) {
   return restoreBareCommands(mathSource)
     .replace(/\\text\{\s*(sin|cos|tan|sec|cot|csc|log|ln)\s*\}/g, '\\$1 ')
     .replace(/\\text\{\s*(cosec|arcsin|arccos|arctan)\s*\}/g, '\\operatorname{$1} ')
     .replace(/\\text\{\s*sqrt\s*\}\s*\(([^()]*)\)/g, '\\sqrt{$1}')
-    // Degree-as-\text{o}: the braced (^{\text{o}}) and unbraced (^\text{o})
-    // forms are separate alternatives so the outer braces are only consumed
-    // as a PAIR — a lone \}? would eat the closing brace of an enclosing
-    // \frac{...} argument when the unbraced form appears at its end.
+    // Degree-as-\text{o}: braced and unbraced forms are separate alternatives, so the outer braces are consumed only as a
+    // pair and the unbraced form at the end of a \frac argument doesn't eat its closing brace.
     .replace(/\^(?:\{\\text\{\s*o\s*\}\}|\\text\{\s*o\s*\})/g, '^{\\circ}');
 }
 
 /**
- * Repairs JSON-escape-mangled and degenerate LaTeX in one string. Control-char
- * repair runs everywhere (those characters have no legitimate use in question
- * text); newline repair and degenerate-form normalization run only inside
- * $...$/$$...$$ segments, where a "\n"-eaten \neq is unambiguous but a real
- * newline in prose is not.
+ * Repairs JSON-escape-mangled and degenerate LaTeX in one string. Control-char repair runs everywhere (no
+ * legitimate use in question text); newline repair and degenerate-form normalization run only inside math
+ * segments, where a "\n"-eaten \neq is unambiguous but a real newline in prose is not.
  */
 function normalizeMathText(text) {
-  // FIRST: plain notation → LaTeX. The model is now asked for "5/9", which has
-  // no backslash for JSON to eat, so this is the path that should carry
-  // essentially all traffic. convertMathSegments returns anything it cannot
-  // parse confidently — and anything already containing a backslash —
-  // completely untouched, so the repair layers below still see exactly what
-  // they saw before for old content and for a model that ignores the prompt.
+  // First, plain notation -> LaTeX: the model is asked for "5/9", so this path should carry almost all traffic.
+  // convertMathSegments leaves anything unparseable or containing a backslash untouched, so the repairs below still see old content.
   const converted = convertMathSegments(text);
   const repaired = repairControlCharLatex(converted);
-  // Inline segments are single-line only — a broader matcher could pair two
-  // unrelated "$" (currency amounts on different lines) into one bogus
-  // "segment" and corrupt the prose between them. Newline repair therefore
-  // only ever applies inside $$...$$ blocks, the only place a real newline
-  // can sit inside math.
+  // Inline segments are single-line only; a broader matcher could pair "$" from currency amounts on different lines
+  // and corrupt the prose between. So newline repair applies only inside $$...$$ blocks.
   return repaired.replace(/\$\$[\s\S]+?\$\$|\$[^$\n]+\$/g, (segment) =>
     normalizeDegenerateLatex(segment.replace(/\n(?=[a-z])/g, '\\n'))
   );
 }
 
-// The renderer (routes/resources.js renderAssessmentBody) numbers every
-// question itself — "1. ", "2. " — because it owns the document's structure.
-// The model frequently numbers them a SECOND time inside the question text,
-// producing "1. 1. Which fraction represents…" on the page, and the matching
-// "1. 1. A" in the answer key. Observed 2026-08-07 in a live Class 4 quiz.
-//
-// Requires a dot or a bracket after the digits, so a question that genuinely
-// opens with a quantity ("5 apples are shared between…") is never touched.
-// Two digits at most: "12." is question twelve, "2026." is a year.
+// The renderer (renderAssessmentBody in routes/resources.js) numbers questions itself, but the model often numbers
+// them too, giving "1. 1. Which fraction...". Requires a dot or bracket after at most two digits, so "5 apples are
+// shared..." and "2026." are left alone.
 const LEADING_NUMBER_RE = /^\s*\d{1,2}\s*[.)]\s+/;
 
 function stripLeadingQuestionNumber(text) {
   return typeof text === 'string' ? text.replace(LEADING_NUMBER_RE, '') : text;
 }
 
-// Same problem one level down: renderAssessmentBody prefixes each option with
-// "A. ", "B. "… so a model-supplied "A. 3/5" renders as "A. A. 3/5".
-// Single letter A-D only, and a following dot/bracket is required — an option
-// whose whole content is the letter "A" (a valid answer to "which letter…")
-// has nothing after it to strip and is left alone.
+// Same for options: the renderer prefixes "A. ", so a model-supplied "A. 3/5" would render "A. A. 3/5". Single letter
+// A-D plus a dot/bracket only; an option that is just "A" is left alone.
 const LEADING_OPTION_RE = /^\s*[A-Da-d]\s*[.)]\s+/;
 
 function stripLeadingOptionLetter(text) {
@@ -192,9 +127,8 @@ function stripLeadingOptionLetter(text) {
 }
 
 /**
- * Applies normalizeMathText to every text field of a raw (pre-validation)
- * assessment document parsed from a Gemini JSON response. Tolerates any
- * malformed shape — schema validation right after is what rejects those.
+ * Applies normalizeMathText to every text field of a raw (pre-validation) assessment document from a Gemini
+ * response. Tolerates any malformed shape; schema validation right after rejects those.
  */
 function normalizeAssessmentMath(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
@@ -243,14 +177,11 @@ const questionSchema = z
     options: z.array(z.string().trim().min(1).max(300)).max(4),
     // Only meaningful for "mcq" — validated below. -1 for other types.
     correctOptionIndex: z.number().int(),
-    // "True"/"False" for true_false, a model answer for short_answer,
-    // the fill-in word/phrase for fill_blank, unused (ignored) for mcq since
-    // correctOptionIndex is authoritative, unused for descriptive/match.
+    // "True"/"False" for true_false, a model answer for short_answer, the fill-in text for fill_blank. Ignored for mcq
+    // (correctOptionIndex is authoritative), descriptive and match.
     correctAnswer: z.string().trim().max(500),
-    // Only meaningful for "descriptive" — an open-ended suggested answer.
-    // Optional/defaulted (not required) so objects built without it — e.g. by
-    // the legacy content->doc parser below, which never produces this type —
-    // still validate.
+    // Only for "descriptive": an open-ended suggested answer. Optional so objects built without it (e.g. the legacy
+    // content->doc parser) still validate.
     modelAnswer: z.string().trim().max(MAX_MODEL_ANSWER).optional().default(''),
     // Only meaningful for "match" — the correct left/right pairing itself
     // (position IS the answer key; no separate correctAnswer needed).
@@ -346,21 +277,16 @@ const assessmentDocumentSchema = z.object({
 });
 
 /**
- * Cross-checks the validated document against the teacher's request — Zod
- * validates each question's own internal shape, but "did the model actually
- * produce the requested COUNT and TYPE" is a contract check against the
- * request, not the document alone.
+ * Cross-checks the validated document against the request: zod validates each question's shape, but whether the
+ * model produced the requested count and type is a check against the request.
  * @returns {string|null} an error message, or null if the document satisfies the request.
  */
 function checkAgainstRequest(doc, { questionCount, questionType }) {
   if (doc.questions.length !== questionCount) {
     return `Expected exactly ${questionCount} questions, got ${doc.questions.length}.`;
   }
-  // A teacher may now tick more than one specific type (issue #95) —
-  // questionType is then an array, and every question just needs to be ONE
-  // of them, not all the same one. A single value (the pre-#95 shape, still
-  // what every non-multi-select caller sends) keeps the original "every
-  // question matches exactly this type" check.
+  // questionType may be an array (several specific types); each question only needs to match one of them. A single
+  // value keeps the original "every question matches exactly this type" check.
   const types = Array.isArray(questionType) ? questionType : [questionType];
   if (!types.includes('mixed')) {
     const wrongType = doc.questions.find((q) => !types.includes(q.type));

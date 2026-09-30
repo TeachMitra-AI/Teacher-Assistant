@@ -19,13 +19,10 @@ describe('repairBareLatex', () => {
   });
 
   test('wraps a bare quantity+unit chain (the actual observed failure shape)', () => {
-    // The real regression is an isolated "<number>\text{unit}" run (MCQ
-    // options); a full hand-written equation mixing bare variable names
-    // ("F", "d") with LaTeX is a harder, out-of-scope case — the scanner is
-    // deliberately conservative there (a bare single-letter variable ends a
-    // run, same as any other prose character) rather than guessing where an
-    // equation begins/ends. What matters for safety is that the result still
-    // renders cleanly, asserted via findUnrenderableSegments below.
+    // The real regression is an isolated "<number>\text{unit}" run (MCQ options). A hand-written equation mixing bare
+    // variables ("F", "d") with LaTeX is harder and out of scope: the scanner is conservative there (a bare single-letter
+    // variable ends a run) rather than guessing where an equation starts or ends. What matters for safety is that the
+    // result still renders cleanly, asserted via findUnrenderableSegments below.
     const repaired = repairBareLatex('50\\text{ N} \\times 4\\text{ m} = 200\\text{ J}.');
     expect(repaired).toBe('$50\\text{ N} \\times 4\\text{ m} = 200\\text{ J}$.');
     expect(findUnrenderableSegments(repaired)).toEqual([]);
@@ -165,7 +162,7 @@ describe('sanitizeAssessmentDocument', () => {
   });
 });
 
-// --- Backstop for backslash-less commands, 2026-08-07 -------------------------
+// Backstop for backslash-less commands
 describe('findBareCommandSegments — the case KaTeX cannot catch', () => {
   // The whole reason this backstop exists: "frac59" IS valid KaTeX. The render
   // check passes it happily, so without this the document ships as gibberish.

@@ -1,16 +1,6 @@
-// Language canonicalization (Milestone M4).
-//
-// The negative half of this file matters more than the positive half.
-//
-// The rule is "set language ONLY from an explicit statement, never from the
-// script the teacher typed in" (architecture §8.3), because a Hinglish or
-// Devanagari request very often wants an ENGLISH worksheet — the printed paper
-// follows an English-medium syllabus. The failure this prevents is a
-// wrong-language printed document, discovered in front of a class.
-//
-// So the tests that carry the weight are the ones asserting that a request
-// written in Hindi, with no language named, yields NOTHING — leaving the
-// teacher's own profile default to win.
+// Language canonicalization. The negative half matters more: language is set only from an explicit statement, never
+// from the script typed, since a Hinglish or Devanagari request often wants an English worksheet. So a request written
+// in Hindi with no language named must yield nothing, leaving the teacher's profile default to win.
 
 const { LANGUAGE_CODES, VOCAB_STATUS, mapLanguage } = require('../../../src/actions/vocab/languages');
 
@@ -71,28 +61,20 @@ describe('mapLanguage — the language trap', () => {
   });
 
   test('the module has no way to see the utterance at all', () => {
-    // Structural, not behavioural: mapLanguage takes one slot value. There is no
-    // parameter through which the utterance, its script, or the teacher's locale
-    // could reach this decision, which is what makes the rule enforceable rather
-    // than merely documented.
+    // Structural: mapLanguage takes one slot value, so the utterance, its script and the locale can't reach the decision.
     expect(mapLanguage.length).toBe(1);
   });
 });
 
 describe('mapLanguage — never ambiguous', () => {
-  // Unlike grades and subjects, this mapper must never return AMBIGUOUS. The
-  // ambiguous path prefills the teacher's raw words, and the Generator's
-  // language field is a <select> — an unmatchable string there shows as nothing
-  // selected, silently. A document has one language, so two languages is a
-  // question, not a span.
+  // Unlike grades and subjects this mapper never returns AMBIGUOUS: the ambiguous path prefills raw words, and an
+  // unmatchable string in the language <select> shows as nothing selected. A document has one language, so two is a question.
   const TWO_LANGUAGES = ['hindi or english', 'hindi and english', 'english / hindi'];
 
   test.each(TWO_LANGUAGES)('%j is a contradiction, not an ambiguity', (raw) => {
     const result = mapLanguage(raw);
     expect(result.status).toBe(VOCAB_STATUS.CONTRADICTION);
-    // Readings are in the order they were said, so membership is asserted
-    // rather than order — "english / hindi" and "hindi or english" are the same
-    // contradiction presented in different words.
+    // Readings are in the order said, so assert membership, not order.
     expect([...result.readings].sort()).toEqual(['en', 'hi']);
   });
 
@@ -132,11 +114,8 @@ describe('mapLanguage — unmapped is a safe, ordinary outcome', () => {
   });
 
   test('a bare ISO code is not treated as a statement', () => {
-    // Two reasons, both deliberate. Teachers write language names, not codes —
-    // a code arriving here means something upstream is echoing form values. And
-    // "or" is BOTH Odia's code and the word separating two alternatives, so a
-    // table containing codes would read "Hindi or English" as a request for
-    // Odia. Falling through to the profile default is the safe outcome.
+    // Teachers write names, not codes, so a code arriving here means something upstream echoes form values. "or" is also
+    // Odia's code, so a table containing codes would read "Hindi or English" as Odia. Falling through to the profile default is safe.
     expect(mapLanguage('en').status).toBe(VOCAB_STATUS.UNMAPPED);
     expect(mapLanguage('or').status).toBe(VOCAB_STATUS.UNMAPPED);
     expect(mapLanguage('hindi or english').readings).not.toContain('or');

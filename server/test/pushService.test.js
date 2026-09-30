@@ -1,8 +1,6 @@
-// Phase 7b — Expo push dispatch (src/lib/pushService.js). Unit-level: calls
-// dispatchPush() directly against the real Prisma client with a fake
-// Expo-shaped client injected via the `deps.expoClient` test seam (see that
-// file's own header for why — expo-server-sdk is ESM-only, so this avoids
-// any module-mocking machinery), never hitting the real Expo push API.
+// Expo push dispatch (src/lib/pushService.js), unit-level: calls dispatchPush() against the real Prisma client with a
+// fake Expo-shaped client injected through the `deps.expoClient` seam (expo-server-sdk is ESM-only, so this avoids
+// module mocking), never hitting the real Expo API.
 const { prisma } = require('./helpers/testApp');
 const { createFixtures } = require('./helpers/fixtures');
 const { dispatchPush } = require('../src/lib/pushService');

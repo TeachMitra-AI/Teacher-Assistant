@@ -1,26 +1,15 @@
-// Request validation for POST /api/resources/generate-lesson-plan (P6).
-//
-// Deliberately NOT added to the AI Action Router's advertised capabilities:
-// the router's classifier prompt is pinned byte-for-byte against the M7a
-// evaluation baseline (see ROUTABLE_FORMATS in generateAssessment.js, D20),
-// and Classroom Mode calls this endpoint directly. Widening the router would
-// invalidate every recorded eval cassette to buy nothing.
+// Request validation for POST /api/resources/generate-lesson-plan.
+// Not advertised by the router: its classifier prompt is pinned against the eval baseline (see ROUTABLE_FORMATS
+// in generateAssessment.js), and Classroom Mode calls this endpoint directly.
 const { z } = require('zod');
 
-// Same bound and same "a free string, validated against LANGUAGE_NAMES at the
-// route" contract generateAssessment.js uses — not a second enum that could
-// drift from it.
+// Same bound and contract as generateAssessment.js: a free string validated against LANGUAGE_NAMES at the route.
 const { MAX_LANGUAGE, MAX_META } = require('../../lib/resourceFields');
 
-// Lesson lengths a school day actually contains. A "duration" free-text field
-// would let the model plan a 3-hour lesson for a 35-minute period, which is
-// the single most common way a generated plan becomes unusable.
+// Real lesson lengths. A free-text duration could plan a 3-hour lesson for a 35-minute period.
 const DURATIONS = ['30 minutes', '35 minutes', '40 minutes', '45 minutes', '60 minutes'];
 
-// Drives the Differentiation section. These are the three realities of an
-// Indian government classroom that change how a lesson must be taught — not
-// cosmetic preferences, which is why the plan is generated against one rather
-// than mentioning all three generically.
+// Drives the Differentiation section: realities of an Indian government classroom that change how a lesson is taught.
 const CLASSROOM_TYPES = ['standard', 'multi_grade', 'large_class', 'mixed_ability'];
 
 const generateLessonPlanSchema = z
