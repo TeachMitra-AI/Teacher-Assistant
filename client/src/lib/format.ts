@@ -1,7 +1,6 @@
 import { renderMathSegments } from './math';
 
-// Escapes HTML, then applies a small, safe subset of Markdown so the AI
-// response can be rendered with basic formatting without XSS risk.
+// Escapes HTML, then applies a small safe subset of Markdown so AI responses render with basic formatting without XSS risk.
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -14,46 +13,30 @@ function escapeHtml(text: string): string {
 export function formatResponse(raw: string): string {
   let text = escapeHtml(raw);
 
-  // Math ($...$/$$...$$ LaTeX, see lib/math.ts) is rendered FIRST, before any
-  // other Markdown-subset transform below — those operate on line patterns
-  // (^#, ^\d+\., **bold**) and literal LaTeX (backslashes, braces, ^ and _)
-  // could otherwise collide with them or get mangled before KaTeX ever sees it.
+  // Math (lib/math.ts) is rendered first: the line-pattern transforms below could otherwise collide with or mangle
+  // LaTeX backslashes, braces, ^ and _ before KaTeX sees them.
   text = renderMathSegments(text);
 
-  // Headings (# through ######). Previously only ### (H3) was handled, so a
-  // generated document's "# Title" and "## Questions" headings passed through
-  // untouched and rendered as literal hash characters.
+  // Headings (# through ######).
   text = text.replace(/^(#{1,6})\s+(.+)$/gm, (_m, hashes: string, content: string) => {
     const level = hashes.length;
-    // Tag the answer-key heading (same shapes lib/assessment.ts splits on) so
-    // print CSS can push the answer key onto its own page, separated from the
-    // question paper itself.
+    // Tag the answer-key heading (same shapes lib/assessment.ts splits on) so print CSS can start it on its own page.
     const isAnswerKey = /^(?:teacher(?:'s)?\s+)?answer\s*keys?\b/i.test(content.trim());
     return `<h${level}${isAnswerKey ? ' class="fmt-answer-key"' : ''}>${content}</h${level}>`;
   });
 
-  // Pipe tables. Added for the Lesson Plan's Presentation section (Classroom
-  // Mode P6), where the teacher-activity / student-activity PAIRING is the
-  // information — two parallel lists would lose it.
-  //
-  // Runs BEFORE the option and list passes below: a table cell can legitimately
-  // begin with "A. " or "1. ", and those passes are line-anchored, so they
-  // would shred a row into <div>s and <li>s before it was ever a table. Running
-  // first also means the emitted HTML contains no bare "|" lines for the
-  // paragraph pass to mangle.
-  //
-  // Deliberately strict — a header row, a separator row of dashes, then body
-  // rows. Anything that is not that exact shape is left as text rather than
-  // half-rendered, matching the "never guess" rule the rest of this file
-  // follows. Escaped pipes (\|) inside a cell are unescaped after splitting,
-  // so a cell may contain one (the server escapes them when rendering).
+  // Pipe tables, for the Lesson Plan's Presentation section where the teacher/student activity pairing is the information.
+  // Runs before the option and list passes, since a cell can begin with "A. " or "1. " and those line-anchored passes would
+  // shred the row; it also keeps bare "|" lines away from the paragraph pass. Strict on purpose: a header row, a dash
+  // separator, then body rows. Anything else stays text rather than half-rendered. Escaped pipes (\|) in a cell are
+  // unescaped after splitting.
   text = text.replace(
     /^\|(.+)\|[ \t]*\n\|[ \t]*:?-{2,}:?[ \t]*(?:\|[ \t]*:?-{2,}:?[ \t]*)*\|[ \t]*\n((?:\|.*\|[ \t]*\n?)+)/gm,
     (_m, headerRow: string, bodyRows: string) => {
       const cells = (row: string) =>
         row
           .replace(/^\||\|[ \t]*$/g, '')
-          // Split on pipes that are NOT escaped, then unescape the rest.
+          // Split on unescaped pipes, then unescape the rest.
           .split(/(?<!\\)\|/)
           .map((c) => c.replace(/\\\|/g, '|').trim());
 
@@ -71,17 +54,9 @@ export function formatResponse(raw: string): string {
     }
   );
 
-  // MCQ option lines ("A. ...", "B. ...", "C. ...", "D. ...") and lettered
-  // sub-parts ("(a) ...", "(b) ..."). These are rendered as their own block
-  // elements — not list items — so they can't be swept into the numbered
-  // question <ol> below (which would wrongly renumber them as questions),
-  // and so they always land on their own line instead of running together
-  // with adjacent single-newline-separated lines.
-  //
-  // The model doesn't always put one option per line as instructed — it
-  // sometimes emits all four on a single line ("A. 6 cm B. 10 cm C. 12 cm
-  // D. 18 cm"). Split that shape into individual options first; genuinely
-  // one-per-line options are handled by the line-anchored pass below.
+  // MCQ option lines ("A. ...") and lettered sub-parts ("(a) ..."). Rendered as block elements, not list items, so they
+  // aren't swept into the numbered question <ol> and renumbered, and always land on their own line.
+  // The model sometimes puts all four options on one line ("A. 6 cm B. 10 cm C. 12 cm D. 18 cm"); split that first.
   text = text.replace(
     /^(.*?)\bA\.\s+(.*?)\s+B\.\s+(.*?)\s+C\.\s+(.*?)\s+D\.\s+(.*)$/gm,
     (_m, lead: string, a: string, b: string, c: string, d: string) => {
@@ -92,40 +67,20 @@ export function formatResponse(raw: string): string {
   text = text.replace(/^([A-D])\.\s+(.+)$/gm, '<div class="fmt-option">$1. $2</div>');
   text = text.replace(/^\(([a-z])\)\s+(.+)$/gm, '<div class="fmt-subpart">($1) $2</div>');
 
-  // Group each run of consecutive option lines into one container, so the
-  // options of a question can be laid out as a unit (two-column grid on the
-  // printed paper) and kept together across page breaks. Options never
-  // contain nested <div>s (KaTeX output is spans), so the non-greedy match
-  // always closes at the option's own </div>.
+  // Group each run of option lines into one container so a question's options lay out as a unit (two-column grid on the
+  // printed paper) and stay together across page breaks. Options hold no nested <div>s (KaTeX output is spans), so the
+  // non-greedy match closes at the option's own </div>.
   text = text.replace(
     /(?:<div class="fmt-option">[\s\S]*?<\/div>\n?)+/g,
     (run) => `<div class="fmt-options">${run}</div>`
   );
 
-  // Numbered and bulleted list items. Both are converted to <li> (tagged by
-  // origin) and wrapped in a SINGLE pass below. Wrapping numbered and
-  // bulleted lines in two separate passes — convert+wrap numbered lines,
-  // then convert+wrap bulleted lines — silently broke numbering: the second
-  // pass's "skip if already wrapped" check only inspected the matched
-  // <li>...</li> text itself, which never includes the surrounding <ol>
-  // tag added by the first pass (that tag sits outside the match). So it
-  // always re-wrapped the already-<ol>-wrapped items in a spurious nested
-  // <ul>, and every numbered question rendered as a bullet instead of "1.".
-  //
-  // The numeral itself is kept in the <li>'s text (rather than left to the
-  // browser's own <ol> auto-counter) and the marker is hidden in CSS
-  // (list-style: none). A numbered question is immediately followed by its
-  // MCQ option lines — now separate <div class="fmt-option"> blocks, not
-  // <li> siblings — which breaks the "consecutive <li>" run each question
-  // would need to share ONE <ol> for auto-numbering to stay sequential
-  // across questions. Every question ends up in its own single-item <ol>,
-  // so auto-numbering would show "1." for every question. Since Phase 1
-  // guarantees the source numbering is already correct and sequential
-  // (assigned server-side, not by the model), showing that literal number
-  // is more reliable here than relying on <ol>'s counter.
-  // The question number is wrapped in its own span so the paper styles can
-  // bold it and hang it into the margin (professional exam-paper layout)
-  // without giving up the literal-number reliability described above.
+  // Numbered and bulleted items become <li> (tagged by origin) and are wrapped in a single pass; two separate passes made
+  // the second re-wrap the already-<ol> items in a nested <ul>, rendering every numbered question as a bullet.
+  // The numeral stays in the <li> text (marker hidden in CSS) instead of relying on the <ol> counter: each numbered
+  // question is followed by <div class="fmt-option"> blocks, which break the consecutive-<li> run, so every question would be
+  // its own single-item <ol> and show "1.". The source numbering is already sequential (assigned server-side). The number is
+  // wrapped in a span so the paper styles can bold it and hang it into the margin.
   text = text.replace(/^(\d+)\.\s+(.+)$/gm, '<li class="fmt-li-ol"><span class="fmt-qnum">$1.</span> $2</li>');
   text = text.replace(/^[•\-*]\s+(.+)$/gm, '<li class="fmt-li-ul">$1</li>');
   text = text.replace(/(<li class="fmt-li-(?:ol|ul)">[\s\S]*?<\/li>\n?)+/g, (run) => {

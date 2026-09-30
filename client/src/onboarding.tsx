@@ -1,18 +1,10 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 
-// Shared onboarding UI state (Phase 2 of the onboarding rework). The "Getting
-// Started" entry lives in the TopBar, which renders on every page, while the
-// welcome intro it reopens lives in CoachPage — so the reopen intent needs a
-// small app-level channel between them. This is deliberately client-only and
-// ephemeral: reopening lets a user re-view the intro without ever resetting the
-// persisted first-run gate (preferences.onboarding.seenWelcomeIntro), so on the
-// next session the intro stays dismissed. Future phases (e.g. re-showing a
-// contextual tip on demand) can extend this same provider rather than adding
-// more cross-component plumbing.
+// Shared onboarding UI state. The "Getting Started" entry lives in the TopBar and the intro it reopens lives in CoachPage,
+// so the reopen intent needs a small app-level channel. Client-only and ephemeral: reopening never resets the persisted
+// first-run gate (preferences.onboarding.seenWelcomeIntro), so the intro stays dismissed next session.
 interface OnboardingContextValue {
-  // True once the user has explicitly asked to re-view the welcome intro,
-  // independent of the first-run seenWelcomeIntro gate. Cleared when the intro
-  // is dismissed or the user starts a new conversation.
+  // True once the user asks to re-view the welcome intro, independent of the first-run gate; cleared on dismiss or a new conversation.
   introReopened: boolean;
   reopenIntro: () => void;
   closeIntro: () => void;

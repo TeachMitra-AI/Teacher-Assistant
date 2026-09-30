@@ -1,11 +1,7 @@
 import type { HistoryRow } from '../../lib/teacherAttendanceCalendar';
 
-// The "shape of the month at a glance" strip from
-// docs/attendance-register-design.html — a colour-coded grid above the
-// detail list, so a pattern (mostly green, one amber day) reads in half a
-// second, before anyone reads a single row. Shared by HistoryTab (a
-// teacher's own month) and ReportsTab's drill-down (the Principal's view
-// of someone else's).
+// The "shape of the month at a glance" strip from docs/attendance-register-design.html: a colour-coded grid above the detail
+// list so a pattern (mostly green, one amber day) reads in half a second. Shared by HistoryTab and ReportsTab's drill-down.
 const WEEKDAY_HEADS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 function cellClass(row: HistoryRow): string {
@@ -21,9 +17,7 @@ function cellClass(row: HistoryRow): string {
 
 export default function MiniCalendarStrip({ rows }: { rows: HistoryRow[] }) {
   if (rows.length === 0) return null;
-  // Local calendar date (no time-of-day component), same convention
-  // teacherAttendanceCalendar.ts's own day-of-week helper uses — safe
-  // because a "YYYY-MM-DD" string has nothing to convert across timezones.
+  // Local calendar date with no time-of-day, like teacherAttendanceCalendar.ts; a "YYYY-MM-DD" string has nothing to convert across timezones.
   const [y, m, d] = rows[0].date.split('-').map(Number);
   const firstWeekday = new Date(y, m - 1, d).getDay();
 

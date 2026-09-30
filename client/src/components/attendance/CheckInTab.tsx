@@ -42,12 +42,9 @@ export default function CheckInTab() {
   const [nonWorkingDay, setNonWorkingDay] = useState<NonWorkingDayInfo | null>(null);
   const [queuedAction, setQueuedAction] = useState<QueuedAttendanceAction | null>(null);
 
-  // Live "how far am I from school" check, shown BEFORE the button is
-  // tapped — a nudge, not the real security check (the server always
-  // recomputes distance independently and is what actually decides). When
-  // we can't tell (no config yet, geolocation failed, offline), the button
-  // stays enabled and falls back to the existing on-tap flow, which
-  // surfaces its own clear error — only a KNOWN "too far" reading disables it.
+  // Live "how far from school" check shown before the button is tapped. A nudge, not the security check (the server always
+  // recomputes). When we can't tell (no config, geolocation failed, offline) the button stays enabled and the on-tap flow
+  // reports its own error; only a known "too far" reading disables it.
   const [schoolConfig, setSchoolConfig] = useState<SchoolAttendanceConfigDto | null>(null);
   const [liveDistanceMeters, setLiveDistanceMeters] = useState<number | null>(null);
   const [checkingDistance, setCheckingDistance] = useState(false);
@@ -70,10 +67,8 @@ export default function CheckInTab() {
     load();
   }, [load]);
 
-  // Reflects today's queued (not-yet-synced) check-in/check-out, if any, and
-  // re-checks today's real server state the moment a queued item disappears
-  // — that's what "it just synced" looks like, since attemptSync() itself
-  // has no way to know this component exists.
+  // Reflects today's queued check-in/out, if any, and re-checks server state when a queued item disappears (that's what
+  // "it just synced" looks like, since attemptSync() can't know this component exists).
   const refreshQueuedAction = useCallback(() => {
     if (!user) return;
     const date = todayDateString();
@@ -89,8 +84,7 @@ export default function CheckInTab() {
     return subscribeToQueue(refreshQueuedAction);
   }, [refreshQueuedAction]);
 
-  // Wires the browser's online/visibility sync triggers once, and catches
-  // up on anything left queued from a previous offline session.
+  // Wires the online/visibility sync triggers once and catches up on anything queued from a previous offline session.
   useEffect(() => {
     if (!user) return;
     const stopAutoSync = startAutoSync(() => user.id);
@@ -102,13 +96,8 @@ export default function CheckInTab() {
     getSchoolConfig().then(setSchoolConfig).catch(() => {}); // silent — falls back to no distance check
   }, []);
 
-  // Re-fetches the school's config fresh every time, rather than reusing
-  // the `schoolConfig` state captured at mount — a Principal can change the
-  // geofence location in Settings while a teacher already has this screen
-  // open, and "Refresh" is exactly the button that should pick that up
-  // without needing a full page reload. (The actual check-in/check-out
-  // submission was never affected by this — the server always recomputes
-  // against its own live config; this only fixes the on-screen preview.)
+  // Re-fetches the school config every time instead of reusing the mount-time state: a Principal can move the geofence
+  // while a teacher has this screen open, and "Refresh" should pick that up. (Submission is unaffected; the server uses its live config.)
   const checkDistance = useCallback(async () => {
     setCheckingDistance(true);
     try {
@@ -129,21 +118,10 @@ export default function CheckInTab() {
     }
   }, []);
 
-  // Re-checks whenever the relevant action changes (check-in done -> now
-  // check-out is next) so the distance shown always matches which button is
-  // actually on screen.
-  //
-  // Depends on `hasSchoolConfig` (a primitive), NOT `schoolConfig` itself —
-  // checkDistance() calls setSchoolConfig() with a freshly-fetched object
-  // every time it runs, and a new object is never === the old one, so
-  // depending on the object directly turned this into an infinite loop:
-  // effect fires -> checkDistance() -> setSchoolConfig(new object) ->
-  // dependency "changed" -> effect fires again -> forever, hammering the
-  // API (and exhausting the shared rate limit for every other
-  // /api/teacher-attendance/* route, including Settings). `hasSchoolConfig`
-  // flips false -> true exactly once and then never changes again, so the
-  // effect still fires the moment a config first loads, but never again
-  // just because a later fetch happened to return a new object.
+  // Re-checks when the relevant action changes (check-in done, check-out next) so the distance matches the button on screen.
+  // Depends on `hasSchoolConfig` (a primitive), not `schoolConfig`: checkDistance() sets a fresh config object every run, so
+  // depending on the object looped forever, hammering the API and exhausting the shared rate limit for every
+  // /api/teacher-attendance/* route. `hasSchoolConfig` flips once and stays.
   const hasSchoolConfig = schoolConfig !== null;
   useEffect(() => {
     if (!hasSchoolConfig || loading) return;
@@ -154,12 +132,8 @@ export default function CheckInTab() {
 
   const tooFarToActNow = Boolean(schoolConfig && liveDistanceMeters !== null && liveDistanceMeters > schoolConfig.geofenceRadiusMeters);
 
-  // Calm, inline "don't forget to check out" nudge — the same 15-before /
-  // 30-after window the server's own reminder sweep uses
-  // (docs/feature-teacher-attendance-implementation-plan.md §1.4/§5), shown
-  // right on the screen a teacher is already looking at instead of relying
-  // solely on a push notification. Assumes the device's own clock is IST,
-  // same as every other teacher-facing time display in this app.
+  // Inline "don't forget to check out" nudge, using the same 15-before/30-after window as the server's reminder sweep
+  // (docs/feature-teacher-attendance-implementation-plan.md). Assumes the device clock is IST, like other teacher-facing times.
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60000);
@@ -212,8 +186,7 @@ export default function CheckInTab() {
       show(kind === 'check-in' ? 'Checked in.' : 'Checked out.', 'success');
     } catch (err) {
       if (err instanceof ApiError && err.status === 0) {
-        // Queued rather than shown as a hard error — evidence isn't lost,
-        // it syncs automatically the moment the connection comes back.
+        // Queued rather than shown as a hard error: the evidence syncs when the connection returns.
         if (user) {
           enqueueAction(user.id, todayDateString(), kind, evidence);
           show('Saved — will sync automatically once you\'re back online.', 'info');
@@ -222,10 +195,8 @@ export default function CheckInTab() {
         }
       } else if (err instanceof ApiError) {
         setError(err.message);
-        // Covers "already checked in/out" — the current server state is
-        // more useful to show than the stale one already on screen.
-        // Deliberately NOT load(): it resets error to '' internally,
-        // which would immediately erase the message just set above.
+        // Covers "already checked in/out": the server's state is more useful than the stale one on screen. Not load(),
+        // which resets `error` and would erase the message just set.
         getTodayAttendance().then((result) => setToday(result.attendance)).catch(() => {});
       } else {
         setError('Something went wrong. Please try again.');
@@ -236,10 +207,8 @@ export default function CheckInTab() {
     }
   }
 
-  // "Distance to school" card — always present once there's a config to
-  // measure against, never a vanished button-shaped gap
-  // (docs/attendance-register-design.html §1/§2): the button itself stays
-  // on screen either way, just disabled with the live reason when too far.
+  // "Distance to school" card: present whenever there's a config to measure against, so there's no vanished button-shaped
+  // gap (docs/attendance-register-design.html). The button stays, disabled with the live reason when too far.
   function renderDistanceCard() {
     if (!schoolConfig) return null;
     if (liveDistanceMeters === null) {
@@ -373,17 +342,12 @@ export default function CheckInTab() {
             )}
           </>
         ) : (
-          // The day is done — this is the one card a teacher actually
-          // wants to see afterward, so it shows the whole day (both times,
-          // not just whichever action happened last) plus the final word
-          // on it, in one place, instead of the check-in half vanishing
-          // the moment check-out happens.
+          // The day is done: show the whole day (both times plus the final status) in one card rather than letting the
+          // check-in half vanish at check-out.
           <div className={`attendance-checked-block attendance-day-summary tone-${today.status === 'half_day' ? 'warning' : 'routine'}`}>
             <div className="attendance-day-summary-times">
-              {/* Each half is colored by whether THAT event was on time —
-                  a teacher who checked in on time but left early should see
-                  green on the left and amber on the right, not one blanket
-                  color for the whole day driven only by the overall status. */}
+              {/* Each half is colored by whether that event was on time, so on-time check-in with an early departure
+                  shows green then amber, not one color for the whole day. */}
               <div className={`attendance-day-summary-col tone-${today.lateMinutes ? 'warning' : 'routine'}`}>
                 <span className="attendance-checked-label">Checked in</span>
                 <span className="attendance-checked-time">{formatAttendanceTime(today.checkInAt)}</span>

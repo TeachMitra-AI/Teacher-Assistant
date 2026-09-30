@@ -8,9 +8,8 @@ import { ToastProvider } from './components/Toast';
 import { NotificationProvider } from './components/Notifications';
 import { HelpSupportProvider } from './components/HelpSupport';
 import { ErrorBoundary } from './components/ErrorBoundary';
-// The AI Action Router's provider, not react-router's. Mounted innermost, so
-// the existing AuthProvider → ToastProvider → OnboardingProvider order — which
-// is load-bearing — is untouched, and deleting this feature removes one wrapper.
+// The AI Action Router's provider (not react-router's). Innermost, so the AuthProvider → ToastProvider →
+// OnboardingProvider order stays as is and removing the feature removes one wrapper.
 import { RouterProvider } from './assistant/RouterProvider';
 import { usePreferences } from './hooks/usePreferences';
 import { ADMIN_ROLES, GOOGLE_CLIENT_ID } from './config';
@@ -27,10 +26,8 @@ import { CONTENT_PAGES } from './seo/pages';
 import BottomNav from './components/BottomNav';
 import ScrollToTop from './components/ScrollToTop';
 
-// Authenticated-only pages are never rendered for a signed-out visitor, and
-// pull in most of the app's heavy dependencies (recharts, socket.io-client,
-// KaTeX, etc.) transitively — loading them on demand keeps the signed-out
-// bundle serving "/", "/terms", "/privacy", and "/login" lightweight.
+// Authenticated-only pages pull in heavy dependencies (recharts, socket.io-client, KaTeX), so they load on demand to
+// keep the signed-out bundle (/, /terms, /privacy, /login) light.
 const CoachPage = lazy(() => import('./pages/CoachPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const ManagePage = lazy(() => import('./pages/ManagePage'));
@@ -52,11 +49,8 @@ function AppRoutes() {
   const preferences = usePreferences();
   const location = useLocation();
 
-  // GA4 page_view per SPA navigation (see lib/analytics.ts) — the automatic
-  // gtag.js pageview is disabled at init specifically so this one effect
-  // covers the first render and every later route change alike, including
-  // transitions between the signed-out and signed-in route trees below.
-  // No-op when GA was never initialized.
+  // GA4 page_view per SPA navigation (lib/analytics.ts). The automatic gtag pageview is disabled at init so this covers the
+  // first render and every route change, including signed-out to signed-in. No-op if GA wasn't initialized.
   useEffect(() => {
     trackPageView(location.pathname + location.search);
   }, [location.pathname, location.search]);
@@ -69,9 +63,7 @@ function AppRoutes() {
     );
   }
 
-  // Password reset happens while signed OUT, so both of its pages live in this
-  // tree alongside /login. The reset token travels in the path, which is what
-  // the link in the email points at.
+  // Password reset happens signed out, so both pages live here beside /login; the token travels in the path.
   if (!user) {
     return (
       <Routes>
@@ -93,9 +85,7 @@ function AppRoutes() {
   }
 
   const isAdmin = ADMIN_ROLES.includes(user.role);
-  // Support Inbox is super_admin only — a stricter gate than isAdmin above,
-  // matching AdminTabs.tsx's own reasoning (a ticket is product feedback,
-  // not a school's own data).
+  // Support Inbox is super_admin only, stricter than isAdmin (a ticket is product feedback, not a school's data).
   const isSuperAdmin = user.role === 'super_admin';
 
   return (
@@ -112,11 +102,8 @@ function AppRoutes() {
       <Route path="/library" element={<LibraryPage preferences={preferences} />} />
       <Route path="/library/:id" element={<ResourceView preferences={preferences} />} />
       <Route path="/library/:id/edit" element={<ResourceWorkspace preferences={preferences} />} />
-      {/* Classroom Management (docs/classroom-feature-plan.md) — every role
-          manages its OWN classroom data, no role gate needed (matches
-          Coach/Library/Generator's unrestricted pattern). NOT the unrelated
-          "Classroom Mode" AI chat feature, which has no page/route of its
-          own. */}
+      {/* Classroom Management (docs/classroom-feature-plan.md): every role manages its own data, so no role gate.
+          Unrelated to the "Classroom Mode" AI chat feature, which has no route. */}
       <Route path="/classroom" element={<ClassroomPage preferences={preferences} />} />
       <Route path="/attendance" element={<AttendancePage preferences={preferences} />} />
       <Route path="/generator" element={<GeneratorPage preferences={preferences} />} />
@@ -125,8 +112,7 @@ function AppRoutes() {
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/schedule-demo" element={<ScheduleDemoPage signedIn />} />
       <Route path="/schedule-demo/manage" element={<ManageBookingPage signedIn />} />
-      {/* The same public pages for a signed-in visitor (e.g. arriving from a
-          search result), with the call to action pointing at the real feature. */}
+      {/* Same public pages for a signed-in visitor (e.g. from a search result), with the call to action pointing at the real feature. */}
       {CONTENT_PAGES.map((page) => (
         <Route key={page.path} path={page.path} element={<ContentPage page={page} signedIn />} />
       ))}
@@ -154,12 +140,8 @@ function AppRoutes() {
         path="/admin/settings"
         element={isSuperAdmin ? <AdminSettingsPage preferences={preferences} /> : <Navigate to="/" replace />}
       />
-      {/* Notification System send/broadcast — every ADMIN_ROLES member can
-          reach this, unlike Support/Settings above (super_admin only): a
-          school_admin/resource_person can send within their own scope
-          (see docs/notification-system-plan.md §2). The backend
-          independently re-derives and clamps that scope regardless of what
-          this route lets through. */}
+      {/* Notification send/broadcast: any ADMIN_ROLES member can reach it (unlike Support/Settings) and send within their
+          own scope; the backend re-derives and clamps the scope regardless (docs/notification-system-plan.md). */}
       <Route
         path="/admin/notifications"
         element={isAdmin ? <AdminNotificationsPage preferences={preferences} /> : <Navigate to="/" replace />}
@@ -173,27 +155,12 @@ function AppRoutes() {
 }
 
 export default function App() {
-  // Mounted once, at the root. GoogleOAuthProvider calls
-  // google.accounts.id.initialize() on mount, so keeping it inside LoginPage
-  // re-ran that every time the Sign in/Register tab changed — which GSI warns
-  // about ("initialize() is called multiple times") and which leaves only the
-  // last instance live. Rendered here it initializes exactly once.
-  // Without a client ID we skip the provider entirely; LoginPage already hides
-  // the Google buttons in that case.
-  //
-  // HelpSupportProvider sits inside Auth+Toast (its panel needs both) and
-  // outside ErrorBoundary — so if anything below the boundary crashes, the
-  // "Report this" button in the resulting fallback screen still has a live
-  // provider to open. The existing AuthProvider → ToastProvider →
-  // OnboardingProvider → RouterProvider relative order is otherwise untouched;
-  // these two are spliced in between Toast and Onboarding, not reordered
-  // around them.
-  //
-  // NotificationProvider sits inside Auth+Toast too (it needs useAuth().user
-  // to open/close its socket, and useToast() to surface a realtime arrival)
-  // and outside ErrorBoundary for the same "survives a crash below it"
-  // reasoning as HelpSupportProvider — spliced in right next to it rather
-  // than nested inside, since neither depends on the other.
+  // Mounted once at the root: GoogleOAuthProvider calls google.accounts.id.initialize() on mount, and inside LoginPage it
+  // re-ran on every tab switch (GSI warns, and only the last instance stays live). Skipped without a client ID, since
+  // LoginPage already hides the Google buttons.
+  // HelpSupportProvider and NotificationProvider sit inside Auth+Toast (they need both) and outside ErrorBoundary, so the
+  // "Report this" button in the crash fallback still has a live provider. They're spliced in between Toast and
+  // Onboarding without reordering the rest.
   const tree = (
     <BrowserRouter>
       <ScrollToTop />

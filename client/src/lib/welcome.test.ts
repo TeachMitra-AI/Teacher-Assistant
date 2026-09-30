@@ -78,9 +78,7 @@ describe('getSpecialDay — fixed-date special days', () => {
     }
   });
   test('a fixed special day is unaffected by a leap year', () => {
-    // 2028 is a leap year; Independence Day (15 August) is well after 29
-    // February, so if the lookup were dayOfYear-based it would be exactly
-    // one position off from a non-leap year. Month/day lookup is immune.
+    // 2028 is a leap year; a day-of-year lookup would be one position off after 29 February, month/day lookup isn't.
     expect(getSpecialDay(new Date(2028, 7, 15))?.id).toBe('independence-day');
   });
 });
@@ -96,8 +94,7 @@ describe('getSpecialDay — movable (year-specific) festivals', () => {
     expect(`${holi2025.month}-${holi2025.day}`).not.toBe(`${holi2026.month}-${holi2026.day}`);
   });
   test('a year with no configured data gracefully falls through to normal daily content, never a guess', () => {
-    // 2030 has no entry in YEAR_SPECIFIC_SPECIAL_DAYS — this must not throw,
-    // and must not fabricate a festival date.
+    // 2030 has no YEAR_SPECIFIC_SPECIAL_DAYS entry: must not throw or fabricate a date.
     expect(getSpecialDay(new Date(2030, 2, 14))).toBeNull();
   });
   test('a fixed civic day is not silently displaced by a movable festival landing on the same date', () => {
@@ -122,9 +119,7 @@ describe('getDailyFact / getSubtitle', () => {
     expect(a.id).not.toBe(b.id);
   });
   test('a fixed month/day date is NOT shifted by a leap year (no dayOfYear drift)', () => {
-    // 16 August sits after 29 February. Under a dayOfYear-modulo scheme,
-    // a leap year would shift this date's index by one relative to a
-    // non-leap year. Under month/day keying, it must be identical.
+    // 16 August is after 29 February, so day-of-year keying would shift by one in a leap year; month/day keying must not.
     const nonLeap = getDailyFact(new Date(2026, 7, 16)); // 2026 is not a leap year
     const leap = getDailyFact(new Date(2028, 7, 16)); // 2028 is a leap year
     expect(leap.id).toBe(nonLeap.id);

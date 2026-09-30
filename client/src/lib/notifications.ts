@@ -1,5 +1,4 @@
-// Typed client for the Notification API. Thin wrapper over api(), same shape
-// as lib/support.ts — pages/components don't hand-build the request.
+// Typed client for the Notification API: thin wrapper over api(), like lib/support.ts.
 import { api } from '../api';
 import type { AppNotification, SendNotificationInput } from '../types';
 
@@ -33,16 +32,9 @@ export async function sendNotification(input: SendNotificationInput): Promise<{ 
 }
 
 /**
- * Prepends a realtime-delivered notification (Socket.IO 'notification:new')
- * onto the cached list, deduping by id. Factored out as a pure function so
- * components/Notifications.tsx's provider stays a thin React wrapper around
- * it — this is the one piece of real merge logic worth unit-testing in
- * isolation (see notifications.test.ts).
- *
- * A duplicate id (the same event delivered twice — e.g. a reconnect racing
- * the unread-count refetch in components/Notifications.tsx) replaces the
- * existing entry in place rather than adding a second row, so the list never
- * shows the same notification twice.
+ * Prepends a realtime notification (Socket.IO 'notification:new') to the cached list, de-duping by id. A pure function so
+ * components/Notifications.tsx stays a thin wrapper and the merge is unit-testable. A duplicate id (e.g. a reconnect racing
+ * the unread-count refetch) replaces the entry in place, so the list never shows one twice.
  */
 export function mergeNewNotification(list: AppNotification[], incoming: AppNotification): AppNotification[] {
   const withoutDuplicate = list.filter((n) => n.id !== incoming.id);

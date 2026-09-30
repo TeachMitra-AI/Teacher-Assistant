@@ -1,10 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// GA_MEASUREMENT_ID is a BUILD-TIME constant read at module load — one
-// module registry state per file (same reasoning as
-// assistant/telemetryTransport.flagsOff.test.ts), so the "configured" and
-// "unconfigured" states live in separate files rather than being switched
-// mid-file.
+// GA_MEASUREMENT_ID is a build-time constant read at module load, with one module registry per file (as in
+// assistant/telemetryTransport.flagsOff.test.ts), so the configured and unconfigured states live in separate files.
 vi.mock('../config', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../config')>()),
   GA_MEASUREMENT_ID: 'G-TESTID123',

@@ -8,12 +8,8 @@ import { useDismissable } from '../hooks/useDismissable';
 import { useHelpSupport } from './HelpSupport';
 import { API_BASE, HELP_SUPPORT_ENABLED, ROLE_LABELS } from '../config';
 
-// The avatar chip + dropdown (Getting Started / Settings / Need Help? / Sign
-// out). Shared by TopBar (every page except Coach, where this menu now lives
-// in the Sidebar footer instead) and Sidebar (Coach page only) — one place
-// owning the account-menu state so the two call sites can never drift into
-// different behaviour. `variant` only changes layout/positioning classes; the
-// menu items, order and handlers are identical everywhere.
+// The avatar chip + dropdown (Getting Started / Settings / Need Help? / Sign out), shared by TopBar (every page except
+// Coach) and Sidebar (Coach only) so the account-menu state has one owner. `variant` only changes layout classes.
 
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -28,8 +24,7 @@ interface SubmenuPosition {
   left: number;
 }
 
-// Only used to decide which way the "Learn more" flyout opens, so an
-// approximation is enough — see ShareMenu's identical reasoning.
+// Only decides which way the "Learn more" flyout opens, so an approximation is enough (see ShareMenu).
 const SUBMENU_APPROX_HEIGHT = 100;
 const SUBMENU_APPROX_WIDTH = 190;
 const SUBMENU_GAP = 6;
@@ -38,24 +33,16 @@ const SUBMENU_EDGE_MARGIN = 8;
 function computeSubmenuPosition(anchorEl: HTMLElement): SubmenuPosition {
   const rect = anchorEl.getBoundingClientRect();
   const position: Partial<SubmenuPosition> = {};
-  // Opens upward by default (bottom-aligned with the trigger), matching the
-  // account menu's own upward-opening direction — only falls back to
-  // downward when there isn't room above the trigger for it.
+  // Opens upward by default, like the account menu, and falls back downward only when there's no room above.
   if (rect.bottom < SUBMENU_APPROX_HEIGHT) {
     position.top = rect.top;
   } else {
     position.bottom = window.innerHeight - rect.bottom;
   }
 
-  // Opens on whichever side of the trigger has more room, then clamps to
-  // the viewport regardless. Comparing available space (rather than just
-  // "does the preferred side fit") matters on the sidebar variant: its
-  // "Learn more" row spans nearly the full drawer width, so the space to
-  // its immediate left is nearly zero — flipping there just re-lands the
-  // flyout on top of the drawer's own list (hiding "Settings" etc. behind
-  // it), even though it's technically clamped on-screen. The space to its
-  // right (however little) is still the better direction, since it's outside
-  // the drawer's own content column instead of on top of it.
+  // Opens on whichever side has more room, then clamps to the viewport. Comparing space (not just "does the preferred side
+  // fit") matters on the sidebar variant: its "Learn more" row spans nearly the drawer width, so flipping left lands the
+  // flyout on top of the drawer's own list, while the space on its right is outside the drawer's content column.
   const spaceRight = window.innerWidth - rect.right;
   const spaceLeft = rect.left;
   const desiredLeft = spaceRight >= spaceLeft ? rect.right + SUBMENU_GAP : rect.left - SUBMENU_GAP - SUBMENU_APPROX_WIDTH;
@@ -78,22 +65,15 @@ export default function ProfileMenu({ variant = 'topbar' }: ProfileMenuProps) {
   const navigate = useNavigate();
   const displayName = user ? user.displayName || user.name : '';
   const avatarEmoji = user?.preferences?.avatar;
-  // Precedence: custom photo > emoji > initials. avatarUrl is a path
-  // relative to the API root (see types.ts), never the image bytes
-  // themselves — API_BASE is prepended the same way api() does internally.
+  // Precedence: custom photo > emoji > initials. avatarUrl is a path relative to the API root (types.ts); API_BASE is prepended as api() does.
   const avatarPhotoUrl = user?.avatarUrl ? `${API_BASE}${user.avatarUrl}` : null;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // "Learn more" flyout (Terms of Service / Privacy Policy). Portalled to
-  // document.body (see index.css .profile-submenu) rather than positioned
-  // in place, because the sidebar variant's dropdown lives inside `.sidebar`,
-  // which has `overflow: hidden` for its open/close width transition — an
-  // in-place flyout would be silently clipped there. `submenuPanelRef` is
-  // included in the outer useDismissable call below so a click inside the
-  // portalled panel (physically outside `menuRef`'s DOM subtree) isn't
-  // treated as an outside click.
+  // "Learn more" flyout (Terms / Privacy), portalled to document.body (index.css .profile-submenu) because the sidebar
+  // variant's dropdown sits inside `.sidebar`, whose `overflow: hidden` would clip it. `submenuPanelRef` is in the outer
+  // useDismissable call so a click in the portalled panel isn't treated as outside.
   const [learnMoreOpen, setLearnMoreOpen] = useState(false);
   const [submenuPosition, setSubmenuPosition] = useState<SubmenuPosition | null>(null);
   const submenuTriggerRef = useRef<HTMLButtonElement>(null);
@@ -118,11 +98,8 @@ export default function ProfileMenu({ variant = 'topbar' }: ProfileMenuProps) {
     };
   }, [learnMoreOpen]);
 
-  // Hovering off the trigger toward the flyout crosses a real (if small) gap
-  // between two DOM subtrees that are no longer adjacent once the panel is
-  // portalled — closing immediately on mouseleave would drop the flyout
-  // before the pointer reaches it. A short delay, cancelled by re-entering
-  // either the trigger or the panel, is the standard fix.
+  // Once the panel is portalled there's a small gap between subtrees, so closing on mouseleave would drop the flyout
+  // before the pointer reaches it. A short delay, cancelled by re-entering the trigger or panel, fixes that.
   function openSubmenu() {
     clearTimeout(submenuCloseTimer.current);
     setLearnMoreOpen(true);
@@ -131,12 +108,8 @@ export default function ProfileMenu({ variant = 'topbar' }: ProfileMenuProps) {
     submenuCloseTimer.current = setTimeout(() => setLearnMoreOpen(false), 200);
   }
 
-  // Tracks a photo URL that failed to load (e.g. a stale cached reference,
-  // or the serving route being briefly unreachable) so the UI falls back to
-  // the emoji/initials span instead of a broken-image icon. Comparing
-  // against the CURRENT avatarPhotoUrl (not just a boolean) means a fresh
-  // upload/removal — which always changes the URL — naturally clears a
-  // stale failure without needing a separate reset effect.
+  // Tracks a photo URL that failed to load so the UI falls back to emoji/initials instead of a broken image. Comparing
+  // against the current URL (not a boolean) means a new upload or removal clears a stale failure with no reset effect.
   const [brokenAvatarUrl, setBrokenAvatarUrl] = useState<string | null>(null);
   const showAvatarPhoto = Boolean(avatarPhotoUrl) && avatarPhotoUrl !== brokenAvatarUrl;
 
@@ -209,13 +182,9 @@ export default function ProfileMenu({ variant = 'topbar' }: ProfileMenuProps) {
               className="profile-dropdown-item"
               aria-haspopup="true"
               aria-expanded={learnMoreOpen}
-              // Not a toggle: a touch tap (and even a real mouse click) fires
-              // a hover-in on this button first, which already opens the
-              // flyout via onMouseEnter — toggling here would immediately
-              // flip it straight back closed. Explicitly opening is also
-              // what a keyboard Enter/Space activation (no hover at all)
-              // needs. Closing happens via hovering away, clicking outside,
-              // or picking one of the two links below.
+              // Not a toggle: a touch tap or click fires a hover-in first, which already opens the flyout, so toggling would
+              // flip it straight closed. Opening explicitly also serves keyboard Enter/Space. It closes on hover-away,
+              // outside click, or picking a link.
               onClick={openSubmenu}
             >
               <Info size={15} aria-hidden="true" /> Learn more
@@ -234,11 +203,8 @@ export default function ProfileMenu({ variant = 'topbar' }: ProfileMenuProps) {
                   left: submenuPosition.left,
                 }}
               >
-                {/* Real anchors with target="_blank", not a window.open() call
-                    on click — mobile browsers routinely block a scripted
-                    window.open once it's a state update or two removed from
-                    the raw tap, while a genuine link click is treated as
-                    normal navigation and isn't blocked. */}
+                {/* Real anchors with target="_blank", not window.open(): mobile browsers block a scripted window.open a
+                    state update or two removed from the tap, but not a genuine link click. */}
                 <a
                   href="/terms"
                   target="_blank"

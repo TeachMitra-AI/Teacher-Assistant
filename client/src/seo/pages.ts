@@ -8,19 +8,12 @@ import { guideAiLessonPlanning } from './content/guideAiLessonPlanning';
 import { guideMultigradeClassroom } from './content/guideMultigradeClassroom';
 import { aboutSarasTech } from './content/aboutSarasTech';
 
-// The single registry of indexable public pages. App.tsx builds its routes from
-// it, scripts/prerender.mjs prerenders it, sitemap.ts lists it, and the
-// footer/"Explore" link lists read from it — so adding a page here is the one
-// step that makes it routable, crawlable and discoverable.
-//
-// Deliberately small. Each entry is a hand-written page targeting a distinct
-// search intent that SarasTech genuinely serves; this is not a template for
-// generating pages in bulk (see the SEO strategy in the PR description).
-//
-// NAMING RULE: a path must not start with any prefix disallowed in
-// public/robots.txt (/login, /library, /classroom, /attendance, /generator,
-// /settings, /admin, …), because robots.txt Disallow rules are prefix matches —
-// "/generator-for-quizzes" would be blocked. pages.test.ts enforces this.
+// The single registry of indexable public pages: App.tsx builds routes from it, scripts/prerender.mjs prerenders it,
+// sitemap.ts lists it and the footer/"Explore" links read it, so adding a page here makes it routable, crawlable and discoverable.
+// Deliberately small: each entry is a hand-written page for a distinct search intent SarasTech serves, not a bulk-page template.
+// Naming rule: a path must not start with a prefix disallowed in public/robots.txt (/login, /library, /classroom, /attendance,
+// /generator, /settings, /admin, …). Disallow rules are prefix matches, so "/generator-for-quizzes" would be blocked;
+// pages.test.ts enforces this.
 export const TOOL_PAGES: ContentPageData[] = [
   aiLessonPlanGenerator,
   aiWorksheetGenerator,

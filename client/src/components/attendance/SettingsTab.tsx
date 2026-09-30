@@ -15,10 +15,8 @@ import { useToast } from '../Toast';
 import ConfirmDialog from '../ConfirmDialog';
 import type { SchoolAttendanceConfigDto, SchoolAttendanceConfigInput, SchoolHolidayDto } from '../../types';
 
-// Same defaults as SchoolAttendanceConfig's Prisma @default values —
-// pre-filled so a Principal setting this up for the first time sees the
-// project's own recommended starting numbers (attendance-plan-review.md §8),
-// not a blank form.
+// Same defaults as SchoolAttendanceConfig's Prisma @default values, pre-filled so a Principal setting up for the first time
+// sees the recommended starting numbers, not a blank form.
 const DEFAULT_CONFIG: SchoolAttendanceConfigInput = {
   openTime: '09:00',
   closeTime: '16:00',
@@ -37,8 +35,7 @@ const DEFAULT_CONFIG: SchoolAttendanceConfigInput = {
   reminderMinutesAfterClose: 30,
 };
 
-// 0=Sunday..6=Saturday, matching lib/teacherAttendance.js's isWeeklyOff()
-// convention exactly.
+// 0=Sunday..6=Saturday, matching isWeeklyOff() in lib/teacherAttendance.js.
 const WEEKDAYS = [
   { value: 0, label: 'Sun' },
   { value: 1, label: 'Mon' },
@@ -49,12 +46,9 @@ const WEEKDAYS = [
   { value: 6, label: 'Sat' },
 ];
 
-// GET /school-config returns the full row — id/schoolId/createdAt/updatedAt
-// included, since the server does no DTO stripping there. PUT's Zod schema
-// is `.strict()` and has no fields for those, so the form must never carry
-// them forward: assigning the raw DTO straight into form state (as an
-// earlier version of this file did) round-trips those extra keys back to
-// PUT on Save and gets "Unrecognized keys" rejected by the server.
+// GET /school-config returns the full row (id/schoolId/createdAt/updatedAt included, since the server does no DTO
+// stripping). PUT's Zod schema is `.strict()` with no such fields, so the form must not carry them: assigning the raw DTO
+// into form state round-tripped those keys back on Save and was rejected with "Unrecognized keys".
 function toFormInput(config: SchoolAttendanceConfigDto): SchoolAttendanceConfigInput {
   return {
     openTime: config.openTime,

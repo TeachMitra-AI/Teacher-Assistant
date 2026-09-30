@@ -1,9 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { formatResponse } from './format';
 
-// Tables were added for the Lesson Plan's Presentation section (Classroom Mode
-// P6), where the teacher-activity / student-activity pairing IS the
-// information. Before this, the section rendered as raw pipe characters.
+// Tables were added for the Lesson Plan's Presentation section, where the teacher/student activity pairing is the information;
+// before that the section rendered as raw pipe characters.
 describe('formatResponse — pipe tables', () => {
   const table = [
     '| # | Teacher Activity | Student Activity |',
@@ -25,8 +24,7 @@ describe('formatResponse — pipe tables', () => {
     expect(html.match(/<tr>/g)).toHaveLength(3); // 1 header + 2 body
   });
 
-  // A cell beginning "1." or "A." must not be shredded by the list/option
-  // passes — which is exactly why the table pass runs before them.
+  // A cell beginning "1." or "A." must not be shredded by the list/option passes, which is why the table pass runs first.
   test('a cell starting with a numeral is not turned into a list item', () => {
     const html = formatResponse('| # | Step |\n|---|---|\n| 1 | 1. First do this |\n');
     expect(html).toContain('<td>1. First do this</td>');
@@ -45,8 +43,7 @@ describe('formatResponse — pipe tables', () => {
     expect(html.match(/<td>/g)).toHaveLength(2);
   });
 
-  // "Never guess" — the rest of format.ts leaves malformed input as text
-  // rather than half-rendering it.
+  // "Never guess": malformed input stays text rather than being half-rendered.
   test('leaves a pipe line with no separator row as plain text', () => {
     const html = formatResponse('| not | a table |\njust text');
     expect(html).not.toContain('<table');

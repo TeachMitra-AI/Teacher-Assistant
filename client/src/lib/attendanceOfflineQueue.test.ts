@@ -16,12 +16,8 @@ vi.mock('./teacherAttendanceApi', () => ({ checkIn: vi.fn(), checkOut: vi.fn() }
 const mockedApi = vi.mocked(attendanceApi);
 const EVIDENCE = { lat: 12.9716, lon: 77.5946, accuracyMeters: 15 };
 
-// This test environment's jsdom/Node combination doesn't expose a working
-// global `localStorage` (a pre-existing environment gap, not a bug in
-// attendanceOfflineQueue.ts itself — a real browser's localStorage works
-// fine; this codebase simply never had a test touch real localStorage
-// before this file). Stubbed locally here rather than in the shared
-// vitest.config.ts, so this fix stays scoped to the one file that needs it.
+// This jsdom/Node combination doesn't expose a working global `localStorage`, so it's stubbed here rather than in the shared
+// vitest.config.ts to keep the fix scoped to this file.
 class MemoryStorage implements Storage {
   private store = new Map<string, string>();
   get length() {

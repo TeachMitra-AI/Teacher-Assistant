@@ -2,19 +2,11 @@ import { useRef, useState } from 'react';
 import { GraduationCap, ChevronDown, Check } from 'lucide-react';
 import { useDismissable } from '../hooks/useDismissable';
 
-// The Classroom Mode dropdown, on the right of the Composer's controls row —
-// where the paperclip attach button used to sit (its two actions moved under
-// the "+" button, see AddMenu).
-//
-// Which modes are ON still lives in CoachPage, not here, because that is what
-// has to travel with the request — a mode is a property of the conversation,
-// not of the composer. This component owns only its own popover's open state.
-//
-// Presented as an explicit Off/On choice rather than the single tick-to-toggle
-// item the old "+" menu used: with the control now showing its current state on
-// the button itself, a teacher opening it is choosing between two states, and
-// seeing both spelled out (with what each one costs them in output) is clearer
-// than inferring the alternative from the absence of a tick.
+// The Classroom Mode dropdown, on the right of the Composer's controls row (its two attach actions moved under "+", see
+// AddMenu). Which modes are on lives in CoachPage, since a mode is a property of the conversation and travels with the
+// request; this component owns only its popover's open state.
+// Presented as an explicit Off/On choice: the button shows the current state, so a teacher opening it is choosing between
+// two states and seeing both spelled out (with what each costs in output) beats inferring the other from a missing tick.
 
 interface ClassroomModeMenuProps {
   classroomMode: boolean;
@@ -36,18 +28,12 @@ export default function ClassroomModeMenu({
 }: ClassroomModeMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  // What the button itself displays, and what the tooltip and accessible name
-  // report. Reads as a selection ("Classroom Mode" / "Assistant Mode") rather
-  // than as on/off, so it still makes sense once there is more than one mode
-  // to choose between — and shows the teacher's actual current choice at a
-  // glance, rather than a generic control name.
+  // What the button shows, and what the tooltip and accessible name report. Reads as a selection ("Classroom Mode" /
+  // "Assistant Mode") so it still makes sense with more than one mode, and shows the current choice at a glance.
   const selected = OPTIONS.find((o) => o.on === classroomMode)?.label ?? 'Assistant Mode';
-  // The control's own name IS the off-state label ("Assistant Mode"), so
-  // pairing it with itself in the accessible name would read as a stutter —
-  // only prefix it once a real mode is selected.
+  // The control's name is the off-state label ("Assistant Mode"), so only prefix it in the accessible name once a real mode is selected.
   const accessibleLabel = classroomMode ? `Assistant Mode: ${selected}` : 'Assistant Mode';
-  // Same shared outside-click + Escape behaviour as every other popover in the
-  // app (profile menu, teaching context, AddMenu).
+  // Same shared outside-click + Escape behaviour as the other popovers (profile menu, teaching context, AddMenu).
   useDismissable(open, ref, () => setOpen(false));
 
   return (

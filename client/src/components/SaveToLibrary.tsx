@@ -15,8 +15,7 @@ interface SaveToLibraryProps {
   queryId: string | null;
 }
 
-// Suggest a resource type from the phrasing the teacher used, so the picker
-// defaults sensibly. Falls back to a general resource.
+// Suggests a resource type from the teacher's phrasing so the picker defaults sensibly; falls back to a general resource.
 function guessType(query: string): ResourceType {
   const q = query.toLowerCase();
   if (q.includes('lesson plan')) return 'lesson_plan';

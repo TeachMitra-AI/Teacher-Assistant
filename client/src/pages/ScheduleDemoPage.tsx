@@ -16,10 +16,8 @@ const COVERS = [
   'Rollout and onboarding for your staff',
 ];
 
-// Public marketing/utility page for schools and organizations booking a demo
-// call — see docs/schedule-a-call-plan.md. Reuses the same PublicHeader/
-// PublicFooter and `.home-*` design language as ContentPage.tsx, so it reads
-// as a natural part of the site rather than a bolted-on booking tool.
+// Public page for schools and organizations booking a demo call. Reuses PublicHeader/PublicFooter and the `.home-*` design
+// language from ContentPage.tsx so it reads as part of the site, not a bolted-on tool.
 export default function ScheduleDemoPage({ signedIn = false }: { signedIn?: boolean }) {
   const { theme, toggleTheme } = usePreferences();
   const { authMode, openAuth, closeAuth } = useAuthModal();

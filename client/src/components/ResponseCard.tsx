@@ -20,9 +20,7 @@ interface ResponseCardProps {
 export default function ResponseCard({ query, text, language, context, queryId, rating, onFeedback }: ResponseCardProps) {
   const { show } = useToast();
   const [speaking, setSpeaking] = useState(false);
-  // Shows a Check in place of the Copy icon for a moment after a successful
-  // copy, in the button itself — no toast, so the confirmation sits right
-  // where the teacher's eyes already are.
+  // Shows a Check in place of the Copy icon briefly after a copy, in the button itself with no toast, where the teacher is already looking.
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -31,8 +29,7 @@ export default function ResponseCard({ query, text, language, context, queryId, 
     return () => stopSpeaking();
   }, [text]);
 
-  // Clears the revert timer on unmount so it cannot fire setCopied after this
-  // card is gone.
+  // Clears the revert timer on unmount so it can't call setCopied after this card is gone.
   useEffect(() => {
     return () => {
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
@@ -53,9 +50,7 @@ export default function ResponseCard({ query, text, language, context, queryId, 
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
-      // Restart the revert timer rather than stacking a second one, so
-      // repeated clicks keep the Check showing for a full duration instead of
-      // reverting early from the first click's timer.
+      // Restart the revert timer instead of stacking one, so repeated clicks keep the Check for a full duration.
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
       copyTimeoutRef.current = setTimeout(() => setCopied(false), 1500);
     } catch {

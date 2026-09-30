@@ -1,7 +1,5 @@
-// Learning Representation — process_diagram (ADR Phase D2). A connected
-// vertical flow: one continuous line behind numbered nodes, drawn with a
-// single pseudo-element on the container rather than per-step math, so it
-// stays correct regardless of how tall any individual step's text runs.
+// Learning Representation: process_diagram. A connected vertical flow: one continuous line behind numbered nodes, drawn with
+// a single pseudo-element on the container so it stays correct however tall a step's text is.
 import type { ProcessDiagramData } from '../types';
 
 export default function ProcessDiagramView({ data }: { data: ProcessDiagramData }) {

@@ -9,34 +9,20 @@ import { ApiError } from '../api';
 import type { ArtifactState } from '../hooks/useClassroomQueue';
 import type { ClassroomPlan } from '../types';
 
-// One artifact in a Classroom Mode set: its progress, its preview, and its own
-// Save button.
-//
-// COLLAPSED BY DEFAULT, and that is a requirement rather than a preference
-// (D11). Up to five generated documents land in a chat thread; expanded, they
-// bury the coaching answer the teacher was actually reading, and on a phone
-// they turn one screen into a dozen. Collapsed, the set reads as a short list
-// of what is ready.
-//
-// Saving is per-card and explicit. Nothing here writes to the Library on its
-// own — the same rule the Generator follows, for the same reason: AI output
-// becomes the teacher's saved work only when the teacher says so.
-//
-// "Saved" survives a reload. The state is not kept here alone (it used to be,
-// and a set reopened from history offered to save the same quiz again, with no
-// server-side deduplication behind it) — the parent looks up what this turn
-// already put in the Library and passes it down as `savedResourceId`.
+// One artifact in a Classroom Mode set: progress, preview and its own Save button.
+// Collapsed by default: up to five documents land in a chat thread, and expanded they'd bury the coaching answer and turn a
+// phone screen into a dozen.
+// Saving is per-card and explicit; nothing writes to the Library on its own, as with the Generator.
+// "Saved" survives a reload because the parent looks up what this turn already put in the Library and passes it down as
+// `savedResourceId` (component state alone let a reopened set offer to save the same quiz again, with no server de-dupe).
 
 interface ClassroomArtifactCardProps {
   item: ArtifactState;
   plan: ClassroomPlan;
   onRetry: () => void;
-  /** The turn this artifact belongs to, recorded on the saved resource so a
-   *  reopened set can tell what it already saved. */
+  /** The turn this artifact belongs to, recorded on the saved resource so a reopened set can tell what it already saved. */
   queryId?: string;
-  /** Id of the Library resource this artifact was already saved as, looked up
-   *  by the parent. Undefined means "not saved" — including while the lookup
-   *  is still in flight, which is why the button is disabled until then. */
+  /** Id of the Library resource this was already saved as, looked up by the parent. Undefined means "not saved", including while the lookup is in flight (hence the disabled button). */
   savedResourceId?: string;
   /** True until the parent knows what is already saved. */
   checkingSaved?: boolean;
@@ -52,8 +38,7 @@ export default function ClassroomArtifactCard({
 }: ClassroomArtifactCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
-  // Saves made in THIS session. The prop covers saves made in an earlier one;
-  // either is enough to call the card saved.
+  // Saves made in this session; the prop covers earlier ones. Either makes the card saved.
   const [locallySavedId, setLocallySavedId] = useState<string | null>(null);
   const savedId = locallySavedId ?? savedResourceId ?? null;
   const { show } = useToast();
@@ -65,16 +50,10 @@ export default function ClassroomArtifactCard({
     setSaving(true);
     try {
       const saved = await createResource({
-        // D17: every QUESTION-SHAPED artifact is an `assessment`. No new
-        // Library types — the format lives in `structured`, exactly as the
-        // Generator records it.
-        //
-        // A lesson plan is the one exception, and not a new type either:
-        // `lesson_plan` already exists in RESOURCE_TYPES and already has its
-        // own handling in ResourceWorkspace (isLessonPlan). Saving it as an
-        // assessment would put a document with no questions and no answer key
-        // through the answer-key split, which is exactly the branch D17 exists
-        // to avoid.
+        // Every question-shaped artifact is an `assessment` (the format lives in `structured`, as the Generator records it), so
+        // no new Library types. A lesson plan is the exception: `lesson_plan` already exists in RESOURCE_TYPES with its own
+        // handling in ResourceWorkspace (isLessonPlan); saving it as an assessment would send a questionless document through
+        // the answer-key split.
         type: item.artifact === 'lesson_plan' ? 'lesson_plan' : 'assessment',
         title: artifactTitle(item.artifact, plan),
         grade: plan.grade || undefined,
@@ -82,9 +61,7 @@ export default function ClassroomArtifactCard({
         language: plan.language,
         content: item.content,
         structured: JSON.stringify({ format: item.artifact, topic: plan.topic, source: 'classroom_mode' }),
-        // Provenance, and the key the "already saved?" lookup matches on. A
-        // save made without it still works; the card just cannot recognise it
-        // after a reload.
+        // Provenance, and the key the "already saved?" lookup matches on; without it a save works but isn't recognised after a reload.
         sourceQueryId: queryId,
       });
       setLocallySavedId(saved.id);
@@ -120,9 +97,7 @@ export default function ClassroomArtifactCard({
             type="button"
             className="classroom-card-save"
             onClick={handleSave}
-            // Also disabled while the parent is still checking what this turn
-            // already saved: pressing Save in that window is exactly how a
-            // duplicate gets made.
+            // Also disabled while the parent checks what this turn already saved; pressing Save then is how a duplicate is made.
             disabled={saving || checkingSaved || savedId !== null}
           >
             {savedId ? <Check size={14} aria-hidden="true" /> : saving ? <Loader2 size={14} aria-hidden="true" className="spin" /> : <Save size={14} aria-hidden="true" />}
@@ -136,11 +111,8 @@ export default function ClassroomArtifactCard({
           </button>
         )}
 
-        {/* `stopped` covers two situations that want the same button: the
-            teacher pressed Stop mid-queue, and a set restored from history
-            (D24) which deliberately generated nothing. Both are "planned, not
-            made" — so the label is Generate rather than Retry, because for a
-            restored card nothing was ever attempted to retry. */}
+        {/* `stopped` covers both Stop mid-queue and a set restored from history, which deliberately generated nothing. Both
+            are "planned, not made", so the label is Generate rather than Retry. */}
         {item.status === 'stopped' && (
           <button type="button" className="classroom-card-save" onClick={onRetry}>
             <Sparkles size={14} aria-hidden="true" /> Generate
@@ -160,10 +132,7 @@ export default function ClassroomArtifactCard({
 
       {isReady && expanded && (
         <div className="classroom-card-body response-body">
-          {/* Same treatment the Generator's preview gives: the generated
-              preamble restates the title and metadata the card already shows,
-              so it is stripped from DISPLAY only — never from the content that
-              gets saved. */}
+          {/* As in the Generator's preview: the preamble restates the title and metadata the card shows, so it's stripped from display only, never from the saved content. */}
           <div dangerouslySetInnerHTML={{ __html: formatResponse(stripAssessmentPreamble(item.content!) || '') }} />
         </div>
       )}
@@ -171,8 +140,7 @@ export default function ClassroomArtifactCard({
   );
 }
 
-// Status as TEXT, not colour alone — the same accessibility rule the Generator's
-// AI provenance markers follow.
+// Status as text, not colour alone, like the Generator's AI provenance markers.
 function ClassroomCardStatus({ status }: { status: ArtifactState['status'] }) {
   if (status === 'generating') {
     return (
@@ -182,9 +150,7 @@ function ClassroomCardStatus({ status }: { status: ArtifactState['status'] }) {
     );
   }
   if (status === 'waiting') return <span className="classroom-card-status">Queued</span>;
-  // No label for `stopped`: the Generate button beside it already says what
-  // the card is for, and "Stopped" reads as an error on a restored set that
-  // was never started (D24).
+  // No label for `stopped`: the Generate button already says what the card is for, and "Stopped" reads as an error on a restored set never started.
   if (status === 'stopped') return null;
   if (status === 'failed') return <span className="classroom-card-status failed">Failed</span>;
   return <span className="classroom-card-status ready">Ready</span>;

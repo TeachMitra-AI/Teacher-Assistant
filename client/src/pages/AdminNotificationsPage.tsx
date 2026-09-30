@@ -13,24 +13,16 @@ import type { NotificationType, NotificationTarget, Role } from '../types';
 const MAX_TITLE_LENGTH = 200;
 const MAX_MESSAGE_LENGTH = 2000;
 
-// Reachable roles for a "specific role" send. Every APP_ROLE, including
-// teacher — an admin very often wants "every teacher", not every role.
+// Reachable roles for a "specific role" send: every APP_ROLE including teacher, since an admin often wants "every teacher".
 const TARGET_ROLES: Role[] = ['teacher', 'school_admin', 'resource_person', 'super_admin'];
 
-// Send/broadcast a notification (docs/notification-system-plan.md §2/§6). The
-// scope picker below offers only two shapes on purpose:
-//   - "Everyone I can reach" — always sends { scope: 'all' }. The backend
-//     (lib/notificationService.js's resolveRecipients) clamps this to the
-//     CALLER's own reach: truly everyone for super_admin, the caller's
-//     district for resource_person, the caller's own school for
-//     school_admin. The client never needs to know its own school/district
-//     id list for this to be correct.
-//   - "Specific role(s)" — { scope: 'role', roles }, ALSO clamped to the
-//     caller's own school scope server-side.
-// A school-by-school or user-by-user picker is a natural extension (the API
-// already supports scope: 'school'/'users' — see routes/notifications.js)
-// but is not built here; this page only exposes what a v1 compose screen
-// needs. See the extension note at the bottom of this file.
+// Send/broadcast a notification (docs/notification-system-plan.md). The scope picker offers two shapes on purpose:
+// - "Everyone I can reach" always sends { scope: 'all' }; the backend (resolveRecipients in lib/notificationService.js)
+//   clamps it to the caller's reach (everyone for super_admin, their district for resource_person, their school for
+//   school_admin), so the client needn't know its own school/district ids.
+// - "Specific role(s)" sends { scope: 'role', roles }, also clamped to the caller's school scope server-side.
+// A school-by-school or user-by-user picker would be a natural extension (the API already supports scope: 'school'/'users',
+// see routes/notifications.js) but isn't built; this is a v1 compose screen.
 export default function AdminNotificationsPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
   const { user } = useAuth();
   const { show } = useToast();

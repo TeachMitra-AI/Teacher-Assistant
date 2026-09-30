@@ -4,15 +4,10 @@ import { useDismissable } from '../hooks/useDismissable';
 import { LANGUAGES, GRADES, SUBJECTS, CLASSROOM_TYPES, ISSUE_TYPES } from '../config';
 import type { QueryContext } from '../types';
 
-// The teaching-context icon in the TopBar (Coach page only — see CoachPage's
-// `extraControl`, which sits in the slot the profile chip used to occupy
-// there before it moved to the Sidebar footer). Replaces the old ContextBar,
-// which held Grade/Subject/Language as permanently-visible pills above the
-// composer: all five fields now live behind one icon so they no longer take
-// a permanent strip of the chat interface, matching how the model/mode
-// selectors already work (a trigger + a popover, nothing shown unless asked
-// for). Same context/language state CoachPage has always owned — no new
-// state, no duplicated vocab lists.
+// The teaching-context icon in the TopBar (Coach page only; see CoachPage's `extraControl`, in the slot the profile chip
+// used to occupy). Replaces the old ContextBar, whose always-visible Grade/Subject/Language pills took a strip of the chat;
+// all five fields now sit behind one icon like the model/mode selectors (a trigger plus popover). Same context/language
+// state CoachPage owns, with no duplicated vocab lists.
 
 interface TeachingContextMenuProps {
   language: string;
@@ -28,8 +23,7 @@ export default function TeachingContextMenu({
   const ref = useRef<HTMLDivElement>(null);
   useDismissable(open, ref, () => setOpen(false));
 
-  // Language isn't counted: it always has a value (defaults to English), so
-  // it can never distinguish "set" from "unset" the way the other four can.
+  // Language isn't counted: it always has a value (English by default), so it can't tell "set" from "unset".
   const activeCount = [context.grade, context.subject, context.classroomType, context.issueType].filter(Boolean).length;
 
   return (

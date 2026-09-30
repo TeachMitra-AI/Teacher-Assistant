@@ -1,7 +1,5 @@
-// Typed client for Admin Settings (GET/PATCH /api/admin/feature-flags), the
-// same thin-wrapper-over-api() shape as lib/admin.ts. Covers both setting
-// kinds the registry supports: boolean feature flags (Feature Management)
-// and role-list access controls (AI Access) — see types.ts's AdminFeatureFlag.
+// Typed client for Admin Settings (GET/PATCH /api/admin/feature-flags), a thin wrapper over api() like lib/admin.ts. Covers
+// boolean feature flags and role-list access controls (see AdminFeatureFlag in types.ts).
 import { api } from '../api';
 import type { AdminFeatureFlag, Role } from '../types';
 

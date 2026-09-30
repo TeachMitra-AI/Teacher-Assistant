@@ -6,12 +6,9 @@ interface OnboardingIntroProps {
   onDismiss: () => void;
 }
 
-// First-run feature intro shown once on the empty Coach welcome screen (Phase 1
-// of the onboarding rework). Presentational only: it renders the ONBOARDING_FEATURES
-// list and reports a single dismiss intent — the parent owns the shown-once gate
-// and persistence (preferences.onboarding.seenWelcomeIntro). Kept as its own
-// component so a future "Getting Started" re-entry point (Phase 2) can reuse it
-// without touching WelcomeScreen.
+// First-run feature intro shown once on the empty Coach welcome screen. Presentational: it renders the ONBOARDING_FEATURES
+// list and reports one dismiss intent; the parent owns the shown-once gate and persistence (preferences.onboarding.seenWelcomeIntro).
+// Its own component so a "Getting Started" re-entry point can reuse it without touching WelcomeScreen.
 export default function OnboardingIntro({ isAdmin, onDismiss }: OnboardingIntroProps) {
   const features = ONBOARDING_FEATURES.filter((f) => isAdmin || !f.adminOnly);
 

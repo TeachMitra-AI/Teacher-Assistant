@@ -1,10 +1,7 @@
 import { useEffect, useState, type RefObject } from 'react';
 import { ArrowDown } from 'lucide-react';
 
-// How far from the bottom (px) still counts as "at the bottom". Generous
-// enough that a couple of pixels of sub-pixel rounding, or the last line of an
-// answer, never leaves the button hanging around over content the teacher has
-// already reached.
+// How far from the bottom (px) still counts as "at the bottom": generous enough that sub-pixel rounding or an answer's last line doesn't leave the button showing.
 const AT_BOTTOM_SLACK = 80;
 
 interface ScrollToBottomProps {
@@ -16,14 +13,9 @@ interface ScrollToBottomProps {
 }
 
 /**
- * The ↓ button that appears over a long answer once it has been scrolled away
- * from the bottom.
- *
- * It exists because the phone layout gives the answer most of the screen, which
- * means a long answer no longer ends anywhere near the composer — without this,
- * the only sign that there is more below is the absence of an edge. Shown ONLY
- * when there is somewhere to go: it never covers content the teacher has
- * already read to the end of.
+ * The ↓ button over a long answer scrolled away from the bottom. The phone layout gives the answer most of the screen, so
+ * a long answer doesn't end near the composer and nothing else signals there's more below. Shown only when there's
+ * somewhere to go.
  */
 export default function ScrollToBottom({ scrollRef, watch, onClick }: ScrollToBottomProps) {
   const [visible, setVisible] = useState(false);
@@ -37,8 +29,7 @@ export default function ScrollToBottom({ scrollRef, watch, onClick }: ScrollToBo
     }
     update();
     el.addEventListener('scroll', update, { passive: true });
-    // The content can also grow without any scrolling — an answer arriving, an
-    // image finishing decoding, a section expanding.
+    // Content can also grow without scrolling: an answer arriving, an image decoding, a section expanding.
     const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
     if (observer) observer.observe(el);
     window.addEventListener('resize', update);

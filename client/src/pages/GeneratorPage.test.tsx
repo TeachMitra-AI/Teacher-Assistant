@@ -1,15 +1,7 @@
-// Legacy-fallback behavior — STRUCTURED_QUESTIONS_ENABLED is forced off via
-// an explicit `vi.mock('../config')` below, rather than relying on the
-// ambient env being unset. It used to rely on the real default (nothing
-// stubbed) on the assumption that a dev machine's `client/.env` would never
-// set VITE_STRUCTURED_QUESTIONS_ENABLED — that assumption broke the moment
-// this feature was manually verified against a real dev server with the flag
-// on: vitest's `import.meta.env` resolution reads the SAME `client/.env` file
-// Vite's dev server does, so this suite started failing not because the app
-// was wrong, but because the test's assumption about ambient env state was.
-// Forcing the flag explicitly (like GeneratorPage.structured.test.tsx forces
-// it true) makes this suite deterministic regardless of the developer's own
-// `client/.env` contents.
+// Legacy-fallback behaviour. STRUCTURED_QUESTIONS_ENABLED is forced off with an explicit `vi.mock('../config')` instead of
+// relying on the ambient env: vitest reads the same `client/.env` as the dev server, so a developer with the flag on saw this
+// suite fail for reasons unrelated to the app. Forcing it (as GeneratorPage.structured.test.tsx forces it true) makes the suite
+// deterministic.
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -127,8 +119,7 @@ describe('GeneratorPage — legacy fallback (STRUCTURED_QUESTIONS_ENABLED off)',
   });
 });
 
-// Issue #95: a teacher can tick more than one specific question type,
-// via a dropdown checklist, instead of only ever picking one or "Mixed".
+// A teacher can tick more than one specific question type via a dropdown checklist, instead of only one or "Mixed".
 describe('GeneratorPage — question type multi-select dropdown (issue #95)', () => {
   function openQuestionTypeDropdown(user: ReturnType<typeof userEvent.setup>) {
     return user.click(screen.getByRole('button', { name: 'Question type' }));

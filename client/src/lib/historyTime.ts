@@ -1,6 +1,4 @@
-// Shared by Sidebar.tsx and ChatSearchOverlay.tsx — both show the same
-// relative-time metadata on a history item, and neither is the natural
-// owner of the other's copy.
+// Relative-time metadata for a history item, shared by Sidebar.tsx and ChatSearchOverlay.tsx.
 export function formatTimestamp(iso: string): string {
   const date = new Date(iso);
   const diff = Date.now() - date.getTime();

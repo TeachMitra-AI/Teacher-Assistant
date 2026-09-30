@@ -1,20 +1,7 @@
-// Calendar-based "Fact of the Day" / "Thought of the Day" content for the
-// Coach welcome screen. Split from welcome.ts (which owns the greeting and
-// priority logic) purely because this table is large.
-//
-// Keyed by month/day, NOT by a dayOfYear-modulo index — see getDailyFact
-// below. One entry per calendar date (365) plus one dedicated 29 February
-// entry for leap years (366 total), so a given date always maps to the same
-// entry every year, with no drift around leap years.
-//
-// `eyebrow` and `emoji` are deliberately NOT stored per entry — at this
-// size (366 records) storing two fields that are always 1:1 with `kind`
-// would just be repeated literal text with no informational value. See
-// KIND_META below.
-//
-// Organised as one const array per month (JAN_FACTS, FEB_FACTS, ...),
-// concatenated into DAILY_FACTS at the bottom — purely to keep this file
-// navigable; nothing outside this file depends on the per-month split.
+// Calendar-based "Fact of the Day" / "Thought of the Day" for the Coach welcome screen. Split from welcome.ts only because
+// the table is large. Keyed by month/day, not a day-of-year index: one entry per date (365) plus a dedicated 29 February,
+// so a date maps to the same entry every year with no leap-year drift. `eyebrow` and `emoji` aren't stored per entry, since
+// they're 1:1 with `kind` (see KIND_META). One array per month (JAN_FACTS...) concatenated into DAILY_FACTS, for navigability only.
 
 export type DailyFactKind = 'fact' | 'thought';
 
@@ -449,20 +436,13 @@ function dateKey(month: number, day: number): string {
   return `${pad2(month)}-${pad2(day)}`;
 }
 
-// Built once at module load for O(1) lookup — see getDailyFact. Keying by
-// 'MM-DD' (not a dayOfYear index) is what makes leap years a non-issue: 1
-// March always maps to the same entry whether or not 29 February existed
-// that year, since nothing here is an offset from the start of the year.
+// Built once at load for O(1) lookup. Keying by 'MM-DD' means 1 March maps to the same entry whether or not 29 February existed.
 const DAILY_FACTS_BY_DATE: Map<string, DailyFact> = new Map(
   DAILY_FACTS.map((f) => [dateKey(f.month, f.day), f])
 );
 
-// Deliberately no dayOfYear-modulo fallback here: every calendar date
-// (365, plus 29 February for leap years) has an authored entry — see
-// dailyContent.test.ts's "full calendar coverage" check — so a miss here
-// would mean a genuine data bug, not an expected gap. Falling back to the
-// first entry keeps the app from crashing (and stays deterministic for the
-// missing date) without masking the bug by silently improvising content.
+// No day-of-year fallback: every date has an authored entry (checked by dailyContent.test.ts), so a miss is a data bug.
+// Falling back to the first entry avoids a crash and stays deterministic without hiding the bug by improvising content.
 export function getDailyFact(date: Date = new Date()): DailyFact {
   const key = dateKey(date.getMonth() + 1, date.getDate());
   return DAILY_FACTS_BY_DATE.get(key) ?? DAILY_FACTS[0];

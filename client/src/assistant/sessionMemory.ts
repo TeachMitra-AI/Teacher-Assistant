@@ -1,46 +1,17 @@
-// AI Action Router — session slot memory (Phase 1, Milestone M6).
-//
-// A TYPED SLOT STORE, NEVER A CHAT TRANSCRIPT. Each entry holds a canonical
-// value, where it came from, and the turn that set it. That shape is what makes
-// memory cheap (constant token cost), deterministic, inspectable and — the
-// deciding reason — correctable. A transcript grows every turn, is opaque to the
-// teacher, and cannot be corrected when it is wrong.
-//
-// The server stays stateless, exactly like /api/coach: this store is sent on
-// every /interpret request and the server holds nothing between calls.
-//
-// ─── THIS MODULE DELIBERATELY APPLIES NO TTL (decision D1, approved at M6) ──
-// The spec gives each slot a lifetime (grade/subject/language for the session,
-// format 3 turns, topic 2 turns) and M4 recorded that those numbers should reach
-// the client "through the catalog rather than being re-declared in TypeScript".
-// The approved resolution goes further and removes the problem instead of moving
-// it: resolver.js already re-applies expiry to whatever the client sends,
-// explicitly so that the pipeline does not depend on the client having done it.
-// There is therefore nothing on the client that needs to know the numbers.
-//
-// This store is a dumb carrier. It keeps what the server returned, sends it
-// back, and lets the one authority decide what is still fresh. A fourth home for
-// the TTL table — after resolver.js, the catalog wire shape and a TypeScript
-// copy — is exactly the duplication the guardrails say to stop and consolidate.
-//
-// Fail-soft like the draft store: sessionStorage is unavailable in private
-// browsing on the target devices, and losing memory must cost prefill quality,
-// never a working composer.
+// Session slot memory: a typed store (value, source, turn per slot) rather than a chat transcript, so it stays cheap,
+// inspectable and correctable. Sent on every /interpret request; the server holds nothing between calls.
+// No TTL is applied here: resolver.js already re-applies slot expiry to whatever the client sends, so this store just
+// carries what the server returned and lets that one authority decide what is stale.
+// Fails soft: if sessionStorage is unavailable (private browsing), memory is lost but the composer keeps working.
 
 import type { MemorySlot, ProvenanceSource, SessionMemory } from './types';
 
 const STORAGE_KEY = 'ta.assistant.memory.v1';
 
-/**
- * A ceiling on slot count, not a policy on which slots matter.
- *
- * Phase 1 has five named slots and the server only ever returns those, so this
- * never binds today. It exists so that a future server returning an unexpected
- * key cannot grow storage without limit on a low-end device.
- */
+// A ceiling on slot count so an unexpected server key can't grow storage without limit.
 const MAX_SLOTS = 12;
 
-/** Turn numbering starts at 1, matching the server envelope's `turn` minimum. */
+// Turn numbering starts at 1, matching the server envelope's `turn` minimum.
 const FIRST_TURN = 1;
 
 interface StoredSession {
@@ -50,7 +21,7 @@ interface StoredSession {
 
 const EMPTY_SESSION: StoredSession = { slots: {}, turn: FIRST_TURN };
 
-/** Reads without ever throwing — Safari in private mode throws on ACCESS, not only on write. */
+// Never throws; Safari in private mode throws on access, not only on write.
 function readRaw(): string | null {
   try {
     return window.sessionStorage.getItem(STORAGE_KEY);
@@ -59,25 +30,17 @@ function readRaw(): string | null {
   }
 }
 
-/** Writes without ever throwing. A failed write costs prefill quality and nothing else. */
+// Never throws; a failed write only costs prefill quality.
 function writeRaw(value: string): void {
   try {
     window.sessionStorage.setItem(STORAGE_KEY, value);
   } catch {
-    // Quota exhausted or storage disabled. The next request simply carries no
-    // memory, which degrades to a slightly less complete prefill.
+    // Quota exhausted or storage disabled; the next request just carries no memory.
   }
 }
 
-/**
- * Defensive shape check on one stored slot.
- *
- * Strict about the three fields the server actually reads back (`value`,
- * `source`, `turn`) and forgiving about `raw`, which is display-only. A slot
- * that fails this is dropped rather than repaired: memory is an optimization,
- * and an optimization that cannot prove its own shape should not be sent to a
- * `.strict()`-adjacent endpoint.
- */
+// Strict about the fields the server reads back (`value`, `source`, `turn`), lenient about display-only `raw`. A bad
+// slot is dropped rather than repaired.
 function toSlot(value: unknown): MemorySlot | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
@@ -95,7 +58,7 @@ function toSlot(value: unknown): MemorySlot | null {
   return slot;
 }
 
-/** The whole stored session, or an empty one. Corrupt JSON and bad shapes both read as empty. */
+// Corrupt JSON and bad shapes both read as an empty session.
 function load(): StoredSession {
   const raw = readRaw();
   if (raw === null) return { ...EMPTY_SESSION, slots: {} };
@@ -127,14 +90,13 @@ function load(): StoredSession {
   return { slots, turn };
 }
 
-/** Persists, keeping the most recently set MAX_SLOTS entries. */
+// Keeps the most recently set MAX_SLOTS entries.
 function save(session: StoredSession): void {
   const names = Object.keys(session.slots);
   let slots = session.slots;
 
   if (names.length > MAX_SLOTS) {
-    // Oldest-first by the turn that set it: the entries a teacher is least
-    // likely to still mean are the ones that have not been mentioned recently.
+    // Drop the least recently set first.
     const keep = names
       .sort((a, b) => session.slots[a].turn - session.slots[b].turn)
       .slice(-MAX_SLOTS);
@@ -145,27 +107,16 @@ function save(session: StoredSession): void {
   try {
     writeRaw(JSON.stringify({ slots, turn: session.turn }));
   } catch {
-    // JSON.stringify cannot realistically throw on this shape, but this module
-    // sits on the composer's path and nothing here may surface as an exception.
+    // Shouldn't throw on this shape, but nothing here may surface as an exception on the composer's path.
   }
 }
 
-/** Everything currently remembered, ready to send as the request's `memory`. */
 export function readMemory(): SessionMemory {
   return load().slots;
 }
 
-/**
- * Applies the server's `memoryUpdates`.
- *
- * Whole-slot replacement, never a field-level merge: the server sends a complete
- * slot or it sends nothing, and half-merging two sources of a value is how a
- * canonical value ends up paired with the wrong provenance.
- *
- * Only ever called for a `prefill` response. `interpret.js` already refuses to
- * emit updates on an `ask`, because a turn that ended in a question has not
- * settled anything — this store must not invent them either.
- */
+// Whole-slot replacement, never a field merge, so a value isn't paired with the wrong provenance. Only called for a
+// `prefill` response; the server emits no updates on an `ask` and neither should we.
 export function mergeMemory(updates: SessionMemory | undefined): void {
   if (!updates || typeof updates !== 'object' || Array.isArray(updates)) return;
 
@@ -180,18 +131,12 @@ export function mergeMemory(updates: SessionMemory | undefined): void {
   if (changed) save(session);
 }
 
-/** The turn number to send with the next request. */
 export function currentTurn(): number {
   return load().turn;
 }
 
-/**
- * Claims the next turn number.
- *
- * Called once per gate-passing submission, so `turn` counts ROUTING turns rather
- * than conversation turns. That is the number the server's memory expiry is
- * expressed in, and it is the only consumer.
- */
+// Claims the next turn number. Called once per gate-passing submission, so `turn` counts routing turns, which is what
+// the server's memory expiry is expressed in.
 export function advanceTurn(): number {
   const session = load();
   session.turn += 1;
@@ -199,22 +144,16 @@ export function advanceTurn(): number {
   return session.turn;
 }
 
-/**
- * "New chat" — forget everything.
- *
- * Clearing memory is part of the contract the teacher can see: starting a new
- * conversation must not leave a previous class or subject silently influencing
- * the next worksheet.
- */
+// "New chat": starting a new conversation mustn't let a previous class or subject influence the next worksheet.
 export function clearMemory(): void {
   try {
     window.sessionStorage.removeItem(STORAGE_KEY);
   } catch {
-    // Nothing to do. The store was already unreachable.
+    // Store was already unreachable.
   }
 }
 
-/** Test seams: the bounds are policy, and the tests assert the policy rather than re-declaring it. */
+// Test seams: tests assert the bounds rather than redeclare them.
 export const MEMORY_STORAGE_KEY = STORAGE_KEY;
 export const MEMORY_MAX_SLOTS = MAX_SLOTS;
 export const MEMORY_FIRST_TURN = FIRST_TURN;

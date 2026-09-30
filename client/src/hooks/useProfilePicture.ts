@@ -5,9 +5,7 @@ import type { User } from '../types';
 
 export type ProfilePictureResult = { user: User } | { error: string };
 
-// Client-side checks are a courtesy, not the real gate — same split as
-// lib/attachmentValidation.ts. The server re-validates by magic bytes
-// (server/src/routes/avatar.js) regardless of what's checked here.
+// Client-side checks are a courtesy, like lib/attachmentValidation.ts; the server re-validates by magic bytes (server/src/routes/avatar.js).
 function validatePickedFile(file: File): string | null {
   if (file.size === 0) return 'This file is empty.';
   if (file.size > AVATAR_MAX_RAW_SIZE_MB * 1024 * 1024) {
@@ -20,12 +18,8 @@ function validatePickedFile(file: File): string | null {
 }
 
 /**
- * Center-crops to a square and downsizes to AVATAR_TARGET_DIMENSION_PX before
- * upload — every avatar render site (TopBar, Settings preview) shows a
- * circle, so this keeps every uploaded photo visually consistent and keeps
- * stored bytes small regardless of the original photo's size/aspect ratio.
- * Re-encoding through canvas also strips EXIF metadata (e.g. GPS tags some
- * phone cameras embed) as a side effect.
+ * Center-crops to a square and downsizes to AVATAR_TARGET_DIMENSION_PX before upload, so avatars look consistent and stored
+ * bytes stay small. Re-encoding through canvas also strips EXIF metadata such as GPS tags.
  */
 async function resizeToSquareJpeg(file: File, targetPx: number): Promise<Blob> {
   const bitmap = await createImageBitmap(file);
@@ -58,12 +52,7 @@ export interface UseProfilePictureResult {
   uploading: boolean;
   /** Local object-URL preview of the file being uploaded right now; null once the request settles. */
   previewUrl: string | null;
-  /**
-   * Validates, center-crops/resizes, and uploads a picked file.
-   * Returns a discriminated result rather than throwing or relying on a
-   * separate error-state field, so the caller can toast the message
-   * immediately without a stale-closure read of hook state.
-   */
+  /** Validates, center-crops/resizes and uploads a picked file. Returns a result instead of throwing or setting an error field, so the caller can toast it without a stale-closure read of hook state. */
   upload: (file: File) => Promise<ProfilePictureResult>;
   /** Removes the caller's custom photo. Same result contract as upload(). */
   remove: () => Promise<ProfilePictureResult>;

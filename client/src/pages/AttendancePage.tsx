@@ -22,10 +22,8 @@ export default function AttendancePage({ preferences }: { preferences: ReturnTyp
   const [searchParams, setSearchParams] = useSearchParams();
 
   const requestedTab = isTabKey(searchParams.get('tab')) ? (searchParams.get('tab') as AttendanceTabKey) : 'checkin';
-  // A non-admin who lands on an admin-only tab (a stale link, a typed URL)
-  // falls back to Check In rather than rendering a tab they can't act on —
-  // the server enforces this too (adminGate), but there is no reason to
-  // show a dead end here when the fallback is one comparison away.
+  // A non-admin on an admin-only tab (stale link, typed URL) falls back to Check In instead of a tab they can't act on. The
+  // server enforces this too (adminGate), but the fallback is one comparison away.
   const tab: AttendanceTabKey = ADMIN_ONLY_TABS.includes(requestedTab) && !isAdmin ? 'checkin' : requestedTab;
 
   function setTab(next: AttendanceTabKey) {
@@ -42,11 +40,8 @@ export default function AttendancePage({ preferences }: { preferences: ReturnTyp
     <div className="page">
       <TopBar preferences={preferences} />
 
-      {/* Reports is a wide data table (name + 8 numeric columns) — the
-          640px reading-width column every other attendance tab uses (a
-          good fit for forms and day lists) squeezed it down to almost
-          nothing, forcing the name/email column to blow out and pushing
-          every numeric column off screen. */}
+      {/* Reports is a wide table (name + 8 numeric columns); the 640px reading-width column the other tabs use squeezed it,
+          blowing out the name/email column and pushing the numeric columns off screen. */}
       <main className={`attendance-main${tab === 'reports' ? ' attendance-main-wide' : ''}`}>
         <header className="library-header">
           <h1 className="library-title">Attendance</h1>

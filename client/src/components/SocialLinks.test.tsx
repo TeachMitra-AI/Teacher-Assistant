@@ -3,8 +3,7 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import { SocialLinks } from './SocialLinks';
 import { SOCIAL_PROFILES } from '../seo/site';
 
-// SOCIAL_PROFILES is typed readonly; one test extends it temporarily to prove
-// the fallback-icon path, and restores it in `finally`.
+// SOCIAL_PROFILES is readonly; one test extends it temporarily to prove the fallback-icon path and restores it in `finally`.
 const SOCIAL_PROFILES_MUTABLE = SOCIAL_PROFILES as unknown as { id: string; name: string; url: string }[];
 
 afterEach(cleanup);
@@ -34,8 +33,7 @@ describe('SocialLinks', () => {
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     expect(link).toHaveAttribute('aria-label', label);
-    // Icon-only on screen, but the platform name is real text in the link (visually
-    // hidden, not display:none), and the icon itself is hidden from AT.
+    // Icon-only on screen, but the platform name is real text in the link (visually hidden, not display:none) and the icon is hidden from AT.
     expect(link).toHaveTextContent(visibleText);
     expect(link.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
   });

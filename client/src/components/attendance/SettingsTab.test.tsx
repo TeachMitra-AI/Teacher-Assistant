@@ -95,9 +95,7 @@ describe('SettingsTab', () => {
     await screen.findByLabelText(/latitude/i);
     await userEvent.click(screen.getByRole('button', { name: /save settings/i }));
 
-    // CONFIG (what GET returns) has id/schoolId/createdAt on it, same as the
-    // real server response — PUT's schema is `.strict()` and rejects those,
-    // so the form must never round-trip them back on Save.
+    // CONFIG (what GET returns) has id/schoolId/createdAt like the real response; PUT's `.strict()` schema rejects those, so the form mustn't send them back.
     await waitFor(() =>
       expect(mockedApi.updateSchoolConfig).toHaveBeenCalledWith(
         expect.not.objectContaining({ id: expect.anything() })

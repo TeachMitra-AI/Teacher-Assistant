@@ -1,17 +1,8 @@
-// Offline check-in/check-out queue — the web counterpart to mobile's
-// offlineQueue.ts (that file's own header comment: "the ONE offline feature
-// this app builds"). client/ has no prior offline-write pattern to reuse —
-// its PWA setup only caches the app shell for offline *loading*, not
-// failed API writes — so this mirrors mobile's proven shape (coalescing
-// key, exponential backoff, a permanentError distinction for non-network
-// failures, serialized sync) rather than inventing a new one, built on
-// localStorage and browser-native sync triggers instead of AsyncStorage/
-// NetInfo/AppState.
-//
-// Scope, deliberately narrow: only enqueues when checkIn()/checkOut() fails
-// with a NETWORK error (ApiError.status === 0) — see CheckInTab.tsx. A real
-// rejection (already checked in, outside geofence, validation error) is
-// never queued; retrying it would just fail again the same way.
+// Offline check-in/check-out queue, the web counterpart to mobile's offlineQueue.ts. The PWA only caches the app shell, not
+// failed API writes, so this mirrors mobile's shape (coalescing key, exponential backoff, a permanentError distinction,
+// serialized sync) on localStorage and browser sync triggers. Deliberately narrow: only a network error (ApiError.status
+// === 0) from checkIn()/checkOut() is queued (see CheckInTab.tsx); a real rejection (already checked in, outside geofence,
+// validation) would just fail again.
 import { ApiError } from '../api';
 import { checkIn, checkOut, type AttendanceEvidenceInput, type AttendanceActionResult } from './teacherAttendanceApi';
 
@@ -22,9 +13,7 @@ const MAX_RETRY_DELAY_MS = 5 * 60 * 1000;
 export type QueuedActionKind = 'check-in' | 'check-out';
 
 export interface QueuedAttendanceAction {
-  // `${userId}:${date}:${kind}` — a second offline attempt for the same
-  // user+date+kind replaces this entry in place (the newer evidence
-  // supersedes the older), same reasoning as mobile's buildQueueKey.
+  // `${userId}:${date}:${kind}`: a second offline attempt for the same key replaces this entry, since newer evidence supersedes older.
   key: string;
   userId: string;
   date: string; // "YYYY-MM-DD", the device's local date when queued
@@ -34,8 +23,7 @@ export interface QueuedAttendanceAction {
   updatedAt: number;
   attempts: number;
   nextRetryAt: number;
-  // Set once a non-network (genuine server) failure is hit for this item.
-  // Non-null means "stop auto-retrying — needs a manual Retry or Discard."
+  // Set once a non-network (server) failure is hit; non-null means stop auto-retrying until a manual Retry or Discard.
   permanentError: string | null;
 }
 
@@ -50,8 +38,7 @@ function readQueue(): QueuedAttendanceAction[] {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch {
-    // Corrupt/unreadable storage is treated as an empty queue rather than a
-    // crash — there is nothing recoverable to do with unparseable local data.
+    // Corrupt storage is treated as an empty queue; there's nothing recoverable in unparseable data.
     return [];
   }
 }
@@ -63,8 +50,7 @@ function writeQueue(items: QueuedAttendanceAction[]): void {
 type Listener = () => void;
 const listeners = new Set<Listener>();
 
-// Lets a mounted component react to queue changes without polling. Fired
-// after every mutation below.
+// Lets a mounted component react to queue changes without polling; fired after every mutation.
 export function subscribeToQueue(listener: Listener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
@@ -83,12 +69,7 @@ export function getQueuedAction(userId: string, date: string, kind: QueuedAction
   return readQueue().find((item) => item.key === buildQueueKey(userId, date, kind)) ?? null;
 }
 
-/**
- * Enqueue (or coalesce into) a queued action. Called only when the online
- * attempt fails with a network error — see CheckInTab.tsx. Resets attempts/
- * backoff/error state on coalesce: a fresh attempt deserves a fresh retry
- * cycle, not one inherited from whatever the previous attempt left behind.
- */
+/** Enqueues, or coalesces into an existing entry (only called after a network failure; see CheckInTab.tsx). Coalescing resets attempts, backoff and error state so a fresh attempt gets a fresh retry cycle. */
 export function enqueueAction(userId: string, date: string, kind: QueuedActionKind, evidence: AttendanceEvidenceInput): void {
   const all = readQueue();
   const key = buildQueueKey(userId, date, kind);
@@ -142,18 +123,13 @@ async function syncOne(item: QueuedAttendanceAction): Promise<{ result: 'synced'
   }
 }
 
-// Serializes sync attempts — a browser 'online' event and a visibility
-// -change event firing close together must never race each other into two
-// concurrent upload loops for the same queue.
+// Serializes sync attempts so an 'online' event and a visibility change firing together can't run two upload loops.
 let syncing = false;
 
 /**
- * Processes this user's queued items in creation order, one at a time. A
- * network failure on any item stops the whole pass (further items are
- * almost certainly offline too); a permanent failure only stops retrying
- * *that* item and moves on, since it isn't a connectivity problem. Items
- * already carrying a permanentError are skipped — they wait for an
- * explicit retryQueuedAction().
+ * Processes this user's queued items in creation order. A network failure stops the pass (later items are likely offline
+ * too); a permanent failure only stops retrying that item. Items with a permanentError are skipped until an explicit
+ * retryQueuedAction().
  */
 export async function attemptSync(userId: string): Promise<void> {
   if (syncing) return;
@@ -175,7 +151,7 @@ export async function attemptSync(userId: string): Promise<void> {
           attempts: item.attempts + 1,
           nextRetryAt: Date.now() + nextBackoff(item.attempts),
         });
-        break; // still offline — stop the pass rather than retrying every item in a row
+        break; // still offline: stop the pass
       }
       updateQueueItem(item.key, {
         permanentError: 'Could not sync this attendance action. It has not been lost — you can retry or discard it.',
@@ -191,19 +167,14 @@ export async function retryQueuedAction(key: string, userId: string): Promise<vo
   await attemptSync(userId);
 }
 
-// UI is responsible for confirming this with the user first — it discards
-// unsynced evidence.
+// The UI must confirm with the user first, since this discards unsynced evidence.
 export function discardQueuedAction(key: string): void {
   removeFromQueue(key);
 }
 
 /**
- * Wires the two sync triggers this app has available on the web — a
- * `window.online` event and the page becoming visible again — to
- * attemptSync() for whichever user is currently signed in. `getUserId` is
- * read fresh on every event rather than captured once, so this only needs
- * to be started once for the app's lifetime. Deliberately no periodic
- * timer, same scope discipline as mobile's startAutoSync.
+ * Wires the two web sync triggers (`window.online` and the page becoming visible) to attemptSync() for the signed-in user.
+ * `getUserId` is read on every event, so this only needs starting once. No periodic timer, matching mobile's startAutoSync.
  */
 export function startAutoSync(getUserId: () => string | null): () => void {
   function trigger() {

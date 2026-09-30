@@ -11,22 +11,17 @@ export type Mode = 'login' | 'register';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Which panel the card is showing. Sign-in and sign-up can both end somewhere
-// other than "you're in": waiting on an approver, turned down, or needing to
-// say which school they meant.
+// Which panel the card shows. Sign-in and sign-up can end somewhere other than "you're in": waiting on an approver, turned
+// down, or needing to pick a school.
 type View = 'form' | 'pending' | 'rejected' | 'school_picker';
 
-// Remembers what to re-submit once a school has been picked. Sign-in needs the
-// credentials again because the first attempt intentionally issued no session.
+// What to re-submit once a school is picked; sign-in needs the credentials again since the first attempt issued no session.
 type Attempt =
   | { via: 'password'; email: string; password: string }
   | { via: 'google'; idToken: string };
 
-// The auth form itself — used both as the content of the full-page /login
-// route (LoginPage) and inside the pop-up (AuthModal) reachable from the
-// public landing page. `initialMode` sets which tab is active on mount; it is
-// read once, not kept in sync afterward, matching how LoginPage's own
-// ?mode=register query param has always behaved.
+// The auth form, used as the /login page content (LoginPage) and inside the pop-up (AuthModal). `initialMode` sets the
+// active tab on mount and is read once, like LoginPage's ?mode=register param.
 export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'light' | 'dark'; initialMode?: Mode }) {
   const { login, register, loginWithGoogle } = useAuth();
   const [mode, setMode] = useState<Mode>(initialMode);
@@ -40,9 +35,7 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
   const [schoolChoices, setSchoolChoices] = useState<SchoolOption[]>([]);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
 
-  // Field-level errors surface only once a field has been visited (blur) or a
-  // submit was attempted — matching the rest of the form, nothing is flagged
-  // while the user is still typing their first pass through it.
+  // Field errors surface only after a field is visited (blur) or a submit is attempted, so nothing is flagged on the first pass.
   const [touched, setTouched] = useState<{ email?: boolean; password?: boolean }>({});
   function touch(field: keyof typeof touched) {
     setTouched((t) => (t[field] ? t : { ...t, [field]: true }));
@@ -54,11 +47,8 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
     ? 'Password must be at least 8 characters.'
     : '';
 
-  // Google's button won't take a percentage width, so to make it read as
-  // part of the same CTA group as the full-width submit button (rather than
-  // a smaller, disconnected pill), its pixel width is measured off this
-  // wrapper — which is already exactly as wide as the form — and kept in
-  // sync across breakpoints and font-size changes via ResizeObserver.
+  // Google's button won't take a percentage width, so to match the full-width submit button its pixel width is measured off
+  // this wrapper and kept in sync across breakpoints and font-size changes via ResizeObserver.
   const googleWrapRef = useRef<HTMLDivElement>(null);
   const [googleWidth, setGoogleWidth] = useState<number>();
   useEffect(() => {
@@ -85,13 +75,10 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
     setSchoolChoices([]);
   }
 
-  // Every auth call funnels through here, so the four non-success outcomes are
-  // handled identically however they were reached (password or Google, first
-  // attempt or after picking a school).
+  // Every auth call goes through here, so the four non-success outcomes are handled the same however they were reached.
   function applyOutcome(outcome: AuthOutcome, retry: Attempt | null) {
     if (outcome.kind === 'signed_in') {
-      // AuthProvider now holds a user, so the router swaps this page (or, for
-      // the modal, the whole signed-out route tree) out.
+      // AuthProvider now holds a user, so the router swaps this page (or the modal's signed-out route tree) out.
       return;
     }
     if (outcome.kind === 'pending') {
@@ -124,9 +111,7 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
-    // Marking every field touched surfaces the matching inline error (see
-    // emailError / passwordError) instead of duplicating the same message in
-    // the top-level banner below.
+    // Marking every field touched surfaces the inline errors instead of repeating them in the banner.
     setTouched({ email: true, password: true });
 
     if (!EMAIL_RE.test(email.trim())) return;
@@ -154,9 +139,7 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
     }
   }
 
-  // Google hands back an ID token; everything else (which account it maps to,
-  // whether it's approved, which school a sign-up lands at) is decided
-  // server-side from the verified token.
+  // Google returns an ID token; which account it maps to, approval and school assignment are decided server-side from the verified token.
   async function handleGoogleToken(idToken: string) {
     setError('');
 
@@ -209,10 +192,8 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
         <p>{subtitle}</p>
       </div>
 
-      {/* Stands in for the hero panel when there isn't one (the modal) or once
-          it's hidden below 820px on the full page (see .auth-value-strip /
-          .auth-hero in index.css) — mobile still gets a value proposition,
-          just a compact one instead of the full panel. */}
+      {/* Stands in for the hero panel when there isn't one (the modal) or once it's hidden below 820px (see .auth-value-strip
+          in index.css), so mobile still gets a compact value proposition. */}
       <ul className="auth-value-strip" aria-hidden="true">
         <li><Lightbulb size={13} aria-hidden="true" /> Lesson ideas</li>
         <li><Languages size={13} aria-hidden="true" /> 9 languages</li>
@@ -389,20 +370,14 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
             </button>
           </form>
 
-          {/* Google is a fully parallel option, not a replacement — it sits
-              alongside the form on both tabs. Rendered only when a client ID
-              is configured; without one there is nothing that could work. */}
+          {/* Google is a parallel option alongside the form on both tabs, rendered only when a client ID is configured. */}
           {GOOGLE_CLIENT_ID && (
             <>
               <div className="auth-divider" role="presentation"><span>or</span></div>
               <div className="auth-google" ref={googleWrapRef}>
-                {/* GoogleOAuthProvider lives at the app root (App.tsx) so
-                    GSI initializes once, not on every tab switch. */}
+                {/* GoogleOAuthProvider lives at the app root (App.tsx) so GSI initializes once, not on every tab switch. */}
                 <GoogleLogin
-                  // Remounted on mode/theme/width changes: mode changes
-                  // its label, Google's own button doesn't re-theme
-                  // itself live, and it also won't resize live — each
-                  // needs a fresh render to take effect.
+                  // Remounted on mode/theme/width changes: Google's button doesn't re-theme or resize live, and mode changes its label.
                   key={`${mode}-${theme}-${googleWidth}`}
                   theme={theme === 'dark' ? 'filled_black' : 'outline'}
                   width={googleWidth}

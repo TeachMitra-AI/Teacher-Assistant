@@ -1,13 +1,6 @@
-// Typed client for the Teacher Attendance API
-// (docs/feature-teacher-attendance-implementation-plan.md §3). Thin wrappers
-// over api(), mirroring lib/classroomApi.ts's shape — ownership/scoping is
-// enforced server-side from the auth token, so nothing here sends a userId
-// or schoolId.
-//
-// Scoped to what's built so far (check-in/out, today, history) — the
-// review-queue, school-config, and holiday wrappers land alongside the
-// pages that use them, same "not stubbed out ahead of use" convention
-// classroomApi.ts's own header comment describes.
+// Typed client for the Teacher Attendance API (docs/feature-teacher-attendance-implementation-plan.md). Thin wrappers over
+// api(), mirroring lib/classroomApi.ts; scoping is enforced server-side from the token, so nothing here sends a userId or
+// schoolId. Covers what's built so far; further wrappers land with the pages that use them.
 import { api, apiDownload } from '../api';
 import type {
   TeacherAttendanceDto,
@@ -34,11 +27,8 @@ export interface AttendanceActionResult {
   attendance: TeacherAttendanceDto;
 }
 
-// Blocked (too far, or outside the check-in window — checkout has no
-// time-of-day gate, only distance) now comes back as a plain ApiError (403)
-// with a human-readable message — there is no longer a "succeeded but
-// flagged" outcome to check for separately, so callers just try/catch this
-// like any other rejected action.
+// A blocked check-in (too far, or outside the window; checkout only checks distance) comes back as a plain 403 ApiError
+// with a readable message, so callers just try/catch it like any rejected action.
 export async function checkIn(input: AttendanceEvidenceInput): Promise<AttendanceActionResult> {
   return api<AttendanceActionResult>('/teacher-attendance/check-in', { method: 'POST', body: input });
 }
@@ -64,12 +54,8 @@ export async function getAttendanceHistory(month: string): Promise<TeacherAttend
   return data.attendance;
 }
 
-// ---- Corrections (school_admin only) ---------------------------------------
-//
-// No review-queue endpoint any more — nothing auto-flags a day for
-// approval, so there was nothing left to queue
-// (docs/feature-teacher-attendance-implementation-plan.md §1.7/§4).
-// reviewAttendance is now reachable on any day from the Reports drill-down.
+// ---- Corrections (school_admin only) ----
+// There's no review queue (nothing auto-flags a day), so reviewAttendance is reachable on any day from the Reports drill-down.
 
 export async function reviewAttendance(
   id: string,
@@ -82,9 +68,8 @@ export async function reviewAttendance(
   return data.attendance;
 }
 
-// ---- School config + holidays ------------------------------------------------
-// Viewing (GET) is open to any authenticated teacher; editing (PUT/POST) is
-// school_admin only — matches the server routes exactly.
+// ---- School config + holidays ----
+// Viewing (GET) is open to any authenticated teacher; editing (PUT/POST) is school_admin only, matching the server routes.
 
 export async function getSchoolConfig(): Promise<SchoolAttendanceConfigDto | null> {
   const data = await api<{ config: SchoolAttendanceConfigDto | null }>('/teacher-attendance/school-config');
@@ -99,8 +84,7 @@ export async function updateSchoolConfig(input: SchoolAttendanceConfigInput): Pr
   return data.config;
 }
 
-// Readable by any authenticated teacher (not admin-only) — matches the
-// server route, which lets a teacher see their own school's holiday list.
+// Readable by any authenticated teacher: the server lets a teacher see their own school's holiday list.
 export async function getHolidays(): Promise<SchoolHolidayDto[]> {
   const data = await api<{ holidays: SchoolHolidayDto[] }>('/teacher-attendance/holidays');
   return data.holidays;
@@ -126,18 +110,16 @@ export async function deleteHoliday(id: string): Promise<void> {
   await api<null>(`/teacher-attendance/holidays/${id}`, { method: 'DELETE' });
 }
 
-/** Today's counts across the school — the Reports tab's dashboard cards. */
+/** Today's counts across the school, for the Reports tab's dashboard cards. */
 export async function getTodaySummary(): Promise<TeacherAttendanceTodaySummary> {
   return api<TeacherAttendanceTodaySummary>('/teacher-attendance/today-summary');
 }
 
-// ---- Whole-school report (school_admin only) ----------------------------------
+// ---- Whole-school report (school_admin only) ----
 
 /**
- * The Reports list — summary counts only, paginated
- * (docs/feature-teacher-attendance-implementation-plan.md §7: a school with
- * many teachers can't have every teacher's full month loaded just to show a
- * count). A specific teacher's day-by-day detail is a separate call, below.
+ * The Reports list: summary counts only, paginated, so a large school doesn't load every teacher's full month. Per-teacher
+ * detail is a separate call below.
  * @param month "YYYY-MM"
  */
 export async function getSchoolHistory(
@@ -151,18 +133,15 @@ export async function getSchoolHistory(
   return api<SchoolHistoryPage>(`/teacher-attendance/school-history?${params.toString()}`);
 }
 
-/** One teacher's real day-by-day records for a month — the Reports drill-down's detail fetch. */
+/** One teacher's day-by-day records for a month, the Reports drill-down. */
 export async function getTeacherAttendanceDetail(userId: string, month: string): Promise<TeacherAttendanceDetailPage> {
   return api<TeacherAttendanceDetailPage>(
     `/teacher-attendance/school-history/${userId}?month=${encodeURIComponent(month)}`
   );
 }
 
-// ---- Activity log (school_admin only) --------------------------------------
-//
-// Defaults to a recent window server-side, never "everything" — see the
-// plan's §7. Every filter is optional; omitting all of them just narrows to
-// `days`.
+// ---- Activity log (school_admin only) ----
+// A recent window by default server-side, never "everything". Every filter is optional; omitting all just narrows to `days`.
 
 export async function getActivityLog(
   options: {
@@ -171,10 +150,8 @@ export async function getActivityLog(
     pageSize?: number;
     userId?: string;
     action?: string;
-    // 'teacher' = a person's own day (check-ins, blocked attempts,
-    // reminders) — 'admin' = administrative housekeeping (settings/holiday
-    // edits, corrections). Lets the client filter out one category instead
-    // of forcing everything into one flat feed.
+    // 'teacher' = a person's own day (check-ins, blocked attempts, reminders); 'admin' = housekeeping (settings, holiday
+    // edits, corrections). Lets the client filter out one category.
     category?: 'teacher' | 'admin';
     search?: string;
   } = {}
@@ -191,9 +168,8 @@ export async function getActivityLog(
   return api<TeacherAttendanceActivityLogPage>(`/teacher-attendance/activity-log${query ? `?${query}` : ''}`);
 }
 
-// Same download approach as classroomApi.ts's downloadFeesReport — a
-// Bearer-token GET can't be a plain <a href>, so this fetches the blob and
-// clicks a throwaway object-URL anchor.
+// Same download approach as classroomApi.ts's downloadFeesReport: a Bearer-token GET can't be a plain <a href>, so it
+// fetches the blob and clicks a throwaway object-URL anchor.
 export async function downloadSchoolAttendanceReport(month: string): Promise<void> {
   const { blob, filename } = await apiDownload(
     `/teacher-attendance/school-history/export?month=${encodeURIComponent(month)}`

@@ -1,8 +1,5 @@
-// Learning Representation — comparison_table (ADR Phase D2). Unchanged in
-// substance from Phase D1: a table already IS the correct native
-// representation for "shared dimensions across items" (ADR §4) — there is
-// no more "diagram" version of a comparison to build. Extracted to its own
-// file only for consistency with the other five representation views.
+// Learning Representation: comparison_table. A table is already the right native representation for "shared dimensions
+// across items", so there's no diagram version to build; it's its own file for consistency with the other views.
 import type { ComparisonTableData } from '../types';
 
 export default function ComparisonTableView({ data }: { data: ComparisonTableData }) {

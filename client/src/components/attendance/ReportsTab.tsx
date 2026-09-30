@@ -43,10 +43,8 @@ function initials(name: string): string {
 }
 
 const CURRENT_MONTH = currentMonthString();
-// Server-side pagination (docs/feature-teacher-attendance-implementation-plan.md
-// §7) — the list only ever loads this many teachers' summaries at once, no
-// matter how large the school. A specific teacher's full day-by-day detail
-// is a separate, on-demand fetch (loadDetail below), not part of this page.
+// Server-side pagination (docs/feature-teacher-attendance-implementation-plan.md): only this many teachers' summaries load at
+// once. A teacher's full day-by-day detail is a separate on-demand fetch (loadDetail).
 const PAGE_SIZE = 25;
 
 type SortKey = 'name' | keyof TeacherAttendanceSummary;
@@ -73,15 +71,9 @@ export default function ReportsTab() {
 
   const [teachers, setTeachers] = useState<SchoolHistoryTeacherSummary[]>([]);
   const [total, setTotal] = useState(0);
-  // `loading` is true only until the very first load finishes — it drives
-  // the full-page skeleton for the empty-shell case. Every load after that
-  // (paging, searching, changing month, or a background refresh triggered
-  // from the detail view) flips `fetching` instead, which just dims the
-  // existing table/cards in place — replacing the whole tab with a generic
-  // skeleton on every keystroke or page click felt jarring, and briefly
-  // wiped out an already-open teacher detail view too (its own
-  // detailLoading skeleton was never the one hiding it — this top-level one
-  // was, since it renders unconditionally regardless of selectedTeacherId).
+  // `loading` is true only until the first load finishes and drives the full-page skeleton. Later loads (paging, search,
+  // month change, background refresh from the detail view) set `fetching`, which dims the table in place; a full skeleton on
+  // every keystroke was jarring and also hid an already-open detail view.
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState('');
@@ -89,31 +81,24 @@ export default function ReportsTab() {
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
 
-  // config/holidays are school-wide, fetched once per month and shared by
-  // whichever teacher's drill-down is opened.
+  // config/holidays are school-wide, fetched once per month and shared by whichever drill-down is opened.
   const [config, setConfig] = useState<Awaited<ReturnType<typeof getSchoolConfig>>>(null);
   const [holidays, setHolidays] = useState<Awaited<ReturnType<typeof getHolidays>>>([]);
 
-  // Which teacher's own day-by-day view is open — set, the table is
-  // replaced by that one teacher's detail (with a way back), not expanded
-  // inline: a list of days doesn't fit inside a table cell without either
-  // fighting the grid or getting cut off in the horizontal scroll.
+  // Which teacher's detail is open. When set, the table is replaced by that detail (with a way back) instead of expanding
+  // inline, since a list of days doesn't fit in a table cell.
   const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null);
   const [detailRecords, setDetailRecords] = useState<TeacherAttendanceDetailDto[]>([]);
   const [detailTeacher, setDetailTeacher] = useState<{ id: string; name: string; email: string; createdAt: string } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
-  // Which single day, within the open drill-down, has its correction form
-  // open — at most one at a time, closed whenever the drill-down changes.
+  // Which single day has its correction form open: at most one, closed when the drill-down changes.
   const [correctingDate, setCorrectingDate] = useState<string | null>(null);
 
-  // Today's four dashboard numbers — the landing glance before the table
-  // (docs/attendance-register-design.html §5).
+  // Today's four dashboard numbers, the landing glance before the table (docs/attendance-register-design.html).
   const [todaySummary, setTodaySummary] = useState<TeacherAttendanceTodaySummary | null>(null);
 
-  // 6-month trend (late + missing-checkout count per month) for whichever
-  // teacher's drill-down is open — so "getting better or worse" is visible
-  // without opening six separate months (design doc §11).
+  // 6-month trend (late + missing-checkout count per month) for the open drill-down, so "better or worse" is visible without opening six months.
   const [trend, setTrend] = useState<{ month: string; count: number }[]>([]);
   const [trendLoading, setTrendLoading] = useState(false);
 
@@ -139,8 +124,7 @@ export default function ReportsTab() {
   }, [month, page, search]);
 
   useEffect(() => {
-    // A short debounce on search — a keystroke shouldn't fire a fresh
-    // paginated query on every character.
+    // Short debounce so a keystroke doesn't fire a paginated query per character.
     const id = setTimeout(load, 300);
     return () => clearTimeout(id);
   }, [load]);
@@ -160,9 +144,7 @@ export default function ReportsTab() {
   );
 
   const filtered = useMemo(() => {
-    // Client-side, on just this page's rows — matches search/pagination's
-    // server-side scope; a teacher needing a look on a different page still
-    // needs that page opened to be seen. (Same tradeoff as sorting below.)
+    // Client-side, on this page's rows only, matching the server-side scope of search and pagination (same tradeoff as sorting below).
     if (!onlyFlagged) return teachers;
     return teachers.filter((t) => t.summary.flagged_review > 0 || t.summary.pending_regularization > 0);
   }, [teachers, onlyFlagged]);
@@ -219,7 +201,7 @@ export default function ReportsTab() {
     async (teacherId: string) => {
       setTrendLoading(true);
       try {
-        // Oldest to newest, ending at the currently-viewed month.
+        // Oldest to newest, ending at the viewed month.
         const months = Array.from({ length: TREND_MONTHS }, (_, i) => addMonths(month, -(TREND_MONTHS - 1 - i)));
         const results = await Promise.all(
           months.map((m) => getTeacherAttendanceDetail(teacherId, m).catch(() => null))
@@ -227,10 +209,8 @@ export default function ReportsTab() {
         setTrend(
           months.map((m, i) => {
             const records = results[i]?.records ?? [];
-            // Raw-record count, not the day-filled buildRows/summarizeRows —
-            // a past month's records already unambiguously show a real
-            // late arrival or a real gap, with no weekly-off/holiday
-            // context needed to tell them apart from an ordinary day off.
+            // Raw-record count, not the day-filled buildRows/summarizeRows: a past month's records already show a real
+            // late arrival or gap without weekly-off/holiday context.
             const count = records.filter((r) => (r.lateMinutes ?? 0) > 0 || (r.checkInAt && !r.checkOutAt)).length;
             return { month: m, count };
           })
@@ -279,9 +259,7 @@ export default function ReportsTab() {
   const detailSummary: HistorySummary | null = detailTeacher ? summarizeRows(detailRows) : null;
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  // A count only turns into a coloured warning once it crosses the school's
-  // own configured pattern threshold — a single one-off shouldn't look as
-  // alarming as a genuine repeat (design doc §6/§10).
+  // A count becomes a coloured warning only past the school's configured pattern threshold; a one-off shouldn't look as alarming as a repeat.
   const patternThreshold = config?.repeatPatternThreshold ?? 1;
 
   return (
@@ -476,11 +454,8 @@ export default function ReportsTab() {
             </button>
           </div>
 
-          {/* A slim top-edge progress bar for every load AFTER the first —
-              paging, searching, changing month, or a background refresh —
-              so the table/toolbar stay in place instead of flashing back to
-              the generic skeleton on every interaction. Always mounted at a
-              fixed height so toggling it on/off never shifts the layout. */}
+          {/* A slim top-edge progress bar for every load after the first, so the table and toolbar stay put instead of flashing
+              back to the skeleton. Always mounted at a fixed height so toggling it never shifts the layout. */}
           <div className={`attendance-reports-progress-track${fetching ? ' active' : ''}`} aria-hidden="true">
             <div className="attendance-reports-progress-bar" />
           </div>
@@ -545,11 +520,8 @@ export default function ReportsTab() {
                           <span className="attendance-reports-avatar" aria-hidden="true">{initials(r.name)}</span>
                           <span className="attendance-reports-name-text">
                             <span className="attendance-reports-name-primary">{r.name}</span>
-                            {/* Two teachers can share a display name — the
-                                email is the only thing that actually tells
-                                them apart. Truncated with an ellipsis (see
-                                CSS) rather than forcing the whole column
-                                wide — some of these run 40+ characters. */}
+                            {/* Two teachers can share a display name; the email tells them apart. Truncated with an
+                                ellipsis (see CSS) rather than widening the column, since some run 40+ characters. */}
                             <span className="attendance-reports-email">{r.email}</span>
                           </span>
                         </div>

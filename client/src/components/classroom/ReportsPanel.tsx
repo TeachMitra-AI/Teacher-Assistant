@@ -15,11 +15,9 @@ function isOverpaid(s: StudentFeeStatus): boolean {
   return s.expectedAmount != null && s.amount > s.expectedAmount;
 }
 
-// The fees API orders perStudent by name (server/src/lib/classroomFees.js) —
-// re-sort here by roll number for these lists specifically, since a teacher
-// scans a fee report roll-wise, not alphabetically. Numeric rolls sort
-// numerically (so "2" comes before "10"); non-numeric or missing rolls sort
-// after, by name, so nobody silently vanishes from the list.
+// The fees API orders perStudent by name (server/src/lib/classroomFees.js); re-sorted here by roll number, since a teacher
+// scans a fee report roll-wise. Numeric rolls sort numerically ("2" before "10"); non-numeric or missing rolls sort after,
+// by name, so nobody vanishes.
 function byRollNumber(a: StudentFeeStatus, b: StudentFeeStatus): number {
   const an = a.rollNumber ? Number(a.rollNumber) : NaN;
   const bn = b.rollNumber ? Number(b.rollNumber) : NaN;
@@ -46,11 +44,8 @@ function feeBadgeText(s: StudentFeeStatus): string {
 
 const CURRENT_MONTH = currentMonthString();
 
-// Fee dashboard for the Reports tab (docs/fee-tracking-amounts-plan.md
-// Step 2). Reuses the same GET .../fees?period= endpoint the Fees tab
-// already calls — its response already carries every total this dashboard
-// needs (totalCollected/totalExpected/paid/partial/pending/perStudent), so
-// no new backend route was needed for this step.
+// Fee dashboard for the Reports tab (docs/fee-tracking-amounts-plan.md). Reuses the Fees tab's GET .../fees?period= endpoint,
+// whose response already carries every total needed (totalCollected/totalExpected/paid/partial/pending/perStudent).
 export default function ReportsPanel({ classId, className }: { classId: string; className: string }) {
   const { show } = useToast();
   const [period, setPeriod] = useState(CURRENT_MONTH);

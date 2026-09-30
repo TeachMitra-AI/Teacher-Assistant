@@ -2,14 +2,10 @@ import { useCallback } from 'react';
 import { useAuth } from '../auth';
 import { persistOnboarding } from '../lib/onboarding';
 
-// One reusable primitive for every first-visit contextual tip (Phase 3). Each tip
-// is identified by a stable string id and shown until the user dismisses it; the
-// dismissed ids are persisted in preferences.onboarding.dismissedTips (added in
-// Phase 0) so a tip never reappears, on any device. Adding a new tip is just
-// picking a new id — no schema, component, or plumbing changes — which is the
-// whole point of keeping dismissedTips a flat list. Dismissal persists through the
-// shared persistOnboarding write path (same optimistic PATCH /auth/me flow the
-// welcome intro uses), so seenWelcomeIntro and sibling tips are never clobbered.
+// Primitive for every first-visit contextual tip. A tip has a stable string id and shows until dismissed; dismissed ids persist
+// in preferences.onboarding.dismissedTips so it never reappears on any device, and a new tip is just a new id. Dismissal goes
+// through persistOnboarding (the same optimistic PATCH /auth/me flow as the welcome intro), so seenWelcomeIntro and sibling
+// tips aren't clobbered.
 export function useOnboardingTip(id: string) {
   const { user, updateUser } = useAuth();
 

@@ -3,34 +3,17 @@ import { coercePrefillValues, loadPrefill } from './generatorPrefill';
 import { createDraft, markConsumed, DRAFT_STORAGE_KEY } from './draftStore';
 import { drainTelemetry } from './telemetry';
 
-// The TRANSPORT is stubbed out, and that is what makes the buffer assertions in
-// this file mean anything.
-//
-// `loadPrefill` records to the in-memory telemetry buffer and then, on the very
-// next line, calls `notePrefillDelivered`. That function legitimately calls
-// `drainTelemetry()` itself (telemetryTransport.ts) to discard corrections
-// belonging to a previous prefill — so the event this file is trying to observe
-// is wiped microseconds after it is written.
-//
-// That made these tests depend on an AMBIENT BUILD FLAG: the transport bails
-// early when `ASSISTANT_ENABLED` is false, leaving the buffer intact, so the
-// suite passed with `VITE_ASSISTANT_ENABLED=false` in .env and failed with it
-// set to true. A unit test should not change verdict because of a developer's
-// local .env.
-//
-// Stubbing the collaborator pins that down. This file imports nothing from the
-// transport and asserts nothing about it — its own behaviour is covered by
-// telemetryTransport.test.ts — so nothing is lost by isolating it here.
+// The transport is stubbed so the buffer assertions mean something: `loadPrefill` records to the telemetry buffer and then
+// calls `notePrefillDelivered`, which drains it. Unstubbed, the result depended on the local VITE_ASSISTANT_ENABLED flag.
+// The transport has its own tests in telemetryTransport.test.ts.
 vi.mock('./telemetryTransport', () => ({
   notePrefillDelivered: vi.fn(),
   notePrefillGenerated: vi.fn(),
   notePrefillUndone: vi.fn(),
 }));
 
-// coercePrefillValues is the boundary between an untrusted params object and
-// the Generator's typed form state. Everything it rejects is a field the
-// teacher then sees at its normal default — which is the correct outcome, and
-// far better than a form confidently showing a value the endpoint would reject.
+// coercePrefillValues is the boundary between an untrusted params object and the Generator's typed form state; whatever
+// it rejects falls back to the field's normal default.
 
 beforeEach(() => {
   window.sessionStorage.clear();
@@ -63,8 +46,7 @@ describe('coercePrefillValues', () => {
   });
 
   it('applies a partial params object without inventing the rest', () => {
-    // Missing fields must stay missing so the page falls back to its own
-    // defaults, rather than this module guessing at them.
+    // Missing fields stay missing so the page uses its own defaults.
     expect(coercePrefillValues({ format: 'quiz', topic: 'Photosynthesis' })).toEqual({
       format: 'quiz',
       topic: 'Photosynthesis',
@@ -84,8 +66,7 @@ describe('coercePrefillValues', () => {
   });
 
   it('drops an out-of-range question count rather than clamping it', () => {
-    // Clamping would silently turn "500 questions" into 30 and look like the
-    // router understood the request. Dropping leaves the form's own default.
+    // Clamping "500 questions" to 30 would look like the router understood; dropping leaves the form's default.
     expect(coercePrefillValues({ questionCount: 500 })).toEqual({});
     expect(coercePrefillValues({ questionCount: 1 })).toEqual({});
     expect(coercePrefillValues({ questionCount: 30 })).toEqual({ questionCount: 30 });
@@ -93,8 +74,7 @@ describe('coercePrefillValues', () => {
   });
 
   it('keeps the valid fields of a partly-invalid params object', () => {
-    // A stale PWA client reading a newer draft must get the fields it
-    // understands, not an empty form.
+    // A stale cached client reading a newer draft should get the fields it understands, not an empty form.
     expect(coercePrefillValues({ format: 'quiz', difficulty: 'brutal', topic: 'Algebra' })).toEqual({
       format: 'quiz',
       topic: 'Algebra',
@@ -102,8 +82,7 @@ describe('coercePrefillValues', () => {
   });
 
   it('ignores unrecognised keys entirely', () => {
-    // Notably `instructions`, which is deliberately not a router slot, and any
-    // field a future build might add.
+    // Includes `instructions`, which isn't a router slot, and any field a future build adds.
     expect(coercePrefillValues({ topic: 'Verbs', instructions: 'be creative', futureField: true })).toEqual({
       topic: 'Verbs',
     });
@@ -166,8 +145,7 @@ describe('loadPrefill', () => {
   });
 
   it('returns null for a draft belonging to a different action', () => {
-    // open_generator navigates but prefills nothing. Applying its params here
-    // would be the router filling a form it was never asked to fill.
+    // open_generator prefills nothing; applying its params would fill a form nobody asked to fill.
     const id = createDraft({ ...draftInput, actionId: 'open_generator' })!;
     expect(loadPrefill(id)).toBeNull();
   });
@@ -199,8 +177,7 @@ describe('loadPrefill', () => {
   });
 
   it('labels an applied field with unknown provenance as inferred', () => {
-    // Reachable only from a hand-written draft. "We don't know" is the honest
-    // label; silently claiming 'utterance' would corrupt the correction metric.
+    // Only from a hand-written draft. 'inferred' means "we don't know"; claiming 'utterance' would corrupt the correction metric.
     window.sessionStorage.setItem(
       DRAFT_STORAGE_KEY,
       JSON.stringify([

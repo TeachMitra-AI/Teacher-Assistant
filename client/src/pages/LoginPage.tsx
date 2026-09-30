@@ -4,10 +4,8 @@ import AuthForm from '../components/AuthForm';
 import { usePreferences } from '../hooks/usePreferences';
 
 export default function LoginPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
-  // The public landing page's "Start Teaching Smarter" CTA links here with
-  // ?mode=register so it opens straight into sign-up instead of sign-in.
-  // Read once on mount — this only sets the initial tab, not an ongoing sync,
-  // so switching tabs afterward behaves exactly as it always has.
+  // The landing page's "Start Teaching Smarter" CTA links here with ?mode=register to open straight into sign-up. Read once on
+  // mount to set the initial tab, not kept in sync afterwards.
   const [searchParams] = useSearchParams();
   const { theme, toggleTheme } = preferences;
 

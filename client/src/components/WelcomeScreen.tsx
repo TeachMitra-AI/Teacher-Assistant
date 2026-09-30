@@ -2,10 +2,8 @@ import { useMemo } from 'react';
 import { ChevronRight } from 'lucide-react';
 import OnboardingIntro from './OnboardingIntro';
 import DailyHighlight from './DailyHighlight';
-// HIDDEN FROM THE HOMEPAGE (2026-08-15) — see docs/hide-homepage-items.md.
-// SUPER_ADMIN_SHORTCUT is dropped from this import while the Support Inbox
-// card is hidden; tsconfig's noUnusedLocals makes an unused import a build
-// error, so it cannot simply be left here. Restore with the line below.
+// Support Inbox card hidden from the homepage (docs/hide-homepage-items.md): SUPER_ADMIN_SHORTCUT is dropped from this
+// import because noUnusedLocals makes an unused import a build error. Restore with the line below.
 // import { QUICK_ACTIONS, ADMIN_SHORTCUTS, SUPER_ADMIN_SHORTCUT } from '../config';
 import { QUICK_ACTIONS, ADMIN_SHORTCUTS } from '../config';
 import { getWelcomeGreeting, getDailyHighlight } from '../lib/welcome';
@@ -13,35 +11,24 @@ import { getWelcomeGreeting, getDailyHighlight } from '../lib/welcome';
 interface WelcomeScreenProps {
   name: string;
   isAdmin: boolean;
-  // Separate from `isAdmin` — the Support Inbox shortcut is super_admin
-  // only, unlike Dashboard/Manage which every admin role sees (see
-  // AdminTabs.tsx for the same access-control reasoning).
+  // Separate from `isAdmin`: the Support Inbox shortcut is super_admin only (see AdminTabs.tsx).
   isSuperAdmin: boolean;
-  // First-run onboarding intro: shown once above the greeting until the teacher
-  // dismisses it (the parent persists that via preferences.onboarding).
+  // First-run intro shown once above the greeting until dismissed (the parent persists it via preferences.onboarding).
   showIntro: boolean;
   onDismissIntro: () => void;
   onPickAction: (prompt: string) => void;
   onNavigate: (to: string) => void;
 }
 
-// `isSuperAdmin` stays declared in WelcomeScreenProps above but is
-// deliberately NOT destructured here while the Support Inbox card is hidden:
-// an unused interface field is legal, an unused binding is a build error
-// (tsconfig noUnusedLocals). Keeping the prop in the interface means
-// CoachPage.tsx still passes it and needs no edit, so restoring the card is a
-// single-file change. See docs/hide-homepage-items.md.
+// `isSuperAdmin` stays in WelcomeScreenProps but isn't destructured while the Support Inbox card is hidden (an unused
+// binding is a build error, an unused interface field isn't), so CoachPage still passes it and restoring the card is a
+// single-file change.
 export default function WelcomeScreen({ name, isAdmin, showIntro, onDismissIntro, onPickAction, onNavigate }: WelcomeScreenProps) {
-  // HIDDEN FROM THE HOMEPAGE (2026-08-15) — restore the Support Inbox card by
-  // reinstating the commented line and adding `isSuperAdmin` back to the
-  // parameters above. The Support PAGE is untouched and still reachable from
-  // the admin tabs (components/AdminTabs.tsx).
+  // To restore the Support Inbox card, reinstate the line below and add `isSuperAdmin` back to the parameters. The Support
+  // page itself is unaffected (reachable from the admin tabs).
   // const shortcuts = isSuperAdmin ? [...ADMIN_SHORTCUTS, SUPER_ADMIN_SHORTCUT] : ADMIN_SHORTCUTS;
   const shortcuts = ADMIN_SHORTCUTS;
-  // Computed once per mount (and whenever the name changes) rather than on
-  // every re-render, so the greeting/highlight stay stable for the whole
-  // session — see lib/welcome.ts for why the underlying selection is already
-  // deterministic by date.
+  // Computed once per mount (and when the name changes), so the greeting/highlight stay stable for the session (lib/welcome.ts).
   const { greeting, subtitle } = useMemo(() => getWelcomeGreeting(name), [name]);
   const highlight = useMemo(() => getDailyHighlight(), []);
   return (

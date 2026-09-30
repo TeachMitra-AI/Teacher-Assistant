@@ -4,11 +4,9 @@ import AttendanceMonthly from './AttendanceMonthly';
 
 type AttendanceView = 'mark' | 'monthly';
 
-// Entry point for the Attendance tab's content, once a class is selected
-// (docs/classroom-feature-plan.md Phase 3). A small segmented control, not
-// another top-level ClassroomTabs entry — "Mark Attendance" and "Monthly
-// Summary" are both scoped to the SAME selected class, unlike the five
-// outer tabs which switch what kind of data is shown.
+// Entry point for the Attendance tab once a class is selected (docs/classroom-feature-plan.md). A small segmented control,
+// not another ClassroomTabs entry: "Mark Attendance" and "Monthly Summary" are both scoped to the same class, unlike the
+// five outer tabs which switch the kind of data.
 export default function AttendancePanel({ classId, className }: { classId: string; className: string }) {
   const [view, setView] = useState<AttendanceView>('mark');
 

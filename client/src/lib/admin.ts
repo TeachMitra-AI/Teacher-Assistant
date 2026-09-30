@@ -1,11 +1,6 @@
-// Typed client for the paginated admin list endpoints. Thin wrappers over
-// api(), the same shape as lib/resources.ts.
-//
-// Every listing here is paginated SERVER-side: the response carries `total`
-// so the UI can render "showing 1–25 of 142" without ever holding all 142
-// rows. School scoping is enforced server-side from the auth token — none of
-// these calls can widen what the caller is allowed to see, and `schoolId` is
-// only honoured when it is already inside that scope.
+// Typed client for the paginated admin list endpoints: thin wrappers over api(), like lib/resources.ts. Pagination is
+// server-side (`total` drives "showing 1–25 of 142"). School scoping is enforced from the token; `schoolId` is only
+// honoured inside that scope.
 import { api } from '../api';
 import type { AdminSchool, AdminUser, Role, UserStatus } from '../types';
 
@@ -32,8 +27,7 @@ export interface AdminSchoolQuery {
   q?: string;
 }
 
-// Shared param building. `page=1` is omitted so the common case produces a
-// clean URL, and empty filters are dropped rather than sent as `role=`.
+// Shared param building: `page=1` is omitted for a clean URL and empty filters are dropped rather than sent as `role=`.
 function listParams(params: Record<string, string | number | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -45,9 +39,7 @@ function listParams(params: Record<string, string | number | undefined>): string
   return qs ? `?${qs}` : '';
 }
 
-// The server always returns total/page/limit, but an older deployment might
-// not — fall back to values derived from the payload rather than rendering
-// "of undefined" or breaking the pager.
+// The server always returns total/page/limit, but an older deployment might not; derive from the payload rather than showing "of undefined".
 function toPaged<T>(
   items: T[],
   body: { total?: number; page?: number; limit?: number },

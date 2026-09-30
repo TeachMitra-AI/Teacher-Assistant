@@ -1,9 +1,6 @@
-// AttendancePage — the tab-switching shell only. CheckInTab/HistoryTab/
-// ActivityLogTab are stubbed out here (they have their own test files);
-// this file only checks that the right tab renders for the URL + role,
-// mirrors how ClassroomPage's own tab-via-query-param pattern works (no
-// ClassroomPage.test.tsx precedent exists yet, so this follows
-// ResourceWorkspace.test.tsx's MemoryRouter shape instead).
+// AttendancePage's tab-switching shell only. CheckInTab/HistoryTab/ActivityLogTab are stubbed (they have their own tests);
+// this checks the right tab renders for the URL + role, following ClassroomPage's tab-via-query-param pattern and
+// ResourceWorkspace.test.tsx's MemoryRouter shape.
 import { describe, expect, test, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

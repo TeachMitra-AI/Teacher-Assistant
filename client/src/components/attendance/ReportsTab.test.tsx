@@ -23,9 +23,8 @@ vi.mock('../../lib/teacherAttendanceApi', () => ({
   downloadSchoolAttendanceReport: vi.fn(),
 }));
 
-// AttendanceCorrectionForm has its own detailed test file — stubbed here so
-// this file only exercises whether ReportsTab hands it the right entry and
-// reacts to onResolved/onCancel, not the form's own internals.
+// AttendanceCorrectionForm has its own tests; it's stubbed so these only check ReportsTab hands it the right entry and
+// reacts to onResolved/onCancel.
 vi.mock('./AttendanceCorrectionForm', () => ({
   default: ({ entry, onResolved, onCancel }: { entry: { id: string }; onResolved: (id: string) => void; onCancel: () => void }) => (
     <div>
@@ -267,10 +266,8 @@ describe('ReportsTab', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Resolve att1' }));
 
     await waitFor(() => expect(mockedApi.getSchoolHistory).toHaveBeenCalledTimes(2)); // initial + reload
-    // getTeacherAttendanceDetail is also called once per trend month
-    // (6x) on open and again on resolve — filter down to just the calls
-    // for the current month (the actual detail view) rather than a raw
-    // total, which the trend fetch would otherwise make brittle.
+    // getTeacherAttendanceDetail is also called once per trend month (6x) on open and on resolve, so filter to the current
+    // month's calls (the detail view) instead of a raw total the trend fetch would make brittle.
     await waitFor(() => {
       const detailCalls = mockedApi.getTeacherAttendanceDetail.mock.calls.filter(([, m]) => m === CURRENT_MONTH);
       expect(detailCalls.length).toBeGreaterThanOrEqual(2);

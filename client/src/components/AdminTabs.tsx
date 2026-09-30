@@ -3,20 +3,10 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { NOTIFICATIONS_ENABLED } from '../config';
 
-// Sub-navigation shared between the admin overview and management pages.
-//
-// The "Support" tab is deliberately NOT shown to every admin role the way
-// Overview/Manage are — a support ticket is product feedback, not a
-// school's own data, so only super_admin gets it (see
-// docs/help-support-architecture.md's access-control reasoning, carried
-// forward unchanged into the Phase 2 admin inbox).
-//
-// On mobile this list no longer fits one line (and will only grow — PYQ,
-// Reports, Users are coming). Rather than wrap or hide tabs, `.admin-tabs`
-// becomes its own horizontally-scrollable strip below the 640px breakpoint
-// (see index.css); this component only needs to keep the active tab
-// scrolled into view when it isn't already visible, e.g. landing directly
-// on a tab near the end of the strip.
+// Sub-navigation shared by the admin overview and management pages. The "Support" tab isn't shown to every admin role: a
+// ticket is product feedback, not a school's data, so only super_admin gets it (docs/help-support-architecture.md).
+// On mobile the list no longer fits one line, so `.admin-tabs` becomes a horizontally scrollable strip below 640px
+// (index.css); this component only keeps the active tab scrolled into view.
 export default function AdminTabs() {
   const { pathname } = useLocation();
   const { user } = useAuth();
@@ -25,8 +15,7 @@ export default function AdminTabs() {
 
   useEffect(() => {
     const active = navRef.current?.querySelector<HTMLElement>('a.active');
-    // 'nearest' is a no-op when the tab is already fully in view, so this
-    // never produces a scroll animation on a render where nothing changed.
+    // 'nearest' is a no-op when the tab is fully in view, so an unchanged render doesn't animate.
     active?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [pathname]);
 
@@ -37,19 +26,15 @@ export default function AdminTabs() {
       {isSuperAdmin && (
         <Link to="/admin/support" className={pathname.startsWith('/admin/support') ? 'active' : ''} aria-current={pathname.startsWith('/admin/support') ? 'page' : undefined}>Support</Link>
       )}
-      {/* Schedule a Call bookings are leads, not a school's own data — same
-          super_admin-only reasoning as Support above. */}
+      {/* Schedule a Call bookings are leads, not a school's data; super_admin only, like Support. */}
       {isSuperAdmin && (
         <Link to="/admin/demo-bookings" className={pathname.startsWith('/admin/demo-bookings') ? 'active' : ''} aria-current={pathname.startsWith('/admin/demo-bookings') ? 'page' : undefined}>Bookings</Link>
       )}
-      {/* Notification System send/broadcast — shown to every admin role
-          (unlike Support/Settings above), each scoped to what they can
-          reach (see docs/notification-system-plan.md §2). */}
+      {/* Notification send/broadcast is shown to every admin role, each scoped to what they can reach (docs/notification-system-plan.md). */}
       {NOTIFICATIONS_ENABLED && (
         <Link to="/admin/notifications" className={pathname.startsWith('/admin/notifications') ? 'active' : ''} aria-current={pathname.startsWith('/admin/notifications') ? 'page' : undefined}>Notifications</Link>
       )}
-      {/* Feature Management is a global, app-wide switch, not a school's own
-          data — same super_admin-only reasoning as Support above. */}
+      {/* Feature Management is a global app-wide switch, not a school's data; super_admin only, like Support. */}
       {isSuperAdmin && (
         <Link to="/admin/settings" className={pathname.startsWith('/admin/settings') ? 'active' : ''} aria-current={pathname.startsWith('/admin/settings') ? 'page' : undefined}>Settings</Link>
       )}

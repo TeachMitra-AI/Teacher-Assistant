@@ -1,30 +1,14 @@
-// AI Action Router — client catalog cache (Phase 1, Milestone M6).
-//
-// The catalog answers one question the client genuinely cannot answer for
-// itself: WHICH DOMAIN does an action id belong to? That matters only in the
-// case the whole endpoint was kept for — a service-worker-cached client meeting
-// an action id its handler map has never heard of. Knowing the domain turns that
-// from "nothing happens" into "the teacher lands on the right module's home
-// page", with no client release.
-//
-// ─── LAZY, NOT EAGER ───────────────────────────────────────────────────────
-// Fetched on the first utterance that passes the intent gate, never on mount. A
-// teacher who only ever asks coaching questions makes ZERO assistant requests
-// for their whole session, which is both the polite behaviour on a 2G
-// connection and what makes the flags-off network trace trivially provable.
-//
-// ─── BEST-EFFORT, ALWAYS ───────────────────────────────────────────────────
-// Nothing here may block or fail a routing. A catalog that cannot be fetched
-// costs the unknown-id fallback and nothing else; routing itself does not need
-// it, because /interpret builds its own role-filtered catalog server-side and
-// never trusts anything the client sends about capabilities.
+// Session cache of the server's action catalog. The client only needs it to map an action id to its domain, so a
+// cached PWA client that meets an id it has no handler for can still land the teacher on the right module.
+// Fetched lazily on the first utterance that passes the intent gate, never on mount, so coaching-only sessions make no
+// assistant requests. Best-effort: routing itself doesn't need it, since /interpret builds its own catalog server-side.
 
 import { fetchCatalog as defaultFetchCatalog } from './api';
 import type { CatalogResponse } from './types';
 
 const STORAGE_KEY = 'ta.assistant.catalog.v1';
 
-/** De-dupes concurrent first-use fetches so two quick submissions cost one request. */
+// De-dupes concurrent first-use fetches.
 let inFlight: Promise<CatalogResponse | null> | null = null;
 
 function readRaw(): string | null {
@@ -39,20 +23,12 @@ function writeRaw(value: string): void {
   try {
     window.sessionStorage.setItem(STORAGE_KEY, value);
   } catch {
-    // Storage unavailable. The catalog is re-fetched next time, which costs one
-    // request per routed utterance rather than one per session — acceptable for
-    // a degraded browser, and invisible to the teacher.
+    // Storage unavailable: the catalog is just re-fetched next time.
   }
 }
 
-/**
- * Defensive shape check.
- *
- * Only the two fields this module uses are required. Actions missing an `id` or
- * a `domain` are dropped individually rather than rejecting the whole payload:
- * a newer server adding a field must not blind an older client to the actions it
- * does understand.
- */
+// Only `id` and `domain` are required. Bad actions are dropped one by one, so a newer server adding a field
+// doesn't blind an older client to the actions it does understand.
 function toCatalog(value: unknown): CatalogResponse | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
@@ -68,7 +44,6 @@ function toCatalog(value: unknown): CatalogResponse | null {
   return { catalogVersion: raw.catalogVersion, actions };
 }
 
-/** The catalog stored for this session, or null. */
 export function readCachedCatalog(): CatalogResponse | null {
   const raw = readRaw();
   if (raw === null) return null;
@@ -79,12 +54,7 @@ export function readCachedCatalog(): CatalogResponse | null {
   }
 }
 
-/**
- * The catalog, fetching it once per session if it is not already cached.
- *
- * The fetcher is injected so the module is testable without a network or a
- * token; production callers pass nothing.
- */
+// Fetches once per session. The fetcher is injectable for tests.
 export async function ensureCatalog(
   fetcher: () => Promise<CatalogResponse | null> = defaultFetchCatalog
 ): Promise<CatalogResponse | null> {
@@ -114,12 +84,7 @@ export async function ensureCatalog(
   return inFlight;
 }
 
-/**
- * Which module owns this action id, according to the server.
- *
- * Reads only what is already cached — the unknown-id fallback runs inside a
- * navigation decision and must not wait on a network call to make it.
- */
+// Reads only the cache: the unknown-id fallback runs during a navigation decision and can't wait on the network.
 export function domainForAction(actionId: string): string | null {
   if (!actionId) return null;
   const catalog = readCachedCatalog();
@@ -128,14 +93,8 @@ export function domainForAction(actionId: string): string | null {
   return action ? action.domain : null;
 }
 
-/**
- * Forgets the cached catalog.
- *
- * Called when an /interpret response reports a catalogVersion different from the
- * cached one — that is the signal the spec kept this endpoint for, and it is how
- * a stale PWA client learns its assumptions are void. The next routed utterance
- * re-fetches.
- */
+// Called when /interpret reports a different catalogVersion, meaning this client's assumptions are stale;
+// the next routed utterance re-fetches.
 export function clearCatalog(): void {
   inFlight = null;
   try {
@@ -145,5 +104,5 @@ export function clearCatalog(): void {
   }
 }
 
-/** Test seam. */
+// Test seam.
 export const CATALOG_STORAGE_KEY = STORAGE_KEY;

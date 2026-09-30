@@ -1,8 +1,5 @@
-// Typed client for Schedule a Call (public demo-booking flow). Thin wrappers
-// over api(), same shape as lib/adminSupport.ts. Every route here is public
-// (no auth) — api()'s default Authorization header is harmless for a
-// signed-out visitor (no token exists), and no caller here needs to disable
-// it.
+// Typed client for Schedule a Call (the public demo-booking flow): thin wrappers over api(), like lib/adminSupport.ts. Every
+// route is public; api()'s Authorization header is harmless for a signed-out visitor.
 import { api } from '../api';
 
 export type DemoBookingRole = 'school_admin' | 'org_leadership' | 'other';
@@ -89,10 +86,8 @@ export async function cancelDemoBooking(id: string, token: string): Promise<Demo
   return data.booking;
 }
 
-// "14:00" -> "2:00 PM" — shared by DemoBookingCalendar and DemoBookingWidget.
-// Lives here (a plain module, not a component file) rather than beside
-// either component, so both keep the "only exports a component" shape
-// react-refresh's fast-refresh lint rule expects.
+// "14:00" -> "2:00 PM", shared by DemoBookingCalendar and DemoBookingWidget. Lives in a plain module so both components keep
+// the "only exports a component" shape react-refresh expects.
 export function formatSlotLabel(time: string): string {
   const [h, m] = time.split(':').map(Number);
   const suffix = h >= 12 ? 'PM' : 'AM';

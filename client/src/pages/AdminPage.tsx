@@ -24,12 +24,10 @@ export default function AdminPage({ preferences }: { preferences: ReturnType<typ
   const [data, setData] = useState<Analytics | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  // Preserves the effect's original unmount-safety (no setState after this
-  // page navigates away) now that `load` is also called directly by Retry.
+  // Keeps the effect's unmount safety (no setState after navigating away) now that Retry also calls `load` directly.
   const mountedRef = useRef(true);
-  // Re-armed in the effect body, not just initialised: StrictMode runs
-  // mount → cleanup → mount in dev, and the cleanup alone would leave the
-  // flag false, dropping every response (issue #110).
+  // Re-armed in the effect body, not just initialised: StrictMode runs mount → cleanup → mount in dev, and the cleanup alone
+  // would leave the flag false and drop every response.
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };

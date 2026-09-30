@@ -2,11 +2,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Clock, type LucideIcon } from 'lucide-react';
 
-// Shared chrome for the standalone Terms of Service / Privacy Policy pages
-// (see index.css .legal-* rules) — opened in their own browser tab from
-// ProfileMenu's "Learn more" flyout, so this is its own document, isolated
-// from the rest of the app. Smooth-scrolling the whole document for the
-// table-of-contents anchor links is scoped to just this tab for that reason.
+// Shared chrome for the standalone Terms / Privacy pages (index.css .legal-*), opened in their own tab from ProfileMenu's
+// "Learn more" flyout, so smooth-scrolling for the table-of-contents anchors is scoped to this tab.
 export interface TocEntry {
   id: string;
   label: string;
@@ -29,21 +26,15 @@ export default function LegalLayout({ icon: Icon, title, intro, updated, toc, ot
     document.documentElement.style.scrollBehavior = 'smooth';
   }, []);
 
-  // This page is reached by window.open()-ing a new tab from ProfileMenu's
-  // "Learn more" flyout — the app itself stays open behind it. "Back to app"
-  // should return to that original tab, so close this one rather than
-  // navigating it. window.close() only works on a tab a script opened; if
-  // it's refused (e.g. this tab was bookmarked, or reached via the Terms ↔
-  // Privacy cross-link below, which stays in the same tab), fall back to an
-  // in-page navigation instead of the click doing nothing.
+  // Reached by window.open() from ProfileMenu's flyout with the app still open behind it, so "Back to app" closes this tab.
+  // window.close() only works on a script-opened tab; if refused (bookmarked, or arrived via the Terms ↔ Privacy link in the
+  // same tab) fall back to in-page navigation rather than doing nothing.
   function handleBackToApp() {
     window.close();
     setTimeout(() => navigate('/'), 250);
   }
 
-  // Scroll-spy: highlights whichever section is currently under a thin band
-  // near the top of the viewport, so "On this page" tracks reading position
-  // as you scroll up or down rather than only responding to a click.
+  // Scroll-spy: highlights the section under a thin band near the top of the viewport, so "On this page" tracks reading position.
   const [activeId, setActiveId] = useState<string | null>(toc[0]?.id ?? null);
 
   useEffect(() => {
@@ -59,20 +50,15 @@ export default function LegalLayout({ icon: Icon, title, intro, updated, toc, ot
         const topmost = visible.reduce((a, b) => (a.boundingClientRect.top <= b.boundingClientRect.top ? a : b));
         setActiveId(topmost.target.id);
       },
-      // A band near the top of the viewport counts as "current" — a section
-      // has to reach roughly there, not merely appear at the bottom edge,
-      // before it takes over the highlight.
+      // A section must reach roughly the top band, not merely appear at the bottom edge, to take the highlight.
       { rootMargin: '-15% 0px -70% 0px', threshold: 0 },
     );
     sections.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
   }, [toc]);
 
-  // The band above only tracks a section once it reaches near the top of the
-  // viewport — the last section(s) on the page may never get there, since
-  // there's no more page left to scroll them up into it. Snap to the last
-  // entry once the page is scrolled (at most a couple of pixels off, for
-  // rounding) to its end, so reaching the bottom always highlights it.
+  // The last section(s) may never reach the top band since there's no page left to scroll; snap to the last entry once
+  // scrolled (within a couple of pixels) to the end.
   useEffect(() => {
     const lastId = toc[toc.length - 1]?.id;
     if (!lastId) return;

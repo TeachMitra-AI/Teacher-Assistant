@@ -1,8 +1,6 @@
-// CheckInTab — docs/feature-teacher-attendance-implementation-plan.md §4.
-// Renders the tab component directly (no page shell) now that
-// AttendancePage owns TopBar/tabs — mirrors how ResourceWorkspace.test.tsx
-// mocks Toast, and throws real ApiError instances so the component's
-// `instanceof ApiError` branches are exercised for real.
+// CheckInTab (docs/feature-teacher-attendance-implementation-plan.md). Renders the tab directly (AttendancePage owns
+// TopBar/tabs), mocking Toast like ResourceWorkspace.test.tsx and throwing real ApiError instances so the
+// `instanceof ApiError` branches run.
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -32,9 +30,7 @@ vi.mock('../../lib/geolocation', () => ({
 
 vi.mock('../../lib/deviceId', () => ({ getOrCreateDeviceId: () => 'test-device-id' }));
 
-// attendanceOfflineQueue.ts has its own detailed test file — stubbed here
-// so CheckInTab's tests only check that it CALLS these correctly, not that
-// the queue itself works.
+// attendanceOfflineQueue.ts has its own tests; it's stubbed so these only check CheckInTab calls it correctly.
 const enqueueAction = vi.fn();
 const retryQueuedAction = vi.fn();
 let queuedActionReturn: unknown = null;
@@ -111,9 +107,7 @@ function schoolConfig(overrides: Partial<SchoolAttendanceConfigDto> = {}): Schoo
 beforeEach(() => {
   vi.clearAllMocks();
   queuedActionReturn = null;
-  // Most tests below don't exercise the live-distance-check feature — this
-  // keeps schoolConfig null for them, so it stays a no-op (button behaves
-  // exactly as before) unless a test explicitly opts in.
+  // Keeps schoolConfig null for tests that don't exercise the live distance check, so it stays a no-op.
   mockedApi.getSchoolConfig.mockResolvedValue(null);
 });
 
@@ -127,12 +121,8 @@ describe('CheckInTab', () => {
   });
 
   test('regression: the automatic distance check settles instead of looping forever', async () => {
-    // checkDistance() refetches the school config and calls setSchoolConfig
-    // with a brand-new object every time it runs. The effect that
-    // auto-triggers checkDistance must never depend on that object's
-    // identity directly, or every fetch re-triggers itself: an infinite
-    // request loop that (in real use) exhausted the shared rate limit for
-    // every /api/teacher-attendance/* route, including Settings.
+    // checkDistance() sets a new school config object on every run, so the effect that triggers it must not depend on that
+    // object's identity, or every fetch re-triggers itself (a request loop that exhausted the shared rate limit).
     mockedApi.getTodayAttendance.mockResolvedValue(todayResult(null));
     mockedApi.getSchoolConfig.mockResolvedValue(schoolConfig({ geofenceRadiusMeters: 180 }));
     await setUpGeolocation();
@@ -141,10 +131,7 @@ describe('CheckInTab', () => {
     render(<CheckInTab />);
     await screen.findByText('45m'); // the auto distance-check has run once
 
-    // A settled component makes no further calls on its own. waitFor's own
-    // repeated polling below gives a real infinite loop several ticks to
-    // reveal itself — a runaway effect would already have pushed this well
-    // past a handful of calls by the time this resolves.
+    // A settled component makes no further calls; waitFor's polling gives a real infinite loop time to show itself.
     await waitFor(() => expect(mockedApi.getSchoolConfig.mock.calls.length).toBeLessThan(5));
   });
 
@@ -201,8 +188,7 @@ describe('CheckInTab', () => {
 
   test("a school's custom reminder window is respected, not the old hardcoded 15/30 default", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    // 50 minutes before closing — outside the old hardcoded 15-minute
-    // default, but inside this school's own 60-minute setting.
+    // 50 minutes before closing: outside the old 15-minute default, inside this school's 60-minute setting.
     vi.setSystemTime(new Date(2026, 7, 29, 15, 10));
     mockedApi.getTodayAttendance.mockResolvedValue(todayResult(baseAttendance({ checkInAt: '2026-08-29T03:30:00.000Z' })));
     mockedApi.getSchoolConfig.mockResolvedValue(
@@ -233,8 +219,7 @@ describe('CheckInTab', () => {
     render(<CheckInTab />);
     await userEvent.click(await screen.findByRole('button', { name: /check out/i }));
 
-    // Both halves of the day are visible at once, not just whichever
-    // action happened last.
+    // Both halves of the day are visible, not just the last action.
     expect(await screen.findByText('Checked in')).toBeInTheDocument();
     expect(screen.getByText('Checked out')).toBeInTheDocument();
     expect(screen.getByText('5m late')).toBeInTheDocument();
@@ -243,9 +228,7 @@ describe('CheckInTab', () => {
     expect(footer).toHaveTextContent('Present');
     expect(footer).toHaveTextContent('Worked 6h — 1h short of a full day');
 
-    // The two halves are colored independently: this check-in was late
-    // (amber), but the check-out was on time (green) — one bad half must
-    // not tint the other.
+    // The halves are colored independently: a late check-in (amber) doesn't tint an on-time check-out (green).
     const [checkInCol, checkOutCol] = document.querySelectorAll('.attendance-day-summary-col');
     expect(checkInCol).toHaveClass('tone-warning');
     expect(checkOutCol).toHaveClass('tone-routine');

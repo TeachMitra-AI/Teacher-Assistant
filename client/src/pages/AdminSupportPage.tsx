@@ -21,8 +21,7 @@ const STATUSES = Object.keys(STATUS_LABELS) as SupportTicketStatus[];
 const TYPE_LABELS: Record<SupportTicketType, string> = { bug: 'Bug', feedback: 'Feedback' };
 const TYPES = Object.keys(TYPE_LABELS) as SupportTicketType[];
 
-// Relative time for the list's "Created" column — the detail page (Phase 2.3)
-// shows the exact timestamp; the list only needs a scannable approximation.
+// Relative time for the list's "Created" column; the detail page shows the exact timestamp.
 function relativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diffMs / 60000);
@@ -43,10 +42,8 @@ export default function AdminSupportPage({ preferences }: { preferences: ReturnT
     return () => { cancelled = true; };
   }, []);
 
-  // Populates the School filter dropdown. A one-off fetch at a generous page
-  // size, not a searchable picker — fine while school counts stay small (see
-  // the design doc's own honest caveat); a school-count-heavy deployment
-  // would need a combobox here instead.
+  // Populates the School filter: a one-off fetch at a generous page size, not a searchable picker. Fine while school counts
+  // stay small; a school-heavy deployment would need a combobox.
   const [schools, setSchools] = useState<AdminSchool[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -61,10 +58,8 @@ export default function AdminSupportPage({ preferences }: { preferences: ReturnT
   const [fromFilter, setFromFilter] = useState('');
   const [toFilter, setToFilter] = useState('');
 
-  // Category has no single cross-type vocabulary (bug and feedback each have
-  // their own — see config.ts's BUG_CATEGORIES/FEEDBACK_CATEGORIES), so the
-  // dropdown only offers options once a Type is chosen, and changing Type
-  // clears whatever category was selected for the other one.
+  // Category has no cross-type vocabulary (bug and feedback each have their own, see BUG_CATEGORIES/FEEDBACK_CATEGORIES in
+  // config.ts), so the dropdown offers options only once a Type is chosen, and changing Type clears the selected category.
   const categoryOptions = typeFilter === 'bug' ? BUG_CATEGORIES : typeFilter === 'feedback' ? FEEDBACK_CATEGORIES : [];
   function handleTypeChange(value: SupportTicketType | '') {
     setTypeFilter(value);

@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest';
-// The module's own source, for the CHANGE-3 no-network guard below.
+// The module's own source, for the no-network guard below.
 import pendingAskSource from './pendingAsk.ts?raw';
 import { ASK_MAX_FREE_TEXT_VALUE, completeAsk, resolveAskReply } from './pendingAsk';
 import type { AskPrompt, ResolvedAction } from './types';
 
-// Amendment CHANGE-3: answering a clarifying question costs NO network call and
-// NO model call. The tests below are the evidence for that claim — nothing in
-// this module can reach either, because nothing in it is async.
+// Answering a clarifying question costs no network or model call; nothing in this module is async.
 
 const formatAsk: AskPrompt = {
   slot: 'format',
@@ -52,9 +50,7 @@ describe('CHANGE-3 — answering costs no network call and no model call', () =>
   });
 
   it('imports nothing that can reach the network', () => {
-    // The amendment's whole point is that a chip tap resolves locally. An import
-    // of the api wrapper here would be the change that quietly reintroduces a
-    // second round trip on a low-end device.
+    // A chip tap resolves locally; importing the api wrapper here would quietly bring back a second round trip.
     expect(pendingAskSource).not.toMatch(/from '\.\/api'/);
     expect(pendingAskSource).not.toContain('postInterpret');
     expect(pendingAskSource).not.toContain('fetch(');
@@ -88,8 +84,7 @@ describe('resolveAskReply — a question with options', () => {
   });
 
   it('returns the offered VALUE, never the label the teacher typed', () => {
-    // policy.js labels a language contradiction with codes and lets the client
-    // display its own words — but the value sent back must be the offered one.
+    // The client displays its own words for a language contradiction, but the value sent back must be the offered one.
     const languageAsk: AskPrompt = {
       slot: 'language',
       question: 'Which language did you mean — hi or en?',
@@ -104,9 +99,7 @@ describe('resolveAskReply — a question with options', () => {
 
 describe('resolveAskReply — an open question', () => {
   it('takes the reply itself as the value', () => {
-    // Without this a `topic` ask would dead-end: "fractions" carries no
-    // imperative verb, so re-classifying it would fail the intent gate and the
-    // teacher would get a coaching answer to a question they never asked.
+    // Without this a `topic` ask would dead-end: "fractions" has no verb, so it would fail the intent gate.
     expect(resolveAskReply(topicAsk, 'photosynthesis')).toBe('photosynthesis');
     expect(resolveAskReply(topicAsk, '  the water cycle  ')).toBe('the water cycle');
   });
@@ -148,9 +141,7 @@ describe('completeAsk', () => {
   });
 
   it('attributes the answer to the utterance, not to a manual edit (decision D4)', () => {
-    // 'user' would leave an unmarked value that "Clear AI fields" deliberately
-    // skips, stranding it in the form after the teacher rejected everything
-    // around it.
+    // 'user' would leave a value "Clear AI fields" skips, stranding it in the form.
     expect(completeAsk(asking(formatAsk), 'quiz').provenance.format).toBe('utterance');
   });
 
@@ -163,8 +154,7 @@ describe('completeAsk', () => {
   });
 
   it('cannot escalate the decision beyond prefill', () => {
-    // Completing a slot may only move ask → prefill. There is no input to this
-    // function that produces 'execute'.
+    // Completing a slot may only move ask → prefill; no input produces 'execute'.
     for (const value of ['quiz', 'worksheet', '', 'execute']) {
       expect(completeAsk(asking(formatAsk), value).decision).toBe('prefill');
     }

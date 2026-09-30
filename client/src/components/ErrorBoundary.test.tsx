@@ -1,14 +1,10 @@
-// Finding #7: the shared ErrorBoundary must support a custom `fallback` (for
-// isolating one card/section instead of crashing the whole page) and a
-// `resetKey` that clears a caught error once new data arrives — verified
-// directly here, independent of any one call site.
+// The shared ErrorBoundary must support a custom `fallback` (to isolate one card instead of crashing the page) and a
+// `resetKey` that clears a caught error when new data arrives, verified here independent of any call site.
 import { describe, expect, test, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ErrorBoundary } from './ErrorBoundary';
 
-// CrashFallback (the default fallback) calls useHelpSupport(), which needs a
-// full auth-backed provider chain in the real app — irrelevant to what this
-// file tests (the boundary's own catch/fallback/reset contract), so stubbed.
+// CrashFallback (the default) calls useHelpSupport(), which needs a full auth-backed provider chain; stubbed since this file tests only the boundary's own contract.
 vi.mock('./HelpSupport', () => ({ useHelpSupport: () => ({ openBugReport: vi.fn() }) }));
 
 function Bomb({ shouldThrow }: { shouldThrow: boolean }) {
@@ -85,8 +81,7 @@ describe('ErrorBoundary', () => {
     );
     expect(screen.getByText('Could not display this content.')).toBeInTheDocument();
 
-    // Same resetKey, still throwing — must NOT reset (proves it isn't reset
-    // on every re-render, only on an actual identity change).
+    // Same resetKey and still throwing: must not reset (it resets only on an actual identity change, not every re-render).
     rerender(
       <ErrorBoundary fallback={<p>Could not display this content.</p>} resetKey={dataV1}>
         <Bomb shouldThrow />
@@ -94,8 +89,7 @@ describe('ErrorBoundary', () => {
     );
     expect(screen.getByText('Could not display this content.')).toBeInTheDocument();
 
-    // New data (new resetKey) + no longer throwing — the old error must not
-    // permanently block this new, valid content.
+    // New data (new resetKey) and no longer throwing: the old error mustn't block the new, valid content.
     rerender(
       <ErrorBoundary fallback={<p>Could not display this content.</p>} resetKey={dataV2}>
         <Bomb shouldThrow={false} />

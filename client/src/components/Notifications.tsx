@@ -16,12 +16,9 @@ import { formatTimestamp } from '../lib/historyTime';
 import { NOTIFICATIONS_ENABLED, NOTIFICATION_TYPE_META } from '../config';
 import type { AppNotification } from '../types';
 
-// Notification System — see docs/notification-system-plan.md. One globally
-// mounted provider (same "provider owns its own state" shape as
-// ToastProvider/HelpSupportProvider) so the unread badge and the realtime
-// socket connection live for the whole authenticated session, not just while
-// the bell's dropdown happens to be open. NotificationBell (rendered once,
-// in TopBar.tsx) is the only consumer of useNotifications() today.
+// Notification System (docs/notification-system-plan.md). One globally mounted provider (like ToastProvider) so the unread
+// badge and realtime socket live for the whole authenticated session, not just while the dropdown is open. NotificationBell
+// (in TopBar.tsx) is the only consumer of useNotifications().
 
 interface NotificationContextValue {
   unreadCount: number;
@@ -59,8 +56,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     try {
       setUnreadCount(await getUnreadCount());
     } catch {
-      // A failed count refresh leaves the badge at its last known value —
-      // never worth surfacing to the teacher as an error.
+      // A failed count refresh leaves the badge at its last value; not worth surfacing as an error.
     }
   }, []);
 
@@ -97,8 +93,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
     setUnreadCount((c) => Math.max(0, c - 1));
     markNotificationRead(id).catch(() => {
-      // Best-effort: the next loadFirstPage()/refreshUnreadCount() call
-      // (e.g. the panel reopening) reconciles any drift from a failed write.
+      // Best-effort: the next loadFirstPage()/refreshUnreadCount() (e.g. the panel reopening) reconciles any drift.
     });
   }, []);
 
@@ -110,20 +105,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     });
   }, [show]);
 
-  // Realtime connection lifecycle: one socket per signed-in session, opened
-  // when a user is present AND the feature is on, closed on logout. Never
-  // opened for a signed-out visitor.
+  // One socket per signed-in session, opened when a user is present and the feature is on, closed on logout.
   useEffect(() => {
     if (!NOTIFICATIONS_ENABLED || !user) return undefined;
 
     const socket = connectNotificationSocket(getToken);
     socketRef.current = socket;
 
-    // The fallback described in docs/notification-system-plan.md §5: on
-    // every (re)connect, re-fetch the authoritative unread count so a
-    // notification created while this tab was offline/backgrounded is never
-    // silently lost. Sockets are the fast path; this is the correctness
-    // backstop.
+    // On every (re)connect, re-fetch the authoritative unread count so a notification created while this tab was offline or
+    // backgrounded isn't lost. Sockets are the fast path; this is the correctness backstop (docs/notification-system-plan.md).
     socket.on('connect', refreshUnreadCount);
 
     socket.on('notification:new', (incoming: AppNotification) => {

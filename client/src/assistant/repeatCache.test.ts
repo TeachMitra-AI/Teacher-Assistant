@@ -10,14 +10,9 @@ import {
 } from './repeatCache';
 import type { ProvenanceSource, ResolvedAction, SessionMemory } from './types';
 
-// The cache REPLAYS a server decision; it never makes one. Two rules keep that
-// true and both have a test that fails if the rule is removed:
-//
-//   1. Entries are keyed by catalogVersion, so a capability change cannot be
-//      served a decision made against the previous catalog.
-//   2. A decision with any memory-derived parameter is never stored (approved
-//      decision D12) — such a decision is a function of conversation state that
-//      has since moved on.
+// The cache replays a server decision and never makes one. Entries are keyed by catalogVersion, so a capability change
+// can't serve an old decision, and a decision with any memory-derived param is never stored, since it depends on
+// conversation state that has moved on. Each rule has a test that fails if it's removed.
 
 function action(provenance: Record<string, ProvenanceSource> = { topic: 'utterance' }): ResolvedAction {
   return {
@@ -55,8 +50,7 @@ describe('readCached / writeCached', () => {
 
   it('misses when the catalog version has moved on', () => {
     writeCached('make a worksheet', 1, action());
-    // The capability set changed; the stored decision may no longer be one the
-    // server would make, so it must not be replayed.
+    // The capability set changed, so the stored decision may no longer be one the server would make.
     expect(readCached('make a worksheet', 2)).toBeNull();
   });
 
@@ -112,11 +106,8 @@ describe('expiry and eviction', () => {
 });
 
 describe('readCachedMemoryUpdates — replaying a cache hit\'s effect on memory', () => {
-  // Bug fixed here: a cache HIT used to skip `mergeMemory` entirely (it was
-  // only ever called on the Tier-3 network path), so a slot the teacher stated
-  // once was correctly filled on every repeat of that utterance but never
-  // actually remembered past the first time. These assert the cache carries
-  // what a caller needs to replay that side effect on a hit.
+  // A cache hit used to skip `mergeMemory`, so a slot stated once was filled on repeats but never remembered. These
+  // assert the cache carries what a caller needs to replay that.
 
   function memoryUpdate(): SessionMemory {
     return { grade: { value: 'Class 3-5', source: 'utterance', turn: 1 } };
@@ -162,8 +153,7 @@ describe('readCachedMemoryUpdates — replaying a cache hit\'s effect on memory'
   });
 
   it('leaves the original round-trip of readCached untouched', () => {
-    // Existing contract: readCached still returns exactly the action, with no
-    // memoryUpdates leaking onto it.
+    // readCached still returns exactly the action, with no memoryUpdates on it.
     writeCached('make a worksheet', 1, action(), memoryUpdate());
     expect(readCached('make a worksheet', 1)).toEqual(action());
   });

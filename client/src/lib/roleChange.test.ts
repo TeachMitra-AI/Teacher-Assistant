@@ -10,8 +10,7 @@ describe('roleChangeConfirmation', () => {
     expect(c.body).toContain('full administrative access');
   });
 
-  // The reported issue asked about the grant; the reverse strands a colleague
-  // out of work they were doing, so it is confirmed just as loudly.
+  // The reverse of a grant strands a colleague out of work they were doing, so it's confirmed just as loudly.
   test('removing super_admin is also danger-toned and names the new role', () => {
     const c = roleChangeConfirmation('super_admin', 'teacher', 'Ravi');
     expect(c.tone).toBe('danger');

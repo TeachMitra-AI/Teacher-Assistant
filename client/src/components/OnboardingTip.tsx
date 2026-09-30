@@ -8,12 +8,9 @@ interface OnboardingTipProps {
   children: ReactNode;
 }
 
-// Inline, first-visit contextual tip (Phase 3). Deliberately not an overlay,
-// modal, or spotlight: it sits in the normal document flow at the top of the
-// feature it explains, so it never covers UI or blocks an action, and the whole
-// thing scrolls with the page on mobile. The parent decides whether to render it
-// (via useOnboardingTip) and owns the dismiss persistence — this component only
-// draws the callout and surfaces a single dismiss control.
+// Inline first-visit contextual tip. Deliberately not an overlay or spotlight: it sits in normal flow at the top of the
+// feature it explains, so it never covers UI or blocks an action and scrolls with the page on mobile. The parent decides
+// whether to render it (useOnboardingTip) and owns dismiss persistence; this only draws the callout and one dismiss control.
 export default function OnboardingTip({ icon: Icon = Lightbulb, onDismiss, children }: OnboardingTipProps) {
   return (
     <div className="onboarding-tip" role="note">

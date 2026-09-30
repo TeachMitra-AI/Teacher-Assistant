@@ -42,10 +42,8 @@ import { retryMessage } from '../lib/retryCountdown';
 import type { AssessmentFormat, Difficulty, Question, QuestionType, QuestionTypeSelection } from '../lib/resources';
 import type { ExamPaperMeta } from '../types';
 
-// Display label per format. A map rather than a ternary: with three formats a
-// `format === 'worksheet' ? … : …` silently titles an exit ticket "Quiz", and
-// the compiler cannot warn about it. Adding a format to ASSESSMENT_FORMATS now
-// makes this a type error until it is labelled.
+// Display label per format. A map rather than a ternary, which would silently title an exit ticket "Quiz"; a new format in
+// ASSESSMENT_FORMATS is a type error until labelled.
 const FORMAT_LABELS: Record<AssessmentFormat, string> = {
   quiz: 'Quiz',
   worksheet: 'Worksheet',
@@ -68,31 +66,23 @@ function defaultTitle(format: AssessmentFormat, topic: string, grade: string): s
   return `${kind}: ${t}${g}`.slice(0, 200);
 }
 
-// Keeps the question count inside [QUESTION_COUNT_MIN, QUESTION_COUNT_MAX] —
-// used both at blur time (see questionCountInput) and again right before a
-// generate/save request goes out, so the bound holds even if blur never fires
-// (e.g. Enter submitting the form mid-edit).
+// Keeps the question count inside [QUESTION_COUNT_MIN, QUESTION_COUNT_MAX]. Used on blur and again before a generate/save
+// request, so the bound holds even if blur never fires (e.g. Enter submitting mid-edit).
 function clampQuestionCount(n: number): number {
   if (Number.isNaN(n)) return QUESTION_COUNT_MIN;
   return Math.min(QUESTION_COUNT_MAX, Math.max(QUESTION_COUNT_MIN, n));
 }
 
-// Collapses the picker's array back to a bare value when only one type is
-// selected — the single-select request/prompt the server has always seen
-// (see buildGeneratorPrompt's own "types.length === 1" branch server-side).
+// Collapses the picker's array to a bare value when one type is selected, the single-select shape the server has always seen
+// (see buildGeneratorPrompt's "types.length === 1" branch).
 function questionTypePayload(types: QuestionType[]): QuestionTypeSelection {
   return types.length === 1 ? types[0] : types;
 }
 
-// The form's own starting values, in one place because two things now need
-// them: the initial state below, and "Clear AI fields", which restores each
-// AI-filled field to its DEFAULT rather than blanking it. Blanking would leave
-// the required topic empty and the Generate button disabled, which reads as a
-// broken page rather than as an undo.
-//
-// `instructions` is deliberately absent: it is not a router slot (there is no
-// reliable way to tell extra instructions from the topic itself), so the router
-// never fills it and undo has no business resetting what a teacher typed there.
+// The form's starting values, shared by the initial state and "Clear AI fields", which restores each AI-filled field to its
+// default rather than blanking it (a blank required topic disables Generate and reads as a broken page).
+// `instructions` is absent on purpose: it isn't a router slot (extra instructions can't be reliably told from the topic), so
+// undo shouldn't reset what a teacher typed there.
 const FORM_DEFAULTS = {
   format: 'quiz' as AssessmentFormat,
   grade: '',
@@ -104,22 +94,14 @@ const FORM_DEFAULTS = {
   language: 'en',
 };
 
-// Where a prefilled value came from, shown beside its label. The marker is
-// TEXT, never colour alone (CHANGE-12), and sits inside the <span> that labels
-// the field so a screen reader announces it as part of that label.
-//
-// Renders nothing where a marker would be noise rather than information:
-//
-//   - 'user'    — the teacher has since edited it; it is simply their value now.
-//   - 'default' — difficulty, question type and count are ALWAYS filled, by the
-//                 form itself, whether or not AI was involved. Flagging six
-//                 fields as "guessed" reads as failure when it is just the form
-//                 behaving normally.
+// Where a prefilled value came from, shown beside its label. The marker is text, never colour alone, and sits inside the label
+// <span> so a screen reader announces it as part of the label. It renders nothing where it would be noise: 'user' (the teacher
+// has edited it, so it's their value) and 'default' (difficulty, question type and count are always filled by the form, so
+// flagging them reads as failure).
 function FieldNote({ source, uncertain }: { source: ProvenanceSource | undefined; uncertain: boolean }) {
   if (!source || source === 'user' || source === 'default') return null;
 
-  // An ambiguous value the router chose not to guess at — "class 5-6" mapping
-  // to two grade bands, typically. Worth a teacher's glance.
+  // An ambiguous value the router chose not to guess at (e.g. "class 5-6" mapping to two grade bands); worth a glance.
   if (uncertain) return <span className="ai-field-note uncertain">Check this</span>;
 
   const text = source === 'memory' ? 'Remembered' : source === 'profile' ? 'Your default' : 'AI';
@@ -138,58 +120,37 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
   const [subject, setSubject] = useState(FORM_DEFAULTS.subject);
   const [topic, setTopic] = useState(FORM_DEFAULTS.topic);
   const [difficulty, setDifficulty] = useState<Difficulty>(FORM_DEFAULTS.difficulty);
-  // Issue #95: a teacher can tick more than one specific type via the
-  // dropdown below. The array can go empty (deselecting the last ticked
-  // type) — handleGenerate validates that the same way it validates a blank
-  // topic — and collapses back to a bare value on submit when only one is
-  // picked, so the request/prompt/validation the server sees for that
-  // overwhelmingly common case is byte-for-byte what it always was (see
-  // buildGeneratorPrompt's own "types.length === 1" branch).
+  // A teacher can tick several specific types in the dropdown below. The array can go empty (deselecting the last one);
+  // handleGenerate validates that like a blank topic. On submit it collapses to a bare value when only one is picked, so the
+  // request the server sees for that common case is unchanged (buildGeneratorPrompt's "types.length === 1" branch).
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([FORM_DEFAULTS.questionType]);
-  // Whether the question-type checklist popover is open — closed on an
-  // outside click or Escape, same shared behavior as every other popover in
-  // the app (ClassroomModeMenu, ProfileMenu).
+  // Whether the question-type popover is open; closed by outside click or Escape like the other popovers (ClassroomModeMenu, ProfileMenu).
   const [questionTypeOpen, setQuestionTypeOpen] = useState(false);
   const questionTypeRef = useRef<HTMLDivElement>(null);
   useDismissable(questionTypeOpen, questionTypeRef, () => setQuestionTypeOpen(false));
   const [questionCount, setQuestionCount] = useState<number>(FORM_DEFAULTS.questionCount);
-  // The number input's own displayed text, kept separate from `questionCount`
-  // so a teacher can freely clear/retype it (e.g. clearing "10" to type "25")
-  // without every keystroke snapping the box back to QUESTION_COUNT_MIN the
-  // instant it's empty or momentarily out of range. Clamped into range only
-  // on blur — same drafts-separate-from-committed-value pattern as
-  // FeeStatusBoard.tsx's per-student amount inputs.
+  // The number input's displayed text, separate from `questionCount` so a teacher can clear and retype (e.g. "10" to "25")
+  // without each keystroke snapping to QUESTION_COUNT_MIN. Clamped on blur, like FeeStatusBoard.tsx's amount inputs.
   const [questionCountInput, setQuestionCountInput] = useState(String(FORM_DEFAULTS.questionCount));
   const [language, setLanguage] = useState(FORM_DEFAULTS.language);
   const [instructions, setInstructions] = useState('');
 
-  // Reflects `questionCount` into the input's text whenever it changes from
-  // outside the input itself (AI prefill, undo/reset to default) — see
-  // questionCountInput's declaration above for why the two are kept apart.
+  // Reflects `questionCount` into the input when it changes from outside (AI prefill, undo); see questionCountInput above.
   useEffect(() => {
     setQuestionCountInput(String(questionCount));
   }, [questionCount]);
 
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
-  // Every Gemini API key exhausted (see api.ts's ApiError.retryAt) — shown
-  // and auto-clears in place of `error` while active; see the effect below.
+  // Every Gemini API key exhausted (ApiError.retryAt): shown in place of `error` and auto-clears; see the effect below.
   const [retryAt, setRetryAt] = useState<number | null>(null);
   const { remainingMs: retryRemainingMs, ready: retryReady } = useRetryCountdown(retryAt);
   useEffect(() => {
     if (retryAt != null && retryReady) setRetryAt(null);
   }, [retryAt, retryReady]);
-  // Synchronous twin of `generating`, checked and set before anything else in
-  // handleGenerate. `generating` is React state: it is read from the closure
-  // captured when THIS render happened, and `setGenerating(true)` only takes
-  // effect once React commits the next render. A second rapid click on
-  // Generate can invoke handleGenerate again before that commit lands, so
-  // `if (generating) return;` alone reads a stale `false` and lets a second
-  // real generation request through — confirmed via a network trace showing
-  // two POST /api/resources/generate calls from one rapid-click burst. A ref
-  // has no such gap: it is written and read immediately, same tick, same
-  // guard the page already uses for `appliedDraftId` and `reportedGeneration`
-  // above for the identical class of race.
+  // Synchronous twin of `generating`, set before anything else in handleGenerate. State is read from the render's closure and
+  // updates only on commit, so a rapid second click could pass `if (generating) return;` and send a second request (seen as two
+  // POST /api/resources/generate calls from one burst). A ref has no such gap, like `appliedDraftId` and `reportedGeneration` above.
   const generatingRef = useRef(false);
 
   // Result / preview state (present only after a successful generation).
@@ -199,60 +160,42 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
   const [contentDirty, setContentDirty] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Structured Question Model (Generator v2, docs/generator-v2-plan.md).
-  // `structuredQuestions === null` means "this result has no native structured
-  // questions" — either STRUCTURED_QUESTIONS_ENABLED is off, or the server
-  // didn't return a parseable `structured` field — and the page falls back to
-  // exactly the legacy content/textarea flow below, unchanged. `docInstructions`
-  // is the document's own "Answer all questions…" line — NOT the same as the
-  // `instructions` state above, which is the free-text prompt sent TO the AI.
+  // Structured Question Model (docs/generator-v2-plan.md). `structuredQuestions === null` means the result has no native
+  // structured questions (flag off, or no parseable `structured` field), and the page uses the legacy content/textarea flow.
+  // `docInstructions` is the document's "Answer all questions…" line, not the `instructions` state above (the prompt sent to the AI).
   const [structuredQuestions, setStructuredQuestions] = useState<Question[] | null>(null);
   const [docInstructions, setDocInstructions] = useState('');
   const [structuredDirty, setStructuredDirty] = useState(false);
   const [questionErrors, setQuestionErrors] = useState<Record<string, string>>({});
 
-  // Exam-paper letterhead (Phase 3) — deterministic teacher input, never sent
-  // to Gemini. Initialized fresh on each successful generation, prefilled
-  // from the teacher's site-wide defaults (Settings) and School/User identity.
+  // Exam-paper letterhead: teacher input, never sent to Gemini. Re-initialized on each generation from the site-wide defaults (Settings) and School/User identity.
   const [examMeta, setExamMeta] = useState<ExamPaperMeta>({});
 
-  // ---- AI Action Router prefill (milestone M3) ----------------------------
-  //
-  // The entire integration is: seed the form state above, and show a banner.
-  // Nothing below touches handleGenerate, handleSave, examMeta or the request
-  // body — the Generate path stays byte-for-byte what it is for a teacher who
-  // never uses the router.
-  //
-  // This page does NOT consume a router context and renders identically when
-  // the assistant is absent or switched off. It imports three functions from
-  // one module, which is the whole of its coupling to the feature.
+  // ---- AI Action Router prefill ----
+  // The integration is only: seed the form state above and show a banner. Nothing below touches handleGenerate, handleSave,
+  // examMeta or the request body, so the Generate path is unchanged for teachers who never use the router. The page consumes no
+  // router context and renders the same when the assistant is absent or off; it imports three functions from one module.
   const [searchParams, setSearchParams] = useSearchParams();
   const [provenance, setProvenance] = useState<Record<string, ProvenanceSource>>({});
   const [lowConfidence, setLowConfidence] = useState<string[]>([]);
   const [aiUtterance, setAiUtterance] = useState('');
   const [bannerDismissed, setBannerDismissed] = useState(false);
-  // Latched for the whole visit, so clearing the AI fields does not suddenly
-  // pop the onboarding tip into the space the banner just left (CHANGE-10).
+  // Latched for the visit, so clearing the AI fields doesn't pop the onboarding tip into the banner's space.
   const [routedVisit, setRoutedVisit] = useState(false);
 
   // Flag off ⇒ the handle is ignored and no router code path is reachable.
   const draftId = ASSISTANT_ENABLED ? searchParams.get('ai') ?? '' : '';
 
-  // Which draft has already been applied. Without this, the effect below would
-  // re-apply the same values over the teacher's edits on every re-render.
+  // Which draft was already applied; otherwise the effect below would re-apply values over the teacher's edits on every render.
   const appliedDraftId = useRef<string | null>(null);
 
-  // Keyed on the handle, NOT on mount (CHANGE-7). React Router does not remount
-  // this component when only the search parameter changes — the path is still
-  // /generator — so a mount-only read silently does nothing the second time a
-  // teacher routes here. The sequence that exposes it: coach → prefill → back →
-  // coach → new command → nothing happens, and the feature looks broken.
+  // Keyed on the handle, not mount: React Router doesn't remount when only the search param changes (the path stays
+  // /generator), so a mount-only read did nothing the second time a teacher routed here (coach → prefill → back → coach → new command).
   useEffect(() => {
     if (!draftId || appliedDraftId.current === draftId) return;
 
-    // Recorded before the null check so an unusable handle is not retried on
-    // every render. Missing, expired, cleared, wrong-action and storage-failure
-    // all land here and leave the form exactly as it would have been.
+    // Recorded before the null check so an unusable handle isn't retried each render. Missing, expired, cleared, wrong-action
+    // and storage-failure all land here and leave the form as it was.
     appliedDraftId.current = draftId;
 
     const prefill = loadPrefill(draftId);
@@ -273,33 +216,19 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
     setAiUtterance(prefill.utterance);
     setBannerDismissed(false);
     setRoutedVisit(true);
-    // A new draft is a new session, so it gets its own outcome (M8). Without
-    // this, routing a second time in the same mounted page — the CHANGE-7
-    // sequence — would silently report nothing.
+    // A new draft is a new session with its own outcome; otherwise a second routing in the same mounted page would report nothing.
     reportedGeneration.current = false;
-    // No generation request fires here. The teacher reviews, then presses
-    // Generate — that review step is what makes prefilling safe at all.
+    // No generation request fires here: the teacher reviews, then presses Generate, which is what makes prefilling safe.
   }, [draftId]);
 
-  // Whether this visit's prefill has already been reported as generated. The
-  // latch lives here as well as in the transport because the cheapest place to
-  // not fire an event is before calling anything at all.
+  // Whether this visit's prefill was already reported as generated. The transport latches too, but not calling at all is cheapest.
   const reportedGeneration = useRef(false);
 
-  // The `generated` outcome (M8) — the half of the field-edit rate that says the
-  // routing actually worked.
-  //
-  // ─── WHY THIS IS AN OBSERVER AND NOT A LINE IN handleGenerate ────────────
-  // `handleGenerate` is a protected area (README §6 #1), and spec §6.7 is
-  // explicit: "Router concepts inside handleGenerate, handleSave or any request
-  // body mean the integration has overreached." So the fact is established from
-  // OUTSIDE instead. `content` becomes non-null only when a generation
-  // succeeded, and AI provenance being present means those fields came from a
-  // prefill. Together they are exactly the event, and the generation path gains
-  // zero lines and zero router imports.
-  //
-  // Latched per visit, so pressing Regenerate does not report a second outcome —
-  // which is also what keeps the two-rows-per-session ceiling true.
+  // The `generated` outcome: the half of the field-edit rate that says the routing worked.
+  // An observer, not a line in handleGenerate: that function is off limits to router concepts, so the fact is established from
+  // outside. `content` becomes non-null only on a successful generation, and AI provenance means those fields came from a
+  // prefill, so together they are the event and the generation path gains no lines or router imports.
+  // Latched per visit, so Regenerate doesn't report a second outcome (which keeps the two-rows-per-session ceiling).
   useEffect(() => {
     if (reportedGeneration.current) return;
     if (content === null) return;
@@ -309,10 +238,8 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
     notePrefillGeneration();
   }, [content, provenance]);
 
-  // A field the router filled has been edited by hand. Its provenance becomes
-  // 'user' (so undo leaves it alone — undo reverses the AI, not the teacher),
-  // its marker disappears, and a correction event records the field NAME and
-  // where the value had come from. Never the value itself.
+  // A router-filled field was edited by hand. Its provenance becomes 'user' (undo reverses the AI, not the teacher), its
+  // marker disappears, and a correction event records the field name and where the value came from, never the value.
   function noteEdit(field: string) {
     const from = provenance[field];
     if (!from || from === 'user') return;
@@ -321,15 +248,9 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
     setLowConfidence((prev) => prev.filter((f) => f !== field));
   }
 
-  // Toggles one question type on/off (issue #95) inside the checklist
-  // popover. "Mixed" is exclusive with every other type — ticking it clears/
-  // replaces the whole selection, and it's the only row left enabled while
-  // it's active (see the disabled prop in the popover below); ticking a
-  // specific type while "Mixed" is active starts a fresh, non-mixed
-  // selection instead of appending to it. The result can go empty
-  // (unticking the last one) — handleGenerate validates that the same way
-  // it already validates a blank topic, rather than the picker silently
-  // refusing to let the last one go.
+  // Toggles one question type in the popover. "Mixed" is exclusive: ticking it replaces the selection and leaves it the only
+  // enabled row; ticking a specific type while "Mixed" is on starts a fresh selection. The result can go empty (unticking the
+  // last); handleGenerate validates that like a blank topic instead of the picker refusing.
   function toggleQuestionType(value: QuestionType) {
     setQuestionTypes((prev) => {
       if (value === 'mixed') return prev.includes('mixed') ? [] : ['mixed'];
@@ -340,9 +261,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
     noteEdit('questionType');
   }
 
-  // What the closed dropdown button shows — the selected labels joined, or a
-  // placeholder once every type has been unticked (handleGenerate is what
-  // actually blocks submitting that state, same as a blank topic).
+  // What the closed dropdown shows: the selected labels, or a placeholder once all are unticked (handleGenerate blocks submitting that).
   const questionTypeSummary = questionTypes.length === 0
     ? 'Select question types'
     : questionTypes.map((t) => QUESTION_TYPES.find((q) => q.value === t)?.label ?? t).join(', ');
@@ -369,17 +288,14 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
     setLowConfidence([]);
     setAiUtterance('');
 
-    // Drop the handle with a REPLACE navigation: no new history entry, so Back
-    // still returns to wherever the teacher came from rather than re-entering
-    // the page they just cleared.
+    // Drop the handle with a REPLACE navigation, so Back returns to where the teacher came from instead of the page they cleared.
     const next = new URLSearchParams(searchParams);
     next.delete('ai');
     setSearchParams(next, { replace: true });
   }
 
   const aiFieldCount = Object.keys(provenance).length;
-  // Auto-dismissed once a result exists — at that point the banner describes a
-  // form the teacher has already acted on.
+  // Auto-dismissed once a result exists, since the banner then describes a form already acted on.
   const showAiBanner = aiFieldCount > 0 && !bannerDismissed && content === null;
 
   async function handleGenerate(e?: FormEvent) {
@@ -398,10 +314,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
       if (!ok) return;
     }
 
-    // Normally already clamped on blur (see questionCountInput) — this only
-    // matters if Enter submitted the form before the field ever blurred.
-    // Committed back to state, not just used locally, so a later Save writes
-    // metadata that matches what was actually requested here.
+    // Normally clamped on blur; this matters only if Enter submitted first. Committed to state so a later Save writes the requested metadata.
     const count = clampQuestionCount(questionCount);
     if (count !== questionCount) {
       setQuestionCount(count);
@@ -431,12 +344,8 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
       setTab('preview');
       if (user) setExamMeta(buildInitialExamMeta(user, user.preferences.examPaperDefaults));
 
-      // Structured Question Model (Generator v2) — only enters structured
-      // mode behind the flag, matching docs/generator-v2-plan.md's own
-      // staged rollout ("web Generator behind the client flag, turned on
-      // only in dev"). With the flag off, `result.structured` is simply
-      // never looked at, and the page behaves byte-for-byte as it did
-      // before this feature existed.
+      // Structured mode only behind the flag (docs/generator-v2-plan.md staged rollout); with it off, `result.structured` is
+      // never read and the page behaves as before.
       const parsedDoc = STRUCTURED_QUESTIONS_ENABLED ? parseStructuredDocument(result.structured) : null;
       setStructuredQuestions(parsedDoc ? parsedDoc.questions : null);
       setDocInstructions(parsedDoc ? parsedDoc.instructions : '');
@@ -462,9 +371,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
       return;
     }
 
-    // Structured Question Model (Generator v2): validate every question
-    // before saving — a UX nicety only, the server's own schema is always
-    // the final authority (docs/generator-v2-plan.md §8).
+    // Validate every question before saving: a UX nicety, the server's schema is the authority (docs/generator-v2-plan.md).
     if (structuredQuestions !== null) {
       if (structuredQuestions.length === 0) {
         show('Add at least one question before saving', 'error');
@@ -495,10 +402,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
         grade: grade.trim() || undefined,
         subject: subject.trim() || undefined,
         language,
-        // In structured mode the server re-renders `content` itself from
-        // `structured.questions` (docs/generator-v2-plan.md §2c) — the
-        // client never computes the printable Markdown, so `content` is
-        // simply omitted rather than sent stale.
+        // In structured mode the server re-renders `content` from `structured.questions`, so it's omitted rather than sent stale.
         ...(structuredQuestions !== null ? {} : { content }),
         structured: structuredPayload,
       });
@@ -512,8 +416,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
     }
   }
 
-  // Same reasoning as FORMAT_LABELS: a Record makes a new format a compile
-  // error here rather than silently inheriting the quiz icon.
+  // Like FORMAT_LABELS: a Record makes a new format a compile error instead of silently inheriting the quiz icon.
   const FormatIcon = FORMAT_ICONS[format];
 
   return (
@@ -540,11 +443,9 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
           />
         )}
 
-        {/* The AI banner takes precedence over the first-visit tip (CHANGE-10).
-            Two stacked callouts plus a form pushes the form below the fold on a
-            phone, and of the two the banner is the one describing what just
-            happened and carrying the undo. The tip is NOT marked dismissed, so
-            it still appears on a later manual visit. */}
+        {/* The AI banner takes precedence over the first-visit tip: two stacked callouts plus the form would push the form below
+            the fold on a phone, and the banner describes what just happened and carries the undo. The tip isn't marked
+            dismissed, so it still appears on a later manual visit. */}
         {generatorTip.visible && !routedVisit && (
           <OnboardingTip onDismiss={generatorTip.dismiss}>
             Pick a format and topic to generate a printable quiz or worksheet with an answer key. Your school
@@ -647,10 +548,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
                   <div className="generator-type-popover" role="listbox" aria-label="Question type" aria-multiselectable="true">
                     {QUESTION_TYPES.filter((q) => q.value !== 'mixed').map((q) => {
                       const active = questionTypes.includes(q.value);
-                      // "Mixed" is exclusive — while it's ticked, every other
-                      // row is disabled rather than hidden, so a teacher can
-                      // still see what they'd be picking from without it
-                      // doing anything until they untick Mixed.
+                      // "Mixed" is exclusive: while ticked, other rows are disabled rather than hidden, so options stay visible.
                       const disabled = questionTypes.includes('mixed');
                       return (
                         <label key={q.value} className={`generator-type-option${disabled ? ' disabled' : ''}`}>
@@ -688,8 +586,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
                 max={QUESTION_COUNT_MAX}
                 value={questionCountInput}
                 onChange={(e) => {
-                  // Free typing: the box shows exactly what was typed, even
-                  // empty or momentarily out of range — only clamped on blur.
+                  // Free typing: the box shows exactly what was typed (even empty or out of range); clamped on blur.
                   setQuestionCountInput(e.target.value);
                   const n = parseInt(e.target.value, 10);
                   if (!Number.isNaN(n)) setQuestionCount(n);
@@ -820,9 +717,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
               ) : (
                 <div className="response-body workspace-preview exam-paper">
                   <ExamHeader meta={examMeta} fallbackTitle={title} subject={subject} grade={grade} />
-                  {/* The letterhead already presents the title/metadata, so the
-                      generated preamble is stripped from display (never from
-                      the content that gets saved). */}
+                  {/* The letterhead already shows the title/metadata, so the generated preamble is stripped from display, never from the saved content. */}
                   <div dangerouslySetInnerHTML={{ __html: formatResponse(stripAssessmentPreamble(content) || '') }} />
                 </div>
               )}

@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { BREAKER_OPEN_MS, createCircuitBreaker } from './circuitBreaker';
 
-// The breaker's only job is to stop the teacher waiting on an endpoint that is
-// not answering. The clock is injected so the sixty-second window is asserted
-// rather than waited for.
+// The breaker stops the teacher waiting on an endpoint that isn't answering. The clock is injected so the window is
+// asserted, not waited for.
 
 function fakeClock(start = 1_000_000) {
   let now = start;
@@ -49,7 +48,7 @@ describe('createCircuitBreaker', () => {
     clock.advance(BREAKER_OPEN_MS - 1000);
     breaker.trip();
 
-    // The original window has now passed, but the second failure was recent.
+    // The original window has passed, but the second failure was recent.
     clock.advance(1000);
     expect(breaker.isOpen()).toBe(true);
   });

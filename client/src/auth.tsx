@@ -15,12 +15,8 @@ import type {
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  // Live, admin-toggleable flags as of the last session bootstrap (initial
-  // load or sign-in) — null only before that first response lands. A caller
-  // gating UI on one of these should fall back to the matching build-time
-  // VITE_* constant in config.ts when this is null, the same "courtesy client
-  // gate, server stays authoritative" contract those constants already
-  // document (see MessageBubble.tsx).
+  // Live admin-toggleable flags as of the last session bootstrap; null only before the first response. Callers gating UI
+  // should fall back to the matching build-time VITE_* constant in config.ts (a courtesy gate; the server stays authoritative).
   featureFlags: FeatureFlags | null;
   login: (c: LoginCredentials) => Promise<AuthOutcome>;
   register: (c: RegisterCredentials) => Promise<AuthOutcome>;
@@ -33,15 +29,11 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// A successful sign-in returns a session; a sign-in that can't complete yet
-// returns a school picker instead. One response shape covers both, so this
-// narrows it before the caller has to care.
+// Sign-in returns either a session or a school picker; this narrows the shared response shape for the caller.
 type AuthResponseOrPicker = AuthResponse & { needsSchoolSelection?: boolean; schools?: SchoolOption[] };
 
-// The server reports "registered, but an admin hasn't approved you" and
-// "registration was turned down" as 403s carrying a stable code rather than
-// prose, so the UI can show a dedicated screen for each instead of dumping an
-// error string into the form. Anything else stays a thrown ApiError.
+// "Pending approval" and "rejected" arrive as 403s with a stable code so the UI can show a dedicated screen for each.
+// Anything else stays a thrown ApiError.
 function outcomeForError(err: unknown): AuthOutcome | null {
   if (!(err instanceof ApiError)) return null;
   if (err.status === 403 && err.message === 'pending_approval') return { kind: 'pending' };
@@ -56,29 +48,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Bumped on every reconciliation attempt (the initial mount restore below,
-  // and any later cross-tab resync — see the 'storage' listener effect).
-  // Checking it after each async step is what replaces the old effect-scoped
-  // `cancelled` flag: with two independent call sites now able to trigger a
-  // reconcile, a slower response from an attempt that's since been
-  // superseded by a newer one (e.g. two rapid logins in another tab) must
-  // never win and clobber more current state.
+  // Bumped on every reconciliation attempt (initial restore and cross-tab resync). Checking it after each async step stops a
+  // slower, superseded attempt (e.g. two rapid logins in another tab) from clobbering newer state.
   const reconcileIdRef = useRef(0);
 
-  // Reads the CURRENT token from storage (never a value captured in a
-  // closure) and syncs user/featureFlags to match it. Used both for the
-  // initial page-load restore and, via the 'storage' listener effect below,
-  // to resync this tab's identity when a DIFFERENT tab changes what's in
-  // localStorage — sign in as someone else, sign out, or a session that
-  // becomes invalid. See docs/enterprise-exploratory-qa-report.md EQA-002.
-  //
-  // Deliberately does not touch `loading` past the very first call: a
-  // cross-tab resync should update the displayed identity/permissions in
-  // place, not take over the whole screen with the app's initial loading
-  // spinner every time. That matters because api.ts's own silent
-  // access-token refresh (tryRefresh) also calls setSession() — a routine,
-  // same-user token rotation that happens automatically in the background —
-  // and that must not be visually disruptive in every other open tab.
+  // Reads the current token from storage (never a closure) and syncs user/featureFlags to it. Used for the initial restore
+  // and, via the 'storage' listener, when another tab signs in, out or invalidates the session (docs/enterprise-exploratory-qa-report.md).
+  // Doesn't touch `loading` after the first call, so a resync or api.ts's background token refresh (tryRefresh) updates
+  // identity in place instead of flashing the loading spinner in every open tab.
   const reconcile = useCallback(async () => {
     const id = ++reconcileIdRef.current;
     if (!getToken()) {
@@ -96,9 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setFeatureFlags(res.featureFlags);
       }
     } catch {
-      // Covers both "no session" and "refresh token also expired/revoked"
-      // (api()'s silent-refresh already tried and failed before this
-      // throws) — either way, there's no valid session to restore.
+      // Covers "no session" and "refresh token expired/revoked" (api()'s silent refresh already failed).
       setSession(null, null);
       if (id === reconcileIdRef.current) {
         setUser(null);
@@ -114,19 +89,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     reconcile();
   }, [reconcile]);
 
-  // Cross-tab session sync (EQA-002 fix). The 'storage' event fires in every
-  // OTHER same-origin tab whenever localStorage changes, but never in the tab
-  // that made the write — so this can only ever be reacting to a DIFFERENT
-  // tab's sign-in/out, which also rules out a same-tab feedback loop
-  // structurally (not something this handler has to guard against itself).
-  // The tab that actually performs a login/logout keeps updating its own
-  // state directly via authenticate()/logout() below, unchanged.
+  // Cross-tab session sync. The 'storage' event fires only in OTHER same-origin tabs, so this reacts to another tab's
+  // sign-in/out and can't loop on its own writes. The tab that performs the login/logout updates its own state directly.
   useEffect(() => {
     function onStorage(event: StorageEvent) {
-      // A 'storage' event can in principle be dispatched for sessionStorage
-      // too; this app never uses it for anything auth-related, but checking
-      // storageArea keeps this listener scoped to exactly what setSession()
-      // writes to.
+      // Ignore sessionStorage events; this only cares about the localStorage that setSession() writes.
       if (event.storageArea !== null && event.storageArea !== window.localStorage) return;
       if (!shouldResyncAuthOnStorageEvent(event.key, TOKEN_KEY)) return;
       reconcile();
@@ -135,18 +102,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('storage', onStorage);
   }, [reconcile]);
 
-  // Shared tail of every sign-in path (password and Google alike): store the
-  // session, or hand back whichever non-success outcome the server reported.
+  // Shared tail of every sign-in path (password and Google): store the session or return the non-success outcome.
   const authenticate = useCallback(async (path: string, body: unknown): Promise<AuthOutcome> => {
     try {
       const res = await api<AuthResponseOrPicker>(path, { method: 'POST', body, auth: false });
       if (res.needsSchoolSelection) {
         return { kind: 'needs_school', schools: res.schools ?? [] };
       }
-      // Invalidate any reconcile() still in flight (initial mount restore,
-      // or a cross-tab resync from the 'storage' listener) so its response —
-      // reflecting whatever the token said a moment ago — can never land
-      // after this and overwrite the identity just signed in here.
+      // Invalidate any in-flight reconcile() so a stale response can't overwrite the identity just signed in.
       reconcileIdRef.current += 1;
       setSession(res.token, res.refreshToken);
       setUser(res.user);
@@ -161,19 +124,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback((c: LoginCredentials) => authenticate('/auth/login', c), [authenticate]);
 
-  // Registration creates an active account (server-side), then immediately
-  // signs the teacher in with the same credentials via authenticate() — so a
-  // future account that DOES come back pending/rejected (e.g. school policy
-  // changes) still gets the correct dedicated screen instead of a broken
-  // "signed in" state.
+  // Registration creates an active account server-side, then signs in via authenticate(), so a future pending/rejected
+  // result still gets its dedicated screen.
   const register = useCallback(async (c: RegisterCredentials): Promise<AuthOutcome> => {
     await api<{ status: string }>('/auth/register', { method: 'POST', body: c, auth: false });
     return authenticate('/auth/login', { email: c.email, password: c.password });
   }, [authenticate]);
 
-  // One call serves Google sign-up and Google sign-in, mirroring the single
-  // server endpoint: passing `signup: true` makes it a sign-up (the server
-  // assigns a default school — this app no longer collects a school code).
+  // Serves Google sign-up and sign-in via one endpoint; `signup: true` makes it a sign-up (the server assigns a default school).
   const loginWithGoogle = useCallback(
     (idToken: string, options: GoogleAuthOptions = {}) =>
       authenticate('/auth/google', { idToken, ...options }),
@@ -189,12 +147,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    // Clear local state immediately so sign-out feels instant; tell the
-    // server to revoke the session in the background on a best-effort basis
-    // (a failure here shouldn't block or roll back the client-side logout).
-    // Same reasoning as authenticate() above: invalidate any reconcile() in
-    // flight first, so it can't land afterward and resurrect a user we just
-    // signed out.
+    // Clear local state at once so sign-out feels instant; revoke server-side in the background (best-effort, a failure
+    // doesn't roll back). Invalidate any in-flight reconcile() first so it can't resurrect the signed-out user.
     reconcileIdRef.current += 1;
     const refreshToken = getRefreshToken();
     setSession(null, null);

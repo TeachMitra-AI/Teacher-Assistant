@@ -1,13 +1,8 @@
-// A real SarasTech screen capture (client/public/product/<name>-light.png and
-// -dark.png) framed for the marketing page. Each capture is taken from the
-// running product with a real Gemini-generated answer — never a mock-up — in a
-// light and a dark version; CSS swaps them with the site theme (see
-// .product-shot-img in index.css). The hidden one is display:none, so it is
-// neither painted nor fetched (loading="lazy"), and only the visible one is
-// exposed to assistive tech. `width`/`height` are the image's CSS size
-// (captures are 2x) and reserve its space so nothing shifts as it loads.
-// `fade` clamps the frame to `maxHeight` and fades the bottom edge into the page
-// so a long screen ends gracefully instead of being cut mid-line.
+// A real SarasTech screen capture (client/public/product/<name>-light.png and -dark.png, taken from the running product with a
+// real Gemini answer, never a mock-up), framed for the marketing page. CSS swaps light/dark with the site theme
+// (.product-shot-img in index.css); the hidden one is display:none, so it's neither painted nor fetched (loading="lazy") and
+// only the visible one reaches assistive tech. `width`/`height` are the CSS size (captures are 2x) and reserve space so nothing
+// shifts. `fade` clamps the frame to `maxHeight` and fades the bottom edge so a long screen isn't cut mid-line.
 
 interface ProductShotProps {
   name: string;

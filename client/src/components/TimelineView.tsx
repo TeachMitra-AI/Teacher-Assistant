@@ -1,7 +1,5 @@
-// Learning Representation — timeline (ADR Phase D2). Same connected-line
-// pattern as ProcessDiagramView, with a dot marker instead of a numbered
-// node and a "when" pill — visually distinct from a process (sequence of
-// actions) even though the underlying layout technique is shared.
+// Learning Representation: timeline. The same connected-line pattern as ProcessDiagramView, with a dot marker and a "when"
+// pill, so it stays visually distinct from a process (a sequence of actions).
 import type { TimelineData } from '../types';
 
 export default function TimelineView({ data }: { data: TimelineData }) {

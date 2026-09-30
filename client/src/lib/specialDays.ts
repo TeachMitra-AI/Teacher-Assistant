@@ -1,22 +1,9 @@
-// Festival / national-day / international-day content for the Coach welcome
-// screen's Daily Highlight. Split from welcome.ts (which owns the greeting
-// and priority logic) purely because this table is large — see
-// lib/dailyContent.ts for the same split applied to the everyday
-// fact/thought table.
-//
-// Two kinds of date, two tables:
-//
-// - FIXED_SPECIAL_DAYS: days that fall on the same Gregorian month/day every
-//   year (national days, solar-calendar harvest festivals, Christmas).
-//   Matched by month/day only — no year — so one entry covers every year
-//   forever with zero yearly maintenance.
-//
-// - YEAR_SPECIFIC_SPECIAL_DAYS: festivals whose date is set by a lunar or
-//   lunisolar calendar (or, for the two Eids, by moon sighting) and so moves
-//   on the Gregorian calendar from year to year. These are NEVER guessed as
-//   a fixed month/day — each entry is only valid for the specific year it is
-//   filed under. See the comment above that table for sourcing/accuracy
-//   notes and how to extend it.
+// Festival, national-day and international-day content for the Coach welcome screen's Daily Highlight. Split from
+// welcome.ts (greeting and priority logic) only because the table is large; lib/dailyContent.ts does the same for the
+// everyday fact/thought table.
+// Two tables: FIXED_SPECIAL_DAYS (same Gregorian month/day every year, matched without a year, so no yearly maintenance)
+// and YEAR_SPECIFIC_SPECIAL_DAYS (lunar, lunisolar or moon-sighting festivals that move each year; never guessed as a
+// fixed date, so each entry is valid only for its own year).
 
 export interface SpecialDay {
   id: string;
@@ -32,9 +19,8 @@ export interface SpecialDay {
   detailBody: string;
 }
 
-// ---- Fixed-date special days ------------------------------------------------
-//
-// Extend by appending an entry — getSpecialDay below needs no changes.
+// ---- Fixed-date special days ----
+// Extend by appending an entry; getSpecialDay needs no changes.
 export const FIXED_SPECIAL_DAYS: SpecialDay[] = [
   {
     id: 'makar-sankranti',
@@ -170,26 +156,14 @@ export const FIXED_SPECIAL_DAYS: SpecialDay[] = [
   },
 ];
 
-// ---- Movable (lunar / lunisolar / moon-sighting) festivals ------------------
-//
-// These do NOT get a fixed month/day: their Gregorian date shifts from year
-// to year, so a "14 March every year" style entry would be wrong most years.
-// Instead each year gets its own array of dated entries, filed under that
-// year's key. A year with no entry here simply falls through to the normal
-// daily fact/thought for every date in it — see getSpecialDay below — rather
-// than showing a guessed or incorrect festival date.
-//
-// SOURCING / ACCURACY: dates below follow published Indian festival
-// calendars for 2025 and 2026. The two Eids are additionally subject to
-// local moon sighting and can shift by a day within India itself — treat
-// them (and, to a lesser extent, the other lunar dates) as best-effort, not
-// guaranteed to the day. Verify against an official calendar before relying
-// on this for anything beyond the Coach welcome screen.
-//
-// MAINTENANCE: once each year's calendar is out, add a new `YYYY: [...]`
-// entry below — nothing else in this file or in welcome.ts needs to change.
-// Deliberately no entries beyond 2026 (this module's authoring date) rather
-// than guessing years further out.
+// ---- Movable (lunar / lunisolar / moon-sighting) festivals ----
+// Each year has its own array of dated entries, filed under that year's key. A year with no entry falls through to the
+// normal daily fact/thought (see getSpecialDay) rather than showing a guessed date.
+// Dates follow published Indian festival calendars for 2025 and 2026. The two Eids also depend on local moon sighting and
+// can shift a day within India, so treat them (and to a lesser extent the other lunar dates) as best-effort and verify
+// against an official calendar before relying on them beyond this screen.
+// To extend: add a `YYYY: [...]` entry once that year's calendar is out; nothing else changes. No entries beyond 2026,
+// rather than guessing further out.
 export const YEAR_SPECIFIC_SPECIAL_DAYS: Record<number, SpecialDay[]> = {
   2025: [
     {
@@ -485,10 +459,8 @@ export const YEAR_SPECIFIC_SPECIAL_DAYS: Record<number, SpecialDay[]> = {
   ],
 };
 
-// Fixed days are checked first: they are unambiguous (no moon-sighting or
-// regional variation), and a handful of them are civic/national days that
-// should never be silently displaced by a movable festival landing on the
-// same date in a given year.
+// Fixed days are checked first: they're unambiguous, and civic/national days shouldn't be displaced by a movable festival
+// landing on the same date.
 export function getSpecialDay(date: Date = new Date()): SpecialDay | null {
   const month = date.getMonth() + 1;
   const day = date.getDate();

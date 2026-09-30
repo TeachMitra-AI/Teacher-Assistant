@@ -21,9 +21,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  // Unmount first (vitest runs a file's afterEach before the setup file's
-  // cleanup), so useJsonLd/useDocumentMeta can tidy <head> themselves; only
-  // then wipe whatever a test put there.
+  // Unmount first (vitest runs a file's afterEach before the setup file's cleanup) so useJsonLd/useDocumentMeta tidy <head>
+  // themselves; then wipe whatever a test put there.
   cleanup();
   document.head.innerHTML = '';
 });

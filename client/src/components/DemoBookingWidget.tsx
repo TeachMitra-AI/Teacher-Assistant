@@ -11,10 +11,8 @@ import {
   type DemoBookingRole,
 } from '../lib/scheduleDemo';
 
-// The Schedule a Call booking widget: date -> time -> details -> confirm ->
-// success, all in one panel (no page navigation between steps) — see
-// docs/schedule-a-call-plan.md §2/§7. Date/time selection itself lives in
-// DemoBookingCalendar, shared with ManageBookingPage's reschedule flow.
+// The Schedule a Call booking widget: date → time → details → confirm → success in one panel, with no navigation between
+// steps. Date/time selection lives in DemoBookingCalendar, shared with ManageBookingPage's reschedule flow.
 type Step = 'picking' | 'details' | 'confirm' | 'success';
 
 const ROLE_OPTIONS: { value: DemoBookingRole; label: string }[] = [
@@ -23,9 +21,7 @@ const ROLE_OPTIONS: { value: DemoBookingRole; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
-// "YYYY-MM-DD" -> "Mon, 30 Sep" for the confirm step's summary — a UTC-noon
-// anchor so the parsed date never shifts to the previous/next day under a
-// visitor's local timezone offset.
+// "YYYY-MM-DD" -> "Mon, 30 Sep" for the confirm summary, anchored at UTC noon so the date never shifts under the visitor's timezone offset.
 function formatDateLabel(dateKey: string): string {
   const [y, m, d] = dateKey.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('en-IN', {
@@ -114,9 +110,7 @@ export function DemoBookingWidget() {
       setStep('success');
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        // Someone else took the slot between selection and confirmation —
-        // send the visitor back to pick a fresh one rather than retrying
-        // blind.
+        // Someone else took the slot between selection and confirmation: send the visitor back to pick another instead of retrying blind.
         setError(err.message);
         setStep('picking');
         setSelectedTime(null);

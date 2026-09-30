@@ -24,10 +24,7 @@ describe('QuestionCard — editable mode', () => {
     const onChange = vi.fn((next: Question) => { current = next as McqQuestion; });
     const { rerender } = render(<QuestionCard question={current} index={0} total={1} editable onChange={onChange} />);
 
-    // Controlled input: type one character at a time, re-rendering with the
-    // updated value in between (a bare user.type() against a value that
-    // never advances would only ever capture the single most recent
-    // keystroke, not the accumulated string).
+    // Controlled input: type one character at a time, re-rendering with the new value between, since a bare user.type() against a static value only captures the last keystroke.
     for (const ch of 'Paris') {
       await user.type(screen.getByLabelText('Question 1 option A'), ch);
       rerender(<QuestionCard question={current} index={0} total={1} editable onChange={onChange} />);

@@ -1,9 +1,6 @@
-// Library integration for the Structured Question Model (Generator v2) — see
-// docs/generator-v2-plan.md §5. Unlike GeneratorPage, structured mode here
-// depends only on the LOADED resource's own `structured.schemaVersion`, not
-// on any client feature flag (once a resource is structured, editing it keeps
-// working even if the flag that created it is later turned off — see the
-// plan's §2g/§10 reasoning) — so this file needs no config mocking gymnastics.
+// Library integration for the Structured Question Model (docs/generator-v2-plan.md). Unlike GeneratorPage, structured mode here
+// depends only on the loaded resource's own `structured.schemaVersion`, not a client flag (a structured resource stays editable
+// even if the flag that created it is later turned off), so no config mocking is needed.
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -106,9 +103,7 @@ describe('ResourceWorkspace — structured resource (schemaVersion 2)', () => {
 
     await userEvent.click(screen.getByRole('tab', { name: /preview/i }));
     expect(screen.getByText('Answer all questions carefully.')).toBeInTheDocument();
-    // Two matches expected: the visible structured Preview AND the always-
-    // present (aria-hidden) print document, which independently renders the
-    // resource's plain `content` string — unrelated pre-existing behavior.
+    // Two matches expected: the visible structured Preview and the always-present (aria-hidden) print document, which renders the plain `content` string on its own.
     expect(screen.getAllByText('What is 1/2 + 1/2?').length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByLabelText('Question 1 text')).not.toBeInTheDocument();
   });

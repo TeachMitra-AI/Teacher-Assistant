@@ -1,21 +1,10 @@
-// Calendar-day math for HistoryTab's "show Absent days too" feature — kept
-// separate from teacherAttendanceLabels.ts (pure formatting) since this is
-// about which dates exist and what kind of day each one is, not how a
-// value is displayed.
-//
-// buildRows/summarizeRows below started as HistoryTab.tsx-only helpers, then
-// moved here once ReportsTab.tsx needed the exact same "fill every day,
-// then count outcomes" logic per teacher instead of just for "yourself" —
-// same reasoning as isWeeklyOffDate already living here rather than in the
-// one component that first needed it.
+// Calendar-day math for HistoryTab's "show Absent days too": which dates exist and what kind of day each is, kept apart from
+// teacherAttendanceLabels.ts (formatting). buildRows/summarizeRows live here because ReportsTab needed the same "fill every
+// day, then count outcomes" per teacher.
 import type { TeacherAttendanceDto, SchoolAttendanceConfigDto, SchoolHolidayDto } from '../types';
 //
-// Day-of-week here is computed from a plain "YYYY-MM-DD" string using the
-// BROWSER's local calendar (new Date(y, m-1, d).getDay()), not IST — safe
-// because a date string alone has no time-of-day component to convert:
-// constructing and reading a Date in the same local frame never shifts
-// which calendar day it lands on, regardless of what timezone the browser
-// itself is in.
+// Day-of-week is computed from a plain "YYYY-MM-DD" using the browser's local calendar (new Date(y, m-1, d).getDay()); with
+// no time-of-day involved, that never shifts the calendar day whatever the timezone.
 
 /** "YYYY-MM-DD" -> 0=Sunday..6=Saturday. */
 function dateStringDayOfWeek(dateStr: string): number {
@@ -23,13 +12,7 @@ function dateStringDayOfWeek(dateStr: string): number {
   return new Date(y, m - 1, d).getDay();
 }
 
-/**
- * Is this date one of the school's weekly off days? `weeklyOffDays` is
- * SchoolAttendanceConfig's own comma-separated string ("0" or "0,6") —
- * mirrors lib/teacherAttendance.js's isWeeklyOff() parsing exactly
- * (including the same "empty string means none configured" guard against
- * Number('') === 0).
- */
+/** Is this date a weekly off day? `weeklyOffDays` is SchoolAttendanceConfig's comma-separated string ("0" or "0,6"); parsing mirrors isWeeklyOff() in lib/teacherAttendance.js, including the empty-string guard against Number('') === 0. */
 export function isWeeklyOffDate(dateStr: string, weeklyOffDays: string): boolean {
   const offDays = weeklyOffDays
     .split(',')
@@ -41,16 +24,9 @@ export function isWeeklyOffDate(dateStr: string, weeklyOffDays: string): boolean
 }
 
 /**
- * Every "YYYY-MM-DD" date in `month` ("YYYY-MM"), from the 1st up through
- * either the last day of the month or `throughDate` (today), whichever is
- * earlier — so a month in progress never lists days that haven't happened
- * yet, and a past month lists its full length.
- *
- * `sinceDate`, when given, is the earliest date attendance tracking could
- * possibly apply (the school's config creation date) — a month entirely
- * before it is skipped, and a month straddling it starts partway through,
- * so old months don't get "filled in" with Absent/Weekly-off days from
- * before the school even turned this feature on.
+ * Every "YYYY-MM-DD" date in `month` from the 1st through the month end or `throughDate` (today), whichever is earlier.
+ * `sinceDate` is the earliest date tracking could apply (the school's config creation date): a month before it is skipped and
+ * one straddling it starts partway, so old months aren't filled with Absent/Weekly-off days from before the feature was on.
  */
 export function buildMonthDates(month: string, throughDate: string, sinceDate?: string): string[] {
   const [y, m] = month.split('-').map(Number);
@@ -72,12 +48,9 @@ export function buildMonthDates(month: string, throughDate: string, sinceDate?: 
 }
 
 /**
- * The earliest date a month's "fill every day" calendar should ever cover —
- * the later of when the school's attendance settings were created and when
- * this specific person's own account was created, so neither a school that
- * just turned tracking on, nor a teacher who joined after that, sees Absent
- * for time before either existed. `undefined` when there's no config yet
- * (buildMonthDates callers should skip filling entirely in that case).
+ * The earliest date the fill-every-day calendar should cover: the later of the school's settings creation and this person's
+ * account creation, so neither shows Absent for time before it existed. `undefined` when there's no config yet (callers
+ * skip filling).
  */
 export function sinceDateFor(config: SchoolAttendanceConfigDto | null, personCreatedAt: string | undefined): string | undefined {
   if (!config) return undefined;
@@ -91,16 +64,11 @@ export function sinceDateFor(config: SchoolAttendanceConfigDto | null, personCre
 export interface HistoryRow {
   date: string;
   record: TeacherAttendanceDto | null;
-  // Set only when there's no record AND it's not an ordinary missed day —
-  // "Weekly off" or "Holiday — <reason>". Absent days have neither a
-  // record nor this label.
+  // Set only when there's no record and it isn't an ordinary missed day: "Weekly off" or "Holiday — <reason>".
   offLabel: string | null;
 }
 
-/**
- * Fills in every day of the month, not just the ones with a record — a day
- * with no check-in and no reason to be off is a genuine Absent.
- */
+/** Fills in every day of the month, not just those with a record; a day with no check-in and no reason to be off is a genuine Absent. */
 export function buildRows(
   dates: string[],
   records: TeacherAttendanceDto[],
@@ -147,7 +115,7 @@ export const SUMMARY_LABELS: [keyof HistorySummary, string][] = [
   ['pending_regularization', 'Missing checkout'],
 ];
 
-/** Weekly-off/holiday days are never counted — they're not an attendance outcome. */
+/** Weekly-off and holiday days aren't an attendance outcome, so they're never counted. */
 export function summarizeRows(rows: HistoryRow[]): HistorySummary {
   const summary: HistorySummary = {
     present: 0,

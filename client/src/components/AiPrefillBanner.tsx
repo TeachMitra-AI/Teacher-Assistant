@@ -13,25 +13,13 @@ interface AiPrefillBannerProps {
   onDismiss: () => void;
 }
 
-// Shown on the Generator when the AI Action Router has pre-filled the form
-// (milestone M3). Presentational only — it reads no store, fires no telemetry,
-// and knows nothing about drafts or navigation. The page owns all of that.
-//
-// It earns its place by making the routing VISIBLE. A form that silently fills
-// itself is the failure mode described in the architecture document as "an
-// invisible product": teachers cannot tell which phrasings work, so they try
-// twice, fail once, and go back to clicking. Showing the utterance alongside
-// what it produced is how the mapping becomes learnable, and the undo is how a
-// wrong guess costs one tap instead of a teacher's confidence.
-//
-// Accessibility (CHANGE-12) follows the conventions already used across this
-// codebase rather than inventing new ones:
-//   - aria-live="polite" because this announces something that happened WITHOUT
-//     the teacher asking — a navigation they did not click. "polite" waits for a
-//     pause rather than interrupting whatever is being read.
-//   - The undo is a real <button> with a descriptive label, not an icon alone.
-//   - The low-confidence notice is TEXT, never colour alone, matching the rule
-//     that provenance markers carry an accessible label.
+// Shown on the Generator when the AI Action Router has pre-filled the form. Presentational only: it reads no store, fires no
+// telemetry and knows nothing about drafts or navigation; the page owns all that.
+// It makes the routing visible. A form that fills itself silently is an "invisible product": teachers can't tell which
+// phrasings work. Showing the utterance beside what it produced makes the mapping learnable, and the undo makes a wrong
+// guess cost one tap.
+// Accessibility: aria-live="polite" because this announces something the teacher didn't ask for, waiting for a pause; the
+// undo is a real <button> with a descriptive label; and the low-confidence notice is text, never colour alone.
 export default function AiPrefillBanner({
   fieldCount,
   lowConfidenceCount,

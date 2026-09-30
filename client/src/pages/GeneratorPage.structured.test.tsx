@@ -1,10 +1,6 @@
-// Structured Question Model (Generator v2) behavior — a SEPARATE file from
-// GeneratorPage.test.tsx because STRUCTURED_QUESTIONS_ENABLED is a top-level
-// `const` computed once from import.meta.env when config.ts first loads;
-// vi.stubEnv after that point can't retroactively change an already-evaluated
-// constant. Forcing it true belongs in this file's own `vi.mock('../config')`
-// (hoisted, applies to every test in this file), not in a per-test env stub —
-// see docs/generator-v2-plan.md's Stage 2 notes for this exact gotcha.
+// Structured Question Model behaviour, separate from GeneratorPage.test.tsx because STRUCTURED_QUESTIONS_ENABLED is a
+// top-level const computed once when config.ts loads, so vi.stubEnv afterwards can't change it. Forcing it true belongs in this
+// file's hoisted `vi.mock('../config')` (docs/generator-v2-plan.md).
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

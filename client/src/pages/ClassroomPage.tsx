@@ -72,11 +72,8 @@ export default function ClassroomPage({ preferences }: { preferences: ReturnType
     setSearchParams((prev) => {
       const params = new URLSearchParams(prev);
       params.set('class', id);
-      // Selecting a class from My Classes is a dead end on its own — jump
-      // straight to Students so the choice leads somewhere immediately,
-      // matching §4's "Students/Attendance/Fees are always scoped to one
-      // class at a time" mobile flow. A tab already showing class-scoped
-      // content (Students/Attendance/Fees/Reports) is left as-is.
+      // Selecting a class from My Classes is a dead end alone, so jump to Students so the choice leads somewhere (Students/
+      // Attendance/Fees are always scoped to one class on mobile). A tab already showing class-scoped content is left as-is.
       if (!params.get('tab') || params.get('tab') === 'classes') params.set('tab', 'students');
       return params;
     });

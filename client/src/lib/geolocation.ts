@@ -1,10 +1,6 @@
-// GPS read + retry, for the check-in/check-out evidence capture step
-// (attendance-system-design.html §3: "set an accuracy floor... retry a
-// couple of times before accepting a reading"). Split into a pure retry
-// loop (getLocationWithRetry) and a thin browser-API wrapper
-// (requestCurrentPosition) so the retry logic is testable with an injected
-// fake reader — no real navigator.geolocation needed in tests, same
-// reasoning as resolveFeatureFlag's own extraction.
+// GPS read + retry for check-in/check-out evidence (attendance-system-design.html: an accuracy floor and a couple of retries
+// before accepting a reading). A pure retry loop (getLocationWithRetry) plus a thin browser wrapper (requestCurrentPosition),
+// so the loop is testable with an injected reader.
 export interface LocationReading {
   lat: number;
   lon: number;
@@ -20,13 +16,9 @@ export interface GeolocationRetryOptions {
 export class LocationUnavailableError extends Error {}
 
 /**
- * Reads location up to `maxAttempts` times, returning as soon as one
- * reading is at or under `accuracyThresholdMeters`. If none ever meet the
- * threshold, returns the best (lowest-accuracy-number) reading seen rather
- * than failing outright — a genuine teacher standing at school still
- * deserves a check-in even on a phone with a noisy GPS chip; the server is
- * what ultimately decides if the reading is good enough (it always
- * recomputes independently, see teacherAttendanceApi.ts's own comment).
+ * Reads location up to `maxAttempts` times, returning at the first reading at or under `accuracyThresholdMeters`. If none
+ * qualifies it returns the most accurate reading seen rather than failing, so a teacher at school with a noisy GPS chip can
+ * still check in; the server recomputes and decides.
  */
 export async function getLocationWithRetry(
   getPosition: (options: PositionOptions) => Promise<GeolocationPosition>,
@@ -45,19 +37,11 @@ export async function getLocationWithRetry(
     if (reading.accuracyMeters <= accuracyThresholdMeters) return reading;
   }
 
-  // best is guaranteed non-null: the loop above always runs at least once
-  // (maxAttempts defaults to 3 and is never called with 0 in this app), and
-  // every iteration either returns early or sets best.
+  // best is non-null: the loop runs at least once (maxAttempts defaults to 3) and each iteration returns or sets it.
   return best as LocationReading;
 }
 
-/**
- * Haversine distance in metres — mirrors server/src/lib/teacherAttendance.js's
- * distanceMeters() exactly, so a "you are Xm away" shown before check-in
- * never disagrees with what the server computes once the request lands.
- * Purely a UX nudge (greys out the button early) — the server always
- * recomputes this independently and is what actually decides the result.
- */
+/** Haversine distance in metres, mirroring distanceMeters() in server/src/lib/teacherAttendance.js so a "you are Xm away" hint never disagrees with the server. A UX nudge only; the server decides. */
 export function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const EARTH_RADIUS_METERS = 6371000;
   const toRad = (deg: number) => (deg * Math.PI) / 180;
@@ -69,7 +53,7 @@ export function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: n
   return EARTH_RADIUS_METERS * c;
 }
 
-/** Thin Promise wrapper over the real browser API — not itself unit tested, by design (see the split above). */
+/** Thin Promise wrapper over the browser API; not unit tested (see the split above). */
 export function requestCurrentPosition(options: PositionOptions): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {

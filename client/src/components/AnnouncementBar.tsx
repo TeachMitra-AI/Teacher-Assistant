@@ -2,15 +2,11 @@ import { useEffect, useState } from 'react';
 import { ArrowRight, X } from 'lucide-react';
 import { ANNOUNCEMENTS, pickAnnouncement, type Announcement } from '../announcements';
 
-// Slim, non-sticky strip above the home page header. Content comes from
-// announcements.ts; this component only picks the active entry and handles
-// dismissal. Prerendered HTML shows the bar; a visitor who dismissed it
-// earlier in this browser tab session has it hidden right after mount
-// (sessionStorage is read in an effect, so server/prerender output and the
-// first client render always match).
+// Slim, non-sticky strip above the home page header. Content comes from announcements.ts; this component picks the active
+// entry and handles dismissal. Prerendered HTML shows the bar; a visitor who dismissed it earlier this tab session has it
+// hidden after mount (sessionStorage is read in an effect, so prerender output and the first client render match).
 
-// sessionStorage on purpose: the X hides the bar for the current visit only, and
-// it comes back on the next visit. Do not switch this to localStorage.
+// sessionStorage on purpose: the X hides the bar for this visit only. Don't switch this to localStorage.
 const STORAGE_PREFIX = 'announcement-dismissed:';
 
 function wasDismissed(id: string): boolean {

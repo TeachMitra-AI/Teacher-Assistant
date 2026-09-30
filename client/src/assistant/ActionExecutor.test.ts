@@ -1,20 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-// The executor's own source, as text. Vite's ?raw import rather than node:fs:
-// it needs no @types/node, works identically under jsdom, and is already typed
-// by the vite/client reference in src/vite-env.d.ts.
+// The executor's own source as text, via Vite's ?raw import (no @types/node needed, works under jsdom).
 import executorSource from './ActionExecutor.ts?raw';
 import { executeAction } from './ActionExecutor';
 import { REGISTERED_ACTION_IDS, REGISTERED_DOMAINS } from './handlers';
 import { DRAFT_STORAGE_KEY } from './draftStore';
 import type { ActionDecision, ActionEffect, ResolvedAction } from './types';
 
-// The executor is the last thing standing between a server response and a
-// navigation, so almost everything here is a test of what it REFUSES to do.
-//
-// The single most important assertion in this file is the `execute` downgrade:
-// it is the client-side half of "nothing generates without a human click", and
-// it is the one guard a future server rollout could otherwise walk straight
-// past.
+// The executor is the last step between a server response and a navigation, so most tests check what it refuses to do.
+// The key one is the `execute` downgrade, the client half of "nothing generates without a human click".
 
 function action(overrides: Partial<ResolvedAction> = {}): ResolvedAction {
   return {
@@ -58,9 +51,7 @@ describe('dispatch', () => {
 
 describe('decision handling', () => {
   it('DOWNGRADES execute to prefill instead of acting on it', () => {
-    // Phase 1 never emits this. Handling it defensively is what stops a future
-    // server rollout surprising a service-worker-cached client into generating
-    // without teacher review.
+    // Not emitted yet; handling it stops a newer server surprising a cached client into generating without review.
     const navigate = vi.fn();
     const outcome = executeAction(action({ decision: 'execute' }), {
       navigate,
@@ -97,8 +88,7 @@ describe('decision handling', () => {
 
 describe('the effect ceiling', () => {
   it.each<ActionEffect>(['write', 'destructive'])('refuses effect %s at any decision', (effect) => {
-    // Registry-declared and already capped server-side; asserted independently
-    // here so the ceiling still holds against a misconfigured future server.
+    // Already capped server-side; asserted independently so the ceiling holds against a misconfigured server.
     const navigate = vi.fn();
     expect(executeAction(action({ effect }), { navigate, utterance: 'x' })).toBe('passthrough');
     expect(navigate).not.toHaveBeenCalled();
@@ -206,13 +196,12 @@ describe('a broken handler must not break the composer', () => {
 });
 
 describe('the registry-driven invariant', () => {
-  // Adding an action must require one new handler and one registration line, and
-  // ZERO edits to ActionExecutor.ts. These two assertions are the control that
-  // makes that claim checkable in review rather than merely stated in a comment.
+  // Adding an action must need one handler and one registration line and no edit to ActionExecutor.ts; these two
+  // assertions make that checkable in review.
   const source = executorSource;
 
   it('can actually read the file it is guarding', () => {
-    // A text guard that silently matches nothing is worse than no guard at all.
+    // A guard that silently matches nothing is worse than none.
     expect(source).toContain('export function executeAction');
   });
 
@@ -225,13 +214,12 @@ describe('the registry-driven invariant', () => {
   });
 
   it('contains no route string — those live only in handlers/', () => {
-    // Guardrail G16. The executor navigates only to a path a lookup handed it.
+    // The executor navigates only to a path a lookup handed it.
     expect(source).not.toMatch(/['"`]\/[a-z]/);
   });
 
   it('dispatches through the map, so a new action needs no change here', () => {
-    // Both registered actions run through the identical code path above; the
-    // only thing that distinguishes them is which handler the lookup returned.
+    // Both actions run through the same path; only the handler returned by the lookup differs.
     expect(REGISTERED_ACTION_IDS).toContain('generate_assessment');
     expect(REGISTERED_ACTION_IDS).toContain('open_generator');
   });

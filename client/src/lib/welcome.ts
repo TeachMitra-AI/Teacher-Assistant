@@ -1,13 +1,6 @@
-// Dynamic Coach/Home welcome experience: time-based greeting, special-day
-// priority, and a deterministic "Daily Highlight". This file owns the
-// greeting/priority logic; the large data tables live in sibling files —
-// lib/specialDays.ts (festivals/national/international days) and
-// lib/dailyContent.ts (the 366-entry fact/thought-of-the-day calendar) —
-// purely because those tables are too large to sit comfortably alongside
-// logic in one file. Everything here is a pure function of a `Date`, so the
-// same date always produces the same greeting/highlight (no Math.random(),
-// no per-render drift) and the whole module is trivially unit-testable
-// without mocking the clock beyond passing in a fixed Date.
+// Coach/Home welcome experience: time-based greeting, special-day priority and a deterministic Daily Highlight. The large
+// data tables live in lib/specialDays.ts and lib/dailyContent.ts. Everything is a pure function of a `Date` (no
+// Math.random), so the same date gives the same result and tests only pass in a fixed Date.
 
 import { getSpecialDay, type SpecialDay } from './specialDays';
 import { getDailyFact, KIND_META, type DailyFact } from './dailyContent';
@@ -26,8 +19,7 @@ interface GreetingPeriodConfig {
   endHour: number; // exclusive
 }
 
-// Ordered, non-wrapping ranges; anything not covered (21:00–04:59) is night —
-// see getGreetingPeriod's fallback rather than a fourth wrapping range here.
+// Ordered, non-wrapping ranges; anything uncovered (21:00–04:59) is night via getGreetingPeriod's fallback.
 const GREETING_PERIODS: GreetingPeriodConfig[] = [
   { key: 'morning', label: 'Good morning', startHour: 5, endHour: 12 },
   { key: 'afternoon', label: 'Good afternoon', startHour: 12, endHour: 17 },
@@ -44,13 +36,8 @@ function greetingLabel(period: GreetingPeriod): string {
   return GREETING_PERIODS.find((p) => p.key === period)?.label ?? NIGHT_LABEL;
 }
 
-// Rotating subtitle set. Selection is deterministic (day-of-year modulo
-// length), not random, so the subtitle is stable for the whole day and only
-// changes date to date. This is the ONE place dayOfYear-modulo selection is
-// still used — deliberately: it picks between four generic, interchangeable
-// sentences with no calendar meaning of their own, unlike the Daily
-// Highlight content (lib/dailyContent.ts), which is keyed to specific
-// month/day entries and must never drift across leap years.
+// Rotating subtitle, chosen by day-of-year modulo length so it's stable all day. The one place that selection is still
+// used: these are interchangeable sentences, unlike the Daily Highlight (lib/dailyContent.ts), which is keyed by month/day.
 const SUBTITLES: string[] = [
   'Ready to make learning more engaging today?',
   'What are we teaching today?',
@@ -68,7 +55,7 @@ export function getSubtitle(date: Date = new Date()): string {
   return SUBTITLES[dayOfYear(date) % SUBTITLES.length];
 }
 
-// ---- Combined view models ---------------------------------------------------
+// ---- Combined view models ----
 
 export interface WelcomeGreeting {
   /** e.g. "Good morning, Asha 👋" */
@@ -122,10 +109,7 @@ function fromDailyFact(fact: DailyFact): WelcomeHighlight {
   };
 }
 
-// Special-day content always wins over a normal fact/thought: only one
-// highlight is ever shown, never both. See specialDays.ts's getSpecialDay
-// for how fixed vs. movable festivals are resolved, and dailyContent.ts's
-// getDailyFact for how a normal day's fact/thought is chosen.
+// Special-day content always wins over a normal fact/thought; only one highlight is shown (see getSpecialDay and getDailyFact).
 export function getDailyHighlight(date: Date = new Date()): WelcomeHighlight {
   const special = getSpecialDay(date);
   if (special) return fromSpecialDay(special);

@@ -2,12 +2,9 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { ExamPaperMeta } from '../types';
 
-// Teacher-facing "Paper details" form for the exam-paper letterhead
-// (school name, exam name, date, time, maximum marks, teacher name, custom
-// instructions). Fully optional — every field left blank just means
-// ExamHeader.tsx omits or blanks that row on the printed page. Controlled
-// component: the parent (GeneratorPage / ResourceWorkspace) owns the
-// ExamPaperMeta value and persists it into Resource.structured.examMeta.
+// "Paper details" form for the exam-paper letterhead (school name, exam name, date, time, maximum marks, teacher name, custom
+// instructions). Every field is optional; a blank one just makes ExamHeader.tsx omit or blank that row. Controlled: the
+// parent (GeneratorPage / ResourceWorkspace) owns the ExamPaperMeta and persists it into Resource.structured.examMeta.
 export default function ExamHeaderEditor({
   value, onChange,
 }: {

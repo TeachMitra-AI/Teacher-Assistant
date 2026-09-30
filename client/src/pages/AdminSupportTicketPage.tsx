@@ -20,9 +20,7 @@ function formatDateTime(iso: string): string {
   });
 }
 
-// Known, human-labeled context keys — anything else in the JSON blob (a
-// future field added without a UI change, see the design doc's §4 rationale)
-// falls back into the raw-context toggle below rather than being dropped.
+// Known, labeled context keys; anything else in the JSON blob (e.g. a future field added without a UI change) falls back into the raw-context toggle instead of being dropped.
 const CONTEXT_LABELS: Record<string, string> = {
   route: 'Route', buildId: 'Build', userAgent: 'Browser', viewport: 'Viewport',
   theme: 'Theme', language: 'Language', requestId: 'Request ID',
@@ -209,8 +207,7 @@ export default function AdminSupportTicketPage({ preferences }: { preferences: R
                   </dl>
                 </section>
 
-                {/* Future-ready placeholders — Phase 3, not built yet (see
-                    docs/help-support-architecture.md's Phase 2 section). */}
+                {/* Placeholders for a later phase (docs/help-support-architecture.md); not built yet. */}
                 <p className="ticket-placeholder">Assigned to: — (planned)</p>
                 <p className="ticket-placeholder">Attachments: none (planned)</p>
               </div>

@@ -1,7 +1,5 @@
-// Typed client for the Admin Support Inbox (Phase 2). Thin wrappers over
-// api(), the same shape as lib/admin.ts — every listing is paginated
-// SERVER-side, and role enforcement (super_admin only) happens server-side;
-// nothing here can widen what the caller is allowed to see.
+// Typed client for the Admin Support Inbox: thin wrappers over api(), like lib/admin.ts. Listings are paginated server-side
+// and role enforcement (super_admin only) is server-side too.
 import { api } from '../api';
 import type { Paged } from './admin';
 import type {
@@ -20,9 +18,7 @@ export interface SupportTicketQuery {
   to?: string;
 }
 
-// Mirrors lib/admin.ts's listParams: empty filters are dropped rather than
-// sent as e.g. `status=`, and `page=1` is omitted so the common case
-// produces a clean URL.
+// Mirrors lib/admin.ts's listParams: empty filters are dropped and `page=1` is omitted for a clean URL.
 function listParams(params: Record<string, string | number | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {

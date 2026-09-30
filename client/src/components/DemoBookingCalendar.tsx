@@ -2,13 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Calendar, Clock } from 'lucide-react';
 import { formatSlotLabel, getDemoBookingSlots, type DemoBookingConfig } from '../lib/scheduleDemo';
 
-// The date-strip + time-slot-grid picker shared by DemoBookingWidget (new
-// booking) and ManageBookingPage (reschedule) — see
-// docs/schedule-a-call-plan.md's reuse note. A horizontally-scrolling strip
-// of the next bookable weekdays rather than a full month grid: every date it
-// lists is already a real working day (DEMO_BOOKING_WORK_DAYS), so there's
-// no "disabled" state to draw, and it needs no separate desktop/mobile
-// layout.
+// The date-strip + time-slot-grid picker shared by DemoBookingWidget (new booking) and ManageBookingPage (reschedule). A
+// horizontally scrolling strip of the next bookable weekdays instead of a month grid: every listed date is already a working
+// day (DEMO_BOOKING_WORK_DAYS), so there's no disabled state to draw and no separate desktop/mobile layout.
 function formatDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }

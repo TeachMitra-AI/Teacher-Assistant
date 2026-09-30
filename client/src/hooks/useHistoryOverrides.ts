@@ -3,22 +3,11 @@ import { api, ApiError } from '../api';
 import { useToast } from '../components/Toast';
 import type { HistoryItem } from '../types';
 
-// Rename/pin state for the Coach history sidebar (see Sidebar.tsx /
-// HistoryItemMenu.tsx). Persisted server-side on the Query row itself
-// (`title`, `pinned` — server/prisma/schema.prisma) via PATCH
-// /api/queries/:id, so a pin or rename survives a refresh, a different
-// device, or signing in as the same teacher elsewhere.
-//
-// `items` (the same array Sidebar already receives from CoachPage) is the
-// source of truth for both fields — this hook adds only a thin optimistic
-// overlay on top: togglePin/rename apply the change to local state
-// immediately, fire the PATCH in the background, and roll the overlay back
-// (with an error toast) if the request fails. A successful response needs no
-// reconciliation — the value it confirms is exactly what's already showing.
-//
-// A rename only overrides the SIDEBAR LABEL. `item.query` — the actual
-// question text `selectHistory` uses to rebuild the reopened turn — is never
-// touched, so renaming cannot corrupt what a reopened conversation shows.
+// Rename/pin state for the Coach history sidebar (Sidebar.tsx / HistoryItemMenu.tsx), persisted on the Query row
+// (`title`, `pinned`) via PATCH /api/queries/:id, so it survives refreshes and other devices.
+// `items` (from CoachPage) is the source of truth; this hook adds a thin optimistic overlay: togglePin/rename apply
+// immediately, fire the PATCH in the background and roll back with an error toast on failure. A rename only overrides the
+// sidebar label; `item.query`, which selectHistory uses to rebuild the reopened turn, is never touched.
 
 interface Override {
   title?: string;
@@ -41,9 +30,7 @@ export function useHistoryOverrides(items: HistoryItem[]) {
     [overrides]
   );
 
-  // Derived, not stored: "pinned" always means "isPinned(item.id)" for
-  // whichever items currently exist. Sidebar uses this only to decide
-  // whether pinned items need sorting to the top at all.
+  // Derived, not stored; the sidebar only uses it to decide whether pinned items need sorting to the top.
   const pinnedIds = useMemo(
     () => items.filter((item) => isPinned(item.id)).map((item) => item.id),
     [items, isPinned]
@@ -73,8 +60,7 @@ export function useHistoryOverrides(items: HistoryItem[]) {
     }
   }, [findItem, titleFor, show]);
 
-  // Called once a history item is actually deleted, so a stray optimistic
-  // override can't linger for an id that no longer appears in the list.
+  // Called once an item is deleted, so a stray optimistic override doesn't linger for an id no longer in the list.
   const forget = useCallback((id: string) => {
     setOverrides((prev) => {
       if (!(id in prev)) return prev;

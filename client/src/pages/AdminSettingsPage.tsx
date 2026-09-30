@@ -8,26 +8,18 @@ import { listFeatureFlags, setBooleanSetting, setRoleListSetting } from '../lib/
 import { ROLE_LABELS } from '../config';
 import type { AdminFeatureFlag, Role } from '../types';
 
-// Every role the app has, for rendering the Assistant Access checkboxes —
-// reuses config.ts's existing ROLE_LABELS (already the client's canonical
-// role vocabulary; see ManagePage.tsx for the same convention) rather than
-// declaring a second list here.
+// Every role, for the Assistant Access checkboxes; reuses config.ts's ROLE_LABELS (the canonical role vocabulary, as in ManagePage.tsx).
 const ALL_ROLES = Object.keys(ROLE_LABELS) as Role[];
 
-// Admin Settings — lets a super_admin temporarily override existing env-var
-// configuration at runtime, no redeploy needed. Two sections, driven by the
-// same registry-backed list (GET /api/admin/feature-flags): Feature
-// Management (boolean flags, e.g. Learning Representation) and AI Access
-// (role-list access controls, e.g. who may use the Assistant). Every control
-// is additive on top of its existing kill switch / env var — turning
-// something off here (or leaving it unconfigured) still leaves the env var
-// as the safe baseline.
+// Admin Settings: lets a super_admin override existing env-var configuration at runtime without a redeploy. Two sections from
+// one registry-backed list (GET /api/admin/feature-flags): Feature Management (boolean flags, e.g. Learning Representation) and
+// AI Access (role-list controls, e.g. who may use the Assistant). Each control sits on top of its env var / kill switch, so
+// turning something off or leaving it unconfigured still leaves the env var as the baseline.
 export default function AdminSettingsPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
   const { show } = useToast();
   const [flags, setFlags] = useState<AdminFeatureFlag[] | null>(null);
   const [error, setError] = useState('');
-  // Tracks the single setting currently being saved so its own control(s)
-  // can disable themselves without freezing the rest of the page.
+  // The one setting currently being saved, so its own control(s) disable without freezing the page.
   const [pendingId, setPendingId] = useState<string | null>(null);
 
   useEffect(() => {

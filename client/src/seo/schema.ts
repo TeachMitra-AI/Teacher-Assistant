@@ -10,12 +10,9 @@ import {
   absoluteUrl,
 } from './site';
 
-// JSON-LD builders. Everything emitted here restates something visible on the
-// page (or a plain fact about the product) — no ratings, review counts,
-// prices or other claims that the site cannot back up. In particular there is
-// deliberately no `offers`, `aggregateRating` or `review` on the application:
-// SarasTech has no verifiable rating data, and inventing it would breach
-// Google's structured-data guidelines.
+// JSON-LD builders. Everything emitted restates something visible on the page or a plain product fact: no ratings, review
+// counts, prices or other unbackable claims. There's deliberately no `offers`, `aggregateRating` or `review` on the
+// application, since SarasTech has no verifiable rating data and inventing it would breach Google's structured-data guidelines.
 
 const ORGANIZATION_ID = `${SITE_ORIGIN}/#organization`;
 const WEBSITE_ID = `${SITE_ORIGIN}/#website`;
