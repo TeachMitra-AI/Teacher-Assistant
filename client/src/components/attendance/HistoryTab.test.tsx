@@ -13,8 +13,7 @@ vi.mock('../../lib/teacherAttendanceApi', () => ({
   getHolidays: vi.fn(),
 }));
 
-// Joined well before the school's config was created in every test below,
-// so this floor never interferes unless a test sets mockUserCreatedAt.
+// Joined well before the school's config was created in every test, so this floor only matters when a test sets mockUserCreatedAt.
 let mockUserCreatedAt = '2020-01-01T00:00:00.000Z';
 vi.mock('../../auth', () => ({ useAuth: () => ({ user: { id: 'u1', createdAt: mockUserCreatedAt } }) }));
 
@@ -66,9 +65,7 @@ function config(overrides: Partial<SchoolAttendanceConfigDto> = {}): SchoolAtten
 beforeEach(() => {
   vi.clearAllMocks();
   mockUserCreatedAt = '2020-01-01T00:00:00.000Z';
-  // Default: no config — every existing test below relies on the "can't
-  // tell weekly-off/holiday from Absent without a config" fallback, which
-  // only shows days that actually have a record (the old behavior).
+  // Default: no config. Existing tests rely on the fallback that can't tell weekly-off/holiday from Absent, showing only days with a record.
   mockedApi.getSchoolConfig.mockResolvedValue(null);
   mockedApi.getHolidays.mockResolvedValue([]);
 });
@@ -89,8 +86,7 @@ describe('HistoryTab — without a school config (fallback: only real records)',
     await waitFor(() => expect(document.querySelector('.attendance-history-status')).not.toBeNull());
     const status = document.querySelector('.attendance-history-status')!;
     expect(status).toHaveTextContent('Present · Late 5m · Short 30m');
-    // The Late/Short parts render in their own highlighted span, not as
-    // plain text indistinguishable from an ordinary day.
+    // The Late/Short parts render in their own highlighted span, not plain text.
     expect(status.querySelectorAll('.attendance-history-flag')).toHaveLength(2);
   });
 
@@ -164,8 +160,7 @@ describe('HistoryTab — with a school config (shows Absent, Weekly off, and Hol
     mockedApi.getSchoolConfig.mockResolvedValue(config());
     render(<HistoryTab />);
 
-    // Some day in the fetched range should read "Absent" — the exact date
-    // depends on what "today" is, so just confirm the label appears at all.
+    // Some day should read "Absent"; the date depends on "today", so just check the label appears.
     expect(await screen.findAllByText('Absent')).not.toHaveLength(0);
   });
 
@@ -201,11 +196,8 @@ describe('HistoryTab — with a school config (shows Absent, Weekly off, and Hol
   });
 
   test('shows a summary line counting only categories that actually occurred', async () => {
-    // Pinned to day 20 of the current month (real calendar month, fake
-    // day-of-month) — this test's day-03 record, plus the gap-filled
-    // Absent days it relies on, only render/count when "today" is genuinely
-    // past day 3. Without this, the test silently broke on the 1st or 2nd
-    // of any real calendar month it happened to run on.
+    // Pinned to day 20 of the current month: the day-03 record and gap-filled Absent days only render once "today" is past
+    // day 3, so this test used to break on the 1st or 2nd of a real month.
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date(`${CURRENT_MONTH}-20T12:00:00.000Z`));
 
@@ -220,9 +212,7 @@ describe('HistoryTab — with a school config (shows Absent, Weekly off, and Hol
     const summary = await screen.findByText(/2 Present/);
     expect(summary).toHaveTextContent(/2 Present/);
     expect(summary).toHaveTextContent(/1 Late/);
-    // Genuinely-absent days (no record, no off-label) fill the rest of the
-    // month, so the summary's Absent count includes both the explicit one
-    // and the filled-in ones — just confirm it's a real, non-zero count.
+    // Genuinely absent days (no record, no off-label) fill the rest of the month, so just confirm a non-zero Absent count.
     expect(summary).toHaveTextContent(/\d+ Absent/);
     expect(summary).not.toHaveTextContent(/On leave|On duty|Half day/);
 

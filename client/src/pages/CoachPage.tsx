@@ -33,9 +33,7 @@ import { useHistoryOverrides } from '../hooks/useHistoryOverrides';
 import { useRetryCountdown } from '../hooks/useRetryCountdown';
 import { retryMessage } from '../lib/retryCountdown';
 import { api, ApiError } from '../api';
-// This page's ONLY import from the AI Action Router (milestone M6). Keeping the
-// coupling to a single line is what makes the feature deletable and what keeps
-// this file — the most-used path in the product — reviewable.
+// The page's only import from the AI Action Router: a single line keeps the feature deletable and this most-used file reviewable.
 import { useAssistantRouting, type RoutingOutcome } from '../assistant/RouterProvider';
 import { persistOnboarding } from '../lib/onboarding';
 import { ADMIN_ROLES, CLASSROOM_MODE_ENABLED, SPEECH_LOCALE } from '../config';
@@ -51,8 +49,7 @@ function newTurnId(): string {
   return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `t${Date.now()}${Math.random()}`;
 }
 
-// Chat/composer resize handle: keeps the composer usable at its smallest and
-// prevents a drag from ever swallowing the whole viewport at its largest.
+// Chat/composer resize handle: keeps the composer usable at its smallest and stops a drag swallowing the viewport at its largest.
 const COMPOSER_MIN_HEIGHT = 110;
 const COMPOSER_MAX_HEIGHT_RATIO = 0.65;
 const COMPOSER_KEYBOARD_STEP = 24;
@@ -72,11 +69,9 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   const displayName = user?.displayName || user?.name || '';
   const isAdmin = user ? ADMIN_ROLES.includes(user.role) : false;
   const isSuperAdmin = user?.role === 'super_admin';
-  // First-run onboarding intro: shown once, only in the empty welcome state,
-  // until the teacher dismisses it. The shown-once flag lives on the account
-  // (preferences.onboarding) so it follows them across devices — see Phase 0.
-  // `introReopened` is the Phase 2 "Getting Started" re-entry: it re-shows the
-  // same intro on demand without touching the persisted first-run gate.
+  // First-run onboarding intro: shown once, only in the empty welcome state, until dismissed. The flag lives on the account
+  // (preferences.onboarding) so it follows the teacher across devices. `introReopened` is the "Getting Started" re-entry: it
+  // re-shows the intro without touching the persisted gate.
   const showIntro = introReopened || !prefs.onboarding?.seenWelcomeIntro;
 
   const [language, setLanguage] = useState(prefs.defaultLanguage || 'en');
@@ -88,16 +83,12 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     issueType: '',
   });
 
-  // ---- Classroom Mode (docs/classroom-mode.md) -----------------------------
-  //
-  // Plain component state, deliberately NOT persisted to user.preferences (D16).
-  // It survives navigation within the session and resets to OFF on a reload.
-  // The risk being managed is not annoyance but silent spend: this is the one
-  // mode where every question costs several model calls instead of one, and a
-  // mode remembered across sessions is one a teacher stops noticing. Two taps
-  // tomorrow is the cheaper mistake.
+  // ---- Classroom Mode (docs/classroom-mode.md) ----
+  // Plain component state, deliberately not persisted to user.preferences: it survives in-session navigation and resets to OFF on
+  // reload. The risk is silent spend, since each question costs several model calls, and a mode remembered across sessions is one a
+  // teacher stops noticing.
   const [classroomMode, setClassroomMode] = useState(false);
-  // First-visit tip pointing at the "+" button (P7).
+  // First-visit tip pointing at the "+" button.
   const classroomTip = useOnboardingTip('classroom-mode-intro');
 
   function setClassroomModeOn(on: boolean) {
@@ -108,9 +99,8 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   const [turns, setTurns] = useState<Turn[]>([]);
   const isSubmitting = turns.some((t) => t.status === 'pending');
 
-  // Every Gemini API key exhausted (see api.ts's ApiError.retryAt) — blocks
-  // sending until the soonest key recovers, then clears itself automatically
-  // (no auto-resend of what was typed; see the countdown effect below).
+  // Every Gemini API key exhausted (ApiError.retryAt): blocks sending until the soonest key recovers, then clears itself (no
+  // auto-resend of what was typed; see the countdown effect below).
   const [aiCooldownUntil, setAiCooldownUntil] = useState<number | null>(null);
   const { remainingMs: aiCooldownRemainingMs, ready: aiCooldownReady } = useRetryCountdown(aiCooldownUntil);
   useEffect(() => {
@@ -119,32 +109,22 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
-  // Lifted up from Sidebar (which used to own this directly) so
-  // ChatSearchOverlay can show the same pin/rename state — a chat renamed or
-  // pinned from either surface must show consistently in the other, and two
-  // separate hook instances would each keep their own, disagreeing overrides.
+  // Lifted from Sidebar so ChatSearchOverlay shows the same pin/rename state; two hook instances would keep disagreeing overrides.
   const {
     isPinned, titleFor, pinnedIds, togglePin,
     rename: renameHistoryItem, forget: forgetHistoryItem,
   } = useHistoryOverrides(history);
   const [sidebarOpen, setSidebarOpen] = useState(() => !isMobileViewport());
-  // Chat-history search (TopBar's Search icon → ChatSearchOverlay.tsx, an
-  // overlay in the main content column, NOT inside Sidebar). Only whether
-  // it's open lives here; the query text is local to the overlay itself,
-  // since nothing outside it needs to read that. Independent of
-  // sidebarOpen — see toggleHistorySearch below for the one place they
-  // still interact, and why.
+  // Chat-history search (TopBar's Search icon → ChatSearchOverlay, an overlay in the main column, not Sidebar). Only whether it's
+  // open lives here; the query is local to the overlay. Independent of sidebarOpen except in toggleHistorySearch.
   const [historySearchOpen, setHistorySearchOpen] = useState(false);
 
-  // null = the composer keeps its default content-sized (auto) height; a
-  // number is only ever set once the teacher actually drags the resize
-  // handle, and only applies on desktop/tablet in the active-chat state.
+  // null = the composer keeps its default content-sized height; a number is set only once the teacher drags the resize handle
+  // (desktop/tablet, active chat only).
   const [composerHeight, setComposerHeight] = useState<number | null>(null);
   const [isMobile, setIsMobile] = useState(() => isMobileViewport());
-  // A SECOND, narrower breakpoint than `isMobile` (768px) above, matching the
-  // 640px at which the stylesheet switches the Coach page into its phone
-  // layout. Used below to decide when the scroll-to-latest button is needed —
-  // see its comment.
+  // A second, narrower breakpoint than `isMobile` (768px), matching the 640px where the stylesheet switches to the phone layout.
+  // Decides when the scroll-to-latest button is needed.
   const isPhoneLayout = useMediaQuery('(max-width: 640px)');
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -174,13 +154,9 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     loadHistory();
   }, [loadHistory]);
 
-  // Toggles the search overlay. On mobile, the drawer is a fixed full-screen
-  // panel (z-index 1200 — see .sidebar's mobile rule in index.css) that would
-  // otherwise sit visually on top of the overlay (scoped to .coach-main-chat,
-  // a much lower stacking context) if both were open at once — closing it
-  // here avoids that dead-looking overlapping-layers state. Desktop's inline
-  // sidebar has no such conflict (it's a normal-flow column, not an overlay),
-  // so it's left alone there.
+  // Toggles the search overlay. On mobile the drawer is a fixed full-screen panel (z-index 1200, see .sidebar in index.css) that
+  // would sit on top of the overlay (a lower stacking context) if both were open, so it's closed here. Desktop's inline sidebar
+  // is a normal-flow column with no conflict.
   function toggleHistorySearch() {
     if (historySearchOpen) {
       setHistorySearchOpen(false);
@@ -190,11 +166,8 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     setHistorySearchOpen(true);
   }
 
-  // Close the sidebar (acting as a mobile drawer) with Escape. Skipped while
-  // search is open: ChatSearchOverlay closes itself on the same Escape press
-  // (via useDismissable), and this would otherwise ALSO fire — on desktop
-  // that means it would collapse the always-visible inline sidebar too, just
-  // because the teacher wanted to dismiss search.
+  // Escape closes the sidebar (as a mobile drawer). Skipped while search is open: ChatSearchOverlay closes itself on the same
+  // Escape (useDismissable), and this would also collapse the desktop inline sidebar.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key !== 'Escape' || historySearchOpen) return;
@@ -204,19 +177,15 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     return () => window.removeEventListener('keydown', onKey);
   }, [historySearchOpen]);
 
-  // When the viewport crosses from desktop into mobile, the sidebar switches
-  // from an inline column to a fixed drawer — close it so it doesn't
-  // unexpectedly cover the screen. Only fires on the transition, so it never
-  // interferes with the user opening/closing the drawer while on mobile.
+  // Crossing from desktop to mobile turns the sidebar from an inline column into a fixed drawer, so close it rather than let it
+  // cover the screen. Fires only on the transition, so it doesn't interfere with opening/closing the drawer on mobile.
   useEffect(() => {
     let wasMobile = isMobileViewport();
     function onResize() {
       const nowMobile = isMobileViewport();
       if (nowMobile && !wasMobile) {
         setSidebarOpen(false);
-        // A composer height dragged on desktop/tablet has no safe meaning on
-        // a phone viewport — drop it so mobile always gets the default,
-        // content-sized composer.
+        // A composer height dragged on desktop/tablet means nothing on a phone; drop it so mobile gets the default content-sized composer.
         setComposerHeight(null);
       }
       setIsMobile(nowMobile);
@@ -226,21 +195,15 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Additional gesture on top of the existing tap-to-open icon — swipe right
-  // from the left screen edge to open the drawer (mobile only; see
-  // useSidebarSwipe.ts). Only armed while the drawer is closed, so it never
-  // competes with the swipe-to-close gesture Sidebar attaches to itself.
-  // Also closes search if it happens to be open — same overlapping-layers
-  // concern toggleHistorySearch guards against in the other direction.
+  // Swipe right from the left edge opens the drawer (mobile only; useSidebarSwipe.ts), on top of tap-to-open. Armed only while
+  // the drawer is closed so it doesn't compete with Sidebar's swipe-to-close. It also closes search, the overlap toggleHistorySearch guards against.
   useEdgeSwipeToOpen(isMobile && !sidebarOpen, () => {
     setHistorySearchOpen(false);
     setSidebarOpen(true);
   });
 
-  // "Getting Started" (Phase 2) can be triggered from any page, including while a
-  // conversation is on screen. The intro only lives in the empty welcome state,
-  // so clear the current thread to reveal it — the conversation itself is safe in
-  // history and reopenable from the sidebar, exactly like starting a new chat.
+  // "Getting Started" can be triggered from any page, even mid-conversation. The intro only lives in the empty welcome state, so
+  // clear the thread to reveal it; the conversation is safe in history, like a new chat.
   useEffect(() => {
     if (!introReopened) return;
     setTurns([]);
@@ -256,9 +219,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     try {
       const res = await api<CoachResponse>('/coach', {
         method: 'POST',
-        // `classroomMode` is sent only when it is actually on, so a teacher who
-        // never touches the feature produces a request body identical to the
-        // one this page has always sent.
+        // `classroomMode` is sent only when on, so a teacher who never uses it sends the same request body as always.
         body: { query: queryText, language: lang, context: ctx, ...(classroom ? { classroomMode: true } : {}) },
       });
       setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'done', response: res, rating: null } : t)));
@@ -274,24 +235,19 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     }
   }
 
-  // Persist the first-run welcome intro as "seen" (idempotent — a no-op once the
-  // gate is set). Called both on explicit dismissal and on first engagement, so a
-  // teacher who just starts using the app without clicking "Got it" still isn't
-  // re-shown the intro on their next login. Optimistic + non-blocking.
+  // Persists the first-run intro as "seen" (idempotent, optimistic, non-blocking). Called on dismissal and on first engagement,
+  // so a teacher who starts using the app without clicking "Got it" isn't shown it again next login.
   function markIntroSeen() {
     if (!user || user.preferences.onboarding?.seenWelcomeIntro) return;
     void persistOnboarding(user, updateUser, { ...user.preferences.onboarding, seenWelcomeIntro: true });
   }
 
   async function submitTurn(queryText: string, lang: string, ctx: QueryContext) {
-    // Starting any turn means the user is done with the intro: hide it now and
-    // persist the "seen" gate so it doesn't come back next session.
+    // Starting any turn means the user is done with the intro: hide it and persist the "seen" gate.
     closeIntro();
     markIntroSeen();
     const id = newTurnId();
-    // Snapshotted onto the turn at submit time, exactly as `language` and
-    // `context` are — see the field's comment in types.ts for why a retry must
-    // not read it live.
+    // Snapshotted onto the turn at submit, like `language` and `context` (see types.ts): a retry mustn't read it live.
     const classroom = CLASSROOM_MODE_ENABLED && classroomMode;
     setTurns((ts) => [
       ...ts,
@@ -301,19 +257,10 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     await runTurn(id, queryText, lang, ctx, classroom);
   }
 
-  // The multimodal-attachment sibling of runTurn/submitTurn — a SEPARATE path
-  // (POST /api/coach/attachment, multipart) rather than a branch inside the
-  // two functions above, so the existing text/voice turn flow above is never
-  // touched by this feature (approved design: see
-  // docs/multimodal-attachments-architecture.md). Deliberately bypasses the
-  // AI Action Router entirely — an attachment-bearing message is Coach-shaped
-  // Q&A, not a navigation/prefill action, so there is nothing for the router
-  // to resolve; see the architecture doc's "AI routing changes" section for
-  // the full reasoning.
-  //
-  // ALL files go in ONE request (repeated 'files' form entries), matching the
-  // approved multi-attachment design: the backend sends everything to Gemini
-  // together so it reasons over the complete set, not one call per file.
+  // The multimodal-attachment sibling of runTurn/submitTurn: a separate path (POST /api/coach/attachment, multipart), so the text/voice
+  // flow above is untouched (docs/multimodal-attachments-architecture.md). It bypasses the AI Action Router, since an
+  // attachment-bearing message is Coach Q&A, not a navigation/prefill action.
+  // All files go in one request (repeated 'files' entries) so the backend sends the whole set to Gemini together.
   async function runTurnWithAttachments(id: string, queryText: string, lang: string, files: File[]) {
     try {
       const formData = new FormData();
@@ -338,9 +285,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     markIntroSeen();
     const id = newTurnId();
     const meta: AttachmentMeta[] = selected.map((a) => ({ name: a.file.name, kind: a.kind }));
-    // No `context` is sent — the attachment endpoint has no grade/subject
-    // fields (unlike /coach); EMPTY_CONTEXT here is only to satisfy Turn's
-    // type, never sent over the wire.
+    // No `context` is sent (the attachment endpoint has no grade/subject fields); EMPTY_CONTEXT only satisfies Turn's type.
     setTurns((ts) => [
       ...ts,
       { id, query: queryText, language: lang, context: EMPTY_CONTEXT, status: 'pending', rating: null, attachments: meta, startedAt: Date.now() },
@@ -354,10 +299,8 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     );
   }
 
-  // Every router outcome ends in one of two places: the teacher has been taken
-  // somewhere, or their message goes to the coach exactly as it always has.
-  // 'asked' is the third state and needs nothing here — the question is on
-  // screen and the teacher's next action decides what happens to it.
+  // Every router outcome ends in one of two places: the teacher is taken somewhere, or the message goes to the coach as always.
+  // 'asked' needs nothing here: the question is on screen and the teacher's next action decides.
   function settleRouting(outcome: RoutingOutcome) {
     if (outcome.result !== 'passthrough') return;
     const text = outcome.utterance.trim();
@@ -373,67 +316,48 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
       return;
     }
     const pendingAttachments = attachments.attachments;
-    // Clearing the text is all that's needed — the Composer resizes itself from
-    // the value it is given (one owner of the box's height, see its layout
-    // effect), so nothing here has to touch the textarea's style.
+    // Clearing the text is enough: the Composer resizes from its value (one owner of the box's height), so nothing touches the textarea's style.
     setQuery('');
 
-    // An attachment-bearing message skips the AI Action Router entirely and
-    // goes straight to Coach — see runTurnWithAttachments's comment for why.
+    // An attachment-bearing message skips the router and goes straight to Coach (see runTurnWithAttachments).
     if (pendingAttachments.length > 0) {
       attachments.clear();
       submitTurnWithAttachments(trimmed, language, pendingAttachments);
       return;
     }
 
-    // The AI Action Router's pre-pass (milestone M6). With the client flag off
-    // this is one boolean check and the original synchronous call below — no
-    // await, no request, and no behavioural difference from before the feature
-    // existed.
+    // The router's pre-pass. With the client flag off this is one boolean check and the original synchronous call below, with no await or request.
     if (!router.enabled) {
       submitTurn(trimmed, language, context);
       return;
     }
-    // The live textarea value is the second half of the stale-response guard
-    // (CHANGE-9): a response that lands after the teacher has started typing
-    // again must not navigate them away mid-thought.
+    // The live textarea value is the second half of the stale-response guard: a response landing after the teacher started typing again mustn't navigate them away.
     void router.submit(trimmed, () => (textareaRef.current?.value ?? '') === '').then(settleRouting);
   }
 
   async function handleRetry(turn: Turn) {
-    // The files themselves are never kept once a turn is submitted (see
-    // useAttachments/runTurnWithAttachments) — only their display metadata
-    // is, so a blind retry would silently ask Coach about "these files" with
-    // nothing attached. Ask the teacher to re-attach instead of guessing wrong.
+    // The files aren't kept after submit (see useAttachments/runTurnWithAttachments), only display metadata, so a blind retry would
+    // ask Coach about "these files" with nothing attached. Ask the teacher to re-attach.
     if (turn.attachments && turn.attachments.length > 0) {
       show('To retry, please re-attach the file(s) and ask again.', 'error');
       return;
     }
     setTurns((ts) => ts.map((t) => (t.id === turn.id
-      // startedAt is reset: a retry is a new wait, and inheriting the old
-      // turn's elapsed time would open it already saying "taking longer than
-      // usual" with a Cancel button.
+      // startedAt is reset: a retry is a new wait, and inheriting the old elapsed time would open already saying "taking longer than usual".
       ? { ...t, status: 'pending', error: undefined, startedAt: Date.now() }
       : t)));
-    // `turn.classroomMode ?? false` — the mode as it was when this turn was
-    // first submitted, not as it is now. Turns created before this field
-    // existed simply retry without it.
+    // `turn.classroomMode ?? false`: the mode when the turn was first submitted, not now. Turns predating the field retry without it.
     await runTurn(turn.id, turn.query, turn.language, turn.context, turn.classroomMode ?? false);
   }
 
-  // Edit-and-resubmit a sent prompt (MessageBubble's Edit action). Updates
-  // the SAME turn in place — same `id`, same snapshotted language/context/
-  // classroomMode it was first submitted with — rather than appending a new
-  // one, so the thread never grows a duplicate message and the edited
-  // question simply gets a new answer where the old one was. Mirrors
-  // handleRetry above, just with the query text also changing.
+  // Edit-and-resubmit a sent prompt (MessageBubble's Edit). Updates the same turn in place (same `id` and snapshotted
+  // language/context/classroomMode) so the thread gets no duplicate and the edited question gets a new answer. Like handleRetry
+  // with the query also changing.
   async function handleEditTurn(turnId: string, newQuery: string) {
     const turn = turns.find((t) => t.id === turnId);
     if (!turn) return;
     setTurns((ts) => ts.map((t) => (t.id === turnId
-      // `restored: false` — this is a fresh generation for the edited text,
-      // not the rebuilt-from-history state selectHistory produces, so
-      // ClassroomSet must not treat its cards as already-idle (D24).
+      // `restored: false`: a fresh generation for the edited text, not the rebuilt-from-history state, so ClassroomSet mustn't treat its cards as idle.
       ? { ...t, query: newQuery, status: 'pending', error: undefined, response: undefined, rating: null, restored: false, startedAt: Date.now() }
       : t)));
     scrollToBottom();
@@ -459,8 +383,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     setQuery('');
     setContext(EMPTY_CONTEXT);
     attachments.clear();
-    // A new conversation must not inherit the previous one's remembered grade,
-    // subject or topic — a stale slot produces a confident, wrong worksheet.
+    // A new conversation mustn't inherit the last one's remembered grade, subject or topic; a stale slot yields a confident, wrong worksheet.
     router.resetSession();
     if (isMobileViewport()) setSidebarOpen(false);
   }
@@ -475,9 +398,8 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     });
   }
 
-  // Dismiss the intro. Always clears the transient reopen flag first, then marks
-  // the intro seen. On a "Getting Started" re-view the gate is already set, so
-  // markIntroSeen is a no-op — reopening never resets the persisted state.
+  // Dismisses the intro: clears the transient reopen flag, then marks it seen. On a "Getting Started" re-view the gate is already
+  // set, so markIntroSeen is a no-op and reopening never resets the persisted state.
   function handleDismissIntro() {
     closeIntro();
     markIntroSeen();
@@ -519,9 +441,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
       context: mergedContext,
       status: 'done',
       rating: item.rating,
-      // Reopening a chat must not spend model calls. The plan is restored so
-      // the cards reappear, but `restored` keeps them idle until the teacher
-      // presses Generate on the one they want (D24).
+      // Reopening a chat mustn't spend model calls: the plan is restored so the cards reappear, but `restored` keeps them idle until Generate is pressed.
       restored: true,
       response: {
         success: true,
@@ -546,15 +466,10 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   const activeHistoryId = turns.length === 1 ? turns[0].response?.queryId ?? null : null;
   const isEmpty = turns.length === 0;
 
-  // The resize handle only exists on desktop/tablet, in the active-chat
-  // state — never on mobile, and never over the empty welcome screen (which
-  // uses its own natural-scroll layout on mobile and has nothing to resize
-  // against on desktop either).
+  // The resize handle exists only on desktop/tablet in the active-chat state: not on mobile, and not over the empty welcome screen.
   const resizeEnabled = !isMobile && !isEmpty;
 
-  // If the thread is cleared mid-drag (e.g. "New chat"), the handle unmounts
-  // under the pointer — drop any in-flight drag state so a stray pointerup
-  // on a since-removed element can't do anything.
+  // If the thread clears mid-drag (e.g. "New chat"), the handle unmounts under the pointer; drop in-flight drag state so a stray pointerup can't act.
   useEffect(() => {
     if (!resizeEnabled) resizeDragRef.current = null;
   }, [resizeEnabled]);
@@ -574,8 +489,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   function handleResizePointerMove(e: ReactPointerEvent<HTMLDivElement>) {
     const drag = resizeDragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return;
-    // The handle sits above the composer, so dragging up (negative deltaY)
-    // grows the composer and dragging down shrinks it.
+    // The handle sits above the composer, so dragging up (negative deltaY) grows it and dragging down shrinks it.
     const deltaY = e.clientY - drag.startY;
     setComposerHeight(clampComposerHeight(drag.startHeight - deltaY));
   }
@@ -626,18 +540,10 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
         />
 
         <main className="coach-main-chat">
-          {/* Scoped to THIS column, not the whole viewport — see the
-              .coach-shell/.coach-body comment in index.css for why TopBar
-              lives here instead of as a page-wide header above the sidebar.
-              showProfileMenu=false: this page's account menu lives at the
-              bottom of the Sidebar instead (see Sidebar.tsx). Brand/search/
-              collapse also now live in the Sidebar's own header — this bar
-              keeps only page nav, theme, and the teaching-context icon
-              (extraControl). The one exception is onSidebarToggle: while the
-              drawer is CLOSED on mobile it's off-canvas, so the button that
-              reopens it can't live inside it — TopBar renders that single
-              control itself in that case only (see TopBar.tsx), never at the
-              same time as the Sidebar's own close/collapse button. */}
+          {/* Scoped to this column, not the viewport (see .coach-shell/.coach-body in index.css). showProfileMenu=false: the
+              account menu lives at the bottom of the Sidebar, and brand/search/collapse live in its header, so this bar keeps only
+              page nav, theme and the teaching-context icon (extraControl). Exception: onSidebarToggle, since a closed mobile
+              drawer is off-canvas and can't hold its own reopen button, so TopBar renders that one control then (see TopBar.tsx). */}
           <TopBar
             preferences={preferences}
             onSidebarToggle={() => setSidebarOpen(true)}
@@ -649,10 +555,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
             )}
           />
 
-          {/* Wraps the scroller ONLY, so the scroll-to-latest button below can
-              be positioned against the answer area rather than against the
-              whole column — pinned to the column it would sit on top of the
-              composer's send button. */}
+          {/* Wraps the scroller only, so the scroll-to-latest button is positioned against the answer area, not the column (where it would sit on the send button). */}
           <div className="chat-area">
           <div className="chat-scroll" ref={chatScrollRef}>
             <div className="chat-inner">
@@ -678,14 +581,9 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
             </div>
           </div>
 
-          {/* Sits over the bottom of the answer area, not inside the scroller,
-              so it stays put while the content moves under it. Only rendered
-              in an active chat — the welcome screen scrolls with the page on a
-              phone and has its own end. */}
-          {/* Phone only. It belongs to the tall, mostly-answer phone layout,
-              where a long answer no longer ends anywhere near the composer; on
-              desktop the thread and the composer are visible together and the
-              brief was explicitly to leave that layout alone. */}
+          {/* Over the bottom of the answer area, not inside the scroller, so it stays put as content moves. Only in an active chat,
+              since the welcome screen scrolls with the page on a phone. */}
+          {/* Phone only: it belongs to the tall phone layout where a long answer doesn't end near the composer; desktop shows both, and is left alone. */}
           {!isEmpty && isPhoneLayout && (
             <ScrollToBottom
               scrollRef={chatScrollRef}
@@ -721,19 +619,11 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                   onCancel={() => settleRouting(router.cancelAsk())}
                 />
               )}
-              {/* The banner that used to sit here — an orange pill announcing
-                  that Classroom Mode was on — is gone. The Assistant Mode
-                  control now shows its own state (active styling, and the
-                  selected mode on hover), so the banner was a second copy of
-                  the same fact taking a permanent strip of the screen above the
-                  grade and subject. It also would not have survived a second
-                  mode: one banner per active mode is not a layout. */}
-              {/* First-visit tip for the Assistant Mode dropdown (P7). Shown
-                  only while no mode is on: once a teacher has turned one on
-                  they have found the control. Sits directly above the Composer
-                  that holds the control it describes, the same placement
-                  generator-intro uses. Copy points at the dropdown, not "+",
-                  since "+" now opens Capture Photo / Upload File. */}
+              {/* No banner for Classroom Mode being on: the Assistant Mode control shows its own state, so a banner would duplicate
+                  it in a permanent strip (and wouldn't scale to a second mode). */}
+              {/* First-visit tip for the Assistant Mode dropdown. Shown only while no mode is on (once one is, the teacher has found
+                  it), directly above the Composer that holds the control, like generator-intro. The copy names the dropdown, not
+                  "+", which now opens Capture Photo / Upload File. */}
               {CLASSROOM_MODE_ENABLED && !classroomMode && classroomTip.visible && (
                 <OnboardingTip icon={Sparkles} onDismiss={classroomTip.dismiss}>
                   Tap <strong>Assistant Mode</strong> below and turn on <strong>Classroom Mode</strong> to get a lesson
@@ -755,10 +645,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
             </div>
           </div>
 
-          {/* Positioned against .coach-main-chat (position: relative in
-              index.css), so it covers only the main content column — never
-              the sidebar next to it — matching the Claude-style reference
-              this was built from rather than a full-viewport modal. */}
+          {/* Positioned against .coach-main-chat (position: relative in index.css), so it covers only the main column, not the sidebar. */}
           <ChatSearchOverlay
             open={historySearchOpen}
             items={history}

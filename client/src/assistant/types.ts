@@ -1,47 +1,23 @@
-// AI Action Router — frozen wire contracts (Phase 1, Milestone M0).
-//
-// SERVER COUNTERPART: server/src/assistant/contracts.js defines the same
-// vocabularies and shapes for the backend. The two are a DELIBERATE, documented
-// duplication (CommonJS server vs ESM client) rather than a shared package,
-// which would need a monorepo restructure larger than this project — the same
-// tradeoff already taken elsewhere in this codebase for small cross-runtime
-// constants. If you change a value here, change it there in the same commit.
-//
-// Types only, no runtime values: everything below compiles away, so importing
-// this file costs nothing in the bundle. That matters — the target devices are
-// low-end Android on poor connections, and the router must not make the app
-// slower for teachers who never use it.
-//
-// Deliberately NOT in client/src/types.ts. Keeping the router's types inside
-// client/src/assistant/ is part of what makes the whole feature a deletable
-// unit: removing the folder removes the feature, with no dangling references in
-// shared files.
+// Wire contracts for the action router. Mirrors server/src/assistant/contracts.js; the duplication is intentional
+// (CommonJS server vs ESM client), so change both in the same commit. Types only, so it adds nothing to the bundle.
+// Kept out of client/src/types.ts so deleting client/src/assistant/ removes the feature with no dangling references.
 
-/** Contract version. Distinct from catalogVersion, which tracks WHICH actions exist. */
+/** Contract version. Distinct from catalogVersion, which tracks which actions exist. */
 export const ASSISTANT_CONTRACT_VERSION = 1;
 
-/** Matches MAX_QUERY_LENGTH on the server: the router shares the coach's composer. */
+/** Matches MAX_QUERY_LENGTH on the server; the router shares the coach's composer. */
 export const MAX_UTTERANCE_LENGTH = 500;
 
-/**
- * What the application may do with an action. Declared by the server registry
- * and used here only for display and defensive checks — the client never
- * decides an effect, and must never act on one above 'draft' in Phase 1.
- */
+// Declared by the server registry. The client never decides an effect and must not act on one above 'draft'.
 export type ActionEffect = 'read' | 'draft' | 'write' | 'destructive';
 
 /**
- * What the server decided.
- *
- * Phase 1 receives only 'prefill', 'ask' and 'passthrough'. The other two are
- * declared so the client can handle them defensively rather than crashing:
- *   - 'execute' must be DOWNGRADED to 'prefill' (a future server rollout must
- *     never be able to make an older client generate without teacher review).
- *   - 'suggest' is deferred to Phase 2 and should be ignored if it ever arrives.
+ * What the server decided. Only 'prefill', 'ask' and 'passthrough' are expected today. 'execute' must be downgraded to
+ * 'prefill' so a newer server can't make an older client generate without review; 'suggest' is ignored.
  */
 export type ActionDecision = 'execute' | 'prefill' | 'ask' | 'suggest' | 'passthrough';
 
-/** Diagnostic only — never rendered. Every value produces the same UX: a normal coaching answer. */
+/** Diagnostic only, never rendered; every value gives the same UX (a normal coaching answer). */
 export type PassthroughReason =
   | 'not_an_action'
   | 'low_confidence'
@@ -53,11 +29,8 @@ export type PassthroughReason =
   | 'budget_exhausted'
   | 'emergency_detected';
 
-/**
- * Where a prefilled value came from. Drives the provenance markers, the
- * "clear AI fields" undo (which resets everything except 'user'), and the
- * correction telemetry that gates launch.
- */
+// Where a prefilled value came from. Drives the provenance markers, the "clear AI fields" undo (which resets everything
+// except 'user') and the correction telemetry.
 export type ProvenanceSource =
   | 'utterance'
   | 'memory'
@@ -66,7 +39,7 @@ export type ProvenanceSource =
   | 'inferred'
   | 'user';
 
-/** Ordinal, never a float — LLMs are poorly calibrated numerically. */
+// Ordinal rather than a float, since LLMs are poorly calibrated numerically.
 export type ConfidenceLevel = 'high' | 'medium' | 'low';
 
 export type ActionStatus = 'active' | 'beta' | 'deprecated';
@@ -75,7 +48,7 @@ export type SlotType = 'enum' | 'vocab' | 'text' | 'number';
 
 export type VocabularyId = 'GRADES' | 'SUBJECTS' | 'LANGUAGES';
 
-/** One chip in a clarifying question. Selecting one is resolved entirely client-side. */
+/** One chip in a clarifying question; resolved client-side. */
 export interface AskOption {
   label: string;
   value: string;
@@ -98,14 +71,9 @@ export interface SlotSpec {
 }
 
 /**
- * The public projection of a server action descriptor. Note what is absent:
- * paramSchema, requiredRoles, featureFlag and autoExecute are server-internal
- * and never sent — the client is told what it may use, never what it may not.
- *
- * Also absent: any route or path. The client owns its own routing table (see
- * assistant/handlers/), keyed by `id`. That one-way coupling is what makes a
- * server-side action rollout safe against an older, service-worker-cached
- * client: an unknown id degrades gracefully instead of breaking.
+ * The public projection of a server action descriptor. Server-internal fields (paramSchema, requiredRoles, featureFlag,
+ * autoExecute) and any route are never sent: the client owns its routing table keyed by `id`, so an unknown id from a
+ * newer server degrades gracefully in an older cached client.
  */
 export interface CatalogAction {
   id: string;
@@ -114,22 +82,18 @@ export interface CatalogAction {
   domain: string;
   effect: ActionEffect;
   summary: string;
-  /** Doubles as the source of visible suggestion chips, so what the app advertises and what it understands cannot drift. */
+  /** Also the source of the suggestion chips, so what the app advertises and understands can't drift. */
   examples: string[];
   slots: SlotSpec[];
 }
 
 export interface CatalogResponse {
-  /** 0 with an empty list means the assistant is disabled server-side — a valid inert state, not an error. */
+  /** 0 with an empty list means the assistant is disabled server-side; a valid inert state, not an error. */
   catalogVersion: number;
   actions: CatalogAction[];
 }
 
-/**
- * One remembered slot. Session memory is a typed store, never a chat
- * transcript: cheap, deterministic, and — the deciding reason — inspectable and
- * correctable by the teacher.
- */
+// One remembered slot. Session memory is a typed store, not a transcript, so the teacher can inspect and correct it.
 export interface MemorySlot {
   /** Canonical, already mapped to the app's vocabulary by the server. */
   value: string | number;
@@ -150,12 +114,12 @@ export interface PendingAsk {
 export interface InterpretRequest {
   utterance: string;
   catalogVersion?: number;
-  /** The client holds session memory; the server stays stateless, mirroring /api/coach. */
+  /** The client holds session memory; the server stays stateless, like /api/coach. */
   memory?: SessionMemory;
-  /** Set only when answering a clarifying question by FREE TEXT — a chip answer never reaches the server. */
+  /** Set only when answering a clarifying question by free text; a chip answer never reaches the server. */
   pendingAsk?: PendingAsk | null;
   turn?: number;
-  /** Monotonic. A response is discarded unless it is the newest in-flight request. */
+  /** Monotonic; a response is discarded unless it's the newest in-flight request. */
   sequence?: number;
 }
 
@@ -166,12 +130,8 @@ export interface AskPrompt {
 }
 
 /**
- * The server's trusted output.
- *
- * `provenance` and every other piece of router metadata are SIBLINGS of
- * `params`, never inside it — the generation endpoint's schema is strict and
- * rejects unknown keys, so folding metadata into params would make every
- * generation request fail.
+ * The server's trusted output. `provenance` and other metadata sit beside `params`, never inside it: the generation
+ * endpoint's schema is strict and would reject unknown keys.
  */
 export interface ResolvedAction {
   actionId: string;
@@ -183,17 +143,12 @@ export interface ResolvedAction {
   params: Record<string, unknown>;
   provenance: Record<string, ProvenanceSource>;
   missing: string[];
-  /** Prefilled but uncertain (e.g. an ambiguous grade) — surfaced as a field marker. */
+  /** Prefilled but uncertain (e.g. an ambiguous grade); shown as a field marker. */
   lowConfidenceFields?: string[];
   ask?: AskPrompt;
 }
 
-/**
- * `actions` is a list from day one although Phase 1 never returns more than one.
- * Documented contract: Phase 1 clients execute actions[0] and ignore the rest.
- * One array literal now avoids a breaking envelope change when compound
- * requests arrive in Phase 4.
- */
+/** `actions` is a list from the start; clients execute actions[0] and ignore the rest until compound requests exist. */
 export interface InterpretResponse {
   catalogVersion: number;
   /** true => submit to /api/coach exactly as the app does today. */
@@ -204,78 +159,43 @@ export interface InterpretResponse {
   requestId: string;
 }
 
-/**
- * A pending prefill, handed from the executor to the target page through
- * sessionStorage rather than the URL. The teacher's topic text must never enter
- * the URL, because that would put it in browser history, referrer headers and
- * every access log between the client and the server.
- */
+/** A pending prefill handed to the target page through sessionStorage, not the URL, to keep the topic out of history and logs. */
 export interface PrefillDraft {
   id: string;
   actionId: string;
   version: number;
-  /**
-   * IMMUTABLE after creation. Refresh semantics depend on this: reloading the
-   * Generator re-applies these values, which is strictly better than today's
-   * behaviour (a refresh currently loses everything).
-   */
+  /** Immutable after creation, so reloading the Generator re-applies the same values. */
   initialParams: Record<string, unknown>;
   provenance: Record<string, ProvenanceSource>;
   lowConfidenceFields: string[];
-  /** Kept only to render "Filled in from: …" — never sent back to the server. */
+  /** Only used to render "Filled in from: …"; never sent back. */
   utterance: string;
-  /**
-   * The interpret response's correlation id (M8). Opaque, server-minted, and the
-   * ONE field in this record that is sent back — it joins this prefill's
-   * telemetry to the decision that produced it. Empty for hand-written drafts
-   * and for records written before M8.
-   */
+  /** Opaque server-minted correlation id, the one field sent back; joins telemetry to the decision. Empty for hand-written drafts. */
   requestId: string;
   createdAt: number;
   expiresAt: number;
-  /** Set by "clear AI fields", so a later refresh loads plain defaults instead of re-applying. */
+  /** Set by "clear AI fields" so a refresh loads defaults instead of re-applying. */
   consumed: boolean;
 }
 
-// ---- Telemetry wire contracts (M8) ------------------------------------------
-// Mirrors ASSISTANT_EVENT_NAMES / PREFILL_OUTCOMES in the server's contracts.js,
-// and the drift guard pins the two together. These are the shapes POSTed to
-// /api/assistant/events, where the server re-validates every one of them as a
-// closed enum — this file is a compile-time convenience, never the control.
+// ---- Telemetry wire contracts ----
+// Mirrors ASSISTANT_EVENT_NAMES / PREFILL_OUTCOMES in the server's contracts.js (pinned by a drift guard). The server
+// re-validates them as closed enums, so these types are a compile-time convenience, not the control.
 
-/**
- * What the client may report about a prefill it delivered.
- *
- * Only the CLIENT can report either of these. The server knows it DECIDED
- * prefill; whether the draft reached the teacher's form (it may have expired, or
- * storage may be disabled, or they may have navigated away) and what they then
- * did with it are facts that exist only in the browser.
- */
+// Only the client can report these: whether a draft reached the form and what the teacher did with it exist only in
+// the browser.
 export type AssistantEventName = 'prefill_delivered' | 'prefill_outcome';
 
-/**
- * How a delivered prefill ended.
- *
- * 'abandoned' is deliberately absent: it is derived server-side from a delivered
- * event with no matching outcome. Emitting it would need an unload beacon, and
- * beacons are unreliable on exactly the low-end mobile browsers this product
- * targets — an undercounted abandonment rate would read as good news.
- */
+// 'abandoned' is absent on purpose: the server derives it from a delivered event with no outcome, since an unload
+// beacon is unreliable on low-end mobile browsers and would undercount it.
 export type PrefillOutcome = 'generated' | 'undone' | 'edited';
 
-/**
- * One event on the wire.
- *
- * EVERY FIELD IS METADATA, and that is the privacy control (G11) rather than a
- * convention: there is no property here capable of holding an utterance, a slot
- * value, generated content, prompt text or model output. `corrections` carries
- * field NAMES and the provenance they previously had — never what those fields
- * contained.
- */
+// Metadata only, so nothing here can hold an utterance, slot value or generated content. `corrections` carries field
+// names and their previous provenance, never contents.
 export interface AssistantEvent {
   name: AssistantEventName;
   actionId: string;
-  /** Opaque server-minted correlation id; joins this event to its decision log line. */
+  /** Opaque server-minted correlation id. */
   requestId?: string;
   fieldCount?: number;
   lowConfidenceCount?: number;
@@ -283,7 +203,7 @@ export interface AssistantEvent {
   corrections?: { field: string; from: ProvenanceSource }[];
 }
 
-/** The batch envelope. Bounded server-side; see MAX_EVENT_BATCH in contracts.js. */
+/** The batch envelope; bounded server-side (MAX_EVENT_BATCH in contracts.js). */
 export interface AssistantEventsRequest {
   events: AssistantEvent[];
 }

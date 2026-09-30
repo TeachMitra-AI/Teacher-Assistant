@@ -1,6 +1,5 @@
-// Typed client for the My Library resource API. Thin wrappers over api() so
-// pages/components don't hand-build request shapes. Ownership is enforced
-// server-side from the auth token — nothing here sends a userId.
+// Typed client for the My Library resource API: thin wrappers over api(). Ownership is enforced server-side from the token;
+// nothing here sends a userId.
 import { api } from '../api';
 import type { LibraryResource, ResourceType } from '../types';
 
@@ -18,8 +17,7 @@ export interface CreateResourceInput {
 export interface ListResourcesParams {
   type?: ResourceType | '';
   q?: string;
-  /** Only resources saved from this query/turn. Used by Classroom Mode to tell
-   *  which of a set's artifacts are already in the library. */
+  /** Only resources saved from this query/turn; Classroom Mode uses it to see which artifacts are already saved. */
   sourceQueryId?: string;
 }
 
@@ -43,9 +41,7 @@ export async function createResource(input: CreateResourceInput): Promise<Librar
   return data.resource;
 }
 
-// Fields the workspace can edit. Every field is optional (PATCH semantics) but
-// the server requires at least one. Ownership is enforced server-side from the
-// token — nothing here sends a userId.
+// Fields the workspace can edit. All optional (PATCH), but the server requires at least one.
 export interface UpdateResourceInput {
   type?: ResourceType;
   title?: string;
@@ -61,9 +57,8 @@ export async function updateResource(id: string, input: UpdateResourceInput): Pr
   return data.resource;
 }
 
-// AI workspace action ids the server understands (see server/src/routes/resources.js).
-// Generic actions apply to any resource; the *_ assessment actions are surfaced
-// only for assessments (quizzes / worksheets) in the workspace.
+// AI workspace action ids the server understands (server/src/routes/resources.js). The *_ assessment actions are only
+// surfaced for quizzes and worksheets.
 export type AiActionId =
   | 'simplify'
   | 'add_activities'
@@ -76,20 +71,15 @@ export type AiActionId =
 
 export interface AiActionResult {
   suggestion: string;
-  // Structured Question Model (Generator v2) — present only for the 4
-  // assessment-only actions (make_easier/make_harder/more_questions/
-  // simplify_wording) on a resource whose structured.questions is already
-  // native (schemaVersion 2). Applying a suggestion for such a resource
-  // should update BOTH `suggestion` (display) and this field (the editor's
-  // source of truth) together, so structured.questions can never go stale
-  // relative to what's shown — see docs/generator-v2-plan.md §2f.
+  // Present only for the four assessment-only actions on a resource whose structured.questions is native (schemaVersion 2).
+  // Applying such a suggestion must update both `suggestion` and this field so structured.questions can't go stale
+  // (docs/generator-v2-plan.md).
   structured?: string;
   requestId: string;
 }
 
-// Ask the server to generate a suggested revision for a resource. The server
-// keeps the AI key server-side and never persists the suggestion — the client
-// decides whether to Apply it. `targetGrade` is only used by 'adapt_grade'.
+// Asks the server for a suggested revision. The key stays server-side and the suggestion is never persisted; the client
+// decides whether to Apply. `targetGrade` is only used by 'adapt_grade'.
 export async function runAiAction(
   id: string,
   action: AiActionId,
@@ -106,32 +96,22 @@ export async function deleteResource(id: string): Promise<void> {
 }
 
 // --- Quiz / Worksheet Generator ---
-// Must match FORMATS in server/src/actions/schemas/generateAssessment.js — the
-// runtime authority. Pinned by the pair-B drift test in
-// server/test/assistant/contractDrift.test.js via ASSESSMENT_FORMATS.
+// Must match FORMATS in server/src/actions/schemas/generateAssessment.js, the runtime authority (pinned by a drift test).
 export type AssessmentFormat = 'quiz' | 'worksheet' | 'exit_ticket' | 'homework';
 export type Difficulty = 'easy' | 'medium' | 'hard';
-// 'descriptive'/'fill_blank'/'match' are the Structured Question Model's three
-// new types (docs/generator-v2-plan.md), gated server-side by
-// STRUCTURED_QUESTIONS_ENABLED; 'mixed' stays a request-only modifier.
+// 'descriptive'/'fill_blank'/'match' are the structured question types (docs/generator-v2-plan.md), gated server-side by
+// STRUCTURED_QUESTIONS_ENABLED; 'mixed' is a request-only modifier.
 export type QuestionType =
   | 'mcq' | 'true_false' | 'short_answer' | 'descriptive' | 'fill_blank' | 'match' | 'mixed';
 
-// A teacher can tick more than one specific type (issue #95) — the server's
-// generateAssessmentSchema accepts a bare QuestionType (the pre-#95 shape,
-// still what a single selection sends) OR a non-empty array of them. 'mixed'
-// can never appear alongside another type — see the server schema's refine.
+// A teacher can tick several specific types. The server accepts a bare QuestionType (what a single selection sends) or a
+// non-empty array; 'mixed' can't appear alongside another type.
 export type QuestionTypeSelection = QuestionType | QuestionType[];
 
-// --- Structured Question Model (Generator v2) --------------------------------
-// One typed union per question, mirroring server/src/lib/assessmentSchema.js's
-// questionSchema exactly (which validates a single flat shape with
-// always-present-but-empty-when-N/A fields — see docs/generator-v2-plan.md).
-// `id` is client-only: never sent to Gemini, never validated server-side
-// beyond "the structured JSON round-trips" — it exists purely so the editor
-// can key a reorderable/deletable list without relying on array index.
-// See client/src/lib/structuredQuestions.ts for the (de)serialization and
-// validation logic built on these types.
+// --- Structured Question Model (Generator v2) ---
+// One typed union per question, mirroring questionSchema in server/src/lib/assessmentSchema.js (a flat shape with
+// always-present, empty-when-N/A fields; docs/generator-v2-plan.md). `id` is client-only, used to key a reorderable
+// list without relying on array index. (De)serialization and validation live in lib/structuredQuestions.ts.
 export interface QuestionBase {
   id: string;
   text: string;
@@ -173,13 +153,9 @@ export type Question =
   | FillBlankQuestion
   | MatchQuestion;
 
-// The shape stored in Resource.structured once a resource has native
-// structured questions — additive keys alongside the flat generator config
-// this column already carried (format/difficulty/questionType/questionCount/
-// topic/examMeta). `schemaVersion: 2`'s presence is the ONLY thing that marks
-// a resource as "structured" anywhere in the app, client or server —
-// its absence means "legacy, markdown-only", permanently (no backfill,
-// no migration path — see docs/generator-v2-plan.md §6).
+// Shape stored in Resource.structured once a resource has native structured questions, alongside the flat generator
+// config. `schemaVersion: 2` is the only marker of "structured" anywhere; its absence means legacy markdown-only,
+// permanently (docs/generator-v2-plan.md).
 export interface StructuredAssessmentDocument {
   schemaVersion: 2;
   instructions: string;
@@ -191,8 +167,7 @@ export interface StructuredAssessmentDocument {
   difficulty?: Difficulty;
   questionType?: QuestionTypeSelection;
   questionCount?: number;
-  // Opaque here — ResourceWorkspace/GeneratorPage own the real ExamPaperMeta
-  // type and merge it back in; this module only needs to round-trip it.
+  // Opaque here: ResourceWorkspace/GeneratorPage own the ExamPaperMeta type; this module only round-trips it.
   examMeta?: unknown;
 }
 
@@ -210,28 +185,21 @@ export interface GenerateAssessmentInput {
 
 export interface GenerateAssessmentResult {
   content: string;
-  // Structured Question Model (Generator v2) — present only when the request
-  // resolved to a document Zod could validate as {instructions, questions[]},
-  // as a JSON string ready to pass straight into createResource's/
-  // updateResource's own `structured` field. Absent/undefined for any caller
-  // that predates this (every one before this shipped) — a pure additive
-  // field, never required.
+  // Structured Question Model: present only when the result validated as {instructions, questions[]}, as a JSON string
+  // to pass straight into createResource/updateResource's `structured`. Absent for older callers; never required.
   structured?: string;
   requestId: string;
 }
 
-// Ask the server to generate a quiz/worksheet. The Gemini key stays server-side
-// and the result is NEVER persisted by this call — the teacher saves it
+// Asks the server to generate a quiz/worksheet. The key stays server-side and nothing is persisted; the teacher saves
 // explicitly with createResource (type "assessment").
 export async function generateAssessment(input: GenerateAssessmentInput): Promise<GenerateAssessmentResult> {
   return api<GenerateAssessmentResult>('/resources/generate', { method: 'POST', body: input });
 }
 
 // --- Batched assessment generation (Classroom Mode) ---
-// One call for several question-shaped artifacts instead of one call each.
-// Classroom Mode cost 7 Gemini calls per question; the free tier allows 20 a
-// minute, so three questions throttled a teacher. This takes it to 4.
-// Must match generateAssessmentSetSchema in
+// One call for several question-shaped artifacts instead of one each (7 Gemini calls per question against a 20/min free
+// tier throttled teachers; batching makes it 4). Must match generateAssessmentSetSchema in
 // server/src/actions/schemas/generateAssessmentSet.js.
 export interface GenerateSetItem {
   format: AssessmentFormat;
@@ -249,14 +217,12 @@ export interface GenerateSetInput {
   items: GenerateSetItem[];
 }
 
-// Per-artifact outcome. `content` and `error` are exclusive: the server
-// returns whatever succeeded even when one artifact could not be produced, so
-// a single failure never costs the teacher the rest of the set.
+// Per-artifact outcome. `content` and `error` are exclusive; the server returns whatever succeeded, so one failure
+// doesn't cost the rest of the set.
 export interface GenerateSetResult {
   format: AssessmentFormat;
   content: string | null;
-  // Structured Question Model (Generator v2) — same shape/meaning as
-  // GenerateAssessmentResult.structured, per succeeded artifact.
+  // Same as GenerateAssessmentResult.structured, per succeeded artifact.
   structured: string | null;
   error: string | null;
 }
@@ -267,11 +233,9 @@ export async function generateAssessmentSet(
   return api('/resources/generate-set', { method: 'POST', body: input });
 }
 
-// --- Lesson Plan (Classroom Mode P6) ---
-// A separate endpoint, not a fourth assessment format: a lesson plan has no
-// questions and no answer key. See server/src/lib/lessonPlanSchema.js (D21).
-// Must match generateLessonPlanSchema in
-// server/src/actions/schemas/generateLessonPlan.js.
+// --- Lesson Plan (Classroom Mode) ---
+// A separate endpoint, not a fourth assessment format: a plan has no questions or answer key
+// (server/src/lib/lessonPlanSchema.js). Must match generateLessonPlanSchema in server/src/actions/schemas/generateLessonPlan.js.
 export type LessonDuration = '30 minutes' | '35 minutes' | '40 minutes' | '45 minutes' | '60 minutes';
 export type ClassroomType = 'standard' | 'multi_grade' | 'large_class' | 'mixed_ability';
 
@@ -285,8 +249,7 @@ export interface GenerateLessonPlanInput {
   instructions?: string;
 }
 
-// Same contract as generateAssessment: nothing is persisted by this call — the
-// teacher saves it explicitly with createResource (type "lesson_plan").
+// Same contract as generateAssessment: nothing persisted; the teacher saves with createResource (type "lesson_plan").
 export async function generateLessonPlan(
   input: GenerateLessonPlanInput
 ): Promise<GenerateAssessmentResult> {

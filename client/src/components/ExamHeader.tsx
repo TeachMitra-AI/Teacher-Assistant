@@ -1,19 +1,11 @@
 import type { ExamPaperMeta } from '../types';
 
-// The exam-paper letterhead — laid out like a real school examination paper
-// (CBSE/State-Board convention): large centred school name, centred exam
-// title, a Class/Subject row, a Time/Maximum-Marks row spread to the margins,
-// Student Name / Roll No. fill-in lines, and a "General Instructions" block,
-// all closed off by a strong rule. Deterministic teacher input only
-// (ExamPaperMeta), never AI-generated text — rendered above the
-// Markdown-rendered question body in both the on-screen preview and the print
-// DOM, so what's configured in ExamHeaderEditor is exactly what prints.
-//
-// A field with no value still gets a blank fill-in line for Subject/Class/
-// Maximum Marks (core to any exam paper); Date/Time are only shown once the
-// teacher has toggled them on, so a quiz that doesn't care about scheduling
-// doesn't get empty rows cluttering the header — and a toggled-on but empty
-// Date/Time deliberately prints a blank line to fill in by hand.
+// The exam-paper letterhead, laid out like a real school paper (CBSE/State-Board convention): centred school name and title,
+// a Class/Subject row, a Time/Maximum-Marks row, Student Name / Roll No. lines and a "General Instructions" block, closed
+// by a strong rule. Deterministic teacher input only (ExamPaperMeta), never AI text, rendered above the question body in
+// both preview and print so ExamHeaderEditor's settings are exactly what prints.
+// Subject/Class/Maximum Marks always get a fill-in line (core to an exam paper); Date/Time appear only when toggled on, and
+// a toggled-on empty one prints a blank line to fill by hand.
 export default function ExamHeader({
   meta, fallbackTitle, subject, grade,
 }: {

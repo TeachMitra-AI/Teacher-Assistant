@@ -4,10 +4,8 @@ import { TEACHER_ATTENDANCE_STATUS_LABEL, formatDuration } from '../../lib/teach
 import type { HistoryRow } from '../../lib/teacherAttendanceCalendar';
 import type { TeacherAttendanceDto } from '../../types';
 
-// A "Late"/"Short" annotation used to be plain text, the same visual weight
-// as an ordinary "Present" — easy to skim right past. Highlighted here so
-// it reads as "worth a second look" without being as alarming as the red
-// Absent/Needs-review styling, which is reserved for the more serious cases.
+// A "Late"/"Short" annotation was plain text at the same weight as "Present" and easy to skim past. It's highlighted to read
+// "worth a second look" without the alarm of the red Absent/Needs-review styling reserved for serious cases.
 function recordDetail(day: TeacherAttendanceDto) {
   const flags: string[] = [];
   if (day.lateMinutes) flags.push(`Late ${formatDuration(day.lateMinutes)}`);
@@ -23,13 +21,9 @@ function recordDetail(day: TeacherAttendanceDto) {
   );
 }
 
-// One day's row in a "fill every day of the month" list — shared by
-// HistoryTab (a teacher's own month) and ReportsTab's per-teacher drill-down
-// (the Principal's view of someone else's month), pulled out once both
-// needed the exact same markup plus the Principal's review reason.
-// `action`, when given, renders after the status — the Principal's
-// on-demand "Correct" trigger in ReportsTab's drill-down. Omitted (the
-// default) for a teacher's own HistoryTab, which has no such action.
+// One day's row in a "fill every day of the month" list, shared by HistoryTab (a teacher's own month) and ReportsTab's
+// drill-down (the Principal's view). `action`, when given, renders after the status (the Principal's "Correct" trigger);
+// it's omitted for a teacher's own HistoryTab.
 export default function HistoryDayRow({ row, action }: { row: HistoryRow; action?: ReactNode }) {
   return (
     <li className="attendance-history-row">

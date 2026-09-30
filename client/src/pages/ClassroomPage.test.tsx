@@ -1,7 +1,5 @@
-// Finding #6: a load failure must offer a "Try again" action that re-runs
-// the same load, clears the error, and shows the successful result. The
-// error/retry UI itself lives in the child ClassList component, wired to
-// ClassroomPage's `load` via the `onRetry` prop.
+// A load failure must offer a "Try again" action that re-runs the load, clears the error and shows the result. The retry UI
+// lives in the child ClassList, wired to ClassroomPage's `load` via `onRetry`.
 import { describe, expect, test, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

@@ -1,14 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AssistantEvent, AssistantEventsRequest } from './types';
 
-// The ≤2-rows-per-session ceiling is enforced HERE, not on the server. The
-// server can only refuse what it is sent; this module decides what to send. So
-// this file is where that guarantee has to be proven, and it is proven by
-// counting events for whole simulated sessions rather than by inspecting one
-// call at a time.
-//
-// The flag is read at module load (`ASSISTANT_ENABLED` is a build-time
-// constant), so it is stubbed before importing the module under test.
+// The ≤2-rows-per-session ceiling is enforced here, not on the server, which can only refuse what it's sent. It's proven
+// by counting events over whole simulated sessions. The flag is a build-time constant read at load, so it's stubbed
+// before importing the module.
 
 vi.mock('../config', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../config')>()),
@@ -56,8 +51,7 @@ beforeEach(() => {
 
 describe('the two-rows-per-session ceiling', () => {
   it('sends exactly two events for a session with six corrections', async () => {
-    // The headline guarantee. Six corrections must NOT become six events —
-    // that is the sustained write stream CHANGE-6 exists to prevent.
+    // Six corrections must not become six events.
     notePrefillDelivered(DELIVERY);
     for (const field of ['grade', 'subject', 'topic', 'format', 'difficulty', 'language']) {
       recordFieldCorrection('generate_assessment', field, 'utterance');
@@ -96,8 +90,7 @@ describe('the two-rows-per-session ceiling', () => {
   });
 
   it('latches across DIFFERENT outcomes too', async () => {
-    // The sequence that would otherwise write three rows: edit a field, tab
-    // away (edited), come back, press Generate (generated).
+    // Would otherwise write three rows: edit a field, tab away (edited), come back, press Generate (generated).
     notePrefillDelivered(DELIVERY);
     recordFieldCorrection('generate_assessment', 'grade', 'utterance');
     flushOnHide();
@@ -116,14 +109,8 @@ describe('the two-rows-per-session ceiling', () => {
   });
 
   it('does not re-count a delivery for the same draft across a hard refresh (bug fix)', async () => {
-    // Bug: the delivery latch (`session`) was an in-memory-only module
-    // variable. A hard refresh restarts the JS runtime — resetting it to null
-    // — while the SAME `?ai=` draft is still live in the (persisted) draft
-    // store, so `loadPrefill` ran again and `notePrefillDelivered` no longer
-    // recognised the draft as already-counted. Confirmed live against the real
-    // dev database: two distinct requestIds each had two `prefill_delivered`
-    // rows. `simulateReload` reproduces exactly the state a real refresh
-    // leaves behind: in-memory latch gone, sessionStorage intact.
+    // A hard refresh reset the in-memory delivery latch while the same `?ai=` draft was still live, so the delivery was
+    // reported twice. `simulateReload` reproduces the state a refresh leaves: latch gone, sessionStorage intact.
     notePrefillDelivered(DELIVERY);
     await settle();
     simulateReload();
@@ -134,8 +121,7 @@ describe('the two-rows-per-session ceiling', () => {
   });
 
   it('still counts a delivery for a genuinely DIFFERENT draft after a refresh', async () => {
-    // The fix must not overcorrect into refusing every delivery post-refresh —
-    // only the same draft id already recorded.
+    // Must not overcorrect into refusing every delivery after a refresh, only the same draft id.
     notePrefillDelivered(DELIVERY);
     await settle();
     simulateReload();
@@ -160,7 +146,7 @@ describe('outcomes', () => {
     notePrefillDelivered(DELIVERY);
     recordFieldCorrection('generate_assessment', 'grade', 'utterance');
 
-    // The CHANGE-7 sequence: routed again without generating.
+    // Routed again without generating.
     notePrefillDelivered({ ...DELIVERY, draftId: 'draft-2' });
     await settle();
 
@@ -170,9 +156,7 @@ describe('outcomes', () => {
   });
 
   it('stays SILENT when a prefill is abandoned untouched', async () => {
-    // Abandonment is reported by absence, and the server derives it from a
-    // delivery with no outcome. Emitting a "nothing happened" row would cost a
-    // write to say less than the silence already says.
+    // Abandonment is reported by absence; the server derives it from a delivery with no outcome.
     notePrefillDelivered(DELIVERY);
     flushOnHide();
     await settle();
@@ -223,8 +207,7 @@ describe('privacy — G11', () => {
   });
 
   it('omits requestId entirely when there is none to join on', async () => {
-    // A repeat-cache replay has no correlation id. Sending an empty string
-    // would fail the server's UUID check and lose the whole batch.
+    // A repeat-cache replay has no correlation id, and an empty string would fail the server's UUID check and lose the batch.
     notePrefillDelivered({ ...DELIVERY, requestId: undefined });
     await settle();
 
@@ -241,8 +224,7 @@ describe('failure posture', () => {
     notePrefillGenerated();
     await settle();
 
-    // Two separate sends were attempted; the failed one is simply gone. A retry
-    // loop behind a teacher's form is worse than a lost row.
+    // The failed send is simply gone; a retry loop behind a teacher's form is worse than a lost row.
     expect(postAssistantEvents).toHaveBeenCalledTimes(2);
     expect(peekQueue()).toHaveLength(0);
   });

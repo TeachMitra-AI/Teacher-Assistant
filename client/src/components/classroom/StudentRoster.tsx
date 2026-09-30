@@ -8,9 +8,7 @@ import type { Student } from '../../types';
 
 const FORM_DEFAULTS = { name: '', rollNumber: '' };
 
-// Students for ONE selected class (docs/classroom-feature-plan.md §9).
-// Owns its own data — reloaded whenever `classId` changes (switching the
-// selected class is a fresh roster, not a filter on one shared list).
+// Students for one selected class (docs/classroom-feature-plan.md). Owns its data and reloads when `classId` changes (a fresh roster, not a filter).
 export default function StudentRoster({ classId, className }: { classId: string; className: string }) {
   const { show } = useToast();
 
@@ -33,8 +31,7 @@ export default function StudentRoster({ classId, className }: { classId: string;
     setLoading(true);
     setError('');
     try {
-      // Always fetch including inactive students; the "Show inactive" toggle
-      // below filters client-side, so switching it never needs a round trip.
+      // Always fetches inactive students too; "Show inactive" filters client-side, so toggling needs no round trip.
       const list = await listStudents(classId, true);
       setStudents(list);
     } catch (err) {
@@ -46,8 +43,7 @@ export default function StudentRoster({ classId, className }: { classId: string;
 
   useEffect(() => {
     load();
-    // Reset transient UI state when switching classes — an edit/create form
-    // left open for the previous class must not silently apply to this one.
+    // Reset transient UI state when switching classes, so an open edit/create form for the last class can't apply to this one.
     setForm(FORM_DEFAULTS);
     setEditingId(null);
     setDeactivateTarget(null);
@@ -164,10 +160,8 @@ export default function StudentRoster({ classId, className }: { classId: string;
                 <tr><td colSpan={3} className="table-empty">
                   {students.length === 0
                     ? 'No students yet — add your first one above.'
-                    // Reachable only when every existing student is inactive
-                    // and showInactive is off (visible = active-only in that
-                    // case) — NOT "no deactivated students exist" (there is
-                    // at least one, that's why this view is empty).
+                    // Reached only when every student is inactive and showInactive is off (visible is active-only), not
+                    // when no deactivated students exist.
                     : 'No active students — toggle "Show deactivated students" to see them.'}
                 </td></tr>
               )}

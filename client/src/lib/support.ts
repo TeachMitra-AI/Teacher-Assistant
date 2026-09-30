@@ -1,15 +1,11 @@
-// Typed client for the Help & Support API (bug reports + feedback). Thin
-// wrapper over api(), same shape as lib/resources.ts — pages/components don't
-// hand-build the request. Phase 1 only: no attachment upload yet.
+// Typed client for the Help & Support API (bug reports + feedback): thin wrapper over api(), like lib/resources.ts.
 import { api } from '../api';
 import { BUILD_ID } from '../config';
 
 export type SupportTicketType = 'bug' | 'feedback';
 
-// Auto-captured, non-sensitive context (see docs/help-support-architecture.md's
-// privacy section). Deliberately never carries the AI prompt/answer or a
-// screenshot — those are Phase 2, opt-in additions a caller would add
-// explicitly, never folded into this auto-captured shape.
+// Auto-captured, non-sensitive context (docs/help-support-architecture.md, privacy section). Never carries the AI
+// prompt/answer or a screenshot; those would be explicit opt-in additions, not part of this shape.
 export interface SupportTicketContext {
   route?: string;
   buildId?: string;
@@ -43,11 +39,7 @@ export async function createSupportTicket(input: CreateSupportTicketInput): Prom
   return { id: data.id, status: data.status };
 }
 
-/**
- * Builds the auto-captured context object. `extra` folds in call-site-specific
- * fields — the current Coach turn's grade/subject/classroomType, or a failed
- * request's requestId — without this helper needing to know about them.
- */
+/** Builds the auto-captured context. `extra` folds in call-site fields (Coach turn grade/subject/classroomType, a failed request's requestId). */
 export function captureAutoContext(
   theme: 'light' | 'dark',
   language?: string,

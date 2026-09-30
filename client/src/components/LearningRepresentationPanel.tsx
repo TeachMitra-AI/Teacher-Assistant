@@ -1,7 +1,5 @@
-// AI Learning Representation System (ADR Phase D) — the suggestion chip
-// under an AI response. Explicit, on-demand only (Product Principle 1 of
-// the ADR: no representation generated without the teacher asking) — this
-// never fires automatically when a turn completes.
+// AI Learning Representation System: the suggestion chip under an AI response. Explicit and on-demand only (no
+// representation is generated without the teacher asking); it never fires when a turn completes.
 import { useState } from 'react';
 import { ApiError } from '../api';
 import { fetchLearningRepresentation } from '../lib/learningRepresentation';
@@ -25,19 +23,13 @@ export default function LearningRepresentationPanel({ query, answer }: LearningR
   const [state, setState] = useState<PanelState>({ status: 'idle' });
 
   async function handleClick() {
-    // Belt-and-braces guard against a fast double-click firing two concurrent
-    // requests for the same message: conditional rendering already removes
-    // the clickable button once `status` becomes 'loading', but that relies
-    // on React having repainted, which is asynchronous. Checking state
-    // directly here closes the (narrow, low-consequence) race completely —
-    // surfaced during Phase D1 review.
+    // Guards a fast double-click firing two requests: rendering removes the button once `status` is 'loading', but that
+    // relies on an asynchronous repaint, so check the state directly.
     if (state.status === 'loading') return;
     setState({ status: 'loading' });
     try {
       const res = await fetchLearningRepresentation(query, answer);
-      // 'verbal_explanation' (or a missing data payload, defensively) is a
-      // normal, frequent, healthy outcome — most answers have no structure
-      // a visual would clarify. Never treated as an error.
+      // 'verbal_explanation' (or a missing payload, defensively) is a normal outcome, since most answers have no structure a visual would clarify. Not an error.
       if (res.representation === 'verbal_explanation' || !res.data) {
         setState({ status: 'none' });
       } else {
@@ -50,22 +42,13 @@ export default function LearningRepresentationPanel({ query, answer }: LearningR
   }
 
   if (state.status === 'shown') {
-    // aria-live="polite", matching the convention AiPrefillBanner.tsx already
-    // documents for this codebase (CHANGE-12): this announces something that
-    // appeared WITHOUT the teacher navigating anywhere — a click revealed new
-    // content in place, not a page change. "polite" waits for a pause rather
-    // than interrupting whatever the screen reader is already reading.
-    // Surfaced during Phase D2 review.
+    // aria-live="polite", as in AiPrefillBanner.tsx: a click revealed new content in place without navigation, and "polite"
+    // waits for a pause instead of interrupting the screen reader.
     return (
       <div className="lr-panel lr-panel-shown" role="status" aria-live="polite">
-        {/* Isolates a malformed AI payload to this one card (Finding #7) —
-            without this, a shape the view components don't defensively check
-            for (e.g. a missing `series` array) throws during render and takes
-            down the whole page via App.tsx's root ErrorBoundary, wiping every
-            other turn in the conversation along with it. resetKey={state.data}
-            means a later, different representation is never blocked by an
-            earlier one's error — moot today (this branch's data never changes
-            after being set), but keeps the boundary correct if that changes. */}
+        {/* Isolates a malformed AI payload to this card: a shape the views don't check (e.g. a missing `series` array) would
+            throw during render and take down the page via App.tsx's root ErrorBoundary. resetKey={state.data} keeps a later
+            representation from being blocked by an earlier error, which is moot today but keeps the boundary correct. */}
         <ErrorBoundary fallback={<p className="lr-note">Could not display this content.</p>} resetKey={state.data}>
           <LearningRepresentationDisplay representation={state.representation} data={state.data} />
         </ErrorBoundary>

@@ -1,11 +1,6 @@
-// Copy for the "are you sure?" step in front of a role change.
-//
-// Kept as a pure function rather than inlined in ManagePage so the wording of
-// each transition is testable without rendering a table. Every role change is
-// confirmed, not just escalation to super_admin: demoting the wrong colleague
-// locks them out of work they were doing, which is as disruptive as an
-// accidental grant. The `danger` tone is reserved for transitions that move
-// full administrative access, which is what the confirm button colours off.
+// Copy for the "are you sure?" step before a role change. A pure function so each transition's wording is testable. Every
+// change is confirmed, not just escalation to super_admin: demoting the wrong colleague locks them out as disruptively as an
+// accidental grant. The `danger` tone is reserved for transitions that move full administrative access.
 import { ROLE_LABELS } from '../config';
 import type { Role } from '../types';
 

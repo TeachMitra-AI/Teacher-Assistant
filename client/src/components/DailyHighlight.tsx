@@ -7,12 +7,9 @@ interface DailyHighlightProps {
   highlight: WelcomeHighlight;
 }
 
-// Subtle, clickable card under the welcome greeting (fact/thought of the day,
-// or a special-day note — see lib/welcome.ts for the content rules). Opens a
-// small detail dialog with the fuller, teacher-facing explanation. A plain
-// <button> gets click + Enter/Space for free; only Escape/outside-click and
-// focus return need to be wired up here, matching the app's other portalled
-// dialogs (see AttachmentPreviewModal/ConfirmDialog).
+// Subtle clickable card under the welcome greeting (fact/thought of the day or a special-day note; rules in lib/welcome.ts)
+// that opens a detail dialog. A plain <button> gives click + Enter/Space for free; Escape/outside-click and focus return are
+// wired here, like the other portalled dialogs (AttachmentPreviewModal/ConfirmDialog).
 export default function DailyHighlight({ highlight }: DailyHighlightProps) {
   const [open, setOpen] = useState(false);
   const titleId = useId();
@@ -55,8 +52,7 @@ export default function DailyHighlight({ highlight }: DailyHighlightProps) {
       {open && createPortal(
         <div
           className="highlight-overlay"
-          // Only a click on the backdrop itself closes — matches
-          // AttachmentPreviewModal's convention below.
+          // Only a click on the backdrop itself closes, as in AttachmentPreviewModal.
           onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}
         >
           <div className="highlight-panel" role="dialog" aria-modal="true" aria-labelledby={titleId}>

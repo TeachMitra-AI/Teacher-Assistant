@@ -1,10 +1,7 @@
 import { API_BASE } from './config';
 import { fallbackErrorMessage } from './lib/apiErrorMessages';
 
-// Exported so auth.tsx's cross-tab 'storage' listener can recognize which
-// localStorage key is the identity-bearing one (see lib/authStorageSync.ts) —
-// single source of truth for the key name, rather than a second literal
-// string living in auth.tsx.
+// Exported so auth.tsx's cross-tab 'storage' listener can recognize the identity key (lib/authStorageSync.ts).
 export const TOKEN_KEY = 'auth_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
 
@@ -16,9 +13,7 @@ export function getRefreshToken(): string | null {
   return localStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
-// Access token and refresh token are always set/cleared together — there's
-// no valid state with only one of the two, so this is the only way either
-// is written.
+// Access and refresh tokens are always set and cleared together, and this is the only place either is written.
 export function setSession(token: string | null, refreshToken: string | null) {
   if (token) localStorage.setItem(TOKEN_KEY, token);
   else localStorage.removeItem(TOKEN_KEY);
@@ -31,9 +26,8 @@ export class ApiError extends Error {
   status: number;
   /** The server's machine-readable error code, e.g. 'RATE_LIMITED' (see api()). */
   code?: string;
-  /** Epoch ms — set only when every Gemini API key is currently exhausted;
-   *  the soonest any key recovers. Parsed from the server's `retryAt` ISO
-   *  string. See hooks/useRetryCountdown.ts. */
+  /** Epoch ms of the soonest any key recovers; set only when every Gemini API key is exhausted (from the
+   *  server's `retryAt`). See hooks/useRetryCountdown.ts. */
   retryAt?: number;
   constructor(message: string, status: number, extra?: { code?: string; retryAt?: number }) {
     super(message);
@@ -57,11 +51,7 @@ async function rawRequest(
   const { method = 'GET', body } = options;
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
   const headers: Record<string, string> = {};
-  // A FormData body sets its own multipart Content-Type (with the boundary
-  // the browser generates) — setting it here would strip that boundary and
-  // break parsing server-side. Every existing JSON caller is unaffected: this
-  // branch only changes behavior for a body that is already a FormData
-  // instance, which no caller passed before the attachments feature.
+  // A FormData body sets its own multipart Content-Type (with the boundary); setting it here would break parsing.
   if (body !== undefined && !isFormData) headers['Content-Type'] = 'application/json';
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -88,9 +78,7 @@ async function rawRequest(
   return { res, data };
 }
 
-// De-dupes concurrent refresh attempts — if several requests all hit a 401
-// at once (e.g. right as the access token expires), only one /auth/refresh
-// call is made and everyone waits on it.
+// De-dupes concurrent refreshes: if several requests hit a 401 at once, only one /auth/refresh is made.
 let refreshPromise: Promise<boolean> | null = null;
 
 async function tryRefresh(): Promise<boolean> {
@@ -117,10 +105,8 @@ async function tryRefresh(): Promise<boolean> {
   return refreshPromise;
 }
 
-// For a binary/CSV response, which api<T>() can't return (it always tries
-// to JSON.parse the body). Mirrors api<T>()'s auth header + one-shot 401
-// refresh-and-retry, but hands back the raw blob and a filename parsed from
-// Content-Disposition, for a caller to trigger a browser download with.
+// For binary/CSV responses, which api<T>() can't return since it JSON.parses. Same auth header and one-shot 401
+// refresh-and-retry, but returns the raw blob and the filename from Content-Disposition.
 export async function apiDownload(path: string): Promise<{ blob: Blob; filename: string | null }> {
   const fetchOnce = () => fetch(`${API_BASE}${path}`, { headers: { Authorization: `Bearer ${getToken() ?? ''}` } });
 
@@ -151,8 +137,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
 
   let { res, data } = await rawRequest(path, options, auth ? getToken() : null);
 
-  // A short-lived access token expiring mid-session is expected, not an
-  // error — silently refresh once and retry before surfacing a failure.
+  // An expiring access token is expected: refresh once silently and retry before surfacing a failure.
   if (res.status === 401 && auth && getRefreshToken()) {
     const refreshed = await tryRefresh();
     if (refreshed) {

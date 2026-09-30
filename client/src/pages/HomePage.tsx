@@ -36,26 +36,16 @@ import { HomeTour } from '../components/HomeTour';
 import { buildHomeGraph } from '../seo/schema';
 import { ABOUT_PAGE, GUIDE_PAGES, TOOL_PAGES } from '../seo/pages';
 
-// Public marketing landing page shown at "/" to signed-out visitors (see
-// App.tsx's logged-out route tree). Signed-in visitors never see this — "/"
-// still resolves to CoachPage for them. Every capability, language, and
-// classroom type named here is cross-checked against config.ts, the server
-// prompts, and the relevant page components — no
-// invented stats, pricing, testimonials, user counts, or unverified claims.
-// The hero's product-preview panel mocks up the real Coach layout (sidebar +
-// conversation + composer, see pages/CoachPage.tsx and components/Sidebar)
-// and is genuinely interactive — you can click a Recent item to switch which
-// illustrative exchange is shown, or type your own question and send it —
-// rather than a static screenshot. Every scripted exchange is hand-written
-// and factually correct (not a live API capture, since this is a static
-// marketing page), and a typed message gets a canned "sign in to try it for
-// real" reply instead of a fabricated AI answer.
+// Public marketing landing page at "/" for signed-out visitors (App.tsx's logged-out routes); signed-in visitors get CoachPage.
+// Every capability, language and classroom type named here is checked against config.ts, the server prompts and the page
+// components, with no invented stats, pricing, testimonials, user counts or unverified claims.
+// The hero preview mocks the real Coach layout (see pages/CoachPage.tsx, components/Sidebar) and is interactive: clicking a
+// Recent item switches the illustrative exchange, and typing your own question gets a canned "sign in to try it for real"
+// reply instead of a fabricated AI answer. Every scripted exchange is hand-written and factually correct (static page, no live API capture).
 
 const SITE_URL = 'https://www.sarastech.co.in/';
-// Title kept under ~60 characters so Google shows it whole instead of rewriting
-// it; the old one (90+ chars) was truncated in results. Leads with the brand
-// (people search "SarasTech" / "Saras Tech") and the head term it can honestly
-// compete on.
+// Title kept under ~60 characters so Google shows it whole (the old 90+ char one was truncated). Leads with the brand
+// (people search "SarasTech" / "Saras Tech") and the head term it can honestly compete on.
 const HOME_TITLE = 'SarasTech — AI Teaching Assistant for Teachers in India';
 const HOME_DESCRIPTION =
   'SarasTech is an AI teaching assistant for Indian teachers: get lesson plans, worksheets and quizzes with answer keys, in English or your regional language.';
@@ -123,10 +113,7 @@ const CLASSROOM_FACTS = [
 type PreviewMessage = { role: 'user' | 'ai'; text: string };
 type PreviewScenario = { id: string; title: string; messages: PreviewMessage[] };
 
-// Three sample exchanges for the hero preview's clickable "Recent" list —
-// illustrative, not live API captures (this is a static marketing page), but
-// each answer is factually correct, matching the "no unverified claims" bar
-// for this page.
+// Three sample exchanges for the hero preview's "Recent" list: illustrative, not live captures, but each answer is factually correct.
 const PREVIEW_SCENARIOS: PreviewScenario[] = [
   {
     id: 'photosynthesis',
@@ -209,12 +196,9 @@ const FAQS = [
   },
 ];
 
-// Organization / WebSite / WebPage / WebApplication / FAQPage graph (see
-// seo/schema.ts). FAQPage's Question/Answer entries are derived from FAQS above —
-// the same array the FAQ section renders — so the structured data can never
-// drift from what's actually on the page. Google no longer shows FAQ rich
-// results (retired May 2026); the markup is harmless, valid, and read by other
-// consumers, so it stays.
+// Organization / WebSite / WebPage / WebApplication / FAQPage graph (seo/schema.ts). FAQPage entries derive from FAQS above,
+// the array the FAQ section renders, so the data can't drift from the page. Google retired FAQ rich results (May 2026); the
+// markup is harmless, valid and read by other consumers, so it stays.
 const STRUCTURED_DATA = buildHomeGraph({ title: HOME_TITLE, description: HOME_DESCRIPTION, faqs: FAQS });
 
 export default function HomePage() {
@@ -228,11 +212,8 @@ export default function HomePage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = () => setMenuOpen(false);
 
-  // Sign In / Get Started open the auth form in a pop-up over this page
-  // instead of navigating to the full /login route — see components/AuthModal.
-  // Opening pushes a history entry so the browser's Back button closes the
-  // modal (and lands back on this page) instead of skipping past it and
-  // leaving the site entirely — the modal otherwise never touches history.
+  // Sign In / Get Started open the auth form in a pop-up (components/AuthModal) instead of navigating to /login. Opening pushes
+  // a history entry so Back closes the modal and lands here instead of leaving the site.
   const [authMode, setAuthMode] = useState<Mode | null>(null);
   const openAuth = (mode: Mode) => {
     if (authMode === null) {
@@ -253,20 +234,15 @@ export default function HomePage() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Hero product-preview panel — genuinely interactive, matching how
-  // claude.com/product/claude-code's own demo panel works: clicking a Recent
-  // item swaps in that scripted exchange, "New chat" clears back to empty,
-  // and typing a real question and sending it appends your message plus a
-  // canned "sign in to try it for real" reply (their equivalent replies
-  // "To try Claude, download it here." — never a fabricated AI answer).
+  // Hero product-preview panel, interactive like the demo panel on claude.com/product/claude-code: clicking a Recent item swaps
+  // in that scripted exchange, "New chat" clears it, and sending a real question appends it plus a canned "sign in to try it for
+  // real" reply, never a fabricated AI answer.
   const [previewScenarioId, setPreviewScenarioId] = useState<string | null>(PREVIEW_SCENARIOS[0].id);
   const [previewDraft, setPreviewDraft] = useState('');
   const [previewSent, setPreviewSent] = useState<string[]>([]);
   const previewScenario = PREVIEW_SCENARIOS.find((s) => s.id === previewScenarioId) ?? null;
 
-  // Collapse — real behaviour matching Sidebar.tsx's own collapse-to-rail:
-  // hides everything but the rail toggle, same as .sidebar:not(.sidebar-open).
-  // The search icon next to it is decorative only (not wired up).
+  // Collapse behaves like Sidebar.tsx's collapse-to-rail (hides all but the rail toggle, like .sidebar:not(.sidebar-open)). The search icon beside it is decorative.
   const [previewSidebarOpen, setPreviewSidebarOpen] = useState(true);
 
   function selectPreviewScenario(id: string) {
@@ -287,10 +263,7 @@ export default function HomePage() {
     setPreviewDraft('');
   }
 
-  // Header picks up a shadow once the page has scrolled past the hero, so the
-  // sticky bar visually "lifts" off the content instead of just sitting flush
-  // against a border the whole time. Passive listener, no rAF needed — this
-  // only toggles a boolean, not a per-frame value.
+  // The header picks up a shadow past the hero so the sticky bar "lifts" off the content. Passive listener, no rAF: it only toggles a boolean.
   const [headerScrolled, setHeaderScrolled] = useState(false);
   useEffect(() => {
     const handleScroll = () => setHeaderScrolled(window.scrollY > 8);
@@ -299,13 +272,9 @@ export default function HomePage() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Subtle cursor-reactive parallax on the hero's background glow — skipped
-  // entirely under prefers-reduced-motion (checked once, not re-evaluated
-  // live, matching how the CSS-only ambient animations are gated elsewhere
-  // on this page). Sets the transform directly on every event rather than
-  // batching via requestAnimationFrame — the backdrop's own CSS `transition`
-  // is what makes the motion glide, so a JS-side frame-throttle would add
-  // complexity without changing what's on screen.
+  // Subtle cursor parallax on the hero glow, skipped under prefers-reduced-motion (checked once, like the CSS-only ambient
+  // animations). It sets the transform on every event instead of batching in rAF, since the backdrop's CSS `transition` makes
+  // the motion glide and a JS throttle would add complexity for no visible change.
   const heroRef = useRef<HTMLElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -441,9 +410,8 @@ export default function HomePage() {
                 Get Started
                 <ArrowRight size={18} aria-hidden="true" />
               </button>
-              {/* Sign In already lives in the header, mobile menu, closing band and
-                  footer, so the hero's second action shows what the product does
-                  instead of repeating it: it jumps to the product tour (HomeTour). */}
+              {/* Sign In already lives in the header, mobile menu, closing band and footer, so the hero's second action shows what
+                  the product does: it jumps to the product tour (HomeTour). */}
               <a href="#see-it-in-action" className="btn-outline home-cta-tour">
                 <Play size={16} aria-hidden="true" />
                 Watch the 30-sec tour
@@ -460,21 +428,14 @@ export default function HomePage() {
                 <span className="home-hero-visual-chrome-label">SarasTech Coach</span>
               </div>
               <div className="home-hero-visual-body">
-                {/* Real nav, not decorative — mirrors Sidebar.tsx's new-chat
-                    action and recent-threads list, and actually switches which
-                    scripted exchange the panel shows on the right. */}
+                {/* Real nav, mirroring Sidebar.tsx's new-chat action and recent list; it switches the scripted exchange shown on the right. */}
                 <aside
                   className={`home-hero-visual-sidebar${previewSidebarOpen ? '' : ' home-hero-visual-sidebar--collapsed'}`}
                 >
                   {previewSidebarOpen ? (
                     <>
-                      {/* Mirrors Sidebar.tsx's own brand row: logo + "SarasTech"
-                          / "Teacher Assistant" text on the left, search and
-                          collapse actions on the right. The collapse button is
-                          real (shrinks this to a rail, same as
-                          .sidebar:not(.sidebar-open)); search is decorative
-                          only, matching neither real search nor a fabricated
-                          one. */}
+                      {/* Mirrors Sidebar.tsx's brand row: logo and "SarasTech" / "Teacher Assistant" on the left, search and
+                          collapse on the right. Collapse is real (shrinks to a rail, like .sidebar:not(.sidebar-open)); search is decorative. */}
                       <div className="home-hero-visual-brand">
                         <span className="home-hero-visual-brand-id">
                           <img src="/logo.png" alt="" className="home-hero-visual-brand-logo" />
@@ -542,12 +503,8 @@ export default function HomePage() {
                         <p className="home-hero-visual-empty">Type a question below to see SarasTech Coach in action.</p>
                       )
                     )}
-                    {/* Mirrors claude.com/product/claude-code's own demo panel:
-                        sending your own message there replies "To try Claude,
-                        download it here." instead of a fabricated AI answer —
-                        this is that same mechanism, with a real sign-in link,
-                        and (like theirs) every message you send gets its own
-                        reply, not just the first one. */}
+                    {/* As in claude.com/product/claude-code's demo panel (which replies "To try Claude, download it here." instead of a
+                        fabricated answer), this replies with a real sign-in link, and every message you send gets its own reply. */}
                     {previewSent.flatMap((text, i) => [
                       <p className="home-hero-visual-msg home-hero-visual-msg--user" key={`sent-${i}`}>
                         {text}
@@ -561,9 +518,7 @@ export default function HomePage() {
                       </p>,
                     ])}
                   </div>
-                  {/* Mirrors Composer.tsx's real two-row shape and exact copy
-                      ("Ask anything about teaching…", "Assistant Mode") — and,
-                      unlike the old static version, this input actually works. */}
+                  {/* Mirrors Composer.tsx's two-row shape and copy ("Ask anything about teaching…", "Assistant Mode"), and the input works. */}
                   <form className="home-hero-visual-composer" onSubmit={submitPreviewDraft}>
                     <input
                       className="home-hero-visual-composer-text"
@@ -653,8 +608,7 @@ export default function HomePage() {
                       </ul>
                     )}
                   </div>
-                  {/* A real Coach answer (public/product/coach-en-*.png) fills what
-                      used to be the featured card's empty right half. */}
+                  {/* A real Coach answer (public/product/coach-en-*.png) fills the featured card's right half. */}
                   {isFeatured && (
                     <ProductShot
                       name="coach-en"
@@ -676,9 +630,7 @@ export default function HomePage() {
           </p>
         </section>
 
-        {/* Crawlable, descriptive internal links to every public tool and guide
-            page (seo/pages.ts) — the home page is the strongest page on the
-            site, so this is where their internal linking starts. */}
+        {/* Crawlable internal links to every public tool and guide page (seo/pages.ts); the home page is the strongest page on the site, so linking starts here. */}
         <section className="home-section" id="explore" aria-labelledby="home-explore-heading">
           <div className="home-head">
             <span className="home-eyebrow">Explore</span>
@@ -769,13 +721,8 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* For Schools & Organizations — the one B2B-shaped surface on an
-            otherwise self-serve teacher signup page. Placed here, right
-            before the closing sections, because a visitor who has reached
-            this point has already seen the product working (hero, tour,
-            features, a real worksheet, a real Hindi answer) — this is where
-            a school/org evaluator is qualified, not cold. See
-            docs/schedule-a-call-plan.md §1. */}
+        {/* For Schools & Organizations: the one B2B surface on a self-serve signup page. Placed before the closing sections
+            because a visitor here has already seen the product working, so this is where a school or org evaluator is qualified. */}
         <section className="home-section" id="schools" aria-labelledby="home-schools-heading">
           <div className="home-schools-card home-reveal">
             <div className="home-schools-copy">
@@ -826,12 +773,9 @@ export default function HomePage() {
               <h2 id="home-faq-heading">Frequently Asked Questions</h2>
             </div>
             <div className="home-faq-list home-reveal">
-              {/* name= makes these a native, browser-managed exclusive accordion
-                  (HTML Living Standard) — opening one collapses whichever other
-                  one was open, with no React state and no risk of the toggle
-                  event's own feedback loop (setting `open` programmatically
-                  fires another native "toggle" event, which made a React-state
-                  version of this close everything). */}
+              {/* name= makes these a native exclusive accordion (HTML Living Standard): opening one collapses the other, with no
+                  React state. A state-based version closed everything, since setting `open` programmatically fires another native
+                  "toggle" event. */}
               {FAQS.map((faq) => (
                 <details className="home-faq-item" key={faq.question} name="home-faq">
                   <summary className="home-faq-question">

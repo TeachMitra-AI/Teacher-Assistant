@@ -1,22 +1,14 @@
-// Learning Representation — graph_chart (ADR Phase D2). The one
-// representation type using an existing dependency (`recharts`, already in
-// package.json for AdminPage.tsx's analytics charts) rather than
-// hand-rolled CSS/SVG — reusing it here costs nothing new, matching the D2
-// scoping decision to add no NEW dependency. Palette and axis styling
-// (CartesianGrid strokeDasharray "3 3" at 0.15 opacity, 11px tick labels)
-// mirror AdminPage.tsx's existing charts so this doesn't introduce a
-// second visual language for the same library.
+// Learning Representation: graph_chart. The one type using an existing dependency (`recharts`, already used by
+// AdminPage.tsx) instead of hand-rolled CSS/SVG. Palette and axis styling (CartesianGrid strokeDasharray "3 3" at 0.15
+// opacity, 11px ticks) mirror AdminPage's charts so the same library has one visual language.
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { GraphChartData } from '../types';
 
 const SERIES_COLORS = ['#FF6B35', '#1E88E5', '#4E9F3D', '#8E44AD'];
 
 /**
- * recharts wants one row per x value with one key per series, not the
- * per-series point arrays RENDER_SPECS' graph_chart schema returns. Merges
- * by x; a series missing a point at some x simply leaves that cell empty
- * (recharts draws a gap rather than erroring) — the schema doesn't
- * guarantee every series shares the same x values.
+ * recharts wants one row per x value with one key per series, not the per-series point arrays the schema returns. Merges by
+ * x; a series missing a point leaves that cell empty (a gap, not an error), since series needn't share x values.
  */
 function mergeSeries(series: GraphChartData['series']): Record<string, string | number>[] {
   const byX = new Map<string, Record<string, string | number>>();

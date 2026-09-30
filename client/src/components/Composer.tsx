@@ -11,14 +11,10 @@ import AttachmentTray from './AttachmentTray';
 import AddMenu from './AddMenu';
 import ClassroomModeMenu from './ClassroomModeMenu';
 
-// How tall the text box may grow before it stops and scrolls internally. The
-// box starts at exactly one line and grows with the text (see the layout
-// effect below) — this is the ceiling, not the height.
+// Ceiling for how tall the text box grows before it scrolls internally; it starts at one line and grows with the text.
 const MAX_TEXTAREA_HEIGHT = 200;
 
-// Below this the placeholder shortens — a phone this narrow cannot show the
-// long invitation without it wrapping onto a second line while the box is
-// still empty.
+// Below this width the placeholder shortens, since the long one would wrap while the box is empty.
 const NARROW_QUERY = '(max-width: 520px)';
 const TINY_QUERY = '(max-width: 360px)';
 
@@ -32,9 +28,7 @@ interface ComposerProps {
   textareaRef: RefObject<HTMLTextAreaElement>;
   classroomMode: boolean;
   onClassroomModeChange: (on: boolean) => void;
-  /** Set while every Gemini API key is exhausted (see hooks/useRetryCountdown.ts)
-   *  — shown in place of the attachment error, explaining why `loading` is
-   *  true for reasons beyond a normal in-flight request. */
+  /** Set while every Gemini API key is exhausted (hooks/useRetryCountdown.ts); shown in place of the attachment error to explain why `loading` is true. */
   cooldownMessage?: string;
 }
 
@@ -48,57 +42,38 @@ export default function Composer({
   const tiny = useMediaQuery(TINY_QUERY);
   const atMaxAttachments = attachments.attachments.length >= MAX_ATTACHMENTS_COUNT;
 
-  // Auto-grow, driven by the VALUE rather than by the keystroke that changed
-  // it. The old version resized inside the textarea's own onChange, which meant
-  // every other way text arrives in the box — a welcome-screen quick action, a
-  // follow-up chip, voice input, a paste handled by React, clearing on send —
-  // left a long prompt crammed into a one-line box until the teacher typed one
-  // more character. A layout effect covers all of them from one place, and runs
-  // before paint so the box is never briefly the wrong height.
-  //
-  // The text area now always occupies a full-width row of its own (the
-  // controls live in a separate row beneath it), so growing it no longer has
-  // any effect on how anything else in the composer is laid out — this only
-  // ever measures the text's own height.
+  // Auto-grow is driven by the value, not the keystroke: resizing in onChange left text that arrives another way (a quick
+  // action, follow-up chip, voice input, paste, clear on send) crammed into a one-line box. A layout effect covers all of
+  // them and runs before paint. The textarea has its own full-width row, so this only measures the text's own height.
   useLayoutEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
 
     function resize() {
       if (!el) return;
-      // Collapse first: scrollHeight can only report the content's natural
-      // height if the element is not already being held open by its own inline
-      // height.
+      // Collapse first: scrollHeight only reports the natural height if the inline height isn't holding it open.
       el.style.height = 'auto';
       el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`;
-      // Only scroll once the ceiling is actually reached — a permanently
-      // scrollable box shows a scrollbar gutter over a single line of text.
+      // Scroll only once the ceiling is reached; an always-scrollable box shows a scrollbar gutter over one line.
       el.style.overflowY = el.scrollHeight > MAX_TEXTAREA_HEIGHT ? 'auto' : 'hidden';
     }
 
     resize();
-    // The same text needs MORE lines in a narrower box, and the height is an
-    // inline pixel value — without this, rotating a phone (or opening the
-    // on-screen keyboard, which resizes the viewport) leaves the box at its old
-    // height with `overflow-y: hidden`, silently clipping what the teacher
-    // typed. Cheap: one listener, and it only ever writes two style properties.
+    // The same text needs more lines in a narrower box and the height is inline pixels, so rotating a phone or opening the
+    // on-screen keyboard would leave the old height and clip typed text. Cheap: one listener, two style writes.
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, [value, textareaRef]);
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
-    // Reset the input value so selecting the SAME file(s) again (after
-    // removing them) still fires a change event — browsers otherwise treat
-    // an unchanged file list as a no-op.
+    // Reset the value so re-selecting the same file(s) after removing them still fires a change event.
     e.target.value = '';
     if (files.length > 0) attachments.add(files);
   }
 
   const trayItems = attachments.attachments.map((a) => ({ id: a.id, name: a.file.name, kind: a.kind, previewUrl: a.previewUrl }));
-  // Shown only as the limit approaches. A permanent "0/500" spends a slot on
-  // the one row the composer has to say nothing — the number only carries
-  // information once running out is a real possibility.
+  // Shown only as the limit approaches; a permanent "0/500" wastes a slot on a row that should be quiet.
   const showCharCount = value.length > MAX_QUERY_LENGTH * 0.8;
 
   return (
@@ -115,18 +90,14 @@ export default function Composer({
         )
       )}
       <div className="composer-box">
-        {/* Inside the box, above the text — a staged file reads as part of the
-            message being written, not as a separate strip floating above it.
-            'preview' shows the picture and no file name (see AttachmentTray). */}
+        {/* Inside the box, above the text, so a staged file reads as part of the message. 'preview' shows the picture and no file name (see AttachmentTray). */}
         <AttachmentTray
           attachments={trayItems}
           onRemove={attachments.remove}
           disabled={loading}
           variant="preview"
         />
-        {/* Top: the message itself, full width, growing with the text. Bottom:
-            every control, on a row of its own — the two never compete for the
-            same cramped horizontal space, on any screen size. */}
+        {/* Top: the message, full width, growing with the text. Bottom: every control on its own row, so they never compete for width. */}
         <textarea
           id="query-input"
           ref={textareaRef}
@@ -134,12 +105,8 @@ export default function Composer({
           value={value}
           onChange={(e) => onChange(e.target.value.slice(0, MAX_QUERY_LENGTH))}
           onKeyDown={(e) => {
-            // Enter sends (Shift+Enter for a newline) — the standard chat-app
-            // convention (ChatGPT, Slack, etc.), not the browser's default
-            // textarea behavior of Enter always inserting a newline. Guarded
-            // on `loading` since a keyboard shortcut bypasses the submit
-            // button's `disabled` attribute — mashing Enter while a response
-            // is still in flight must not queue up extra submissions.
+            // Enter sends (Shift+Enter for a newline), the standard chat convention. Guarded on `loading`, since a keyboard
+            // shortcut bypasses the submit button's `disabled` and mashing Enter mustn't queue submissions.
             if (e.key === 'Enter' && !e.shiftKey && !loading) {
               e.preventDefault();
               onSubmit();
@@ -163,12 +130,8 @@ export default function Composer({
                   aria-hidden="true"
                   tabIndex={-1}
                 />
-                {/* A SECOND input, not a `capture` attribute toggled on the one
-                    above: `capture` is read when the picker opens, and browsers
-                    differ on whether re-reading a mutated attribute takes effect.
-                    Two fixed inputs make "camera" and "file picker" two different
-                    elements, which every browser gets right. Deliberately not
-                    `multiple` — a camera returns one shot. */}
+                {/* A second input rather than toggling `capture` on the one above: `capture` is read when the picker opens and
+                    browsers differ on re-reading a mutated attribute. Not `multiple`, since a camera returns one shot. */}
                 <input
                   ref={cameraInputRef}
                   type="file"
@@ -188,8 +151,7 @@ export default function Composer({
                 />
               </>
             )}
-            {/* A conversation-level control, so it sits with the other things
-                that act on the whole turn. Flag off ⇒ renders nothing. */}
+            {/* A conversation-level control, so it sits with the other turn-wide controls. Flag off ⇒ renders nothing. */}
             {CLASSROOM_MODE_ENABLED && (
               <ClassroomModeMenu
                 classroomMode={classroomMode}
@@ -199,9 +161,7 @@ export default function Composer({
             )}
           </div>
           <div className="composer-controls-right">
-            {/* aria-live so a screen reader hears the remaining budget when it
-                appears, without the number being announced on every keystroke
-                before then. */}
+            {/* aria-live so a screen reader hears the remaining budget when it appears, not on every earlier keystroke. */}
             {showCharCount && (
               <span className={`char-count${value.length > MAX_QUERY_LENGTH * 0.9 ? ' warn' : ''}`} aria-live="polite">
                 {value.length}/{MAX_QUERY_LENGTH}

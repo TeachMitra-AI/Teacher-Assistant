@@ -1,5 +1,4 @@
-// Classroom Mode — what the client can actually build, and how it labels it.
-// See docs/classroom-mode.md.
+// Classroom Mode: what the client can build and how it labels it (docs/classroom-mode.md).
 import { api } from '../api';
 import type { ClassroomArtifact, ClassroomPlan, LibraryResource } from '../types';
 import {
@@ -15,15 +14,9 @@ import {
   type QuestionType,
 } from './resources';
 
-// ---- Which artifacts can be generated TODAY --------------------------------
-//
-// The planner (server/src/lib/classroomPlan.js) deliberately offers all five
-// artifacts from the start: what a teacher's question NEEDS is a separate
-// question from what we have built. This constant is the second half of that
-// split — the filter that turns "what would help" into "what we can make".
-//
-// P4/P5/P6 ship by adding an entry here plus its generation config below.
-// Nothing about the planner, the request, or the card UI changes.
+// ---- Which artifacts can be generated today ----
+// The planner (server/src/lib/classroomPlan.js) offers all five artifacts; this is the filter for what we can actually
+// make. Shipping another artifact means adding an entry here and its generation config below.
 export const BUILDABLE_ARTIFACTS: ClassroomArtifact[] = [
   'lesson_plan', 'worksheet', 'quiz', 'homework', 'exit_ticket',
 ];
@@ -36,14 +29,8 @@ export const ARTIFACT_META: Record<ClassroomArtifact, { label: string; hint: str
   exit_ticket: { label: 'Exit Ticket', hint: 'A quick end-of-lesson check' },
 };
 
-// Per-artifact generation settings. Only the buildable ones appear; adding a
-// row here plus one to BUILDABLE_ARTIFACTS is the whole of "ship a new
-// artifact" on the client side.
-//
-// Counts differ on purpose — a worksheet a class works through is not the same
-// size as a quiz, and an exit ticket (P4) will be smaller still. Defaulting all
-// of them to QUESTION_COUNT_DEFAULT would produce five documents that are
-// suspiciously identical in length.
+// Per-artifact generation settings; only buildable artifacts appear. Counts differ on purpose (a worksheet, quiz and exit
+// ticket aren't the same size), so not everything defaults to QUESTION_COUNT_DEFAULT.
 const GENERATION_CONFIG: Partial<Record<ClassroomArtifact, {
   format: AssessmentFormat;
   questionCount: number;
@@ -52,40 +39,22 @@ const GENERATION_CONFIG: Partial<Record<ClassroomArtifact, {
 }>> = {
   worksheet: { format: 'worksheet', questionCount: 8, questionType: 'mixed', difficulty: 'medium' },
   quiz: { format: 'quiz', questionCount: 10, questionType: 'mcq', difficulty: 'medium' },
-  // Three questions, MCQ, easy. An exit ticket is answered in the last two
-  // minutes of a lesson by every student in the room — it has to be quick to
-  // answer and quick for the teacher to scan. `easy` is deliberate: this checks
-  // whether the core idea landed, and a hard question tells the teacher a
-  // student found the hard question hard, which they already knew.
-  //
-  // 3 is also the server's MIN_QUESTIONS, so no bound needed relaxing.
+  // Three easy MCQs: an exit ticket is answered in the last two minutes, so it must be quick to answer and to scan.
+  // Easy on purpose; it checks whether the core idea landed. 3 is also the server's MIN_QUESTIONS.
   exit_ticket: { format: 'exit_ticket', questionCount: 3, questionType: 'mcq', difficulty: 'easy' },
-  // Fewer questions than the worksheet's 8, and deliberately not harder.
-  // Homework is done alone, after school, with nobody to ask — a set long
-  // enough to become a chore is one that gets copied from a friend in the
-  // morning, and difficulty that needs a hint is difficulty that needs a
-  // teacher. `mixed` keeps it from being eight identical drill sums; `medium`
-  // matches the worksheet because the point is consolidating what was taught
-  // today, not stretching past it.
+  // Fewer than the worksheet and not harder: homework is done alone with nobody to ask, so a long or hard set gets copied.
+  // `mixed` avoids eight identical drill sums; `medium` matches the worksheet since it consolidates today's lesson.
   homework: { format: 'homework', questionCount: 6, questionType: 'mixed', difficulty: 'medium' },
 };
 
-/**
- * The artifacts we will actually attempt for a plan, in the planner's order.
- * An artifact the planner proposed but we cannot build yet is dropped silently
- * — a teacher should never see a card that cannot finish.
- */
+// The artifacts we'll attempt for a plan, in the planner's order. One we can't build yet is dropped silently, so a
+// teacher never sees a card that can't finish.
 export function buildableFrom(plan: ClassroomPlan): ClassroomArtifact[] {
   return plan.artifacts.filter((a) => BUILDABLE_ARTIFACTS.includes(a));
 }
 
-/**
- * Turn one planned artifact into a generation request.
- *
- * Everything teacher-derived (topic, grade, subject, language) comes from the
- * merged plan the server produced, so the Context Bar's precedence (D8) is
- * already applied and is not re-decided here.
- */
+// Turns one planned artifact into a generation request. Topic, grade, subject and language come from the server's merged
+// plan, so the Context Bar's precedence is already applied.
 export function generationInputFor(
   artifact: ClassroomArtifact,
   plan: ClassroomPlan
@@ -104,17 +73,9 @@ export function generationInputFor(
   };
 }
 
-/**
- * Build the request for a lesson plan (P6). Separate from generationInputFor
- * because a lesson plan is not an assessment — no difficulty, no question
- * count, no question type; a duration and a classroom shape instead.
- *
- * `duration` and `classroomType` take the server's defaults for now: the
- * planner does not yet infer either from the teacher's message, and guessing
- * "multi_grade" wrongly produces a plan built around a classroom the teacher
- * does not have. The server validates both, so adding them later is a client
- * change only.
- */
+// Request for a lesson plan. Separate from generationInputFor since a plan has no difficulty, question count or type.
+// `duration` and `classroomType` use server defaults: the planner doesn't infer them yet, and guessing "multi_grade"
+// would build a plan for a classroom the teacher doesn't have.
 export function lessonPlanInputFor(plan: ClassroomPlan): GenerateLessonPlanInput {
   return {
     topic: plan.topic,
@@ -124,18 +85,8 @@ export function lessonPlanInputFor(plan: ClassroomPlan): GenerateLessonPlanInput
   };
 }
 
-/**
- * Generate one artifact, whichever endpoint it needs.
- *
- * This exists so useClassroomQueue never learns that lesson plans go somewhere
- * different — the queue's job is concurrency, cancellation and per-card state,
- * and it was written before there were two endpoints. Adding P6's branch there
- * would have put routing knowledge in three places (the worker, the retry
- * path, and here); this keeps it in one.
- *
- * Returns null for an artifact that cannot be built, matching
- * generationInputFor's contract, so callers keep their existing guard.
- */
+// Generates one artifact from whichever endpoint it needs, so useClassroomQueue (concurrency, cancellation, per-card
+// state) never learns lesson plans go elsewhere. Returns null for an artifact that can't be built, like generationInputFor.
 export function generateArtifact(
   artifact: ClassroomArtifact,
   plan: ClassroomPlan
@@ -147,16 +98,9 @@ export function generateArtifact(
   return input ? generateAssessment(input) : null;
 }
 
-/**
- * Build the batched request for every question-shaped artifact in a plan.
- *
- * The shared fields (topic, grade, subject, language) are sent ONCE and the
- * per-artifact settings ride along in `items` — which is the whole token
- * saving, and why this mirrors GENERATION_CONFIG rather than re-deciding it.
- *
- * Returns null when the plan contains no batchable artifact, so the caller can
- * skip the request entirely rather than send an empty set the server rejects.
- */
+// Builds the batched request for every question-shaped artifact in a plan. Shared fields are sent once and per-artifact
+// settings ride in `items` (the token saving), mirroring GENERATION_CONFIG. Returns null if nothing is batchable, so
+// the caller skips a request the server would reject.
 export function assessmentSetInputFor(plan: ClassroomPlan): GenerateSetInput | null {
   const items = buildableFrom(plan)
     .filter((a): a is Exclude<ClassroomArtifact, 'lesson_plan'> => a !== 'lesson_plan')
@@ -181,15 +125,8 @@ export function assessmentSetInputFor(plan: ClassroomPlan): GenerateSetInput | n
   };
 }
 
-/**
- * Which artifact a batched result belongs to.
- *
- * `format` and artifact kind are the same string for every question-shaped
- * artifact — GENERATION_CONFIG maps each one to a format of the same name —
- * but that is a fact worth asserting in one place rather than assuming at
- * every call site, so a future artifact whose format differs from its kind
- * fails here instead of silently filling the wrong card.
- */
+// Which artifact a batched result belongs to. Format and artifact kind are currently the same string; asserting it here
+// means a future artifact with a different format fails loudly instead of filling the wrong card.
 export function artifactForFormat(format: AssessmentFormat): ClassroomArtifact | null {
   const match = (Object.keys(GENERATION_CONFIG) as ClassroomArtifact[]).find(
     (artifact) => GENERATION_CONFIG[artifact]?.format === format
@@ -197,7 +134,7 @@ export function artifactForFormat(format: AssessmentFormat): ClassroomArtifact |
   return match ?? null;
 }
 
-/** Title for a saved artifact — same shape the Generator produces. */
+// Title for a saved artifact, same shape as the Generator's.
 export function artifactTitle(artifact: ClassroomArtifact, plan: ClassroomPlan): string {
   const label = ARTIFACT_META[artifact].label;
   const topic = plan.topic.trim() || 'Untitled';
@@ -205,15 +142,10 @@ export function artifactTitle(artifact: ClassroomArtifact, plan: ClassroomPlan):
   return `${label}: ${topic}${grade}`.slice(0, 200);
 }
 
-// ---- Persisting a turn's generated artifacts (D25) --------------------------
-//
-// D11 said nothing auto-saves. That still holds for the LIBRARY — pressing
-// Save is what puts a document where a teacher goes looking for it. This is a
-// different thing: keeping the chat turn itself intact, so reopening it shows
-// what was already made instead of four model calls' worth of nothing.
-//
-// Stored per turn, keyed by artifact kind, never listed in the history query
-// (see server/src/routes/queries.js for why that matters).
+// ---- Persisting a turn's generated artifacts ----
+// Nothing auto-saves to the Library; Save is what puts a document there. This keeps the chat turn itself intact so
+// reopening it shows what was made. Stored per turn by artifact kind, and never listed in the history query
+// (see server/src/routes/queries.js).
 
 /** artifact kind -> rendered Markdown. */
 export type StoredArtifacts = Partial<Record<ClassroomArtifact, string>>;
@@ -227,22 +159,11 @@ export async function storeArtifacts(queryId: string, artifacts: StoredArtifacts
   await api(`/queries/${queryId}/classroom-artifacts`, { method: 'PUT', body: { artifacts } });
 }
 
-// ---- Which of a set's artifacts are already in the Library -----------------
-//
-// A card's "Saved" state used to live only in component state, so reopening a
-// turn from history offered to save the same quiz again — and nothing on the
-// server deduplicates, so pressing it produced a second copy.
-//
-// The answer is derived from the Library rather than stored a second time
-// beside the artifacts: the Library is what "saved" actually means, so if the
-// teacher deletes the quiz the card correctly offers to save it again instead
-// of claiming a copy exists that does not.
-//
-// The link is the `structured` blob the card already writes on save
-// ({ format, topic, source: 'classroom_mode' }) plus `sourceQueryId`, which
-// the card now sends. Resources saved before that field was populated simply
-// do not match — they show as unsaved, which is the pre-existing behaviour and
-// never a wrong save.
+// ---- Which of a set's artifacts are already in the Library ----
+// A card's "Saved" state used to live only in component state, so reopening a turn offered to save the same quiz again
+// (nothing on the server de-dupes). It's derived from the Library instead of stored twice, so deleting the quiz makes the
+// card offer to save it again. The link is the `structured` blob written on save ({ format, topic, source: 'classroom_mode' })
+// plus `sourceQueryId`; older resources don't match and just show as unsaved.
 
 /** artifact kind -> id of the Library resource it was saved as. */
 export type SavedArtifactIds = Partial<Record<ClassroomArtifact, string>>;
@@ -255,14 +176,13 @@ export function savedArtifactIds(resources: LibraryResource[]): SavedArtifactIds
     try {
       meta = JSON.parse(r.structured);
     } catch {
-      // A resource whose `structured` is not JSON is not one of ours.
+      // Not JSON, so not one of ours.
       continue;
     }
     if (meta?.source !== 'classroom_mode') continue;
     const format = meta.format as ClassroomArtifact | undefined;
     if (!format || !(format in ARTIFACT_META)) continue;
-    // Resources arrive newest-first; keep the first match so a card that was
-    // somehow saved twice points at the most recent copy.
+    // Newest first; keep the first match so a card saved twice points at the latest copy.
     if (!out[format]) out[format] = r.id;
   }
   return out;

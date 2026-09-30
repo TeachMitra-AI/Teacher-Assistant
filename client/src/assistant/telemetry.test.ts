@@ -6,12 +6,8 @@ import {
   recordUndoAll,
 } from './telemetry';
 
-// Two things are worth testing here, and only two.
-//
-// 1. The events needed to compute the field-edit rate are actually produced —
-//    it is the launch gate, and a metric that silently records nothing is worse
-//    than no metric, because it reads as success.
-// 2. Nothing a teacher wrote can end up in an event (guardrail G11).
+// Two things matter: the events needed for the field-edit rate are actually produced (a metric that silently records
+// nothing reads as success), and nothing a teacher wrote can end up in an event.
 
 beforeEach(() => {
   drainTelemetry();
@@ -65,9 +61,7 @@ describe('event recording', () => {
 
 describe('privacy', () => {
   it('carries no teacher-authored content in any event', () => {
-    // The call sites pass a slot NAME and a provenance SOURCE. There is no
-    // parameter that could carry a topic, a grade value, or the utterance —
-    // the guarantee is structural, and this asserts the serialized result.
+    // Call sites pass a slot name and a provenance source; nothing can carry a topic, grade value or the utterance.
     recordPrefillApplied('generate_assessment', 8, 1);
     recordFieldCorrection('generate_assessment', 'topic', 'utterance');
     recordUndoAll('generate_assessment', 8);

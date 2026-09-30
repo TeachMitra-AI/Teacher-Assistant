@@ -1,12 +1,6 @@
-// AI Learning Representation System (ADR Phase D2) — dispatcher.
-//
-// Phase D1 shipped one generic display (plain lists/tables) covering all
-// six types identically, deliberately, as the "smaller first slice". D2
-// replaces that with a representation-specific view per type, per the
-// approved D2 scope: custom CSS/SVG for everything except graph_chart,
-// which reuses the `recharts` dependency already present for AdminPage.tsx.
-// This file itself stays a thin switch — the actual visual work lives in
-// each ...View component.
+// AI Learning Representation System: the dispatcher. It replaced a generic plain-list/table display with a
+// representation-specific view per type: custom CSS/SVG for all but graph_chart, which reuses the `recharts` dependency
+// already present for AdminPage.tsx. This file stays a thin switch; the visual work lives in each ...View component.
 import ComparisonTableView from './ComparisonTableView';
 import GraphChartView from './GraphChartView';
 import HierarchyTreeView from './HierarchyTreeView';

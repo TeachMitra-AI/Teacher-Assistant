@@ -2,30 +2,12 @@ import { useRef, useState } from 'react';
 import { Plus, Camera, ImagePlus, type LucideIcon } from 'lucide-react';
 import { useDismissable } from '../hooks/useDismissable';
 
-// The "+" button at the left of the Composer and the popover it opens — the one
-// place a teacher ADDS something to their question.
-//
-// Named AddMenu, not AttachMenu, on purpose. Today its two items both attach a
-// file, but "+" is the growth slot for anything a teacher adds to a message:
-// pick a saved resource from the Library, insert a photo they took earlier,
-// generate a diagram. Those are not attachments, and a component called
-// AttachMenu would either be renamed a third time or quietly start lying about
-// what it holds.
-//
-// A MODE is not an "add" and does not belong here — it changes what the
-// assistant does with the whole turn, so it lives on the right of the same row
-// (ClassroomModeMenu).
-//
-// GROWTH PATH: `actions` below is a flat list, which is right for two or three
-// items. Once it is longer, group it — a labelled separator between "add
-// something" items and "do something" items — rather than letting one flat list
-// grow past what a teacher can scan. Nothing else in this file has to change
-// for that: the button, dismissal, keyboard handling and styling are all
-// independent of how many items there are.
-//
-// This component owns only the open/closed state of its own popover. The file
-// inputs themselves stay in the Composer, which owns the attachment state and
-// its validation — this menu only says which one to open.
+// The "+" button at the left of the Composer and its popover: where a teacher adds something to their question.
+// Named AddMenu, not AttachMenu, because "+" is the growth slot for anything added (a saved Library resource, an earlier
+// photo, a diagram), not just attachments. A mode isn't an "add" (it changes what the assistant does with the whole turn), so
+// it lives on the right of the row (ClassroomModeMenu).
+// `actions` is a flat list, fine for two or three items; once longer, group it with a labelled separator between "add" and
+// "do" items. Only this menu's open state lives here; the file inputs and validation stay in the Composer.
 
 interface AddAction {
   id: string;
@@ -52,9 +34,7 @@ export default function AddMenu({
 }: AddMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  // The same dismissal behaviour (outside click + Escape) as every other
-  // popover in the app, from the same shared hook — so this menu cannot drift
-  // into behaving differently from the popovers a teacher already knows.
+  // Same dismissal (outside click + Escape) as other popovers, from the shared hook, so they behave alike.
   useDismissable(open, ref, () => setOpen(false));
 
   const actions: AddAction[] = [

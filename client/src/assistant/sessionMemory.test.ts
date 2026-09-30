@@ -11,17 +11,10 @@ import {
 } from './sessionMemory';
 import type { SessionMemory } from './types';
 
-// Two properties matter here and they pull in opposite directions.
-//
-// FAIL-SOFT: every path degrades to "no memory", because sessionStorage is
-// unavailable in private browsing on the target devices and losing memory must
-// cost prefill quality rather than a working composer.
-//
-// NO TTL: this store deliberately does not expire anything (approved decision
-// D1). resolver.js re-applies expiry to whatever the client sends, explicitly so
-// the pipeline does not depend on the client having done it — so a second
-// implementation here would be a fourth home for one rule. The test that proves
-// this is `keeps a slot the server would consider expired`.
+// Two properties that pull opposite ways. Fail-soft: every path degrades to "no memory" (sessionStorage is unavailable in
+// private browsing), costing prefill quality rather than the composer. No TTL: resolver.js already applies expiry to what
+// the client sends, so a second implementation here would duplicate the rule; `keeps a slot the server would consider
+// expired` proves it.
 
 const slot = (value: string, turn: number): SessionMemory[string] => ({
   value,
@@ -49,8 +42,7 @@ describe('readMemory / mergeMemory', () => {
   it('replaces a slot wholesale rather than merging its fields', () => {
     mergeMemory({ topic: { value: 'Fractions', raw: 'fractions', source: 'utterance', turn: 1 } });
     mergeMemory({ topic: { value: 'Decimals', source: 'memory', turn: 4 } });
-    // `raw` from the first write must not survive onto the second value: pairing
-    // one turn's canonical value with another's phrasing is how provenance lies.
+    // `raw` from the first write mustn't survive onto the second value, or one turn's value gets another's phrasing.
     expect(readMemory().topic).toEqual({ value: 'Decimals', source: 'memory', turn: 4 });
   });
 
@@ -83,9 +75,7 @@ describe('readMemory / mergeMemory', () => {
   });
 
   it('keeps a slot the server would consider expired', () => {
-    // topic has a 2-turn TTL server-side. Sending it on turn 99 is correct
-    // behaviour for this module: the resolver drops it, and the client holds no
-    // second copy of the rule.
+    // topic has a 2-turn TTL server-side; sending it on turn 99 is correct here, since the resolver drops it.
     mergeMemory({ topic: slot('Fractions', 1) });
     for (let i = 0; i < 98; i += 1) advanceTurn();
     expect(readMemory().topic).toEqual({ value: 'Fractions', source: 'utterance', turn: 1 });

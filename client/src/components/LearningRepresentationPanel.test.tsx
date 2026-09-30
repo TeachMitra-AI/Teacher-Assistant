@@ -1,5 +1,4 @@
-// Finding #7: a malformed Learning Representation payload from Gemini must
-// not crash the whole page — only the one card that received it.
+// A malformed Learning Representation payload from Gemini must not crash the whole page, only the card that received it.
 import { describe, expect, test, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -11,20 +10,15 @@ vi.mock('../lib/learningRepresentation', () => ({ fetchLearningRepresentation: v
 
 const mockedFetch = vi.mocked(learningRepresentationLib.fetchLearningRepresentation);
 
-// Realistic malformed payload: `series` missing entirely. GraphChartView's
-// mergeSeries() does `for (const s of series)` with no guard, so this throws
-// a real TypeError during render — not a synthetic/simulated error.
+// Realistic malformed payload: `series` missing. GraphChartView's mergeSeries() iterates it unguarded, so it throws a real TypeError during render.
 const MALFORMED_CHART = { chartType: 'bar', xLabel: 'Month', yLabel: 'Sales' } as unknown as GraphChartData;
 
 function malformedResponse(requestId = 'r1'): LearningRepresentationResponse {
   return { requestId, representation: 'graph_chart', data: MALFORMED_CHART };
 }
 
-// The "sibling card renders fine" case deliberately uses a different,
-// recharts-free view (labeled_diagram) rather than a second graph_chart:
-// recharts' <ResponsiveContainer> needs a real ResizeObserver, which jsdom
-// doesn't provide — an environment limitation of testing that component at
-// all, unrelated to what this file is verifying (isolation between cards).
+// The "sibling card renders fine" case uses a recharts-free view (labeled_diagram) because recharts' <ResponsiveContainer>
+// needs a ResizeObserver jsdom lacks, unrelated to the card isolation being tested.
 const VALID_PARTS: LabeledDiagramData = { parts: [{ label: 'Nucleus', description: 'Controls the cell' }] };
 function validResponse(requestId = 'r2'): LearningRepresentationResponse {
   return { requestId, representation: 'labeled_diagram', data: VALID_PARTS };
@@ -63,8 +57,7 @@ describe('LearningRepresentationPanel — per-card error isolation', () => {
     await userEvent.click(goodButton);
 
     expect(await within(screen.getByTestId('card-bad')).findByText('Could not display this content.')).toBeInTheDocument();
-    // The valid card renders its real content — proof the whole page (and
-    // this second, unrelated card) survived the first card's crash.
+    // The valid card renders its real content, proving the page and this second card survived the first card's crash.
     expect(await within(screen.getByTestId('card-good')).findByText('Nucleus')).toBeInTheDocument();
     expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
     vi.mocked(console.error).mockRestore();
@@ -80,8 +73,7 @@ describe('LearningRepresentationPanel — per-card error isolation', () => {
     const appLog = errorSpy.mock.calls.find((call) => call[0] === '[app] uncaught_render_error');
     expect(appLog).toBeTruthy();
     expect(typeof appLog?.[1]).toBe('string');
-    // A plain string, short, and with no embedded newlines/stack frames or
-    // JSON-shaped payload content — just the JS engine's own error message.
+    // A short plain string with no newlines, stack frames or JSON-shaped content: just the engine's error message.
     expect(appLog?.[1]).not.toMatch(/\n|\.tsx:\d|"chartType"|"xLabel"/i);
     errorSpy.mockRestore();
   });

@@ -8,14 +8,8 @@ import {
 } from './catalog';
 import type { CatalogResponse } from './types';
 
-// The catalog exists on the client for exactly one purpose: telling the executor
-// which module owns an action id this bundle has no handler for. That is the
-// stale-PWA case the endpoint was kept for.
-//
-// Everything here is BEST-EFFORT. A catalog that cannot be fetched costs the
-// unknown-id fallback and nothing else — routing itself never needs it, because
-// /interpret builds its own role-filtered catalog server-side and ignores
-// whatever the client claims.
+// The catalog exists on the client only to tell the executor which module owns an action id this bundle has no handler
+// for. Everything is best-effort: a failed fetch costs only that fallback.
 
 const catalog: CatalogResponse = {
   catalogVersion: 1,
@@ -45,7 +39,7 @@ const catalog: CatalogResponse = {
 
 beforeEach(() => {
   window.sessionStorage.clear();
-  // Also resets the in-flight de-duplication, which is module-level state.
+  // Also resets the module-level in-flight de-duplication.
   clearCatalog();
 });
 
@@ -98,8 +92,7 @@ describe('ensureCatalog', () => {
     } as unknown as CatalogResponse;
 
     const result = await ensureCatalog(vi.fn().mockResolvedValue(mixed));
-    // A newer server adding a field must not blind an older client to the
-    // actions it does understand.
+    // A newer server adding a field mustn't blind an older client to the actions it understands.
     expect(result!.actions).toHaveLength(1);
     expect(result!.catalogVersion).toBe(2);
   });
@@ -118,7 +111,7 @@ describe('domainForAction', () => {
   });
 
   it('returns null when no catalog has been fetched, without waiting for one', () => {
-    // Runs inside a navigation decision, so it must never await a network call.
+    // Runs inside a navigation decision, so it must never await the network.
     expect(domainForAction('generate_assessment')).toBeNull();
   });
 });

@@ -1,6 +1,5 @@
-// The structured-question list — shared by GeneratorPage's Edit/Preview tabs
-// and ResourceWorkspace's structured editor (see docs/generator-v2-plan.md).
-// Owns add/delete/reorder; per-question field editing is QuestionCard's job.
+// The structured-question list shared by GeneratorPage's Edit/Preview tabs and ResourceWorkspace's structured editor
+// (docs/generator-v2-plan.md). Owns add/delete/reorder; per-question editing is QuestionCard's job.
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import QuestionCard from './QuestionCard';

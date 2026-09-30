@@ -9,25 +9,16 @@ import NotificationBell from './Notifications';
 
 interface TopBarProps {
   preferences: ReturnType<typeof usePreferences>;
-  // Present only on the Coach page. Branding, search, and the sidebar
-  // collapse control now live in Sidebar's own header (see Sidebar.tsx) —
-  // this callback remains here for exactly one case: opening the mobile
-  // drawer, which is off-canvas while closed and so cannot hold its own
-  // reopen button. See the isMobile/sidebarOpen guard below.
+  // Coach page only. Branding, search and collapse live in Sidebar's header; this stays for one case: opening the mobile
+  // drawer, which is off-canvas while closed and can't hold its own reopen button.
   onSidebarToggle?: () => void;
   sidebarOpen?: boolean;
-  // Whether the viewport is at the mobile breakpoint — needed alongside
-  // sidebarOpen to decide if the mobile "open drawer" button belongs here
-  // (closed drawer only; an open drawer already has its own close button,
-  // and desktop's collapsed rail has its own reopen button — see Sidebar.tsx).
+  // Whether the viewport is at the mobile breakpoint; with sidebarOpen it decides if the "open drawer" button belongs here
+  // (a closed drawer only; an open drawer and the desktop rail have their own controls, see Sidebar.tsx).
   isMobile?: boolean;
-  // False only on the Coach page, where the account menu now lives at the
-  // bottom of the history Sidebar instead — see Sidebar.tsx. Every other page
-  // has no such sidebar, so this stays true (the default) there.
+  // False only on the Coach page, where the account menu lives at the bottom of the Sidebar; true (the default) elsewhere.
   showProfileMenu?: boolean;
-  // A page-specific control rendered where this bar has room for one, e.g.
-  // the Coach page's teaching-context icon (which sits in the slot the
-  // profile chip used to occupy there, now that it moved to the Sidebar).
+  // A page-specific control where the bar has room, e.g. the Coach page's teaching-context icon (in the slot the profile chip used to occupy there).
   extraControl?: ReactNode;
 }
 
@@ -38,17 +29,14 @@ export default function TopBar({
   const location = useLocation();
   const { theme, toggleTheme } = preferences;
   const isAdmin = user && ADMIN_ROLES.includes(user.role);
-  // Only the Coach page's mobile-closed state needs a control here — every
-  // other combination (desktop, or mobile with the drawer open) has its
-  // reopen/close control inside the Sidebar itself.
+  // Only the Coach page's mobile-closed state needs a control here; other cases have it inside the Sidebar.
   const showMobileSidebarOpen = Boolean(onSidebarToggle) && isMobile && !sidebarOpen;
 
   return (
     <header className="topbar">
       <div className="topbar-inner">
         <div className="topbar-left">
-          {/* Hidden on the Coach page (onSidebarToggle set): branding lives in
-              Sidebar's header there instead — see Sidebar.tsx. */}
+          {/* Hidden on the Coach page (onSidebarToggle set), where branding lives in Sidebar's header. */}
           {!onSidebarToggle && (
             <Link to="/" className="brand" aria-label="SarasTech — home">
               <img src="/logo.png" alt="" className="brand-logo" aria-hidden="true" />
@@ -88,11 +76,8 @@ export default function TopBar({
             >
               Library
             </Link>
-            {/* Classroom Management (docs/classroom-feature-plan.md) — NOT
-                the unrelated "Classroom Mode" AI chat feature, which has no
-                top-bar entry at all. Client-side cosmetic gate only (§14);
-                the server's CLASSROOM_MANAGEMENT_ENABLED is the real kill
-                switch. */}
+            {/* Classroom Management (docs/classroom-feature-plan.md), not the "Classroom Mode" AI chat feature. Client-side
+                cosmetic gate only; the server's CLASSROOM_MANAGEMENT_ENABLED is the real kill switch. */}
             {CLASSROOM_MANAGEMENT_ENABLED && (
               <Link
                 to="/classroom"
@@ -102,10 +87,8 @@ export default function TopBar({
                 Classroom
               </Link>
             )}
-            {/* Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md)
-                — NOT the Classroom Management link above, which is a
-                teacher marking their STUDENTS attendance; this is a
-                teacher's own. Client-side cosmetic gate only; the server's
+            {/* Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md): a teacher's own attendance, not
+                marking students (the Classroom Management link above). Client-side cosmetic gate only; the server's
                 TEACHER_ATTENDANCE_ENABLED is the real kill switch. */}
             {TEACHER_ATTENDANCE_ENABLED && (
               <Link

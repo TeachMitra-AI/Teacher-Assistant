@@ -26,11 +26,8 @@ describe('shouldResyncAuthOnStorageEvent', () => {
   });
 
   it('is a pure function with no internal state — repeated calls with the same input are stable', () => {
-    // Guards specifically against a future regression that adds hidden
-    // mutable state to this decision (e.g. a counter or cache) which could
-    // make its answer depend on call history instead of only its arguments
-    // — exactly the kind of change that could turn a burst of rapid
-    // storage events into runaway/inconsistent resync behavior.
+    // Guards against hidden mutable state (a counter or cache) making the answer depend on call history, which could make a
+    // burst of storage events resync inconsistently.
     const results = Array.from({ length: 50 }, () => shouldResyncAuthOnStorageEvent(TOKEN_KEY, TOKEN_KEY));
     expect(results.every((r) => r === true)).toBe(true);
 

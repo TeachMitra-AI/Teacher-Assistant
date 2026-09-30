@@ -1,7 +1,5 @@
-// Shared plain-language presentation helpers for Teacher Attendance — used
-// across CheckInTab, HistoryTab, and AttendanceCorrectionForm, kept in one
-// place so wording/formatting can never drift between "today's status", "a
-// past day's status", and "the Principal's view of the same day".
+// Plain-language presentation helpers for Teacher Attendance, shared by CheckInTab, HistoryTab and AttendanceCorrectionForm
+// so today's status, a past day's status and the Principal's view of it can't drift.
 import type { TeacherAttendanceStatus } from '../types';
 
 export const TEACHER_ATTENDANCE_STATUS_LABEL: Record<TeacherAttendanceStatus, string> = {

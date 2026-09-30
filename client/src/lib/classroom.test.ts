@@ -22,10 +22,8 @@ const plan = (over: Partial<ClassroomPlan> = {}): ClassroomPlan => ({
 });
 
 describe('buildableFrom', () => {
-  // As of P6 every artifact the planner can propose is buildable, so nothing
-  // is dropped from a full plan. The filter still matters: it is what keeps a
-  // card off the screen if the planner ever returns a value this client does
-  // not know, and it is the seam a future artifact goes through.
+  // Every artifact the planner can propose is buildable, so nothing is dropped from a full plan. The filter still keeps a
+  // card off screen if the planner returns a value this client doesn't know.
   test('a full plan builds every artifact, in the planner order', () => {
     expect(buildableFrom(plan())).toEqual(['lesson_plan', 'worksheet', 'quiz', 'homework', 'exit_ticket']);
   });
@@ -43,9 +41,8 @@ describe('buildableFrom', () => {
     expect(buildableFrom(plan({ artifacts: [] }))).toEqual([]);
   });
 
-  // Two generation paths since P6, so "has config" splits: the four
-  // question-shaped artifacts need a GENERATION_CONFIG row, and lesson_plan
-  // deliberately has none because it does not use that endpoint.
+  // Two generation paths: the four question-shaped artifacts need a GENERATION_CONFIG row; lesson_plan has none because it
+  // uses another endpoint.
   test('every buildable artifact has display metadata and a working request builder', () => {
     for (const artifact of BUILDABLE_ARTIFACTS) {
       expect(ARTIFACT_META[artifact]?.label).toBeTruthy();
@@ -84,8 +81,7 @@ describe('generationInputFor', () => {
     expect(input.subject).toBeUndefined();
   });
 
-  // Five documents of identical length would look machine-made. A worksheet a
-  // class works through is not the same size as a quiz.
+  // Five documents of identical length would look machine-made.
   test('artifacts differ in shape, not just in label', () => {
     const worksheet = generationInputFor('worksheet', plan())!;
     const quiz = generationInputFor('quiz', plan())!;
@@ -101,10 +97,8 @@ describe('generationInputFor', () => {
     expect(exit.questionCount).toBeLessThanOrEqual(3);
   });
 
-  // Homework and worksheet are the closest pair in the product — both are
-  // practice questions with a teacher answer key. If they ever generate the
-  // same request, a teacher setting homework silently gets a worksheet, which
-  // is the failure this test exists to catch.
+  // Homework and worksheet are the closest pair; if they ever generate the same request, a teacher setting homework silently
+  // gets a worksheet.
   test('homework is a shorter set than a worksheet, not the same request relabelled', () => {
     const homework = generationInputFor('homework', plan())!;
     const worksheet = generationInputFor('worksheet', plan())!;
@@ -112,8 +106,7 @@ describe('generationInputFor', () => {
     expect(homework.questionCount).toBeLessThan(worksheet.questionCount);
   });
 
-  // Ordering the whole set at once: an exit ticket is a two-minute check, a
-  // homework is an evening's practice, a worksheet fills a lesson.
+  // Ordering the whole set: an exit ticket is a two-minute check, homework an evening's practice, a worksheet a lesson.
   test('the three practice artifacts are ordered by how long they take', () => {
     const count = (a: Parameters<typeof generationInputFor>[0]) =>
       generationInputFor(a, plan())!.questionCount;
@@ -121,15 +114,13 @@ describe('generationInputFor', () => {
     expect(count('homework')).toBeLessThan(count('worksheet'));
   });
 
-  // lesson_plan IS buildable, but not through this endpoint. Returning null
-  // rather than a half-filled assessment request is what stops a lesson plan
-  // being generated as a worksheet with no questions.
+  // lesson_plan is buildable but not through this endpoint; returning null stops it being generated as a worksheet with no questions.
   test('returns null for lesson_plan — it is not an assessment', () => {
     expect(generationInputFor('lesson_plan', plan())).toBeNull();
   });
 
   test('question counts stay inside the server-validated bounds (3-30)', () => {
-    // lesson_plan has no question count — it is not an assessment.
+    // lesson_plan has no question count; it isn't an assessment.
     for (const artifact of BUILDABLE_ARTIFACTS.filter((a) => a !== 'lesson_plan')) {
       const { questionCount } = generationInputFor(artifact, plan())!;
       expect(questionCount).toBeGreaterThanOrEqual(3);
@@ -156,17 +147,14 @@ describe('artifactTitle', () => {
   });
 });
 
-// Batched generation (2026-08-07). Classroom Mode cost 7 Gemini calls per
-// teacher question; the free tier allows 20/minute. The four question-shaped
-// artifacts now travel in one request.
+// Batched generation: the four question-shaped artifacts travel in one request instead of 7 Gemini calls per question.
 describe('assessmentSetInputFor', () => {
   test('batches every question-shaped artifact, excluding the lesson plan', () => {
     const input = assessmentSetInputFor(plan())!;
     expect(input.items.map((i) => i.format)).toEqual(['worksheet', 'quiz', 'homework', 'exit_ticket']);
   });
 
-  // The whole token saving: shared context is sent once, per-artifact settings
-  // ride along in items.
+  // Shared context is sent once; per-artifact settings ride in items.
   test('sends the shared context once, not per artifact', () => {
     const input = assessmentSetInputFor(plan())!;
     expect(input.topic).toBe('Fractions');
@@ -199,8 +187,7 @@ describe('assessmentSetInputFor', () => {
 });
 
 describe('artifactForFormat', () => {
-  // The queue maps a batched result back to its card by format. If this
-  // mapping is wrong a teacher silently gets the quiz in the homework card.
+  // The queue maps a batched result to its card by format; a wrong mapping puts the quiz in the homework card.
   test('maps every batched format back to its artifact', () => {
     expect(artifactForFormat('worksheet')).toBe('worksheet');
     expect(artifactForFormat('quiz')).toBe('quiz');
@@ -232,9 +219,7 @@ describe('savedArtifactIds', () => {
     expect(ids.worksheet).toBeUndefined();
   });
 
-  // A resource saved by the Generator carries the same `format` key but a
-  // different source. Counting it would mark a card Saved that this turn never
-  // saved.
+  // A Generator-saved resource has the same `format` key but a different source; counting it would mark a card Saved.
   test('ignores resources that did not come from classroom mode', () => {
     const ids = savedArtifactIds([saved('r1', 'quiz', 'generator')] as never);
     expect(ids.quiz).toBeUndefined();
@@ -250,8 +235,7 @@ describe('savedArtifactIds', () => {
     expect(Object.keys(ids)).toHaveLength(0);
   });
 
-  // Resources arrive newest-first, so a duplicate save must resolve to the
-  // most recent copy rather than the oldest.
+  // Newest first, so a duplicate save resolves to the most recent copy.
   test('keeps the first match when an artifact was saved twice', () => {
     const ids = savedArtifactIds([saved('newest', 'quiz'), saved('oldest', 'quiz')] as never);
     expect(ids.quiz).toBe('newest');

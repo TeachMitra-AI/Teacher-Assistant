@@ -1,8 +1,5 @@
-// Typed client for the Schedule a Call admin inbox (super_admin only). Thin
-// wrapper over api(), same shape as lib/adminSupport.ts. Kept as its own
-// module — mirroring the support.ts / adminSupport.ts split — since
-// lib/scheduleDemo.ts is scoped to the public, unauthenticated visitor
-// endpoints.
+// Typed client for the Schedule a Call admin inbox (super_admin only): thin wrapper over api(), like lib/adminSupport.ts.
+// Separate from lib/scheduleDemo.ts, which covers the public unauthenticated endpoints.
 import { api } from '../api';
 import type { Paged } from './admin';
 import type { DemoBooking } from './scheduleDemo';

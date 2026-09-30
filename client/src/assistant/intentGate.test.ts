@@ -1,19 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { GATE_MAX_TOKENS, GATE_PROXIMITY_TOKENS, isCommand, normalizeUtterance } from './intentGate';
 
-// The gate's acceptance criterion is PRECISION, not recall (amendment CHANGE-2),
-// so this file is deliberately lopsided: the negative table is the one that
-// matters. A false positive costs a coaching question the full classifier budget
-// on top of its own answer, on the app's busiest path. A false negative costs
-// one manual navigation — today's experience.
-//
-// The negatives are therefore written as the app's REAL traffic: coaching
-// questions, classroom descriptions, and the follow-up phrasings that already
-// exist in config.ts. Anything ambiguous belongs in the negative table.
-//
-// The recall gap this leaves is real and is NOT fixed here. M7's labelled corpus
-// measures it; widening the vocabulary on the strength of one remembered
-// phrasing is how thresholds stop being evidence-based.
+// The gate is judged on precision, so the negative table matters most: a false positive costs a coaching question a full
+// classifier call, a false negative costs one manual navigation. Negatives are real traffic (coaching questions,
+// classroom descriptions, existing follow-up phrasings); anything ambiguous belongs there. The recall gap is measured in
+// intentGate.eval.test.ts, not fixed here.
 
 const REFERRED = [
   // ---- English: produce something ----
@@ -146,8 +137,7 @@ describe('isCommand — structural rules', () => {
   });
 
   it('rejects an utterance the server would answer with a 400', () => {
-    // Envelope validation caps the utterance at MAX_UTTERANCE_LENGTH, so
-    // referring a longer one is a guaranteed wasted round trip.
+    // Envelope validation caps utterance length, so a longer one is a wasted round trip.
     const tooLong = `make a quiz on ${'fractions '.repeat(80)}`;
     expect(tooLong.length).toBeGreaterThan(500);
     expect(isCommand(tooLong)).toBe(false);

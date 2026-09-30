@@ -1,9 +1,7 @@
 import { GraduationCap, Users, ClipboardCheck, Wallet, FileBarChart, type LucideIcon } from 'lucide-react';
 
-// The five sections of the Classroom workspace, all living under ONE page
-// shell (docs/classroom-feature-plan.md §3/§4) — no separate bottom-nav or
-// top-bar entries per section. Horizontally-scrollable on mobile, same
-// pattern as AdminTabs.tsx (see index.css's .classroom-tabs).
+// The five sections of the Classroom workspace under one page shell (docs/classroom-feature-plan.md), with no separate nav
+// entry per section. Horizontally scrollable on mobile, like AdminTabs.tsx (.classroom-tabs in index.css).
 export type ClassroomTabKey = 'classes' | 'students' | 'attendance' | 'fees' | 'reports';
 
 interface TabDef {

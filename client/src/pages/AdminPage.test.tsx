@@ -1,5 +1,4 @@
-// Finding #6: a load failure must offer a "Try again" action that re-runs
-// the same load, clears the error, and shows the successful result.
+// A load failure must offer a "Try again" action that re-runs the load, clears the error and shows the result.
 import { StrictMode } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -54,9 +53,8 @@ describe('AdminPage — load failure retry', () => {
   });
 });
 
-// Issue #110: StrictMode (main.tsx) mounts, cleans up, then re-mounts every
-// component in dev. The unmount guard must be re-armed on re-mount, or every
-// response is dropped and the page shows "Loading analytics…" forever.
+// StrictMode (main.tsx) mounts, cleans up and re-mounts every component in dev. The unmount guard must be re-armed on
+// re-mount, or every response is dropped and the page shows "Loading analytics…" forever.
 describe('AdminPage — StrictMode', () => {
   test('loads and renders analytics after the StrictMode re-mount', async () => {
     mockedApi.mockResolvedValue(analytics({ totals: { queries: 77, teachers: 5, activeTeachers: 3, feedback: 1, helpfulRatio: 80 } }));

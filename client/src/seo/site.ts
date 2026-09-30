@@ -1,26 +1,18 @@
-// Site-wide constants for the public, indexable part of the site. One place, so
-// the canonical URLs, sitemap, JSON-LD and meta tags can never disagree about
-// the origin or the brand's spelling.
+// Site-wide constants for the public, indexable part of the site, in one place so canonical URLs, sitemap, JSON-LD and meta tags agree on the origin and brand spelling.
 export const SITE_ORIGIN = 'https://www.sarastech.co.in';
 export const SITE_NAME = 'SarasTech';
-// People type the brand both ways ("SarasTech" / "Saras Tech"), with the
-// product name attached, and as "SarasTech AI" — the name the official social
-// profiles use. "SarasTech" stays the primary name; these are alternates only.
-// Declared once as WebSite/Organization alternate names.
+// People type the brand as "SarasTech" / "Saras Tech", with the product name, and as "SarasTech AI" (the name the official social
+// profiles use). "SarasTech" stays primary; these are declared once as WebSite/Organization alternate names.
 export const SITE_ALTERNATE_NAMES = ['SarasTech AI', 'Saras Tech', 'SarasTech Teacher Assistant'];
 export const PRODUCT_NAME = 'SarasTech Teacher Assistant';
 export const DEFAULT_OG_IMAGE = `${SITE_ORIGIN}/og-image.png`;
 export const OG_IMAGE_ALT = 'SarasTech — an AI teaching assistant for lesson plans, worksheets and quizzes';
 export const LOGO_URL = `${SITE_ORIGIN}/logo.png`;
 
-// Official SarasTech social profiles — the single source for both the home
-// page's "Follow SarasTech" section and the Organization `sameAs` in JSON-LD,
-// so the visible links and the structured data can never disagree. To add a
-// platform (YouTube, Facebook, WhatsApp…): append an entry here, and give its
-// `id` an icon in components/SocialLinks.tsx (without one it still renders as a
-// text link). Only list accounts that are live and official, and use the exact
-// public profile URL — no tracking parameters. Existing entries keep their
-// position so `sameAs` stays stable; append new ones at the end.
+// Official SarasTech social profiles: the single source for the home page's "Follow SarasTech" section and the Organization
+// `sameAs` in JSON-LD. To add a platform, append an entry (existing entries keep their position so `sameAs` stays stable) and
+// give its `id` an icon in components/SocialLinks.tsx (without one it renders as a text link). List only live, official
+// accounts, with the exact public profile URL and no tracking parameters.
 export interface SocialProfile {
   id: string;
   // Platform name as shown to visitors ("LinkedIn").

@@ -17,24 +17,11 @@ import { ApiError } from '../../api';
 import { getActivityLog } from '../../lib/teacherAttendanceApi';
 import type { TeacherAttendanceActivityLogEntry } from '../../types';
 
-// The who/what/when/where/result feed
-// (docs/feature-teacher-attendance-implementation-plan.md §1.10) — a
-// secondary, investigative tab, not the Principal's daily-use screen
-// (that's Reports).
-//
-// Rebuilt as a connected timeline (the pattern GitHub/Linear/Stripe use for
-// an activity/audit feed) after the flat-list version still read as one
-// undifferentiated block once real housekeeping noise (settings/holiday
-// edits) mixed in with actual teacher activity. Three real changes, not
-// just more colour:
-//   1. A summary strip up top answers "how much happened, and of what
-//      kind" before anyone reads a single row.
-//   2. A real segmented control for category, not a loose row of chips —
-//      "Teacher activity" now visibly reads as ONE choice among three, not
-//      an equal peer of the day-range buttons next to it.
-//   3. Events connect into a single line per day, the way a timeline reads
-//      instead of a table — the icon carries the "kind" of event, the line
-//      itself carries the passage of time.
+// The who/what/when/where/result feed (docs/feature-teacher-attendance-implementation-plan.md): a secondary, investigative
+// tab, not the Principal's daily screen (that's Reports).
+// Built as a connected timeline (as in GitHub/Linear/Stripe feeds), since a flat list read as one block once housekeeping
+// edits mixed in with teacher activity: a summary strip answers "how much happened, and of what kind" first; a segmented
+// control makes the category one choice among three; and events connect into one line per day, with the icon carrying the kind.
 const PAGE_SIZE = 25;
 const DAY_OPTIONS = [7, 30, 90];
 
@@ -89,10 +76,8 @@ export default function ActivityLogTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // The at-a-glance counts across the whole window (independent of the
-  // category filter/search currently applied to the list below) — "how
-  // much happened, and of what kind" before scrolling anything. Cheap:
-  // each call asks for pageSize:1 purely to read back its `total`.
+  // At-a-glance counts across the whole window, independent of the category filter and search below. Cheap: each call asks
+  // for pageSize:1 just to read its `total`.
   const [summary, setSummary] = useState<{ total: number; teacher: number; admin: number; blocked: number } | null>(null);
 
   useEffect(() => {

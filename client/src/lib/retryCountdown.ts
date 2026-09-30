@@ -1,7 +1,5 @@
-// Copy and formatting for the "every Gemini API key is exhausted" state
-// (ApiError.retryAt — see api.ts and hooks/useRetryCountdown.ts). Pure: no
-// clock of its own, mirroring lib/runStatus.ts's separation between the
-// ticking component/hook and the deterministic-to-test formatting it calls.
+// Copy and formatting for the "every Gemini API key is exhausted" state (ApiError.retryAt; see api.ts and
+// hooks/useRetryCountdown.ts). Pure, like lib/runStatus.ts: the hook owns the ticking.
 
 /** `2h 14m`, `45m`, `38s` — the two biggest non-zero units, floored. */
 export function formatRetryWait(remainingMs: number): string {

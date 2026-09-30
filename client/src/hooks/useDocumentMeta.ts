@@ -6,12 +6,8 @@ interface DocumentMeta {
   canonical: string;
 }
 
-// Updates the shared index.html title/description/canonical tags — and the
-// Open Graph / Twitter tags that mirror them, so a page shared on WhatsApp or
-// LinkedIn previews with its own title and URL rather than the home page's —
-// for the current public route, and restores whatever was there before on
-// unmount, so navigating away to a route that doesn't call this hook (e.g.
-// /login) doesn't keep showing a previous page's metadata.
+// Updates the shared index.html title, description, canonical and the mirrored Open Graph/Twitter tags for the current public
+// route (so shares on WhatsApp or LinkedIn preview the page's own title and URL), and restores the previous values on unmount.
 export function useDocumentMeta({ title, description, canonical }: DocumentMeta) {
   useEffect(() => {
     const targets: { selector: string; attribute: 'content' | 'href'; value: string }[] = [

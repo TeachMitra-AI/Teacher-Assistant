@@ -37,8 +37,7 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-// The editable slice of a resource the workspace owns. Kept separate from the
-// loaded resource so we can diff against a baseline for unsaved-change tracking.
+// The editable slice of a resource the workspace owns, kept apart from the loaded resource to diff against a baseline for unsaved-change tracking.
 interface FormState {
   title: string;
   type: ResourceType;
@@ -59,10 +58,8 @@ function toForm(r: LibraryResource): FormState {
   };
 }
 
-// AI assist actions. Each maps to a server-side action id; the server keeps the
-// key server-side, never persists the result, and returns a full revised
-// document so applying is a simple content replace. `adapt_grade` needs a
-// target grade, so it reveals a grade picker before generating.
+// AI assist actions, each mapping to a server action id. The key stays server-side, the result is never persisted, and a full
+// revised document comes back so applying is a content replace. `adapt_grade` shows a grade picker first.
 interface AiActionDef {
   id: AiActionId;
   label: string;
@@ -100,22 +97,15 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
   const [error, setError] = useState('');
   const [notFound, setNotFound] = useState(false);
 
-  // Exam-paper letterhead (Phase 3) — kept separate from FormState since it
-  // lives inside the opaque `structured` JSON column, not a first-class
-  // resource field. A resource that's never had its letterhead customized
-  // loads with sensible prefilled values (school/teacher identity + site
-  // defaults) rather than a blank one; `examMetaBaseline` is set to the SAME
-  // prefilled value so that alone doesn't count as an unsaved change.
+  // Exam-paper letterhead, kept apart from FormState since it lives in the opaque `structured` JSON column. A resource never
+  // customized loads with prefilled values (school/teacher identity + site defaults) rather than blank, and `examMetaBaseline`
+  // gets the same value so that alone isn't an unsaved change.
   const [examMeta, setExamMeta] = useState<ExamPaperMeta>({});
   const [examMetaBaseline, setExamMetaBaseline] = useState<ExamPaperMeta>({});
 
-  // Structured Question Model (Generator v2, docs/generator-v2-plan.md).
-  // `structuredQuestions === null` means this resource has no native
-  // structured questions (legacy — created before this feature, or a
-  // non-assessment type) — the page falls back to exactly the flat
-  // content/textarea flow below, unchanged. `structuredDoc` keeps the rest
-  // of the parsed document (format/topic/grade/subject/difficulty/
-  // questionType/questionCount) so a save can round-trip it unchanged.
+  // Structured Question Model (docs/generator-v2-plan.md). `structuredQuestions === null` means no native structured questions
+  // (legacy, or a non-assessment type) and the page uses the flat content/textarea flow. `structuredDoc` keeps the rest of the
+  // parsed document (format/topic/grade/subject/difficulty/questionType/questionCount) so a save round-trips it.
   const [structuredQuestions, setStructuredQuestions] = useState<Question[] | null>(null);
   const [structuredBaseline, setStructuredBaseline] = useState<Question[] | null>(null);
   const [docInstructions, setDocInstructions] = useState('');
@@ -130,10 +120,8 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
 
   // AI assist state.
   const [aiBusy, setAiBusy] = useState<AiActionId | null>(null);
-  // Every Gemini API key exhausted (see api.ts's ApiError.retryAt) — shown as
-  // a persistent inline message instead of the transient toast other AI
-  // action errors use (a toast auto-dismisses long before an hours-long
-  // cooldown ends), and auto-clears once the countdown reaches zero.
+  // Every Gemini API key exhausted (ApiError.retryAt): a persistent inline message rather than a toast (which auto-dismisses long
+  // before an hours-long cooldown ends), auto-cleared when the countdown reaches zero.
   const [aiCooldownUntil, setAiCooldownUntil] = useState<number | null>(null);
   const { remainingMs: aiCooldownRemainingMs, ready: aiCooldownReady } = useRetryCountdown(aiCooldownUntil);
   useEffect(() => {
@@ -144,8 +132,7 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [suggestionStructured, setSuggestionStructured] = useState<string | null>(null);
 
-  // Print state. `printReq` bumps a counter to trigger window.print() after the
-  // print document has re-rendered in the chosen mode (student omits the key).
+  // Print state. `printReq` bumps a counter to call window.print() after the print document re-renders in the chosen mode (student omits the key).
   const [printMode, setPrintMode] = useState<PrintMode>('full');
   const [printReq, setPrintReq] = useState(0);
   const [printMenuOpen, setPrintMenuOpen] = useState(false);
@@ -161,13 +148,9 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
     [form, baseline, examMeta, examMetaBaseline, structuredQuestions, structuredBaseline, docInstructions, docInstructionsBaseline]
   );
 
-  // Load the resource. 404 (missing OR not owned) gets a dedicated state so we
-  // never imply another user's resource exists.
-  //
-  // `userRef` (not `user` itself) is read inside the effect so an unrelated
-  // user-object update elsewhere (e.g. Settings saving an unrelated
-  // preference) can't re-trigger this effect and blow away any in-progress
-  // local edits — only navigating to a different resource id should reload.
+  // Load the resource. A 404 (missing or not owned) gets its own state so we never imply another user's resource exists.
+  // `userRef` (not `user`) is read in the effect so an unrelated user update (e.g. Settings saving another preference) can't
+  // re-trigger it and wipe in-progress edits; only a different resource id reloads.
   useEffect(() => {
     let cancelled = false;
     if (!id) return;
@@ -191,10 +174,8 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
         setExamMeta(initialExamMeta);
         setExamMetaBaseline(initialExamMeta);
 
-        // Structured Question Model (Generator v2) — only assessments ever
-        // carry structured.questions (Stage 1's own design); anything else
-        // (or a legacy assessment with no schemaVersion) leaves
-        // structuredQuestions null, falling back to the flat editor below.
+        // Only assessments carry structured.questions; anything else (or a legacy assessment with no schemaVersion) leaves
+        // structuredQuestions null and uses the flat editor.
         const parsedDoc = r.type === 'assessment' ? parseStructuredDocument(r.structured) : null;
         setStructuredQuestions(parsedDoc ? parsedDoc.questions : null);
         setStructuredBaseline(parsedDoc ? parsedDoc.questions : null);
@@ -230,25 +211,20 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
     setForm((f) => (f ? { ...f, [key]: value } : f));
   }, []);
 
-  // Assessment answer-key split for printing. The student version renders only
-  // the questions half — the answer key is never inserted into the print DOM.
+  // Answer-key split for printing: the student version renders only the questions half, and the key never enters the print DOM.
   const isAssessment = form?.type === 'assessment';
   const answerSplit = useMemo(() => splitAnswerKey(form?.content || ''), [form?.content]);
   const hasAnswerKey = !!isAssessment && answerSplit.hasAnswerKey;
 
-  // Fire the browser print dialog only after the print document has re-rendered
-  // in the chosen mode (so a student print can never contain the answer key).
+  // Fire the print dialog only after the document re-renders in the chosen mode, so a student print can't contain the answer key.
   useEffect(() => {
     if (printReq === 0) return;
     const raf = requestAnimationFrame(() => window.print());
     return () => cancelAnimationFrame(raf);
   }, [printReq]);
 
-  // Fails closed: if a "Student version" is requested but no answer-key
-  // heading was found to split on, nothing could actually be hidden — rather
-  // than silently printing the full document (which may still contain an
-  // answer key under an unrecognized heading), require an explicit
-  // confirmation so the teacher isn't caught off guard.
+  // Fails closed: if "Student version" is requested but no answer-key heading was found, nothing could be hidden (an unrecognized
+  // heading may still hold a key), so require explicit confirmation rather than silently printing the full document.
   function startPrint(mode: PrintMode) {
     if (mode === 'student' && isAssessment && !hasAnswerKey) {
       const ok = window.confirm(
@@ -261,17 +237,14 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
     setPrintReq((n) => n + 1);
   }
 
-  // For any assessment, always offer the Student / Teacher choice — this is
-  // a deliberate checkpoint even when no answer key was detected (see
-  // startPrint above), rather than silently printing the full document.
-  // Non-assessment resources have no such split and print directly.
+  // An assessment always gets the Student / Teacher choice, a deliberate checkpoint even if no answer key was detected (see
+  // startPrint). Non-assessments have no split and print directly.
   function onPrintClick() {
     if (isAssessment) setPrintMenuOpen((o) => !o);
     else startPrint('full');
   }
 
-  // Guarded in-app navigation — react-router here isn't a data router, so we
-  // confirm on the explicit Back/Cancel controls rather than via useBlocker.
+  // Guarded in-app navigation: react-router here isn't a data router, so we confirm on the explicit Back/Cancel controls, not useBlocker.
   function leave(to: string) {
     if (dirty && !window.confirm('You have unsaved changes. Leave without saving?')) return;
     navigate(to);
@@ -289,9 +262,7 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
     const structuredQuestionsChanged =
       JSON.stringify(structuredQuestions) !== JSON.stringify(structuredBaseline) || docInstructions !== docInstructionsBaseline;
 
-    // Structured Question Model (Generator v2): validate before saving — a
-    // UX nicety only, the server's own schema is always the final authority
-    // (docs/generator-v2-plan.md §8).
+    // Validate before saving: a UX nicety, the server's schema is the authority (docs/generator-v2-plan.md).
     if (structuredQuestions !== null && structuredQuestionsChanged) {
       if (structuredQuestions.length === 0) {
         show('Add at least one question before saving', 'error');
@@ -312,16 +283,12 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
     if (form.grade !== baseline.grade) patch.grade = form.grade.trim();
     if (form.subject !== baseline.subject) patch.subject = form.subject.trim();
     if (form.language !== baseline.language) patch.language = form.language;
-    // In structured mode `content` is server-rendered from `structured` on
-    // save (docs/generator-v2-plan.md §2c) — never sent directly, and a
-    // plain textarea edit is impossible in this mode (no textarea renders).
+    // In structured mode `content` is server-rendered from `structured` on save, never sent, and no textarea renders (docs/generator-v2-plan.md).
     if (structuredQuestions === null && form.content !== baseline.content) patch.content = form.content;
 
     if (structuredQuestions !== null && (structuredQuestionsChanged || examMetaChanged)) {
-      // Always resend the FULL structured document (not just the changed
-      // part) — the server only ever accepts/re-renders from the whole
-      // `questions` array, and examMeta must travel alongside it in the same
-      // JSON blob (both live in the one `structured` column).
+      // Always resend the full structured document: the server accepts and re-renders only from the whole `questions` array, and
+      // examMeta travels in the same JSON blob (one `structured` column).
       patch.structured = buildStructuredPayload({
         instructions: docInstructions,
         questions: structuredQuestions,
@@ -387,12 +354,9 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
 
   function applySuggestion() {
     if (suggestion == null) return;
-    // Structured Question Model (Generator v2): for a structured resource
-    // the ai-action response also carries an updated `structured` string
-    // (docs/generator-v2-plan.md §2f) — apply BOTH together so
-    // structuredQuestions can never go stale relative to the shown
-    // suggestion. `content` is still set too (display/legacy-safety); the
-    // next Save re-renders it from structured anyway.
+    // For a structured resource the ai-action response also carries an updated `structured` string (docs/generator-v2-plan.md);
+    // apply both together so structuredQuestions can't go stale against the shown suggestion. `content` is still set for
+    // display/legacy safety; the next Save re-renders it from structured anyway.
     if (structuredQuestions !== null && suggestionStructured) {
       const parsedDoc = parseStructuredDocument(suggestionStructured);
       if (parsedDoc) {
@@ -450,9 +414,7 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
                       {hasAnswerKey ? 'Includes answer key' : 'Prints the document as-is'}
                     </span>
                   </button>
-                  {/* The browser's own printed URL/date header and footer can
-                      only be turned off inside the print dialog — no web page
-                      can disable it — so tell the teacher where the switch is. */}
+                  {/* The browser's printed URL/date header and footer can only be turned off in the print dialog, so tell the teacher where. */}
                   <p className="workspace-print-menu-note">
                     For a clean paper, turn off “Headers and footers” under More&nbsp;settings in the print dialog.
                   </p>
@@ -623,15 +585,13 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
                     {isAssessment && (
                       <ExamHeader meta={examMeta} fallbackTitle={form.title} subject={form.subject} grade={form.grade} />
                     )}
-                    {/* For an assessment the letterhead already presents the
-                        title/metadata, so the generated preamble is stripped
-                        from display (never from the stored content). */}
+                    {/* For an assessment the letterhead shows the title/metadata, so the generated preamble is stripped from display (never from stored content). */}
                     <div dangerouslySetInnerHTML={{ __html: formatResponse((isAssessment ? stripAssessmentPreamble(form.content) : form.content) || '_Nothing to preview yet._') }} />
                   </div>
                 )}
               </div>
 
-              {/* AI assist (Phase 4). Suggestions never overwrite silently. */}
+              {/* AI assist. Suggestions never overwrite silently. */}
               <section className="workspace-ai" aria-label="AI assist">
                 <h2 className="workspace-ai-title">AI Assist</h2>
                 <p className="workspace-ai-hint">Generate a suggested revision — you preview and apply it yourself.</p>
@@ -711,18 +671,11 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
         )}
       </main>
 
-      {/* Print-only document (Phase 3 + assessment student/teacher versions).
-          Rendered from live form state so the teacher can print what they see,
-          even before saving. For a student print of an assessment, ONLY the
-          questions half is put into the DOM — the answer key is never present.
-
-          An assessment prints as a clean exam paper: the letterhead
-          (ExamHeader) IS the paper's header, so none of the app-document
-          furniture (brand line, title, metadata row, updated date, version
-          badge) is rendered — those made the export look like a printed
-          webpage — and the generated Markdown preamble is stripped since the
-          letterhead already carries the same information. Other resource
-          types keep the original document-style header. */}
+      {/* Print-only document, rendered from live form state so the teacher can print what they see even before saving. A student
+          print of an assessment puts only the questions half in the DOM; the key is never present. An assessment prints as a
+          clean exam paper: the ExamHeader letterhead is the header, so the app-document furniture (brand line, title, metadata,
+          updated date, version badge) is omitted (it made the export look like a printed webpage) and the generated preamble
+          is stripped. Other resource types keep the document-style header. */}
       {form && resource && !loading && !notFound && !error && (() => {
         const rawPrintContent = hasAnswerKey && printMode === 'student' ? answerSplit.questions : form.content || '';
         return isAssessment ? (

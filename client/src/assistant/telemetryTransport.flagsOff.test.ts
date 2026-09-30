@@ -1,14 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AssistantEventsRequest } from './types';
 
-// The flags-off half of the transport's contract, in its own file because the
-// flag is a BUILD-TIME constant read at module load — one module registry per
-// file, so the two states cannot be exercised in the same one.
-//
-// This is what makes "flags off ⇒ no network requests, no Event rows, no
-// background activity" provable for telemetry rather than asserted. It is the
-// same standard the M6 gate applied to routing, extended to the one path M8
-// adds.
+// The flags-off half of the transport's contract, in its own file because the flag is a build-time constant read at module
+// load (one module registry per file). It makes "flags off ⇒ no network requests, no Event rows, no background activity"
+// provable for telemetry.
 
 vi.mock('../config', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../config')>()),
@@ -68,8 +63,7 @@ describe('with the flag off', () => {
     });
     await settle();
 
-    // "No network" would still be a slow leak if the queue filled forever on a
-    // long session. Nothing is recorded at all.
+    // Nothing is recorded at all, or the queue would leak memory over a long session.
     expect(peekQueue()).toHaveLength(0);
   });
 });

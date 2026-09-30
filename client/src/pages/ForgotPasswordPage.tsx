@@ -5,13 +5,9 @@ import { useAuth } from '../auth';
 import { ApiError } from '../api';
 import { usePreferences } from '../hooks/usePreferences';
 
-// Step one of self-service password reset: ask for an email, and the server
-// mails a single-use link.
-//
-// The confirmation below is deliberately worded to say nothing about whether
-// the address actually has an account — the endpoint answers identically either
-// way so it can't be used to find out who is registered, and the UI must not
-// give that away after the fact.
+// Step one of self-service password reset: ask for an email and the server mails a single-use link. The confirmation says
+// nothing about whether the address has an account: the endpoint answers identically either way so it can't reveal who is
+// registered, and the UI mustn't either.
 export default function ForgotPasswordPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
   const { forgotPassword } = useAuth();
   const [email, setEmail] = useState('');

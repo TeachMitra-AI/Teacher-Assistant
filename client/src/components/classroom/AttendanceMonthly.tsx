@@ -11,11 +11,8 @@ function pct(value: number | null): string {
   return value === null ? '—' : `${value}%`;
 }
 
-// One class's month-wise attendance (docs/classroom-feature-plan.md Phase 3
-// "Month-wise attendance" + "Student attendance history"). Per-student rows
-// come straight from GET .../attendance/summary — the expandable date list
-// per student is the only extra fetch, done lazily on expand rather than
-// eagerly for every student up front.
+// One class's month-wise attendance (docs/classroom-feature-plan.md). Per-student rows come from GET .../attendance/summary;
+// the expandable per-student date list is the only extra fetch, done lazily on expand.
 export default function AttendanceMonthly({ classId, className }: { classId: string; className: string }) {
   const [month, setMonth] = useState(CURRENT_MONTH);
   const [summary, setSummary] = useState<ClassAttendanceMonthSummary | null>(null);

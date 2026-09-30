@@ -3,16 +3,9 @@ import { createPortal } from 'react-dom';
 import { MoreHorizontal, Pencil, Pin, PinOff, Share2, Trash2 } from 'lucide-react';
 import { useDismissable } from '../hooks/useDismissable';
 
-// The three-dot chat-actions menu on each Sidebar history row. Portalled to
-// document.body — `.sidebar` has `overflow: hidden` (for its open/close width
-// transition) and `.history-list` scrolls, so a plain absolutely-positioned
-// popover would be clipped by one or the other; same reasoning
-// AttachmentPreviewModal and ConfirmDialog already document for their own
-// portals.
-//
-// Controlled open state (not self-contained like AddMenu/ClassroomModeMenu):
-// Sidebar owns a single `openMenuId` so opening one row's menu always closes
-// any other, which a self-managed popover per row could not guarantee.
+// The three-dot chat-actions menu on each Sidebar history row. Portalled to document.body because `.sidebar` has
+// `overflow: hidden` and `.history-list` scrolls, so an in-place popover would be clipped (as with AttachmentPreviewModal
+// and ConfirmDialog). Open state is controlled: Sidebar owns one `openMenuId`, so opening a row's menu closes any other.
 
 interface Position {
   top?: number;
@@ -20,8 +13,7 @@ interface Position {
   right: number;
 }
 
-// Only used to decide which way the popover opens, so an approximation is
-// enough — see ContextBar's identical reasoning (now TeachingContextMenu).
+// Only decides which way the popover opens, so an approximation is enough (see TeachingContextMenu).
 const POPOVER_APPROX_HEIGHT = 190;
 
 function computePosition(anchorEl: HTMLElement): Position {
@@ -50,15 +42,12 @@ export default function HistoryItemMenu({
   const popoverRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<Position | null>(null);
 
-  // Stable identity so useDismissable's effect doesn't tear down/re-attach
-  // its listeners on every render — same reasoning as AddMenu/TeachingContextMenu.
+  // Stable identity so useDismissable doesn't re-attach its listeners every render (as in AddMenu/TeachingContextMenu).
   const dismissRefs = useMemo(() => [triggerRef, popoverRef], []);
   useDismissable(open, dismissRefs, () => onOpenChange(false));
 
-  // Re-measured on open, and closed on scroll/resize rather than tracked
-  // continuously — the row this button is on can only move by scrolling the
-  // history list or resizing the window, and closing on either is simpler and
-  // cheaper than a per-frame reposition loop for a menu this short-lived.
+  // Re-measured on open and closed on scroll/resize instead of tracked per frame; the row can only move by scrolling the
+  // list or resizing, and closing is simpler for a short-lived menu.
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) {
       setPosition(null);
@@ -74,18 +63,9 @@ export default function HistoryItemMenu({
     };
   }, [open, onOpenChange]);
 
-  // Portalled to document.body (see above), so this popover is NOT next to
-  // its trigger in DOM order — Tab would otherwise skip straight past it to
-  // whatever element happens to follow the trigger on the page. Same fix
-  // ConfirmDialog already applies to the same problem: focus the first item
-  // on open, trap Tab/Shift+Tab within the panel, and hand focus back to the
-  // trigger on close.
-  //
-  // Depends on `position`, not just `open`: on the render where `open` first
-  // becomes true, `position` is still null (the layout effect above hasn't
-  // measured yet), so the portal hasn't rendered and popoverRef.current is
-  // still null — focusing here would silently no-op. `position` flips from
-  // null to a value one render later, which is what this needs to wait for.
+  // Portalled, so the popover isn't next to its trigger in DOM order and Tab would skip past it. As in ConfirmDialog: focus
+  // the first item on open, trap Tab/Shift+Tab, and return focus to the trigger on close. Depends on `position`, not just
+  // `open`: when `open` first flips, `position` is still null and the portal hasn't rendered, so focusing would no-op.
   useEffect(() => {
     if (!open || !position) return;
     const firstItem = popoverRef.current?.querySelector<HTMLElement>('[role="menuitem"]');
@@ -120,9 +100,7 @@ export default function HistoryItemMenu({
         ref={triggerRef}
         type="button"
         className={`history-item-menu-btn${open ? ' active' : ''}`}
-        // Stops the click from also bubbling up into the history-item-main
-        // button and opening the chat — the two controls sit right next to
-        // each other in the same row.
+        // Keeps the click from also reaching the history-item-main button and opening the chat.
         onClick={(e) => { e.stopPropagation(); onOpenChange(!open); }}
         aria-haspopup="menu"
         aria-expanded={open}

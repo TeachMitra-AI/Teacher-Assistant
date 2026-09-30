@@ -4,10 +4,8 @@ import { Sun, Moon, Menu, X } from 'lucide-react';
 import type { Mode } from './AuthForm';
 import { ABOUT_PAGE, GUIDE_PAGES, TOOL_PAGES } from '../seo/pages';
 
-// Header and footer shared by the public tool/guide pages
-// (pages/ContentPage.tsx). Deliberately reuses the landing page's `.home-*`
-// classes so these pages look like the same site; HomePage keeps its own
-// header (it has in-page anchor links) and shares only <FooterSeoColumns />.
+// Header and footer shared by the public tool/guide pages (pages/ContentPage.tsx). Reuses the landing page's `.home-*`
+// classes so they look like the same site; HomePage keeps its own header (it has in-page anchors) and shares only <FooterSeoColumns />.
 
 interface HeaderProps {
   theme: 'light' | 'dark';
@@ -124,8 +122,7 @@ export function PublicHeader({ theme, toggleTheme, signedIn, onOpenAuth }: Heade
   );
 }
 
-// The "Tools" and "Guides" link columns — crawlable, descriptive internal links
-// to every public page, on the home page and every content page.
+// The "Tools" and "Guides" link columns: crawlable internal links to every public page, on the home page and every content page.
 export function FooterSeoColumns() {
   return (
     <>

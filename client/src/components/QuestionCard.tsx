@@ -1,8 +1,5 @@
-// One structured question, rendered either as an editable card (Generator's
-// Edit tab / ResourceWorkspace's structured editor) or a read-only card
-// (Preview tab) — see docs/generator-v2-plan.md. Kept as one component for
-// both modes so the two never visually drift apart; `editable` decides which
-// controls render.
+// One structured question, as an editable card (Generator's Edit tab / ResourceWorkspace's structured editor) or a read-only
+// card (Preview tab); see docs/generator-v2-plan.md. One component for both so they don't drift; `editable` picks the controls.
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import { EDITABLE_QUESTION_TYPES } from '../lib/structuredQuestions';
 import type { MatchQuestion, McqQuestion, Question } from '../lib/resources';
@@ -32,9 +29,7 @@ export default function QuestionCard({
 
   function changeType(nextType: string) {
     if (!onChange || nextType === question.type) return;
-    // Switching type resets the type-specific fields to sensible empty
-    // defaults rather than carrying over stale, now-meaningless data (e.g. an
-    // mcq's options surviving a switch to "match").
+    // Switching type resets type-specific fields to empty defaults instead of carrying stale data (e.g. an mcq's options into "match").
     const text = question.text;
     const id = question.id;
     if (nextType === 'mcq') onChange({ id, type: 'mcq', text, options: ['', '', '', ''], correctOptionIndex: 0 });

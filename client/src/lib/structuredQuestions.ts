@@ -1,17 +1,8 @@
-// Structured Question Model (Generator v2) — pure domain logic over the
-// `Question`/`StructuredAssessmentDocument` types in ./resources.
-//
-// This module is the client-side mirror of server/src/lib/assessmentSchema.js
-// and the structured-question handling in server/src/routes/resources.js
-// (see docs/generator-v2-plan.md). It deliberately does NOT talk to the
-// network — GeneratorPage.tsx/ResourceWorkspace.tsx own the API calls and use
-// these functions to translate between the wire/storage shape (a flat object
-// with every field present, empty when not applicable — the server's own
-// convention) and a friendlier discriminated union for the editor UI.
-//
-// Validation here is a UX nicety only (an inline error before a network round
-// trip) — the server's Zod schema is always the final authority, exactly
-// like every other form in this app.
+// Structured Question Model (Generator v2): pure logic over the `Question`/`StructuredAssessmentDocument` types in
+// ./resources. Client-side mirror of server/src/lib/assessmentSchema.js and the structured-question handling in
+// server/src/routes/resources.js (docs/generator-v2-plan.md). No network: the pages own API calls and use these functions to
+// translate between the wire/storage shape (a flat object, every field present and empty when N/A) and a discriminated
+// union for the editor. Validation here is only a UX nicety; the server's Zod schema is the authority.
 import { QUESTION_TYPES } from '../config';
 import type {
   DescriptiveQuestion,
@@ -27,14 +18,10 @@ import type {
   TrueFalseQuestion,
 } from './resources';
 
-// The picker vocabulary for an INDIVIDUAL question's type. 'mixed' is a
-// generation-REQUEST modifier only (server/src/actions/schemas/
-// generateAssessment.js's own comment) — no single question is ever "mixed".
+// The picker vocabulary for an individual question's type. 'mixed' is a generation-request modifier only, never a question's type.
 export const EDITABLE_QUESTION_TYPES = QUESTION_TYPES.filter((q) => q.value !== 'mixed');
 
-// Mirrors server/src/lib/assessmentSchema.js's bounds exactly — keep both in
-// sync, same "change together" discipline as every other shared vocabulary in
-// this app (see config.ts's own comments on QUESTION_TYPES/ASSESSMENT_FORMATS).
+// Mirrors the bounds in server/src/lib/assessmentSchema.js; change both together (see config.ts).
 export const MIN_MATCH_PAIRS = 3;
 export const MAX_MATCH_PAIRS = 8;
 export const MAX_MODEL_ANSWER = 2000;
@@ -71,12 +58,7 @@ export function createEmptyQuestion(type: QuestionType): Question {
   }
 }
 
-/**
- * Parses one raw question object (from a generate response or a saved
- * resource's `structured.questions`) into the typed union. Tolerant of
- * missing/malformed fields — never throws, since it may be reading a
- * hand-edited or older payload; falls back to sensible empty values.
- */
+/** Parses one raw question (from a generate response or a saved `structured.questions`) into the typed union. Never throws: it may read a hand-edited or older payload, so bad fields fall back to empty values. */
 export function fromWireQuestion(raw: unknown): Question {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const id = typeof r.id === 'string' && r.id ? r.id : makeQuestionId();
@@ -120,12 +102,8 @@ export function fromWireQuestion(raw: unknown): Question {
 }
 
 /**
- * Inverse of fromWireQuestion — the flat shape the server's schema expects
- * (every field present, empty/-1 when not applicable), matching
- * server/src/lib/assessmentSchema.js's questionSchema exactly. `id` is kept
- * (the server ignores unknown keys when validating, but stores the raw JSON
- * string as-is, so it survives — see routes/resources.js's toDto/create/
- * update handlers) so the editor keeps stable list keys across a save+reload.
+ * Inverse of fromWireQuestion: the flat shape the server's schema expects (every field present, empty/-1 when N/A). `id` is
+ * kept, since the server stores the raw JSON as-is, so the editor keeps stable list keys across a save and reload.
  */
 export function toWireQuestion(q: Question): Record<string, unknown> {
   const base = {
@@ -154,7 +132,7 @@ export function toWireQuestion(q: Question): Record<string, unknown> {
   }
 }
 
-/** Reads a stored `questionType` back as a single value or a non-empty array of them (issue #95) — anything else (wrong element types, an empty array) is dropped, same "malformed round-trips to undefined" convention as every other field here. */
+/** Reads a stored `questionType` back as a single value or a non-empty array; anything else (wrong element types, an empty array) is dropped, like every other malformed field here. */
 function parseQuestionTypeSelection(value: unknown): QuestionTypeSelection | undefined {
   if (typeof value === 'string') return value as QuestionType;
   if (Array.isArray(value) && value.length > 0 && value.every((v) => typeof v === 'string')) {
@@ -164,14 +142,9 @@ function parseQuestionTypeSelection(value: unknown): QuestionTypeSelection | und
 }
 
 /**
- * Parses `Resource.structured` (a JSON string) into a
- * StructuredAssessmentDocument, or null for anything that isn't
- * `schemaVersion: 2` with a `questions` array — mirrors the server's
- * `tryReadStructuredQuestions` (routes/resources.js) exactly, so client and
- * server always agree on what counts as "this resource has structured
- * questions". A legacy resource (no schemaVersion, or a malformed/missing
- * `structured`) always returns null here — the caller falls back to the
- * flat markdown editor, unchanged (see docs/generator-v2-plan.md §5/§6).
+ * Parses `Resource.structured` (a JSON string) into a StructuredAssessmentDocument, or null unless it's `schemaVersion: 2`
+ * with a `questions` array. Mirrors the server's `tryReadStructuredQuestions`, so both agree on what "structured" means; a
+ * legacy resource returns null and the caller falls back to the markdown editor (docs/generator-v2-plan.md).
  */
 export function parseStructuredDocument(structuredStr: string | null | undefined): StructuredAssessmentDocument | null {
   if (!structuredStr) return null;
@@ -200,12 +173,7 @@ export function parseStructuredDocument(structuredStr: string | null | undefined
   };
 }
 
-/**
- * Builds the `structured` JSON string to send on save/edit — the same shape
- * parseStructuredDocument reads back. The server re-renders `content` from
- * this itself (docs/generator-v2-plan.md §2c) — the client never computes
- * the printable Markdown from a structured document.
- */
+/** Builds the `structured` JSON string to send on save, the shape parseStructuredDocument reads back. The server re-renders `content` from it; the client never computes the printable Markdown. */
 export function buildStructuredPayload(doc: Omit<StructuredAssessmentDocument, 'schemaVersion'>): string {
   return JSON.stringify({ ...doc, schemaVersion: 2, questions: doc.questions.map(toWireQuestion) });
 }
@@ -254,5 +222,5 @@ export function validateQuestions(questions: Question[]): Record<string, string>
   return errors;
 }
 
-// Re-exported so callers only need one import for the common pair.
+// Re-exported so callers need one import for the common pair.
 export type { DescriptiveQuestion, FillBlankQuestion, MatchQuestion, McqQuestion, ShortAnswerQuestion, TrueFalseQuestion };

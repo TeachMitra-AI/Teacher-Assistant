@@ -4,14 +4,8 @@ import { reviewAttendance } from '../../lib/teacherAttendanceApi';
 import { TEACHER_ATTENDANCE_STATUS_LABEL, formatAttendanceTime, formatDistance } from '../../lib/teacherAttendanceLabels';
 import type { TeacherAttendanceDetailDto, TeacherAttendanceReviewAction } from '../../types';
 
-// Correction action form for one day — reachable on-demand from
-// ReportsTab's drill-down (docs/feature-teacher-attendance-implementation-plan.md
-// §1.7/§4). There is no review queue any more, so this is never rendered as
-// part of a "must process" list — a Principal opens it only when they've
-// chosen to look at a specific day. Formerly ReviewQueueCard; renamed and
-// stripped of queue-only concerns (repeatPatternWarning) when the queue
-// was retired — the pattern itself still shows as a coloured count in
-// ReportsTab's summary table.
+// Correction form for one day, opened on demand from ReportsTab's drill-down (docs/feature-teacher-attendance-implementation-plan.md).
+// There's no review queue, so it's never part of a "must process" list; a Principal opens it for a day they chose to look at.
 const ACTION_OPTIONS: { value: TeacherAttendanceReviewAction; label: string }[] = [
   { value: 'approve', label: 'Approve' },
   { value: 'reject', label: 'Reject' },
@@ -21,9 +15,7 @@ const ACTION_OPTIONS: { value: TeacherAttendanceReviewAction; label: string }[] 
   { value: 'correct_checkout', label: 'Correct check-out time' },
 ];
 
-// Distance is shown as plain evidence, never as a guessed reason — the app
-// reports facts, the Principal decides what they mean
-// (attendance-plan-review.md §2).
+// Distance is shown as plain evidence, never a guessed reason: the app reports facts and the Principal decides what they mean.
 function metersLabel(m: number | null): string {
   return m === null ? '—' : `${formatDistance(m)} from school`;
 }
@@ -44,10 +36,8 @@ export default function AttendanceCorrectionForm({
   onResolved: (id: string) => void;
   onCancel: () => void;
 }) {
-  // "Approve" on a missing-checkout day would mark it Present while leaving
-  // the checkout time and working hours blank forever — there's no way to
-  // recover that data later, unlike every other case where Approve
-  // genuinely just means "this is fine." Excluded here, not globally.
+  // "Approve" on a missing-checkout day would mark it Present with the checkout time and hours blank forever, unlike other
+  // cases where Approve just means "fine". Excluded here, not globally.
   const isMissingCheckout = entry.status === 'pending_regularization';
   const actionOptions = isMissingCheckout ? ACTION_OPTIONS.filter((opt) => opt.value !== 'approve') : ACTION_OPTIONS;
 

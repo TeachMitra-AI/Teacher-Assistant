@@ -2,11 +2,9 @@ import { Component, type ReactNode } from 'react';
 import { useHelpSupport } from './HelpSupport';
 import { HELP_SUPPORT_ENABLED } from '../config';
 
-// The gap found while designing Help & Support: before this, an uncaught
-// render error was a blank white screen with no way out and no way to tell
-// anyone (see docs/help-support-architecture.md §6). A function component so
-// it can call useHelpSupport() — the class boundary below only ever renders
-// this as a REPLACEMENT for its children, so it stays outside whatever threw.
+// Before this, an uncaught render error was a blank white screen with no way out or way to report it
+// (docs/help-support-architecture.md). A function component so it can call useHelpSupport(); the class boundary below
+// renders it as a replacement for its children, so it stays outside whatever threw.
 // eslint-disable-next-line react-refresh/only-export-components -- paired with the class boundary below, which fast refresh can't track anyway.
 function CrashFallback() {
   const { openBugReport } = useHelpSupport();
@@ -30,23 +28,15 @@ function CrashFallback() {
 
 interface Props {
   children: ReactNode;
-  /** Replaces the default full-page CrashFallback — for a boundary isolating
-   *  one card/section rather than the whole app (Finding #6/#7). Omit to get
-   *  today's full-page behavior unchanged (see App.tsx's root usage). */
+  /** Replaces the default full-page CrashFallback, for a boundary isolating one card or section (see App.tsx's root usage for the default). */
   fallback?: ReactNode;
-  /** When this changes (by reference) after an error was caught, the error
-   *  is cleared and children get a fresh mount attempt — so a stale error
-   *  from old data never permanently blocks a later, valid one. Unused
-   *  (and inert) unless a caller passes it. */
+  /** When this changes (by reference) after an error was caught, the error clears and children get a fresh mount, so a stale error can't block later valid data. Inert unless passed. */
   resetKey?: unknown;
 }
 interface State { hasError: boolean }
 
-// Must be mounted INSIDE HelpSupportProvider (see App.tsx) so CrashFallback's
-// useHelpSupport() call above has a provider to read — the provider's own
-// state lives outside whatever subtree this boundary replaces, so opening the
-// report panel still works even while the rest of the app is showing this
-// fallback.
+// Must be mounted inside HelpSupportProvider (App.tsx) so CrashFallback's useHelpSupport() has a provider; the provider's
+// state lives outside the replaced subtree, so the report panel still works while the fallback shows.
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false };
 
@@ -55,8 +45,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error) {
-    // Metadata-only — never anything a teacher typed, matching every other
-    // error-logging call site in this app.
+    // Metadata only, never anything a teacher typed, like other error-logging call sites.
     console.error('[app] uncaught_render_error', error.message);
   }
 

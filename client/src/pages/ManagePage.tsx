@@ -34,9 +34,7 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
   const { user } = useAuth();
   const { show } = useToast();
   const isSuperAdmin = user?.role === 'super_admin';
-  // Every admin role can SEE the pending queue; only these two may decide on
-  // it, matching the server's gate on approve/reject. A resource_person gets
-  // read-only visibility.
+  // Every admin role can see the pending queue; only these two may decide on it, matching the server's approve/reject gate (a resource_person is read-only).
   const canDecide = user?.role === 'school_admin' || user?.role === 'super_admin';
 
   // --- Users table: server-side search + role/status filters + pagination ---
@@ -90,9 +88,7 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
       });
       setName(''); setCode(''); setDistrict(''); setState('');
       show('School created', 'success');
-      // Refetch rather than unshifting the new row: with server-side paging
-      // the new school belongs wherever the sort and the current search put
-      // it, and `total` has to move with it.
+      // Refetch rather than unshift: with server-side paging the new school belongs where the sort and search put it, and `total` moves with it.
       await schools.refetch();
     } catch (err) {
       show(err instanceof ApiError ? err.message : 'Could not create school', 'error');
@@ -101,11 +97,8 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
     }
   }
 
-  // Approve/reject. The row is patched for instant feedback, then both lists
-  // are refetched — an approved teacher leaves the pending queue and joins
-  // the users table, which changes the totals and the page boundaries of
-  // both. Local array surgery cannot express that correctly once the lists
-  // are paginated, so it is not attempted.
+  // Approve/reject: the row is patched for instant feedback, then both lists refetch, since an approved teacher leaves the
+  // pending queue and joins the users table, changing both totals and page boundaries. Local array surgery can't express that once paginated.
   async function decide(target: AdminUser, action: 'approve' | 'reject') {
     pending.patchItem(
       (u) => u.id === target.id,
@@ -117,23 +110,18 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
     } catch (err) {
       show(err instanceof ApiError ? err.message : `Could not ${action} this teacher`, 'error');
     } finally {
-      // Runs on success and failure: on failure this is what restores the
-      // row to its true server-side state.
+      // Runs on success and failure; on failure it restores the row's true server-side state.
       await Promise.all([pending.refetch(), users.refetch()]);
     }
   }
 
-  // A role change is never applied straight from the <select>. Picking an
-  // option only stages the change here; the dialog below is what commits it.
-  // The row itself is NOT patched optimistically the way approve/reject is —
-  // the select keeps showing the user's real current role until the server
-  // confirms, which is what makes Cancel a no-op with nothing to roll back.
+  // A role change is never applied straight from the <select>: picking an option only stages it and the dialog commits it. The
+  // row isn't patched optimistically like approve/reject; the select shows the real role until the server confirms, so Cancel is a no-op.
   const [pendingRole, setPendingRole] = useState<{ target: AdminUser; role: Role } | null>(null);
   const [applyingRole, setApplyingRole] = useState(false);
 
   function requestRoleChange(target: AdminUser, role: Role) {
-    // Re-selecting the role a user already has is not a change worth
-    // confirming (and the server would reject it as a no-op anyway).
+    // Re-selecting the current role isn't worth confirming (the server would reject it as a no-op).
     if (role === target.role) return;
     setPendingRole({ target, role });
   }
@@ -148,15 +136,11 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
       setPendingRole(null);
     } catch (err) {
       show(err instanceof ApiError ? err.message : 'Could not update role', 'error');
-      // The dialog closes on failure too: the message is in the toast, and
-      // leaving a modal up over a table the user now needs to re-read is
-      // worse than dismissing it.
+      // The dialog closes on failure too: the message is in the toast, and a modal left over a table the user must re-read is worse.
       setPendingRole(null);
     } finally {
       setApplyingRole(false);
-      // Runs either way. A role change can move the row out of the current
-      // view when a role filter is active, and on failure this is what proves
-      // the select is still showing the true server-side role.
+      // Runs either way: a role change can move the row out of view under a role filter, and on failure it shows the select still has the true role.
       await users.refetch();
     }
   }
@@ -245,9 +229,7 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
           </section>
         )}
 
-        {/* Approval queue for new sign-ups. Shown to every admin role, but
-            the Approve/Reject buttons only appear for the two roles the
-            server actually lets act. */}
+        {/* Approval queue for new sign-ups. Shown to every admin role; Approve/Reject appear only for the two roles the server lets act. */}
         <section className="manage-section">
           <h2>Pending teachers</h2>
 
@@ -382,8 +364,7 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
                 {!users.loading && !users.error && users.items.map((u) => (
                   <tr key={u.id}>
                     <td>{u.name}</td>
-                    {/* Email is shown because `name` is no longer unique
-                        within a school — two teachers can share one. */}
+                    {/* Email is shown because `name` isn't unique within a school. */}
                     <td>{u.email}</td>
                     <td>{u.school || '—'}{u.schoolCode ? ` (${u.schoolCode})` : ''}</td>
                     <td>

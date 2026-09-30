@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { Mode } from '../components/AuthForm';
 
-// Sign In / Get Started open the auth form in a pop-up over a public page
-// instead of navigating to /login (see components/AuthModal). Opening pushes a
-// history entry so the browser's Back button closes the modal instead of
-// leaving the site — the same behaviour HomePage has inline.
+// Sign In / Get Started open the auth form in a pop-up over a public page instead of navigating to /login (components/AuthModal).
+// Opening pushes a history entry so Back closes the modal instead of leaving the site, as HomePage does inline.
 export function useAuthModal() {
   const [authMode, setAuthMode] = useState<Mode | null>(null);
 

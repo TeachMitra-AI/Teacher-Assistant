@@ -3,8 +3,7 @@ import { ApiError } from '../api';
 import { INTERPRET_DEADLINE_MS, fetchCatalog, postInterpret } from './api';
 import type { InterpretResponse } from './types';
 
-// The shared api() is mocked, ApiError is not: the classification of a failure
-// depends on the real error class, and stubbing it would test the stub.
+// api() is mocked but ApiError isn't: failure classification depends on the real class.
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api')>();
   return { ...actual, api: vi.fn() };
@@ -63,8 +62,7 @@ describe('postInterpret — outcomes', () => {
   });
 
   it('rejects a 200 whose body is not the envelope this build reads', async () => {
-    // A service-worker-cached client meeting a newer server is an everyday
-    // state, not an edge case. An unreadable body is treated as a passthrough.
+    // A cached client meeting a newer server is normal; an unreadable body is a passthrough.
     mockedApi.mockResolvedValue({ passthrough: true });
     await expect(postInterpret(request)).resolves.toEqual({ status: 'rejected' });
   });
@@ -85,9 +83,7 @@ describe('postInterpret — outcomes', () => {
     ['a forbidden call', 403],
     ['a missing route', 404],
   ])('treats %s as rejected, which does NOT trip the breaker', async (_label, status) => {
-    // None of these says anything about whether the endpoint is healthy, and
-    // disabling routing for a minute over a 400 would turn one client bug into a
-    // minute of degraded behaviour.
+    // None of these say anything about endpoint health, so they must not disable routing.
     mockedApi.mockRejectedValue(new ApiError('failed', status));
     await expect(postInterpret(request)).resolves.toEqual({ status: 'rejected' });
   });
@@ -127,8 +123,7 @@ describe('postInterpret — the deadline', () => {
   });
 
   it('sits outside the server budget rather than duplicating it', () => {
-    // The server's own deadline is 5 s and it converts a timeout into a 200
-    // passthrough, so this is the point at which the NETWORK has failed.
+    // The server's own deadline is 5s and it answers a timeout with a 200 passthrough, so this means the network failed.
     expect(INTERPRET_DEADLINE_MS).toBeGreaterThan(5000);
   });
 });

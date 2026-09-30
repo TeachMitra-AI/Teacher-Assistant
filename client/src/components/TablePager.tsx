@@ -1,19 +1,10 @@
-// Footer controls for a server-paginated admin table: a "showing X–Y of N"
-// count and Prev/Next. Deliberately not numbered page links — with a search
-// box and filters present, jumping to page 9 is not how anyone finds a
-// specific teacher, and the link row would be the widest thing on mobile.
-//
-// Renders nothing when everything fits on one page, so a small school never
-// sees pager chrome it has no use for.
+// Footer controls for a server-paginated admin table: a "showing X–Y of N" count and Prev/Next. Not numbered page links:
+// with search and filters, jumping to page 9 isn't how anyone finds a teacher, and the link row would be the widest thing on
+// mobile. Renders nothing when everything fits on one page.
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface TablePagerProps {
-  /**
-   * Human label for the rows, e.g. { one: 'user', many: 'users' }. Both forms
-   * are required rather than derived by appending an "s", because the count
-   * genuinely reaches 1 in normal use — a pending queue with one sign-up left
-   * is the common case, not an edge case.
-   */
+  /** Label for the rows, e.g. { one: 'user', many: 'users' }. Both forms are required, not derived by appending an "s", since a count of 1 is common (a pending queue with one sign-up left). */
   noun: { one: string; many: string };
   page: number;
   totalPages: number;

@@ -1,11 +1,6 @@
-// Typed client for the Classroom Management API
-// (docs/classroom-feature-plan.md). Thin wrappers over api(), mirroring
-// lib/resources.ts's shape — ownership is enforced server-side from the auth
-// token, so nothing here sends a teacherId.
-//
-// Phase 2 scope: classes + students. Phase 3 adds attendance below.
-// Fees/analytics/export wrappers land alongside the phases that use them
-// (§17), rather than being stubbed out ahead of use.
+// Typed client for the Classroom Management API (docs/classroom-feature-plan.md). Thin wrappers over api(), mirroring
+// lib/resources.ts; ownership is enforced server-side from the token, so nothing here sends a teacherId. Fees, analytics
+// and export wrappers land with the features that use them.
 import { api, apiDownload } from '../api';
 import type {
   SchoolClass,
@@ -49,9 +44,7 @@ export async function updateClass(id: string, input: UpdateClassInput): Promise<
   return data.class;
 }
 
-// Soft-delete (archived: true) — never a hard delete, matching the server's
-// own contract. Symmetric with updateClass(id, { archived: false }), which is
-// how a class is restored.
+// Soft-delete (archived: true), never a hard delete; updateClass(id, { archived: false }) restores it.
 export async function archiveClass(id: string): Promise<SchoolClass> {
   const data = await api<{ class: SchoolClass }>(`/classroom/classes/${id}`, { method: 'DELETE' });
   return data.class;
@@ -90,15 +83,13 @@ export async function deactivateStudent(studentId: string): Promise<Student> {
   return data.student;
 }
 
-// ---- Attendance (Phase 3) --------------------------------------------------
+// ---- Attendance ----
 
 export async function getDailyAttendance(classId: string, date: string): Promise<DailyAttendance> {
   return api<DailyAttendance>(`/classroom/classes/${classId}/attendance?date=${date}`);
 }
 
-// Bulk upsert for one class + date — the server rejects the WHOLE batch if
-// any studentId doesn't belong to this teacher's class (§14), never a
-// partial save.
+// Bulk upsert for one class + date. The server rejects the whole batch if any studentId isn't in this teacher's class.
 export async function saveAttendance(
   classId: string,
   date: string,
@@ -115,16 +106,14 @@ export async function getStudentAttendanceHistory(studentId: string, month: stri
   return api<StudentAttendanceHistory>(`/classroom/students/${studentId}/attendance/history?month=${month}`);
 }
 
-// ---- Fees ---------------------------------------------------------------
+// ---- Fees ----
 
 export async function getFeeStatus(classId: string, period: string): Promise<ClassFeeStatus> {
   return api<ClassFeeStatus>(`/classroom/classes/${classId}/fees?period=${period}`);
 }
 
-// One PATCH per save — there is no bulk fee-upsert endpoint (unlike
-// attendance's day-at-a-time bulk save). The server derives `status` from
-// this amount vs the class's fee amount (docs/fee-tracking-amounts-plan.md);
-// the client never sends status directly.
+// One PATCH per save (no bulk fee upsert). The server derives `status` from this amount vs the class's fee amount
+// (docs/fee-tracking-amounts-plan.md); the client never sends it.
 export async function setFeeAmount(studentId: string, period: string, amount: number): Promise<FeeRecordDto> {
   const data = await api<{ fee: FeeRecordDto }>(`/classroom/students/${studentId}/fees/${period}`, {
     method: 'PATCH',
@@ -133,13 +122,9 @@ export async function setFeeAmount(studentId: string, period: string, amount: nu
   return data.fee;
 }
 
-// Triggers a real browser download of the fee report for one class+month,
-// as an Excel file — not CSV — specifically so the Status column can carry
-// the same green/yellow/red coloring the Fees/Reports tabs show on screen;
-// a plain CSV can't hold color at all (docs/fee-tracking-amounts-plan.md).
-// A Bearer-token GET can't be a plain <a href>, so this fetches the blob
-// (apiDownload) and clicks a throwaway object-URL anchor, same approach any
-// authenticated-download button needs in a token-auth (not cookie-auth) app.
+// Downloads the fee report for one class+month as an Excel file (not CSV) so the Status column can carry the same
+// green/yellow/red coloring as the screen. A Bearer-token GET can't be a plain <a href>, so it fetches the blob (apiDownload)
+// and clicks a throwaway object-URL anchor.
 export async function downloadFeesReport(classId: string, period: string): Promise<void> {
   const { blob, filename } = await apiDownload(`/classroom/classes/${classId}/fees/export?period=${period}`);
   const url = URL.createObjectURL(blob);

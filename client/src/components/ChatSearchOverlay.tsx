@@ -4,16 +4,10 @@ import type { HistoryItem } from '../types';
 import { useDismissable } from '../hooks/useDismissable';
 import { formatTimestamp } from '../lib/historyTime';
 
-// The chat-history search overlay behind TopBar's Search icon. Deliberately
-// NOT part of Sidebar — it's a floating panel over the main chat column
-// (see CoachPage.tsx, which gives .coach-main-chat `position: relative` for
-// this to anchor against), matching the Claude-style reference this was
-// built from rather than replacing the sidebar's own Recent list.
-//
-// Client-side only: filters the same `items` array CoachPage already loads
-// and passes to Sidebar (`/queries?limit=20`), so results only ever cover
-// that already-loaded set, not a teacher's full history. No request is made
-// per keystroke, and there is no second copy of history state.
+// The chat-history search overlay behind TopBar's Search icon: a floating panel over the main chat column (CoachPage gives
+// .coach-main-chat `position: relative` for it), not part of Sidebar. Client-side only: it filters the `items` CoachPage
+// already loads for Sidebar (`/queries?limit=20`), so results cover only that set, no request per keystroke and no second
+// copy of history state.
 
 interface ChatSearchOverlayProps {
   open: boolean;
@@ -28,23 +22,17 @@ export default function ChatSearchOverlay({ open, items, titleFor, onClose, onSe
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Same hook the profile menu and other popovers use for Escape/outside-
-  // click dismissal — closing this the same way rather than hand-rolling a
-  // second copy of that listener pair.
+  // Same Escape/outside-click hook as the other popovers, instead of a second copy of that listener pair.
   useDismissable(open, panelRef, onClose);
 
-  // Fresh every time it's opened: autofocus the input, and drop whatever was
-  // typed last time so a reopened search never silently starts pre-filtered.
+  // Fresh on every open: autofocus the input and drop the last query so a reopened search doesn't start pre-filtered.
   useEffect(() => {
     if (open) inputRef.current?.focus();
     else setQuery('');
   }, [open]);
 
-  // Matches the visible title first (so a rename is searchable) and falls
-  // back to the original query text (so a renamed chat is still findable by
-  // what was actually asked) — titleFor() already does that same fallback
-  // for a chat with no custom title, so matching both here just extends it
-  // to the renamed case too. Empty query shows the loaded history as-is.
+  // Matches the visible title first (so a rename is searchable), then the original query text (so a renamed chat is still
+  // found by what was asked). An empty query shows the loaded history as-is.
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return items;
@@ -58,10 +46,8 @@ export default function ChatSearchOverlay({ open, items, titleFor, onClose, onSe
   if (!open) return null;
 
   function handleSelect(item: HistoryItem) {
-    // Close first, open second — same order a teacher sees: the panel goes
-    // away and the exact same chat-opening handler Sidebar's own rows use
-    // (selectHistory, passed down as onSelect) takes it from there. No
-    // separate chat-loading/query-reconstruction logic lives here.
+    // Close first, then hand off to the same chat-opening handler Sidebar's rows use (selectHistory via onSelect); no
+    // separate chat-loading logic lives here.
     onClose();
     onSelect(item);
   }

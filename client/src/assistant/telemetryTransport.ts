@@ -1,64 +1,22 @@
-// AI Action Router — telemetry transport (Phase 1, Milestone M8).
-//
-// This is the seam telemetry.ts was written to receive. Its header has said
-// since M3: "M3 buffers in memory. M8 adds the transport." This is that module,
-// and it deliberately did not exist earlier — call sites reviewed and correct
-// before any transport exists to get them wrong is cheaper than the reverse.
-//
-// ─── THE TWO LAYERS, AND WHY THEY ARE SEPARATE ─────────────────────────────
-//   telemetry.ts          LOCAL signal. Every individual thing that happened,
-//                         buffered, bounded, drained exactly once. Fine-grained.
-//   telemetryTransport.ts WIRE layer (here). Collapses a whole prefill session
-//                         into AT MOST TWO events and sends them.
-//
-// The collapse is the entire point, not an optimisation. `Event` is a
-// RARE-INCIDENT table on single-writer SQLite that also serves every
-// authenticated request; a teacher who corrects six fields must not produce six
-// rows. Six local `field_corrected` events become one `corrections: [...]` array
-// on one outcome event. That is CHANGE-6's promise ("~one row per routed
-// session") kept at the only layer that can keep it.
-//
-// ─── THE CEILING, STATED PRECISELY ─────────────────────────────────────────
-// Per applied draft, for the lifetime of the tab:
-//   * exactly one `prefill_delivered`, latched
-//   * AT MOST one `prefill_outcome`, latched
-// Both latches are per draft id and neither can be reset. A session that ends
-// with no outcome is not a missing row — it IS the abandonment signal, derived
-// server-side from the delivered event standing alone.
-//
-// ─── FAILURE POSTURE ───────────────────────────────────────────────────────
-// Fire-and-forget. No retry, ever. A failed batch is DROPPED. Telemetry runs on
-// a teacher's edit path, and a measurement that can degrade the thing it
-// measures is worth less than no measurement: losing rows is always the correct
-// trade against costing latency, retry storms on a poor connection, or an error
-// the teacher can see.
+// Wire layer over telemetry.ts: collapses a prefill session into at most two events (`prefill_delivered`, then one
+// `prefill_outcome` carrying all field corrections) and sends them. `Event` is a rare-incident table on
+// single-writer SQLite, so six corrected fields must not become six rows. Both events are latched per draft id.
+// A session with no outcome is the abandonment signal; the server derives it from the lone delivered event.
+// Fire-and-forget: no retries, a failed batch is dropped, since telemetry must never slow or break the edit path.
 
 import { ASSISTANT_ENABLED } from '../config';
 import { postAssistantEvents } from './api';
 import { drainTelemetry } from './telemetry';
 import type { AssistantEvent, PrefillOutcome, ProvenanceSource } from './types';
 
-/**
- * Hard cap on queued events. Two per session means this is roughly ten sessions
- * of headroom without a successful flush — far past the point where the network
- * is the problem rather than the buffer. Oldest are dropped first.
- */
+// Hard cap on queued events (about ten sessions); oldest are dropped first.
 const MAX_QUEUED = 20;
 
-/**
- * sessionStorage key for drafts a `prefill_delivered` has already been sent for.
- *
- * Bug fix: `session` below is the fast, same-life-of-the-tab latch, but it is a
- * plain module variable, so a hard refresh (the JS runtime restarting with the
- * SAME `?ai=` draft still live in the draft store) reset it to null and let
- * `notePrefillDelivered` fire a second time for a draft already delivered in an
- * earlier life of this tab. This is the part of the latch that survives that —
- * sessionStorage, exactly like every other tab-scoped store in this feature, so
- * it still dies with the tab and never outlives it.
- */
+// Draft ids already reported as delivered. `session` is reset by a hard refresh while the same `?ai=` draft is
+// still live, which would report it twice; sessionStorage survives the refresh and still dies with the tab.
 const DELIVERED_STORAGE_KEY = 'ta.assistant.delivered.v1';
 
-/** Bounded like every other store here; a session realistically delivers a handful of drafts. */
+// Bounded like the other stores here.
 const MAX_DELIVERED = 20;
 
 interface PrefillSession {
@@ -73,7 +31,6 @@ let session: PrefillSession | null = null;
 let queue: AssistantEvent[] = [];
 let inFlight = false;
 
-/** Reads without ever throwing — same posture as every other store in this feature. */
 function readDeliveredIds(): string[] {
   try {
     const raw = window.sessionStorage.getItem(DELIVERED_STORAGE_KEY);
@@ -85,16 +42,11 @@ function readDeliveredIds(): string[] {
   }
 }
 
-/** Has this draft id already had a `prefill_delivered` sent, in this tab-lifetime, refresh or not? */
 function wasDelivered(draftId: string): boolean {
   return readDeliveredIds().includes(draftId);
 }
 
-/**
- * Records that this draft id has now been delivered. Never throws: a failed
- * write here costs, at worst, a duplicate row after a refresh — the exact
- * pre-fix behaviour — never a broken composer.
- */
+// A failed write can at worst cause a duplicate row after a refresh, never a broken composer.
 function markDelivered(draftId: string): void {
   try {
     const ids = readDeliveredIds().filter((id) => id !== draftId);
@@ -105,20 +57,13 @@ function markDelivered(draftId: string): void {
   }
 }
 
-/** Queue an event, dropping the oldest if the cap is reached. Never throws. */
 function enqueue(event: AssistantEvent): void {
   queue.push(event);
   if (queue.length > MAX_QUEUED) queue = queue.slice(-MAX_QUEUED);
 }
 
-/**
- * Harvest the corrections recorded since the last drain.
- *
- * Filtered by name rather than by position, so it does not matter whether the
- * local buffer also holds the `prefill_applied` or `prefill_generated` markers —
- * this module already has that information from its own session state, and
- * discarding them here is what keeps the two layers from double-counting.
- */
+// Filtered by name so it doesn't matter whether the buffer also holds the applied/generated markers; those come
+// from our own session state and counting them here would double-count.
 function harvestCorrections(): { field: string; from: ProvenanceSource }[] {
   return drainTelemetry()
     .filter((event) => event.name === 'field_corrected' && event.field && event.from)
@@ -126,16 +71,9 @@ function harvestCorrections(): { field: string; from: ProvenanceSource }[] {
 }
 
 /**
- * A draft was applied to the Generator's form.
- *
- * This is the DENOMINATOR of the field-edit rate, and it is reported from here
- * rather than from the server's decision because a decision the teacher never
- * saw must not inflate it. An expired draft, disabled storage, or a teacher who
- * navigated away all produce a server-side `prefill` decision and no delivery.
- *
- * Applying a second draft closes out the first: if the teacher corrected fields
- * and then routed again without generating, that first session ended as
- * `edited`, and this is the last moment it can be reported honestly.
+ * A draft was applied to the Generator's form. This is the denominator of the field-edit rate, so it's reported
+ * from here rather than from the server's decision: an expired draft, disabled storage or a teacher who navigated
+ * away all give a server-side `prefill` with no delivery. Applying a second draft closes out the first session.
  */
 export function notePrefillDelivered(input: {
   draftId: string;
@@ -145,8 +83,8 @@ export function notePrefillDelivered(input: {
   lowConfidenceCount: number;
 }): void {
   if (!ASSISTANT_ENABLED) return;
-  if (session && session.draftId === input.draftId) return; // already counted, this life of the tab
-  if (wasDelivered(input.draftId)) return; // already counted before a refresh reset the line above
+  if (session && session.draftId === input.draftId) return; // already counted in this page life
+  if (wasDelivered(input.draftId)) return; // already counted before a refresh
 
   closeOpenSession();
 
@@ -158,9 +96,7 @@ export function notePrefillDelivered(input: {
     outcomeSent: false,
   };
 
-  // Any corrections still buffered belong to whatever came before and have now
-  // been reported (or discarded with it). Starting clean keeps a previous
-  // session's edits from being attributed to this one.
+  // Corrections still buffered belong to the previous session; start clean.
   drainTelemetry();
   markDelivered(input.draftId);
 
@@ -174,20 +110,13 @@ export function notePrefillDelivered(input: {
   void flush();
 }
 
-/**
- * Report how the current prefill ended. Latched: the first outcome wins.
- *
- * The latch is what makes the two-row ceiling a guarantee rather than an
- * expectation. Without it the sequence "edit a field, tab away (edited), come
- * back, press Generate (generated)" would write three rows for one session.
- */
+// Latched so a session is at most two rows: edit a field, tab away (edited), come back, press Generate would
+// otherwise write three.
 function noteOutcome(outcome: PrefillOutcome, harvested?: { field: string; from: ProvenanceSource }[]): void {
   if (!ASSISTANT_ENABLED) return;
   if (!session || session.outcomeSent) return;
 
-  // The buffer drains ONCE per outcome. Callers that already had to harvest in
-  // order to decide whether an outcome was warranted pass what they took, so
-  // those corrections are reported rather than lost to a second empty drain.
+  // Drains once per outcome; callers that already harvested pass their corrections in so they aren't lost.
   const corrections = harvested ?? harvestCorrections();
   session.outcomeSent = true;
 
@@ -212,15 +141,8 @@ export function notePrefillUndone(): void {
   noteOutcome('undone');
 }
 
-/**
- * Close a session that never reached Generate or Undo.
- *
- * Reports `edited` ONLY if the teacher actually corrected something. A session
- * with no corrections and no terminal action is an abandonment, and abandonment
- * is deliberately reported by SILENCE — the server derives it from a delivered
- * event with no outcome. Emitting an explicit "nothing happened" row would cost
- * a write to say less than the absence already says.
- */
+// Reports `edited` only if the teacher corrected something. No corrections and no terminal action is an
+// abandonment, which is reported by silence (no row) rather than an explicit "nothing happened" write.
 function closeOpenSession(): void {
   if (!session || session.outcomeSent) return;
 
@@ -229,59 +151,35 @@ function closeOpenSession(): void {
   noteOutcome('edited', corrections);
 }
 
-/**
- * Send whatever is queued. One request in flight at a time; the rest waits for
- * the next trigger rather than piling on a connection that is already slow.
- */
+// One request in flight at a time; the rest waits for the next trigger.
 export async function flush(): Promise<void> {
   if (!ASSISTANT_ENABLED || inFlight || queue.length === 0) return;
 
   inFlight = true;
   try {
-    // DRAINS UNTIL EMPTY rather than sending one batch and returning.
-    //
-    // Without the loop, anything queued while a send was in flight was stranded
-    // until the next trigger — and the commonest sequence in the whole feature
-    // hits exactly that: the delivery flush is still open when the teacher's
-    // outcome is queued a moment later, so every outcome would have waited for
-    // an unrelated later event to push it out. Caught by the ceiling tests,
-    // which counted one event where two were expected.
+    // Loop until empty: otherwise an outcome queued while the delivery flush is still in flight would wait
+    // for an unrelated later event.
     while (queue.length > 0) {
       const batch = queue;
       queue = [];
-      // The batch is DROPPED on failure, never re-queued. See the failure
-      // posture note at the top: a retry loop behind a teacher's form is a worse
-      // outcome than a lost row. postAssistantEvents reports delivery as a
-      // boolean and nothing here acts on it.
+      // Dropped on failure, never re-queued (see the header).
       await postAssistantEvents({ events: batch });
     }
   } catch {
-    // postAssistantEvents does not throw by contract, but this sits on a
-    // teacher's edit path and "by contract" is not the same as "provably". A
-    // rejected send loses its batch and nothing else.
+    // postAssistantEvents shouldn't throw, but this is on the edit path so a rejected send just loses its batch.
   } finally {
     inFlight = false;
   }
 }
 
-/**
- * Best-effort final flush, called when the page is being hidden.
- *
- * `visibilitychange` rather than `unload`: on mobile Chrome — the target
- * platform — `unload` frequently never fires, while a backgrounded tab reliably
- * goes hidden. This still is not a guarantee, which is precisely why
- * abandonment is derived from absence rather than reported by a beacon.
- */
+// `visibilitychange` rather than `unload`, which often never fires on mobile Chrome. Still best-effort, which is
+// why abandonment is derived from absence.
 export function flushOnHide(): void {
   closeOpenSession();
   void flush();
 }
 
-/**
- * Test seam. Resets every latch and buffer, INCLUDING the persisted delivered
- * set, so cases cannot leak into each other. This is a fresh tab, not a
- * refresh of the current one — for the latter, see `simulateReload`.
- */
+// Test seam: fresh tab. Resets everything including the persisted delivered set; see `simulateReload` for a refresh.
 export function resetTelemetryTransport(): void {
   session = null;
   queue = [];
@@ -294,22 +192,14 @@ export function resetTelemetryTransport(): void {
   }
 }
 
-/**
- * Test seam. Mimics a hard refresh of the SAME tab: the in-memory latch and
- * queue are gone, exactly as they are after a real reload, but sessionStorage
- * — including the persisted delivered-draft record `notePrefillDelivered` now
- * checks — survives, exactly as it does after a real reload. Exists to prove
- * the fix for the bug this file's header used to be wrong about: the ceiling
- * comment said "for the lifetime of the tab", but only `session` was ever
- * scoped to that; a refresh is still the same tab and used to reset it anyway.
- */
+// Test seam: hard refresh of the same tab. Memory state is gone but sessionStorage (the delivered record) survives.
 export function simulateReload(): void {
   session = null;
   queue = [];
   inFlight = false;
 }
 
-/** Test seam: the queued events, without sending them. */
+// Test seam: the queued events, without sending them.
 export function peekQueue(): AssistantEvent[] {
   return [...queue];
 }

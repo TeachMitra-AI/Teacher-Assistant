@@ -8,22 +8,16 @@ import type { AttendanceRosterEntry, AttendanceStatus } from '../../types';
 
 const TODAY = todayDateString();
 
-// Present/(Present+Absent)*100, unmarked excluded — the SAME formula as the
-// server's classroomAttendance.js. Recomputed here only for instant visual
-// feedback as the teacher taps, before anything is saved; the number that is
-// actually persisted always comes back from the server on reload (§10: one
-// implementation of the math server-side, this is a client-side preview of
-// that same formula, not a second implementation of record).
+// Present/(Present+Absent)*100, unmarked excluded, the same formula as the server's classroomAttendance.js. Recomputed here
+// only for instant feedback while tapping; the persisted number always comes back from the server on reload.
 function livePercentage(present: number, absent: number): number | null {
   const marked = present + absent;
   if (marked === 0) return null;
   return Math.round((present / marked) * 1000) / 10;
 }
 
-// One class + one date's roster-marking view (docs/classroom-feature-plan.md
-// Phase 3). Owns its own working copy of statuses so taps are instant and
-// batched into one bulk save, matching the server's bulk-upsert contract
-// (§14) rather than firing one request per tap.
+// One class + one date's roster-marking view (docs/classroom-feature-plan.md). Keeps its own working copy of statuses so
+// taps are instant and batched into one bulk save, matching the server's bulk-upsert contract instead of a request per tap.
 export default function AttendanceDaily({ classId, className }: { classId: string; className: string }) {
   const { show } = useToast();
 
@@ -60,9 +54,7 @@ export default function AttendanceDaily({ classId, className }: { classId: strin
     });
   }
 
-  // Tapping the already-active state clears it back to Unmarked (§8) — the
-  // only way to move a student off Present/Absent, mirroring how the server
-  // treats a sent "unmarked" mark as "delete this row".
+  // Tapping the active state clears it to Unmarked, the only way to move a student off Present/Absent (the server treats a sent "unmarked" as "delete this row").
   function toggle(studentId: string, tapped: 'present' | 'absent') {
     setStatus(studentId, statuses.get(studentId) === tapped ? 'unmarked' : tapped);
   }

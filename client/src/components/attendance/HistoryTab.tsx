@@ -26,10 +26,7 @@ export default function HistoryTab() {
         getSchoolConfig(),
         getHolidays(),
       ]);
-      // Without a config, weekly-off/holiday days can't be told apart from
-      // a genuine Absent — fall back to only showing days that have a
-      // record, same as before this feature existed, rather than mislabel
-      // every missed day as Absent.
+      // Without a config, weekly-off/holiday days can't be told from a genuine Absent, so show only days with a record rather than mislabel every missed day.
       const dates = config
         ? buildMonthDates(month, todayDateString(), sinceDateFor(config, user?.createdAt))
         : records.map((r) => r.date);

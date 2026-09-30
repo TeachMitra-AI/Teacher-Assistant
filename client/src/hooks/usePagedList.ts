@@ -1,19 +1,13 @@
-// Shared state for a server-paginated, searchable, filterable admin table.
-//
-// Extracted rather than duplicated because the Manage page has three such
-// tables. Each one needs the same five things, and each one gets them wrong
-// in the same way if hand-rolled: a debounced search box, a page number that
-// resets when the query changes, an out-of-date response that must not
-// overwrite a newer one, a total for the "showing X–Y of N" label, and a
-// refetch for use after a mutation.
+// Shared state for a server-paginated, searchable, filterable admin table. Extracted because the Manage page has three;
+// each needs a debounced search, a page that resets when the query changes, protection from out-of-date responses, a
+// total for the "showing X–Y of N" label, and a refetch after a mutation.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api';
 import type { Paged } from '../lib/admin';
 
 export const DEFAULT_PAGE_SIZE = 25;
 
-// Matches LibraryPage's search debounce, so typing in either place feels the
-// same and neither fires a request per keystroke.
+// Matches LibraryPage's search debounce, so neither fires a request per keystroke.
 const SEARCH_DEBOUNCE_MS = 300;
 
 export interface PagedList<T> {
@@ -23,7 +17,7 @@ export interface PagedList<T> {
   limit: number;
   loading: boolean;
   error: string;
-  /** Raw search text — bind straight to the input's value. */
+  /** Raw search text; bind it to the input's value. */
   search: string;
   setSearch: (value: string) => void;
   /** True once a search or filter is narrowing the list. */
@@ -39,19 +33,16 @@ export interface PagedList<T> {
   /** Re-run the current page. Use after a mutation. */
   refetch: () => Promise<void>;
   /**
-   * Patch one already-visible row for instant feedback. Does NOT adjust
-   * `total` or page boundaries — always follow it with refetch(), which is
-   * why this is deliberately not a general-purpose setter.
+   * Patches one visible row for instant feedback. Doesn't adjust `total` or page boundaries, so always follow it with
+   * refetch(); that's why it isn't a general-purpose setter.
    */
   patchItem: (match: (item: T) => boolean, update: (item: T) => T) => void;
 }
 
 /**
- * @param fetcher  Called with the current page/search. Must be memoized by the
- *                 caller (useCallback) — it is a dependency of the fetch.
- * @param filterKey Serialized filter state (e.g. `${role}|${status}`). Any
- *                 change resets to page 1, since page 7 of the previous
- *                 result set means nothing in the new one.
+ * @param fetcher  Called with the current page/search. Must be memoized by the caller (useCallback); it's a dependency of the fetch.
+ * @param filterKey Serialized filter state (e.g. `${role}|${status}`). Any change resets to page 1, since page 7 of the
+ *                 previous result set means nothing in the new one.
  */
 export function usePagedList<T>(
   fetcher: (args: { page: number; limit: number; q: string }) => Promise<Paged<T>>,
@@ -71,16 +62,12 @@ export function usePagedList<T>(
     return () => clearTimeout(t);
   }, [search]);
 
-  // Narrowing the list invalidates the page number: if you are on page 4 and
-  // type a search that matches two rows, page 4 is empty and looks like "no
-  // results" instead of showing the two matches.
+  // Narrowing the list invalidates the page number: page 4 of a two-row search looks like "no results".
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, filterKey]);
 
-  // Monotonic request id. Responses can arrive out of order — a slow page 1
-  // landing after a fast page 2 would otherwise show page 1's rows while the
-  // pager reads "page 2". Only the newest request may write state.
+  // Monotonic request id: responses can arrive out of order, so only the newest request may write state.
   const requestId = useRef(0);
 
   const runFetch = useCallback(async () => {

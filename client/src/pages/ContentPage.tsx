@@ -12,17 +12,13 @@ import { absoluteUrl } from '../seo/site';
 import { getContentPage } from '../seo/pages';
 import type { ContentBlock, ContentPageData } from '../seo/types';
 
-// Template for the public tool and guide pages defined in seo/pages.ts. Content
-// lives in seo/content/*.ts; this file only decides how it is laid out, so every
-// page gets the same semantics: one <h1>, <h2> per section, a breadcrumb that
-// mirrors the JSON-LD, a visible last-updated date, related links, and a
-// call-to-action. Rendered standalone by scripts/prerender.mjs (no providers)
-// and inside the real app by App.tsx.
+// Template for the public tool and guide pages defined in seo/pages.ts. Content lives in seo/content/*.ts; this file only
+// decides layout, so every page gets one <h1>, an <h2> per section, a breadcrumb mirroring the JSON-LD, a visible last-updated
+// date, related links and a call to action. Rendered standalone by scripts/prerender.mjs (no providers) and by App.tsx.
 
 const LINK_OR_BOLD = /(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*)/g;
 
-// Inline markup: `[label](/path)` internal link, `[label](https://…)` external
-// link, `**bold**`. Anything else is plain text (React escapes it).
+// Inline markup: `[label](/path)` internal link, `[label](https://…)` external link, `**bold**`; anything else is plain text (React escapes it).
 function renderInline(text: string): ReactNode {
   return text.split(LINK_OR_BOLD).map((part, index) => {
     const link = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);

@@ -1,28 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
-// A modal "are you sure?" step for actions that are hard to undo.
-//
-// Exists because window.confirm — which the delete flows in LibraryPage and
-// ResourceView still use — cannot render a title plus an explanatory line,
-// cannot mark the confirming button as destructive, and is suppressible by
-// the browser after a few dismissals. For an action like granting Super Admin
-// that last property is the disqualifying one.
-//
-// Controlled: the parent owns `open` and both callbacks. Nothing is rendered
-// at all while closed, so a closed dialog costs no DOM and no listeners.
-//
-// Uses the same overlay conventions as .help-overlay (fixed inset-0 scrim,
-// var(--surface) panel) rather than a native <dialog>, which cannot be styled
-// consistently across the browsers this app targets and whose ::backdrop is
-// not themeable the way the rest of the app's overlays are.
-//
-// Portalled to document.body. Unlike HelpSupport, which is mounted once at the
-// app root and is therefore already a child of <body>, this component is
-// rendered from inside whatever page raises it — and a page's own cards create
-// stacking contexts that a z-index alone cannot escape. Rendered in place, the
-// scrim draws BEHIND the table it is supposed to cover (observed on the
-// Manage page).
+// A modal "are you sure?" step for hard-to-undo actions. window.confirm can't show a title plus explanation, can't mark the
+// confirm button destructive, and browsers let users suppress it, which disqualifies it for something like granting Super Admin.
+// Controlled: the parent owns `open` and both callbacks; nothing renders while closed.
+// Uses the .help-overlay conventions (fixed scrim, var(--surface) panel) instead of a native <dialog>, which can't be styled
+// consistently across target browsers and has an unthemeable ::backdrop.
+// Portalled to document.body: it's rendered from inside whatever page raises it, and a page's cards create stacking contexts
+// a z-index can't escape, so in place the scrim drew behind the table it should cover.
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -51,16 +36,13 @@ export default function ConfirmDialog({
 }: ConfirmDialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
-  // Whatever had focus when the dialog opened, so it can be handed back on
-  // close — otherwise focus falls to <body> and keyboard users lose their
-  // place in the table row they were acting on.
+  // What had focus when it opened, handed back on close so keyboard users keep their place in the table row.
   const returnFocusRef = useRef<Element | null>(null);
 
   useEffect(() => {
     if (!open) return;
     returnFocusRef.current = document.activeElement;
-    // Cancel takes focus, not Confirm: this dialog guards actions where a
-    // reflexive Enter should back out, not proceed.
+    // Cancel takes focus, not Confirm: a reflexive Enter should back out of a guarded action.
     cancelRef.current?.focus();
     return () => {
       const previous = returnFocusRef.current;
@@ -77,9 +59,7 @@ export default function ConfirmDialog({
         return;
       }
       if (e.key !== 'Tab') return;
-      // Focus trap. Only the two buttons are focusable, but this is written
-      // against whatever the panel actually contains so it survives the
-      // dialog growing a link or a checkbox later.
+      // Focus trap, written against whatever the panel contains so it survives gaining a link or checkbox.
       const focusable = panelRef.current?.querySelectorAll<HTMLElement>(
         'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
       );
@@ -103,8 +83,7 @@ export default function ConfirmDialog({
   return createPortal(
     <div
       className="confirm-overlay"
-      // A click on the scrim is a cancel, matching every other dismissable
-      // overlay in the app. Clicks inside the panel must not bubble into it.
+      // A scrim click cancels, like other dismissable overlays; clicks inside the panel mustn't bubble into it.
       onClick={() => { if (!busy) onCancel(); }}
     >
       <div

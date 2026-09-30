@@ -10,9 +10,8 @@ export interface School {
 
 export type ResponseStyle = 'balanced' | 'concise' | 'detailed' | 'step_by_step' | 'practical';
 
-// Site-wide defaults for the quiz/worksheet exam-paper letterhead (see
-// ExamPaperMeta below for the per-resource shape these prefill). Purely
-// presentational teacher input — never sent to Gemini.
+// Site-wide defaults for the quiz/worksheet exam-paper letterhead (see ExamPaperMeta for the per-resource shape).
+// Presentational teacher input, never sent to Gemini.
 export interface ExamPaperDefaults {
   schoolName?: string;
   teacherName?: string;
@@ -21,12 +20,8 @@ export interface ExamPaperDefaults {
   showTime?: boolean;
 }
 
-// First-run onboarding state, persisted inside TeacherPreferences (Phase 0 of
-// the onboarding rework). Records only what a teacher has already seen/dismissed
-// so onboarding surfaces aren't re-shown across devices — no UI is driven by
-// this yet. `dismissedTips` is a flat list of scoped tip ids that future phases
-// append to (one id per contextual tip), so adding a tip never needs a type or
-// schema change.
+// First-run onboarding state inside TeacherPreferences: only what a teacher has already seen or dismissed, so surfaces
+// aren't re-shown across devices. `dismissedTips` is a flat list of scoped tip ids, so adding a tip needs no schema change.
 export interface OnboardingState {
   seenWelcomeIntro?: boolean;
   dismissedTips?: string[];
@@ -43,12 +38,8 @@ export interface TeacherPreferences {
   onboarding?: OnboardingState;
 }
 
-// Per-resource exam-paper letterhead (quiz/worksheet only), saved as JSON
-// inside LibraryResource.structured alongside the existing generator config
-// ({ format, difficulty, questionType, questionCount, topic }) under the key
-// "examMeta". Deterministic teacher input, rendered by
-// components/ExamHeader.tsx — never baked into AI-generated content, and
-// never round-tripped through the /resources/generate request.
+// Per-resource exam-paper letterhead (quiz/worksheet only), saved in LibraryResource.structured under "examMeta" and
+// rendered by components/ExamHeader.tsx. Teacher input only: never baked into AI content or sent to /resources/generate.
 export interface ExamPaperMeta {
   schoolName?: string;
   examName?: string;
@@ -57,41 +48,31 @@ export interface ExamPaperMeta {
   time?: string;
   maxMarks?: string;
   customInstructions?: string;
-  // Whether to show a Date/Time row at all — independent of whether a value
-  // has been typed yet, so "show it" and "leave the date blank on purpose"
-  // (a real printed exam paper commonly does the latter) are both possible.
+  // Independent of whether a value is typed, so "show the row" and "leave the date blank on purpose" both work.
   showDate?: boolean;
   showTime?: boolean;
 }
 
-// An account's approval state. Every new sign-up — email+password or Google —
-// starts `pending` and can't sign in until a school_admin/super_admin decides.
+// An account's approval state. Every new sign-up starts `pending` and can't sign in until an admin decides.
 export type UserStatus = 'active' | 'pending' | 'rejected';
 
 export interface User {
   id: string;
   name: string;
-  // The identity key: sign-in is by email, not by name (names collide within a
-  // school). `name` is display-only.
+  // The identity key: sign-in is by email, since names collide within a school. `name` is display-only.
   email: string;
   displayName?: string | null;
   role: Role;
   createdAt: string;
   preferences: TeacherPreferences;
   school: School;
-  // A path relative to the API root (like every path passed to api()), e.g.
-  // '/users/<id>/avatar?v=<timestamp>' — never the image bytes themselves.
-  // null when the teacher has no custom photo, in which case avatar
-  // rendering falls back to preferences.avatar (emoji) or initials. Build
-  // the full <img src> as `${API_BASE}${avatarUrl}` — see TopBar.tsx.
+  // Path relative to the API root (e.g. '/users/<id>/avatar?v=<timestamp>'), never the bytes. null means no custom photo,
+  // so rendering falls back to preferences.avatar or initials. Build the src as `${API_BASE}${avatarUrl}` (see TopBar.tsx).
   avatarUrl?: string | null;
 }
 
-// Effective, admin-toggleable feature flags exposed to every signed-in user
-// as part of session bootstrap (login/google/GET auth/me responses) — see
-// server/src/lib/systemSettings.js's getEffectiveFeatureFlags. Just the
-// booleans a client-side UI gate needs, never the source/audit metadata that
-// AdminFeatureFlag (below) carries for the Admin Settings screen.
+// Effective admin-toggleable feature flags sent to every signed-in user at session bootstrap (see server
+// getEffectiveFeatureFlags). Just the booleans a client UI gate needs, not the audit metadata AdminFeatureFlag carries.
 export interface FeatureFlags {
   learningRepresentationEnabled: boolean;
 }
@@ -103,12 +84,8 @@ export interface AuthResponse {
   featureFlags: FeatureFlags;
 }
 
-// One entry from GET/PATCH /api/admin/feature-flags (Admin Settings,
-// super_admin only). `source` distinguishes an explicit admin override from
-// the untouched env-var default so the control can show which state it's
-// actually in. `kind` groups entries into the page's two sections; `type`
-// determines which of `enabled`/`roles` is populated — exactly one of the
-// two, matching the server's ADMIN_SETTINGS_REGISTRY entry for this id.
+// One entry from GET/PATCH /api/admin/feature-flags (super_admin only). `source` separates an admin override from the
+// env-var default; `kind` groups the page's two sections; `type` decides which of `enabled`/`roles` is populated.
 export type AdminSettingKind = 'feature_flag' | 'access_control';
 export type AdminSettingValueType = 'boolean' | 'role_list';
 
@@ -124,8 +101,7 @@ export interface AdminFeatureFlag {
   updatedAt: string | null;
 }
 
-// Just enough of a school to render the "which school?" picker, which appears
-// only when one email or Google identity holds accounts at more than one.
+// Just enough of a school for the "which school?" picker, shown when one identity holds accounts at several.
 export interface SchoolOption {
   id: string;
   name: string;
@@ -146,18 +122,15 @@ export interface RegisterCredentials {
 }
 
 export interface GoogleAuthOptions {
-  // true => this is a sign-UP (the server assigns a default school — the
-  // website Register form no longer collects a school code). Absent/false
-  // => sign-in.
+  // true => sign-UP (the server assigns a default school); absent/false => sign-in.
   signup?: boolean;
   name?: string;
   // Sent only on the second attempt, after a needs_school outcome.
   schoolId?: string;
 }
 
-// Expected non-success results of an auth attempt. These are outcomes rather
-// than thrown errors because each one has its own screen to show — unlike a
-// wrong password or a network failure, which stay ApiErrors.
+// Expected non-success auth results. These are outcomes rather than thrown errors because each has its own screen;
+// a wrong password or network failure stays an ApiError.
 export type AuthOutcome =
   | { kind: 'signed_in' }
   // Registered, now waiting on an admin.
@@ -176,15 +149,11 @@ export interface QueryContext {
   issueType?: string;
 }
 
-// The five classroom artifacts Classroom Mode can offer. Mirrors ARTIFACTS in
-// server/src/lib/classroomPlan.js, which is the runtime authority — the server
-// never returns a value outside this set.
+// The five classroom artifacts Classroom Mode can offer. Mirrors ARTIFACTS in server/src/lib/classroomPlan.js, the runtime authority.
 export type ClassroomArtifact = 'lesson_plan' | 'worksheet' | 'quiz' | 'homework' | 'exit_ticket';
 
-// What the planner decided for one turn (docs/classroom-mode.md §5). Present
-// only when Classroom Mode was on AND a teachable topic was found — the server
-// omits the key entirely otherwise, so its presence IS the "we have something
-// to offer" signal. `artifacts` is never empty when this exists.
+// What the planner decided for one turn (docs/classroom-mode.md). The server omits the key unless Classroom Mode was on
+// and a teachable topic was found, so its presence means "we have something to offer". `artifacts` is never empty.
 export interface ClassroomPlan {
   topic: string;
   grade: string;
@@ -204,17 +173,13 @@ export interface CoachResponse {
   queryId: string | null;
   // Set when the planner found a teachable topic and materials worth making.
   classroom?: ClassroomPlan;
-  // Set when Classroom Mode was ON and actually ran for this turn. The pair
-  // matters: `classroomMode` without `classroom` is "the mode looked and found
-  // nothing", which the teacher is told about; neither field is "the mode was
-  // off", which is silent. Without this flag those two are indistinguishable.
+  // Set when Classroom Mode was on and ran. `classroomMode` without `classroom` means it looked and found nothing (the
+  // teacher is told); neither means the mode was off (silent). Without the flag those two can't be told apart.
   classroomMode?: boolean;
 }
 
-// AI Learning Representation System (ADR Phase D). Mirrors the server's
-// seven-item taxonomy (docs/learning-representation-system-adr.md, §4)
-// exactly — 'verbal_explanation' is the "nothing extra to show" outcome, a
-// first-class value here too, never a special-cased absence.
+// AI Learning Representation System. Mirrors the server's seven-item taxonomy (docs/learning-representation-system-adr.md);
+// 'verbal_explanation' means "nothing extra to show" and is a real value, not an absence.
 export type LearningRepresentationType =
   | 'verbal_explanation'
   | 'process_diagram'
@@ -224,11 +189,8 @@ export type LearningRepresentationType =
   | 'labeled_diagram'
   | 'graph_chart';
 
-// The structured shapes rendering/schemas.js validates server-side (one per
-// non-verbal representation). Kept loose (fields optional-ish via the union)
-// rather than mirrored field-for-field with zod-level strictness — this is
-// display data the panel reads defensively, not a contract this file
-// enforces; the server already validated it before it was ever sent.
+// The structured shapes validated server-side by rendering/schemas.js. Kept loose: this is display data the panel reads
+// defensively, and the server already validated it.
 export interface ProcessDiagramData {
   steps: { label: string; description: string }[];
 }
@@ -266,51 +228,35 @@ export interface LearningRepresentationResponse {
   data: LearningRepresentationData | null;
 }
 
-// Display-only metadata about a file attached to a turn (Coach: image/PDF
-// upload). Purely presentational — the actual bytes are never held on the
-// Turn once the request completes; see useAttachments for the upload-time
-// objects.
+// Display-only metadata about a file attached to a turn. The bytes aren't kept on the Turn (see useAttachments).
 export interface AttachmentMeta {
   name: string;
   kind: 'image' | 'pdf';
 }
 
-// One exchange in the session-local chat thread on the Coach page. Each turn
-// still calls /coach independently and statelessly — see the redesign plan
-// for why (backend has no multi-turn concept).
+// One exchange in the session-local chat thread on the Coach page. Each turn calls /coach independently and statelessly.
 export interface Turn {
   id: string;
   query: string;
   language: string;
   context: QueryContext;
   status: 'pending' | 'done' | 'error';
-  /** Date.now() when this turn was submitted. Drives the elapsed time and the
-   *  wording of the waiting state (components/RunStatus.tsx). */
+  /** Date.now() when submitted; drives the elapsed time and waiting-state wording (components/RunStatus.tsx). */
   startedAt?: number;
   response?: CoachResponse;
   rating: 'helpful' | 'not_helpful' | null;
-  // True when this turn was rebuilt from history rather than just answered.
-  // Classroom Mode reads it to decide whether its cards may generate (D24).
+  // True when rebuilt from history; Classroom Mode uses it to decide whether its cards may generate.
   restored?: boolean;
   error?: string;
-  // Set when `error` came from a network failure (ApiError status 0) rather
-  // than a server response — the one error category Phase 1 of Help &
-  // Support offers a "Report" action on (see MessageBubble.tsx).
+  // Set when `error` was a network failure (ApiError status 0); the one category offering a "Report" action (MessageBubble.tsx).
   errorIsNetwork?: boolean;
-  // Epoch ms — set only when this turn failed because every Gemini API key
-  // is currently exhausted (ApiError.retryAt). Drives the countdown message
-  // and the "Try again" button's disabled state in MessageBubble.tsx.
+  // Epoch ms; set only when every Gemini API key is exhausted (ApiError.retryAt). Drives the countdown and "Try again" state.
   retryAt?: number;
-  // Set only when this turn was submitted with attachments — routes it to
-  // POST /api/coach/attachment instead of /api/coach (see
-  // CoachPage.runTurnWithAttachments). All attachments on a turn were sent
-  // together in ONE request, not one request per file.
+  // Set only for turns with attachments, which go to POST /api/coach/attachment (see CoachPage.runTurnWithAttachments),
+  // all in one request.
   attachments?: AttachmentMeta[];
-  // Whether Classroom Mode was on when this turn was SUBMITTED
-  // (docs/classroom-mode.md). Recorded on the turn, alongside `language` and
-  // `context`, rather than read live — a turn can be retried (see
-  // CoachPage's handleRetry), and a retry must repeat the request that was
-  // actually made, not one shaped by whatever the mode happens to be now.
+  // Whether Classroom Mode was on when the turn was submitted (docs/classroom-mode.md). Stored on the turn so a retry
+  // repeats the request actually made, not one shaped by the current mode.
   classroomMode?: boolean;
 }
 
@@ -323,12 +269,9 @@ export interface HistoryItem {
   responseTime: number;
   createdAt: string;
   rating: 'helpful' | 'not_helpful' | null;
-  // Classroom Mode's plan for this turn (D24). Present only for turns where
-  // the mode actually produced one; absent for every ordinary question.
+  // Classroom Mode's plan for this turn; absent for ordinary questions.
   classroom?: ClassroomPlan;
-  // Sidebar three-dot menu's Rename/Pin (server/prisma/schema.prisma). `title`
-  // is null until a teacher renames this entry — see useHistoryOverrides'
-  // titleFor(), which falls back to `query` in that case.
+  // Sidebar Rename/Pin. `title` is null until renamed; useHistoryOverrides' titleFor() then falls back to `query`.
   title: string | null;
   pinned: boolean;
 }
@@ -376,9 +319,7 @@ export type ResourceType =
   | 'explanation'
   | 'general';
 
-// Admin Support Inbox (Phase 2) — mirrors the server DTOs in
-// routes/adminSupport.js. `context` is parsed server-side before it reaches
-// here (it's a JSON string only at rest, in SupportTicket.context).
+// Admin Support Inbox: mirrors the DTOs in routes/adminSupport.js. `context` is parsed server-side (a JSON string only at rest).
 export type SupportTicketType = 'bug' | 'feedback';
 export type SupportTicketStatus = 'open' | 'triaged' | 'resolved' | 'wont_fix';
 
@@ -395,7 +336,7 @@ export interface SupportTicketSchool {
   code: string;
 }
 
-// The list-row shape — GET /api/admin/support/tickets.
+// List-row shape: GET /api/admin/support/tickets.
 export interface SupportTicketSummary {
   id: string;
   type: SupportTicketType;
@@ -415,8 +356,7 @@ export interface SupportNote {
   author: { id: string; name: string; email: string };
 }
 
-// The detail shape — GET /api/admin/support/tickets/:id. Adds the parsed
-// auto-captured context and the notes thread on top of the summary shape.
+// Detail shape: GET /api/admin/support/tickets/:id, adding the parsed context and the notes thread.
 export interface SupportTicketDetail extends SupportTicketSummary {
   context: Record<string, string> | null;
   notes: SupportNote[];
@@ -429,9 +369,7 @@ export interface SupportTicketStats {
   feedback: number;
 }
 
-// Notification System — mirrors server/src/lib/notificationTypes.js's
-// NOTIFICATION_TYPES exactly (see config.ts's CHANGE-11 comment on
-// NOTIFICATION_TYPE_META).
+// Notification System: mirrors NOTIFICATION_TYPES in server/src/lib/notificationTypes.js (see NOTIFICATION_TYPE_META in config.ts).
 export type NotificationType =
   | 'announcement'
   | 'lesson_generated'
@@ -440,8 +378,7 @@ export type NotificationType =
   | 'system_update'
   | 'reminder';
 
-// One row from GET /api/notifications — mirrors the server DTO
-// (server/src/lib/notificationService.js's toDto).
+// One row from GET /api/notifications; mirrors the server's toDto.
 export interface AppNotification {
   id: string;
   type: NotificationType;
@@ -455,12 +392,9 @@ export interface AppNotification {
   metadata: Record<string, unknown> | null;
 }
 
-// Who a send targets — mirrors routes/notifications.js's targetSchema. Which
-// of schoolIds/roles/userIds is populated depends on `scope`; the compose UI
-// only ever offers the scopes the caller's own role can reach (the server
-// re-derives and clamps this independently — see
-// docs/notification-system-plan.md §7, the frontend hiding options is a
-// courtesy, not the boundary).
+// Who a send targets (routes/notifications.js targetSchema). Which of schoolIds/roles/userIds is set depends on `scope`.
+// The compose UI only offers scopes the caller's role can reach, but the server re-derives and clamps them; hiding is a
+// courtesy, not the boundary (docs/notification-system-plan.md).
 export interface NotificationTarget {
   scope: 'all' | 'school' | 'role' | 'users';
   schoolIds?: string[];
@@ -476,13 +410,9 @@ export interface SendNotificationInput {
   target: NotificationTarget;
 }
 
-// ---- Classroom Management (docs/classroom-feature-plan.md) ----------------
-//
-// A teacher-first class/student/attendance/fee workspace — NOT the same
-// feature as ClassroomPlan/ClassroomArtifact above, which belong to the
-// unrelated "Classroom Mode" AI chat feature. `SchoolClass` (not `Class` —
-// a reserved word, and to avoid the naming collision) mirrors the server DTO
-// (server/src/routes/classroom.js's classToDto) exactly.
+// ---- Classroom Management (docs/classroom-feature-plan.md) ----
+// Class/student/attendance/fee workspace; unrelated to the ClassroomPlan/ClassroomArtifact types above (Classroom Mode).
+// `SchoolClass` avoids the reserved word and mirrors the server's classToDto.
 export interface SchoolClass {
   id: string;
   name: string;
@@ -494,8 +424,7 @@ export interface SchoolClass {
   updatedAt: string;
 }
 
-// Mirrors the server DTO (studentToDto). Phase 2 scope only — attendance and
-// fee shapes are added alongside the phases that use them.
+// Mirrors studentToDto.
 export interface Student {
   id: string;
   classId: string;
@@ -506,12 +435,9 @@ export interface Student {
   updatedAt: string;
 }
 
-// ---- Classroom Management — Attendance (Phase 3) ---------------------------
-//
-// Mirrors routes/classroom.js's attendance responses exactly. "unmarked" is
-// a legal STATUS value here (roster/day-view entries, and the marks a save
-// request sends) even though the server never stores it as a row — see
-// schema.prisma's AttendanceRecord doc comment.
+// ---- Classroom Management: Attendance ----
+// Mirrors routes/classroom.js's attendance responses. "unmarked" is a legal status in roster/day-view entries and save
+// requests even though the server never stores it as a row (see AttendanceRecord in schema.prisma).
 export type AttendanceStatus = 'present' | 'absent' | 'unmarked';
 
 export interface AttendanceRosterEntry {
@@ -570,19 +496,12 @@ export interface StudentAttendanceHistory {
   days: { date: string; status: 'present' | 'absent' }[];
 }
 
-// ---- Teacher Attendance ----------------------------------------------------
-//
-// A teacher's OWN check-in/check-out, reviewed by their school's Principal
-// (role = school_admin) — mirrors routes/teacherAttendance.js's DTOs
-// exactly. NOT the same feature as the AttendanceStatus/DailyAttendance
-// types above, which are STUDENT attendance a teacher marks for their own
-// class (Classroom Management). Deliberately distinct type names so the two
-// can never be confused at an import site.
-// 'flagged_review' is kept in the type (a Principal's 'reject' action, or
-// legacy data, could still carry it) even though nothing auto-assigns it
-// any more — see docs/feature-teacher-attendance-implementation-plan.md
-// §1.7/§4: geofence/window failures are now hard blocks, not a flagged,
-// allowed record, and there is no review queue any more.
+// ---- Teacher Attendance ----
+// A teacher's own check-in/check-out, reviewed by their school's Principal (school_admin); mirrors the DTOs in
+// routes/teacherAttendance.js. Distinct from the student-attendance types above, and named differently so they can't be
+// confused at an import site.
+// 'flagged_review' stays in the type (a Principal's 'reject', or legacy data, can carry it) though nothing assigns it
+// now: geofence/window failures are hard blocks (docs/feature-teacher-attendance-implementation-plan.md).
 export type TeacherAttendanceStatus =
   | 'present'
   | 'half_day'
@@ -592,8 +511,7 @@ export type TeacherAttendanceStatus =
   | 'pending_regularization'
   | 'flagged_review';
 
-// A teacher's own view — no raw GPS/device evidence fields, see
-// attendanceToDto's own doc comment server-side.
+// A teacher's own view: no raw GPS/device evidence (see attendanceToDto server-side).
 export interface TeacherAttendanceDto {
   id: string;
   date: string; // "YYYY-MM-DD"
@@ -606,17 +524,11 @@ export interface TeacherAttendanceDto {
   shortfallMinutes: number | null;
   leaveOrDutyCategory: string | null;
   leaveOrDutyReason: string | null;
-  // The Principal's own typed reason from the latest review, so the
-  // teacher can see *why* a day was resolved this way, not just the final
-  // status. `null` when the day was never reviewed.
+  // The Principal's typed reason from the latest review; null if never reviewed.
   reviewReason: string | null;
 }
 
-// A Principal's per-day detail view of one teacher's record — includes the
-// raw evidence a correction decision needs. Mirrors
-// attendanceToDetailDto's shape exactly. No repeatPatternWarning any more —
-// there's no queue for a pattern banner to live on; the pattern itself
-// still shows, as a coloured count, on ReportsTab's summary table.
+// A Principal's per-day view of one teacher's record, with the raw evidence a correction needs (attendanceToDetailDto).
 export interface TeacherAttendanceDetailDto extends TeacherAttendanceDto {
   teacher?: { id: string; name: string; email: string };
   checkInLat: number | null;
@@ -631,8 +543,7 @@ export interface TeacherAttendanceDetailDto extends TeacherAttendanceDto {
   checkOutDeviceId: string | null;
 }
 
-// Mirrors teacherAttendanceSchema.js's REVIEW_ACTIONS exactly — keep both
-// in step, the same CHANGE-11 duplication convention as LANGUAGES/GRADES.
+// Mirrors REVIEW_ACTIONS in teacherAttendanceSchema.js; keep both in step.
 export type TeacherAttendanceReviewAction =
   | 'approve'
   | 'correct_checkin'
@@ -649,8 +560,7 @@ export interface TeacherAttendanceReviewInput {
   leaveOrDutyCategory?: string;
 }
 
-// A school's own attendance settings (school_admin only) — mirrors
-// SchoolAttendanceConfig exactly.
+// A school's attendance settings (school_admin only); mirrors SchoolAttendanceConfig.
 export interface SchoolAttendanceConfigDto {
   id: string;
   schoolId: string;
@@ -658,8 +568,7 @@ export interface SchoolAttendanceConfigDto {
   closeTime: string;
   checkinWindowStart: string;
   checkinWindowEnd: string;
-  // Comma-separated day-of-week numbers (0=Sunday..6=Saturday), e.g. "0" or
-  // "0,6" — matches lib/teacherAttendance.js's isWeeklyOff() format exactly.
+  // Comma-separated day numbers (0=Sunday..6=Saturday), e.g. "0,6"; same format as isWeeklyOff() in lib/teacherAttendance.js.
   weeklyOffDays: string;
   lateGraceMinutes: number;
   halfDayThresholdPercent: number;
@@ -669,20 +578,15 @@ export interface SchoolAttendanceConfigDto {
   geofenceRadiusMeters: number;
   repeatPatternThreshold: number;
   repeatPatternWindowDays: number;
-  // The checkout reminder's own timing — minutes before/after closeTime it
-  // fires (server/src/lib/teacherAttendanceReminder.js).
+  // Checkout reminder timing: minutes before/after closeTime (server/src/lib/teacherAttendanceReminder.js).
   reminderMinutesBeforeClose: number;
   reminderMinutesAfterClose: number;
-  // When the school's attendance settings were first created — the earliest
-  // date tracking could apply, used to stop History from showing
-  // Absent/Weekly-off for months before that.
+  // When the settings were first created: the earliest date tracking applies, so History doesn't show Absent/Weekly-off before it.
   createdAt: string;
 }
 
-// Mirrors teacherAttendanceSchema.js's schoolAttendanceConfigSchema — every
-// threshold optional on write (a partial update keeps its stored default
-// for anything omitted), openTime/closeTime/geofence required together to
-// actually enable check-ins for the school.
+// Mirrors schoolAttendanceConfigSchema: every threshold is optional on write (omitted keeps the stored value); openTime,
+// closeTime and geofence are required together to enable check-ins.
 export interface SchoolAttendanceConfigInput {
   openTime: string;
   closeTime: string;
@@ -714,8 +618,7 @@ export interface CreateHolidayInput {
   reason: string;
 }
 
-// Matches lib/teacherAttendance.js's summarizeTeacherMonth() output exactly
-// — counts only, per outcome, for one teacher's month.
+// Mirrors summarizeTeacherMonth(): per-outcome counts for one teacher's month.
 export interface TeacherAttendanceSummary {
   present: number;
   absent: number;
@@ -727,12 +630,9 @@ export interface TeacherAttendanceSummary {
   pending_regularization: number;
 }
 
-// GET /school-history — the whole-school Reports tab's LIST view
-// (school_admin only). Summary-only and paginated: a school with many
-// teachers can't have every teacher's full day-by-day month loaded just to
-// show a count (docs/feature-teacher-attendance-implementation-plan.md §7).
-// A specific teacher's day-by-day detail is a separate call — see
-// TeacherAttendanceDetailPage below.
+// GET /school-history: the Reports tab's list view (school_admin only). Summary-only and paginated so a large school
+// doesn't load every teacher's full month (docs/feature-teacher-attendance-implementation-plan.md); per-teacher detail
+// is a separate call.
 export interface SchoolHistoryTeacherSummary {
   id: string;
   name: string;
@@ -748,17 +648,14 @@ export interface SchoolHistoryPage {
   teachers: SchoolHistoryTeacherSummary[];
 }
 
-// GET /school-history/:userId — one teacher's real day-by-day records for a
-// month, the Reports drill-down's detail fetch.
+// GET /school-history/:userId: one teacher's day-by-day records for a month (the drill-down).
 export interface TeacherAttendanceDetailPage {
   month: string;
   teacher: { id: string; name: string; email: string; createdAt: string };
   records: TeacherAttendanceDetailDto[];
 }
 
-// GET /activity-log — the "who → what → when → where → result" feed
-// (school_admin only). Defaults to a recent window server-side; never
-// "everything" — see the plan's §7.
+// GET /activity-log: the "who → what → when → where → result" feed (school_admin only), a recent window by default.
 export interface TeacherAttendanceActivityLogEntry {
   id: string;
   userId: string;
@@ -778,9 +675,7 @@ export interface TeacherAttendanceActivityLogPage {
   entries: TeacherAttendanceActivityLogEntry[];
 }
 
-// GET /today-summary — the Reports tab's dashboard stat cards
-// (docs/attendance-register-design.html §5): four numbers for today across
-// the whole school, before any per-teacher detail.
+// GET /today-summary: the Reports tab's stat cards, four school-wide numbers for today (docs/attendance-register-design.html).
 export interface TeacherAttendanceTodaySummary {
   date: string;
   nonWorkingDay: NonWorkingDayInfo | null;
@@ -790,18 +685,15 @@ export interface TeacherAttendanceTodaySummary {
   absent: number;
 }
 
-// GET .../today's extra field — lets the check-in page show "today is a
-// holiday" up front, matching routes/teacherAttendance.js's own shape.
+// Extra field on GET .../today so the check-in page can say "today is a holiday" up front.
 export interface NonWorkingDayInfo {
   code: 'WEEKLY_OFF_DAY' | 'HOLIDAY';
   message: string;
 }
 
-// ---- Classroom Management — Fees ------------------------------------------
-//
-// Mirrors routes/classroom.js's fee responses exactly (§11, extended per
-// docs/fee-tracking-amounts-plan.md). `status` is always derived server-side
-// from amount vs expectedAmount — the client sends `amount`, never `status`.
+// ---- Classroom Management: Fees ----
+// Mirrors routes/classroom.js's fee responses (docs/fee-tracking-amounts-plan.md). `status` is derived server-side from
+// amount vs expectedAmount; the client sends `amount`, never `status`.
 export type FeeStatus = 'paid' | 'partial' | 'pending';
 
 export interface StudentFeeStatus {
@@ -839,8 +731,7 @@ export interface FeeRecordDto {
   updatedAt: string;
 }
 
-// A saved item in the teacher's personal library. Mirrors the server DTO
-// (see server/src/routes/resources.js) — no ownership/internal fields.
+// A saved item in the teacher's personal library; mirrors the server DTO (routes/resources.js), minus ownership fields.
 export interface LibraryResource {
   id: string;
   type: ResourceType;

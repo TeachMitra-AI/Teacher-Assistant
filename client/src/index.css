@@ -24,14 +24,9 @@
   --radius: 14px;
   --radius-sm: 10px;
 
-  /* Resting color + highlight stops for the answer skeleton's shimmer (see
-     .sk-line). A dedicated token, not --surface-2 — --surface-2 in light
-     mode (#f0f2f5) sits almost exactly on top of --bg (#f5f6f8), so the
-     skeleton was nearly invisible in light mode even though the identical
-     approach reads fine in dark mode (where --surface-2 is meaningfully
-     lighter than --bg). Defined with the palette rather than at the
-     component so the dark theme can restate them alongside every other
-     surface it overrides. */
+  /* Resting color and highlight stops for the answer skeleton's shimmer (.sk-line). A dedicated token, not --surface-2, which in
+     light mode (#f0f2f5) sits almost on --bg (#f5f6f8) and left the skeleton nearly invisible. Defined with the palette so
+     the dark theme can restate them with every other surface. */
   --sk-base: #dde1e8;
   --sk-mid: #e6e9ef;
   --sk-peak: #eef1f6;
@@ -41,22 +36,14 @@
      document-scroll pages so nothing hides behind the fixed bar. */
   --bottomnav-h: 58px;
 
-  /* The Coach column's reading width — the message thread and the composer
-     below it. ONE token for both: they are the same column visually, and when
-     the width lived as two separate literals nothing stopped one from being
-     changed without the other, which shows up immediately as a composer that
-     doesn't line up with the messages above it. Narrower than the 840px it
-     replaces: a more compact box is easier to scan and keeps a question and
-     its answer closer together. Only applies from tablet up — both are
-     full-width inside the mobile shell's padding regardless. */
+  /* The Coach column's reading width, for the message thread and the composer. One token for both since they're one column
+     and separate literals let one change without the other, leaving the composer misaligned with the messages. Narrower than
+     the old 840px so a question and its answer sit closer. Tablet up only; both are full-width in the mobile shell. */
   --chat-max-width: 720px;
 
-  /* Semantic status colors for Teacher Attendance — one shared palette so
-     "present," "needs a look," and "absent" read consistently everywhere
-     a status appears (check-in card, calendar strip, dashboard, reports).
-     Deliberately separate from --orange (this app's brand accent, used for
-     active/selected states) — a status color and a brand color answering
-     different questions should never be the same hue. */
+  /* Semantic status colors for Teacher Attendance: one palette so "present", "needs a look" and "absent" read the same
+     everywhere a status appears. Separate from --orange (the brand accent for active/selected states), since a status color
+     and a brand color answer different questions. */
   --att-present: #1f7a4d;
   --att-present-soft: #dcefe0;
   --att-warning: #92600a;
@@ -348,19 +335,10 @@ button { font-family: inherit; cursor: pointer; }
 .profile-dropdown-danger { color: #dc2626; }
 [data-theme='dark'] .profile-dropdown-danger { color: #f87171; }
 
-/* "Learn more" flyout (Terms of Service / Privacy Policy) — hovers open on
-   desktop, and the trigger button also toggles on click for touch/keyboard.
-   Portalled to document.body (see ProfileMenu.tsx) rather than absolutely
-   positioned in place: `.sidebar` has `overflow: hidden` (for its open/close
-   width transition), which would silently clip an in-place flyout for the
-   sidebar variant — same reasoning HistoryItemMenu documents for its own
-   portal. Position is computed in JS from the trigger's bounding rect, so
-   this only needs its visual box, not placement. z-index 1300 (not the
-   .profile-dropdown it hangs off of, at 150) matches .history-item-menu-popover
-   / .share-menu-popover — the same value those two portalled popovers use to
-   clear the mobile sidebar drawer's z-index 1200; without it, the sidebar
-   drawer that this menu itself lives in was rendering on top of the flyout,
-   making it invisible even though it was positioned correctly on screen. */
+/* "Learn more" flyout (Terms / Privacy): opens on hover on desktop, and the trigger also toggles on click for touch/keyboard.
+   Portalled to document.body (see ProfileMenu.tsx) because `.sidebar` has `overflow: hidden` and would clip it in place.
+   Position is computed in JS, so this only needs the visual box. z-index 1300 matches .history-item-menu-popover /
+   .share-menu-popover, clearing the mobile drawer's 1200; below that the drawer rendered over the flyout and hid it. */
 .profile-dropdown-caret { margin-left: auto; color: var(--text-muted); }
 .profile-dropdown-submenu-wrap { position: relative; }
 .profile-submenu {
@@ -382,20 +360,15 @@ button { font-family: inherit; cursor: pointer; }
 /* ---- Layout --------------------------------------------------------------- */
 .page { min-height: 100vh; }
 
-/* Coach shell: fixed-viewport chat app layout. TopBar is NOT a sibling here
-   — it lives inside .coach-main-chat (see CoachPage.tsx), so the sidebar
-   below is the only thing sharing this row and reaches the full shell
-   height, top to bottom, with nothing sitting above it. */
+/* Coach shell: fixed-viewport chat layout. TopBar lives inside .coach-main-chat (see CoachPage.tsx), so the sidebar is the
+   only thing on this row and gets the full shell height. */
 .coach-shell { height: 100vh; overflow: hidden; }
 .coach-body { height: 100%; display: flex; min-height: 0; }
 
 /* ---- Sidebar ---------------------------------------------------------- */
-/* Desktop default: a collapsed, icon-only rail (not width:0) — its one
-   button (.sidebar-rail-toggle) is how the sidebar re-expands, so it must
-   stay on screen and in flow rather than disappearing with the rest of the
-   sidebar's content. The mobile media query below replaces this with the
-   existing fixed-drawer sizing, where a closed sidebar is off-canvas instead
-   (that state's reopen control lives in TopBar — see CoachPage.tsx). */
+/* Desktop default: a collapsed icon-only rail (not width:0). Its button (.sidebar-rail-toggle) is how the sidebar re-expands,
+   so it must stay on screen and in flow. The mobile query below replaces this with the fixed-drawer sizing, where a closed
+   sidebar is off-canvas and reopens from TopBar (see CoachPage.tsx). */
 .sidebar {
   width: 60px;
   flex-shrink: 0;
@@ -418,10 +391,8 @@ button { font-family: inherit; cursor: pointer; }
   transition: opacity 0.2s ease;
 }
 
-/* Collapsed-rail toggle: visible only while the sidebar is NOT open, and
-   only meaningfully so on desktop — on mobile the same closed state is
-   off-canvas (see .sidebar media query below), so this sits there unseen and
-   unreachable, same as the rest of the sidebar's content. */
+/* Collapsed-rail toggle: visible only while the sidebar is not open, and meaningful only on desktop; on mobile that state is
+   off-canvas (see the .sidebar media query below), so it sits unseen there. */
 .sidebar-rail-toggle { display: none; margin: 0.9rem auto 0; }
 .sidebar:not(.sidebar-open) .sidebar-rail-toggle { display: inline-flex; }
 /* Everything else is only meaningful at full width; hidden while collapsed
@@ -613,15 +584,10 @@ button { font-family: inherit; cursor: pointer; }
 .history-item-menu-item.danger svg { color: inherit; }
 [data-theme='dark'] .history-item-menu-item.danger { color: #f87171; }
 
-/* Share popover (components/ShareMenu.tsx) — a dedicated, compact "share
-   sheet" rather than a reuse of the taller chat-actions list above: tighter
-   width and padding, and a regular (not bold) item weight, so a 3-item share
-   menu reads as its own minimal affordance instead of a stretched action
-   list. Portalled to document.body for the same overflow-clipping reason as
-   .history-item-menu-popover — see ShareMenu.tsx. `width: max-content` lets
-   it shrink to its content instead of always filling min-width; the
-   viewport-relative max-width keeps it from ever overflowing a narrow
-   (mobile) screen regardless of where the trigger sits. */
+/* Share popover (components/ShareMenu.tsx): a compact "share sheet" rather than the taller chat-actions list above, with
+   tighter width and padding and a regular item weight. Portalled to document.body for the same clipping reason as
+   .history-item-menu-popover. `width: max-content` shrinks it to its content; the viewport-relative max-width keeps it on a
+   narrow screen wherever the trigger sits. */
 .share-menu-popover {
   position: fixed;
   width: max-content;
@@ -678,10 +644,8 @@ button { font-family: inherit; cursor: pointer; }
 .history-rename-input:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .history-meta { font-size: 0.75rem; color: var(--text-muted); }
 
-/* Fixed footer holding the account menu (see Sidebar.tsx / ProfileMenu.tsx).
-   `.history-list` above has `flex: 1` and its own `overflow-y: auto`, so it
-   fills the remaining column height and this footer is pushed to the bottom
-   without needing position:absolute or a fixed height. */
+/* Fixed footer holding the account menu (see Sidebar.tsx / ProfileMenu.tsx). `.history-list` has `flex: 1` and scrolls, so it
+   fills the column and pushes this footer to the bottom without position:absolute. */
 .sidebar-footer { flex-shrink: 0; border-top: 1px solid var(--border); padding: 0.6rem; }
 .profile-menu--sidebar { width: 100%; }
 .profile-menu--sidebar .user-chip { width: 100%; border-radius: var(--radius-sm); }
@@ -730,10 +694,8 @@ button { font-family: inherit; cursor: pointer; }
   .topbar-nav { display: none; }
   .bottom-nav { display: flex; }
 
-  /* The coach screen is a fixed-height shell; on mobile subtract the
-     bottom nav (and safe-area) and use dynamic viewport height so the composer
-     sits just above the bottom nav instead of behind the browser chrome.
-     min-height:0 defeats the base `.page { min-height: 100vh }`. */
+  /* The coach screen is a fixed-height shell; on mobile subtract the bottom nav (and safe area) and use dynamic viewport
+     height so the composer sits above the nav, not behind browser chrome. min-height:0 defeats the base `.page { min-height: 100vh }`. */
   .coach-shell {
     min-height: 0;
     height: calc(100vh - var(--bottomnav-h)); /* fallback */
@@ -746,11 +708,8 @@ button { font-family: inherit; cursor: pointer; }
   /* Keep toasts above the bottom nav. */
   .toast-stack { bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom) + 0.8rem); }
 
-  /* Collapse the TopBar's profile chip to the avatar only (scoped to .topbar
-     so the Sidebar footer's full-width copy — plenty roomy even in its
-     mobile drawer — is unaffected). The trigger stays visible and tappable,
-     so Settings / Sign out remain reachable on every phone; the name and
-     role are shown inside the dropdown. */
+  /* Collapse the TopBar's profile chip to the avatar (scoped to .topbar so the Sidebar footer's full-width copy is unaffected).
+     The trigger stays tappable so Settings / Sign out remain reachable; name and role show in the dropdown. */
   .topbar .user-meta { display: none; }
   .topbar .user-chip { padding: 0.15rem; gap: 0; }
 
@@ -767,34 +726,25 @@ button { font-family: inherit; cursor: pointer; }
   .quick-action-grid,
   .admin-shortcut-grid { grid-template-columns: 1fr; gap: 0.5rem; }
   .quick-action-card { padding: 0.65rem 0.85rem; gap: 0.7rem; }
-  /* Mobile welcome view: trim the quick-action list to the top 3 so the context
-     controls and composer are reachable without scrolling. This is the same
-     breakpoint at which `.bottom-nav` takes over from `.topbar-nav`, so the
-     mobile nav and the 3-card welcome always switch together. Presentation only
-     — these actions stay visible on tablet/desktop and keep their functionality.
-     The `.quick-action-grid` prefix raises specificity above the base
-     `.quick-action-card { display: flex }` (defined later in this file), so the
-     hide reliably wins the cascade regardless of source order. */
+  /* Mobile welcome view: trim the quick-action list to the top 3 so the context controls and composer are reachable without
+     scrolling. Same breakpoint where `.bottom-nav` replaces `.topbar-nav`. Presentation only; the actions stay on tablet/desktop.
+     The `.quick-action-grid` prefix raises specificity above the base `.quick-action-card { display: flex }` defined later, so
+     the hide wins regardless of source order. */
   .quick-action-grid .quick-action-card--mobile-hidden { display: none; }
   .quick-action-icon { width: 36px; height: 36px; }
   /* No hover on touch — reveal the chevron so cards read as tappable. */
   .quick-action-chevron { opacity: 0.5; transform: none; }
 
-  /* First-run intro: stack features one-per-row on phones (matching the
-     single-column quick-action list above) and make the dismiss button a
-     full-width tap target. Stays in normal flow above the greeting, so it
-     scrolls with the page and never covers the composer or BottomNav. */
+  /* First-run intro: features stack one per row on phones (like the quick-action list) and the dismiss button is a full-width tap
+     target. In normal flow above the greeting, so it scrolls with the page and never covers the composer or BottomNav. */
   .onboarding-intro { padding: 0.9rem 0.95rem 1rem; gap: 0.75rem; }
   .onboarding-feature-grid { grid-template-columns: 1fr; gap: 0.55rem; }
   .onboarding-intro-cta { align-self: stretch; }
   .onboarding-tip { margin-bottom: 0.85rem; }
 
-  /* ---- PHONE COACH LAYOUT: response first, controls second ----------------
-     The screen is one column of fixed furniture — header, context row,
-     composer, bottom nav — with the answer taking everything left over. Only
-     the answer scrolls. Every rule below exists to give it more of the screen
-     or to make what is in it easier to read; none of them applies above 640px,
-     where the desktop three-part layout is untouched. */
+  /* ---- PHONE COACH LAYOUT: response first, controls second ----
+     One column of fixed furniture (header, context row, composer, bottom nav) with the answer taking the rest; only the answer
+     scrolls. Every rule here gives it more room or eases reading, and none applies above 640px. */
 
   /* Answer area: the whole point of this layout. More room (tighter dock and
      scroller padding) and a longer measure per line. */
@@ -809,10 +759,8 @@ button { font-family: inherit; cursor: pointer; }
   .user-bubble { max-width: 88%; font-size: 0.9rem; padding: 0.55rem 0.8rem; }
   .user-edit-box { max-width: 88%; }
 
-  /* Reading typography for long answers. The line height and the space between
-     paragraphs and around headings do most of the work here — a wall of 1.5
-     line-height text at 15px is exactly the "compressed" feeling this layout
-     exists to fix. */
+  /* Reading typography for long answers: line height and the space around paragraphs and headings do most of the work; 1.5
+     line-height at 15px felt compressed. */
   .response-body { font-size: 1rem; line-height: 1.78; }
   .response-body p { margin: 0.85rem 0; }
   .response-body h1 { font-size: 1.25rem; margin: 0 0 0.7rem; }
@@ -825,39 +773,24 @@ button { font-family: inherit; cursor: pointer; }
      target than the desktop button. */
   .chat-scroll-down { right: 0.7rem; bottom: 0.5rem; width: 40px; height: 40px; }
 
-  /* 18px is a comfortable click target and an uncomfortable TAP target — below
-     the 24×24 CSS-pixel floor (WCAG 2.2 SC 2.5.8). The tile is 56px, so this
-     costs nothing but a slightly larger circle.
-     The `.attachment-tray--preview` prefix is load-bearing: the base rule for
-     this button is defined LATER in the file, and at equal specificity source
-     order would win over this media query. */
+  /* 18px is a comfortable click target but below the 24×24 CSS-pixel TAP floor (WCAG 2.2 SC 2.5.8). The tile is 56px, so a
+     larger circle costs nothing. The `.attachment-tray--preview` prefix is needed: the base rule comes later and would win at equal specificity. */
   .attachment-tray--preview .attachment-preview-remove { width: 24px; height: 24px; top: 3px; right: 3px; }
 
-  /* --- Coach EMPTY / WELCOME state (mobile): natural page scroll ----------
-     The default coach shell is fixed-viewport, and `.chat-scroll` (nested
-     inside .coach-main-chat, below its own TopBar) is a scroll area that only
-     gets the space left after the top bar and the always-present
-     context+composer dock — on a phone that traps the quick-action cards in a
-     tiny ~2-card scroll window. In the empty state we
-     drop the fixed-height/overflow chain so the whole page scrolls naturally
-     (greeting → cards → context → composer), and the composer flows after the
-     welcome content instead of permanently reserving viewport height. The
-     ACTIVE chat state below is unaffected and keeps the fixed-viewport layout. */
+  /* --- Coach EMPTY / WELCOME state (mobile): natural page scroll ---
+     The fixed-viewport shell gives `.chat-scroll` only the space left after the top bar and the context+composer dock, which
+     traps the quick-action cards in a ~2-card window on a phone. In the empty state we drop the fixed-height/overflow chain so
+     the page scrolls naturally (greeting, cards, context, composer) and the composer flows after the content. The active chat
+     state below keeps the fixed-viewport layout. */
   .coach-shell.coach-empty {
-    /* A COLUMN with a min-height, not a plain block: `height: auto` alone left
-       the composer wherever the (short) welcome content happened to end, with a
-       band of bare page background between it and the bottom nav. Growing the
-       answer area instead pushes the composer to the bottom where it lives in
-       every other state, and because this is `min-height` (and the children
-       below grow but never shrink) taller content still expands the page and
-       scrolls naturally — which is the whole point of this block. */
+    /* A column with a min-height, not a plain block: `height: auto` left the composer wherever the short welcome content ended,
+       with a band of bare background above the bottom nav. Growing the answer area pushes the composer to the bottom as in every
+       other state, and since it's `min-height`, taller content still expands the page and scrolls. */
     display: flex;
     flex-direction: column;
     height: auto;
-    /* The full viewport, NOT the viewport minus the nav: `box-sizing:
-       border-box` means the padding-bottom below already reserves the nav's
-       height inside this figure. Subtracting it here too left a nav-sized band
-       of bare page background between the composer and the nav. */
+    /* The full viewport, not viewport minus nav: `box-sizing: border-box` means the padding-bottom below already reserves the nav's
+       height, and subtracting it here too left a nav-sized band of background. */
     min-height: 100vh; /* fallback */
     min-height: 100dvh;
     overflow: visible;
@@ -865,13 +798,9 @@ button { font-family: inherit; cursor: pointer; }
        `.page:not(.coach-shell)` padding rule above). */
     padding-bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom));
   }
-  /* `flex: 1 0 auto` where the axis is VERTICAL — grow to fill a tall screen,
-     never shrink below the content's own height on a short one.
-     `.coach-main-chat` is deliberately NOT given it: it is an item of the ROW
-     that is `.coach-body`, so there the shorthand controls WIDTH, and
-     `flex-shrink: 0` made the column as wide as its widest content (728px in a
-     390px viewport) and overflowed the page sideways. It keeps the base
-     `flex: 1` + `min-width: 0` and only changes its own direction. */
+  /* `flex: 1 0 auto` where the axis is vertical: grow to fill a tall screen, never shrink below the content on a short one.
+     `.coach-main-chat` doesn't get it: it's an item of the ROW `.coach-body`, where the shorthand controls width, and
+     `flex-shrink: 0` made the column as wide as its widest content (728px in a 390px viewport). It keeps `flex: 1` + `min-width: 0`. */
   .coach-empty .coach-body { display: flex; flex: 1 0 auto; min-height: 0; }
   .coach-empty .coach-main-chat { display: flex; flex-direction: column; min-height: 0; }
   .coach-empty .chat-area { display: block; flex: 1 0 auto; min-height: 0; }
@@ -894,10 +823,8 @@ button { font-family: inherit; cursor: pointer; }
   .resource-doc-title { font-size: 1.2rem; }
 }
 
-/* Small phone (down to 320px): logo-only brand, tighter hero. The composer's
-   text and controls are on separate rows (see .composer-controls), so the
-   controls row always has the full box width to itself and needs no
-   narrow-screen shrinking of its own. */
+/* Small phone (down to 320px): logo-only brand, tighter hero. The composer's text and controls are on separate rows (see
+   .composer-controls), so the controls row has the full width and needs no shrinking. */
 @media (max-width: 400px) {
   .brand-text { display: none; }
   .welcome-title { font-size: 1.3rem; }
@@ -924,9 +851,7 @@ button { font-family: inherit; cursor: pointer; }
 .chat-inner { max-width: var(--chat-max-width); margin: 0 auto; display: flex; flex-direction: column; min-height: 100%; }
 
 /* ---- Chat-history search overlay (components/ChatSearchOverlay.tsx) ----
-   Covers .coach-main-chat only (see that rule's comment above) — a scrim +
-   centered panel, same idea as .confirm-overlay/.confirm-panel but scoped to
-   this column instead of position: fixed across the whole viewport. */
+   Covers .coach-main-chat only: a scrim plus centered panel like .confirm-overlay/.confirm-panel, scoped to this column. */
 .chat-search-overlay {
   position: absolute;
   inset: 0;
@@ -1066,10 +991,8 @@ button { font-family: inherit; cursor: pointer; }
 .welcome-title { font-size: 1.7rem; font-weight: 700; color: var(--text); margin: 0; letter-spacing: -0.01em; }
 .welcome-subtitle { font-size: 1.05rem; color: var(--text-muted); margin: 0; }
 
-/* ---- Daily Highlight (welcome screen) -------------------------------------
-   Deliberately quieter than .quick-action-card below: tinted surface instead
-   of white, no hover lift/shadow, smaller radius — so it reads as ambient
-   context, not a sixth action competing with the five real ones. */
+/* ---- Daily Highlight (welcome screen) ----
+   Quieter than .quick-action-card below (tinted surface, no hover lift, smaller radius) so it reads as ambient context, not a sixth action. */
 .daily-highlight-card {
   display: flex;
   align-items: center;
@@ -1211,7 +1134,7 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--text-muted);
 }
 
-/* ---- First-run onboarding intro (welcome screen, Phase 1) ---------------- */
+/* ---- First-run onboarding intro (welcome screen) ---- */
 .onboarding-intro {
   width: 100%;
   max-width: 680px;
@@ -1277,7 +1200,7 @@ button { font-family: inherit; cursor: pointer; }
 .onboarding-feature-desc { font-size: 0.76rem; font-weight: 400; color: var(--text-muted); line-height: 1.35; }
 .onboarding-intro-cta { align-self: flex-start; }
 
-/* ---- First-visit contextual tips (Phase 3) ------------------------------- */
+/* ---- First-visit contextual tips ---- */
 /* Inline, non-blocking hint shown once per feature. Sits in normal flow at the
    top of the area it explains — never an overlay — so it can't cover UI or the
    composer, and it scrolls with the page on mobile. Theme-aware via variables. */
@@ -1331,10 +1254,8 @@ button { font-family: inherit; cursor: pointer; }
   word-break: break-word;
 }
 
-/* Copy/Edit actions on a sent prompt (MessageBubble.tsx) — a small group,
-   hidden until the row is hovered/focused (same subtle-until-hover/focus/
-   touch treatment as .history-item-menu-btn), so they don't permanently
-   occupy space next to every message. */
+/* Copy/Edit actions on a sent prompt (MessageBubble.tsx): hidden until the row is hovered/focused (like .history-item-menu-btn),
+   always visible on touch, so they don't take space beside every message. */
 .message-user-actions {
   display: flex;
   align-items: center;
@@ -1365,15 +1286,9 @@ button { font-family: inherit; cursor: pointer; }
 .message-action-btn:hover { background: var(--surface-2); color: var(--text); }
 .message-action-btn:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
 
-/* Compact CSS-only tooltip (`.has-tooltip` + `data-tooltip="..."`) for a
-   trigger whose accessible name already carries the label (aria-label) —
-   this is a supplementary VISUAL hint, not the accessibility mechanism.
-   Deliberately NOT the native `title` attribute: browsers render that with
-   an inconsistent, unstyleable delay/appearance, which is what "professional"
-   here is replacing. Fixed dark/neutral regardless of the app's own theme —
-   the same inverted-surface convention most tooltip systems use (GitHub,
-   Slack, Material), since a tooltip has to read clearly over whatever
-   content it floats above, not blend into the page chrome under it. */
+/* Compact CSS-only tooltip (`.has-tooltip` + `data-tooltip="..."`) for a trigger whose accessible name already carries the label
+   (aria-label): a visual hint, not the accessibility mechanism. Not the native `title`, whose delay and look are inconsistent.
+   Fixed dark/neutral regardless of theme, the usual inverted-surface tooltip convention, so it reads over any content. */
 .has-tooltip { position: relative; }
 .has-tooltip::after {
   content: attr(data-tooltip);
@@ -1444,10 +1359,8 @@ button { font-family: inherit; cursor: pointer; }
 }
 .spinner-sm { width: 18px; height: 18px; margin: 0; border-width: 2px; }
 
-/* Live waiting state under a submitted prompt (components/RunStatus.tsx).
-   Three shimmering placeholder lines standing in for the answer, with the
-   elapsed time and a message that acknowledges a long wait. No progress bar:
-   /coach is one non-streaming request, so any percentage would be invented. */
+/* Live waiting state under a submitted prompt (components/RunStatus.tsx): three shimmering placeholder lines with the elapsed
+   time and a message that acknowledges a long wait. No progress bar, since /coach is one non-streaming request. */
 .run-status { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.3rem 0 0.4rem; }
 
 .run-skeleton { display: flex; flex-direction: column; gap: 0.55rem; }
@@ -1544,10 +1457,8 @@ button { font-family: inherit; cursor: pointer; }
    professional exam-paper convention (number in the margin, text aligned). */
 .response-body .fmt-qnum { font-weight: 700; }
 .response-body li.fmt-li-ol { padding-left: 1.9em; text-indent: -1.9em; }
-/* text-indent inherits into every inline-block, and KaTeX output is built
-   from nested inline-blocks — without this reset the hanging indent above
-   shifts glyphs out of their (often zero-width) boxes and math turns
-   invisible. */
+/* text-indent inherits into every inline-block and KaTeX output is nested inline-blocks, so without this reset the hanging
+   indent shifts glyphs out of their (often zero-width) boxes and math turns invisible. */
 .response-body .katex { text-indent: 0; }
 /* MCQ options: one grouped block per question (see format.ts), laid out as a
    two-column grid aligned under the question text. */
@@ -1825,10 +1736,8 @@ button { font-family: inherit; cursor: pointer; }
 [data-theme='dark'] .resource-doc-delete:hover { color: #f87171; }
 .resource-doc-body { color: var(--text); }
 
-/* AI Learning Representation System (ADR Phase D) — the "smaller first
-   slice" generic display: plain lists/tables via CSS variables so light and
-   dark theme are both covered for free, matching every other component on
-   this page rather than introducing a new visual language. */
+/* AI Learning Representation System: the generic display (plain lists/tables) using CSS variables so light and dark themes
+   are covered like the rest of the page. */
 .lr-panel { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid var(--border); }
 .lr-chip {
   display: inline-flex;
@@ -1884,12 +1793,9 @@ button { font-family: inherit; cursor: pointer; }
 .lr-timeline-body strong { color: var(--text); }
 .lr-timeline-body span:not(.lr-timeline-when) { font-size: 0.85rem; color: var(--text-muted); }
 
-/* hierarchy_diagram — a pure-CSS org-chart tree. Float-based (not flex):
-   each <li> draws its own connector half via ::before/::after, which is
-   what lets sibling connector lines line up correctly for an arbitrary,
-   data-driven tree without any JS measurement. Wrapped in a horizontally
-   scrolling container since a wide tree (many siblings) can exceed the
-   panel's width. */
+/* hierarchy_diagram: a pure-CSS org-chart tree. Float-based, not flex: each <li> draws its own connector half via
+   ::before/::after, so sibling connectors line up for any data-driven tree without JS measurement. Wrapped in a horizontally
+   scrolling container since a wide tree can exceed the panel. */
 .lr-tree-scroll { overflow-x: auto; padding: 0.4rem 0; }
 .lr-tree, .lr-tree ul { display: flex; list-style: none; margin: 0; padding: 0; }
 .lr-tree ul { padding-top: 1.2rem; position: relative; }
@@ -1967,10 +1873,8 @@ textarea {
 .field input:focus,
 textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 
-/* ---- Scroll-to-latest button (components/ScrollToBottom.tsx) --------------
-   Positioned against `.coach-main-chat`, which is the column holding the
-   scroller and the composer — so it hovers just above the composer rather than
-   riding along inside the scrolling content. */
+/* ---- Scroll-to-latest button (components/ScrollToBottom.tsx) ----
+   Positioned against `.coach-main-chat` (the column holding the scroller and composer) so it hovers above the composer. */
 .chat-scroll-down {
   position: absolute;
   right: 0.9rem;
@@ -1989,11 +1893,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 }
 .chat-scroll-down:hover { border-color: var(--orange); color: var(--orange); }
 .chat-scroll-down:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
-/* ---- Teaching context icon + popover (components/TeachingContextMenu.tsx)
-   The trigger sits in the TopBar (Coach page only, in the slot the profile
-   chip vacated — see CoachPage's `extraControl`), so unlike the old
-   ContextBar this never needs a portal to escape the composer dock's scroll
-   clipping: a plain absolute-under-relative popover is enough. */
+/* ---- Teaching context icon + popover (components/TeachingContextMenu.tsx) ----
+   The trigger sits in the TopBar (Coach page only, in the slot the profile chip vacated; see CoachPage's `extraControl`), so a
+   plain absolute-under-relative popover suffices with no portal. */
 .context-menu { position: relative; }
 .context-menu-btn { position: relative; }
 .context-menu-btn.active { border-color: var(--orange); color: var(--orange); background: var(--orange-soft); }
@@ -2045,12 +1947,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   transition: border-color 0.14s ease, box-shadow 0.14s ease;
 }
 .composer-box:focus-within { border-color: var(--orange); box-shadow: 0 0 0 3px var(--orange-soft); }
-/* Top row: the message itself, full width, growing with the text. The height
-   itself is set inline by Composer's layout effect; `max-height` here is the
-   same ceiling that effect uses (MAX_TEXTAREA_HEIGHT) restated so the box can
-   never overshoot even for the single frame before the effect runs.
-   `display: block` removes the inline-baseline gap that otherwise makes a
-   one-line box a few pixels taller than one line. */
+/* Top row: the message, full width, growing with the text. Height is set inline by Composer's layout effect; `max-height` restates
+   its ceiling (MAX_TEXTAREA_HEIGHT) so the box can't overshoot for the frame before the effect runs. `display: block` removes
+   the inline-baseline gap that makes a one-line box a few pixels taller. */
 .composer-textarea {
   width: 100%;
   display: block;
@@ -2063,21 +1962,17 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   font-weight: 400;
 }
 .composer-textarea:focus { outline: none; }
-/* Bottom row: every control, on a line of its own beneath the text — it never
-   shares horizontal space with what the teacher is typing, on any screen
-   size. Left holds "add" and "mode" (things chosen before sending); right
-   holds the char count, mic and send (things about sending). */
+/* Bottom row: every control on its own line beneath the text, so it never shares width with what's being typed. Left holds
+   "add" and "mode" (chosen before sending); right holds char count, mic and send. */
 .composer-controls { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.4rem; }
 .composer-controls-left,
 .composer-controls-right { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
 .char-count { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; align-self: center; }
 .char-count.warn { color: var(--orange); font-weight: 700; }
 
-/* ---- Composer popover menus ---------------------------------------------
-   Shared by the "+" add menu (AddMenu) and the Classroom Mode
-   dropdown (ClassroomModeMenu) — one set of popover/item styles so the two
-   controls on the same row cannot drift into looking like different widgets.
-   Formerly .mode-menu-*, when the "+" was the Classroom Mode toggle. */
+/* ---- Composer popover menus ----
+   Shared by the "+" add menu (AddMenu) and the Classroom Mode dropdown (ClassroomModeMenu), so the two controls on one row don't
+   drift into different widgets. Formerly .mode-menu-*, when "+" was the Classroom Mode toggle. */
 .composer-menu { position: relative; display: inline-flex; }
 /* Smaller than .icon-btn's 40px default so these sit comfortably on the
    controls row beside the char count without making the composer taller. */
@@ -2124,11 +2019,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 
 /* ---- Assistant Mode dropdown (left of the composer controls row, beside
    "+") ------------------------------------------------------------------- */
-/* A labelled pill rather than the round icon button "+" uses: this control
-   shows a STATE — the currently selected mode — and a teacher should be able
-   to read which one it is in without opening it. Sits in its own row beneath
-   the message text (see .composer-controls), so it always has room to show
-   the real selection instead of a truncated stand-in. */
+/* A labelled pill, not the round icon button "+" uses: it shows a state (the selected mode) that should be readable without
+   opening it. It sits in its own row (see .composer-controls), so it has room for the real selection. */
 .classroom-menu-btn {
   display: inline-flex;
   align-items: center;
@@ -2158,7 +2050,7 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 }
 .classroom-empty-note svg { flex-shrink: 0; color: var(--orange); }
 
-/* ---- Classroom materials set (P3) ---------------------------------------- */
+/* ---- Classroom materials set ---- */
 .classroom-set {
   margin-top: 0.85rem;
   padding: 0.75rem;
@@ -2282,13 +2174,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .classroom-empty-note svg { flex-shrink: 0; color: var(--orange); }
 
 @media (max-width: 640px) {
-  /* Anchor BOTH composer menus to the composer box, not to their own button.
-     The bug this fixes: the popover was positioned against its button but sized
-     against the viewport (`width: calc(100vw - 2.5rem)`), and the two disagree.
-     Spanning the composer's own width instead makes the panel's position and
-     its size come from the same box, so it cannot leave the screen at any
-     width — and it matches how the same menus behave in the apps this
-     composer is modelled on. */
+  /* Anchor both composer menus to the composer box, not their own button. The popover was positioned against its button but sized
+     against the viewport (`width: calc(100vw - 2.5rem)`), which disagree. Spanning the composer's width makes position and size
+     come from one box, so it can't leave the screen, and it matches the apps this composer is modelled on. */
   .composer-box { position: relative; }
   .composer-menu { position: static; }
   .composer-box .composer-menu-popover {
@@ -2389,11 +2277,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .attachment-tray-clear { width: 26px; height: 26px; flex-shrink: 0; }
 .attachment-error { font-size: 0.8rem; color: var(--orange); margin-bottom: 0.4rem; }
 
-/* ---- Preview variant: staged files INSIDE the composer box ---------------
-   The tray's chrome (its own surface + border) exists for the chips variant,
-   which floats on its own above the box. Inside the box that same chrome reads
-   as a box within a box, so the preview variant drops all of it and lets the
-   thumbnails sit directly on the composer's surface. */
+/* ---- Preview variant: staged files inside the composer box ----
+   The tray's own surface and border suit the chips variant that floats above the box; inside it they read as a box within a
+   box, so the preview variant drops them and sits the thumbnails on the composer's surface. */
 .attachment-tray--preview {
   background: none;
   border: none;
@@ -2401,10 +2287,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   margin-bottom: 0.5rem;
   align-items: center;
 }
-/* Not `flex: 1` like the chips variant: letting the row fill the box pushes
-   clear-all to the far right edge, where — sitting on the composer's own
-   surface with nothing between — it reads as "close the composer" rather than
-   "remove these files". Sized to its tiles, it stays attached to them. */
+/* Not `flex: 1` like the chips variant: filling the box pushes clear-all to the far right edge, where it reads as "close the
+   composer" rather than "remove these files". Sized to its tiles, it stays attached to them. */
 .attachment-tray--preview .attachment-tray-chips { flex: 0 1 auto; gap: 0.4rem; max-height: 152px; }
 .attachment-tray--preview .attachment-tray-clear {
   min-width: 26px;
@@ -2468,10 +2352,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .attachment-preview-remove:disabled { opacity: 0.5; cursor: not-allowed; }
 .attachment-preview-remove:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
 
-/* ---- Full-size preview dialog (AttachmentPreviewModal) -------------------
-   Deliberately a MEDIUM window, not a full-screen viewer: the point is to
-   check a photo is usable before sending, and keeping the chat visible around
-   it makes closing it feel like stepping back rather than leaving. */
+/* ---- Full-size preview dialog (AttachmentPreviewModal) ----
+   A medium window, not a full-screen viewer: the point is to check a photo is usable before sending, and keeping the chat
+   visible makes closing feel like stepping back. */
 .attachment-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -2550,12 +2433,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .auth-screen {
   min-height: 100vh;
   display: flex;
-  /* Deliberately NOT `align-items: center`. The Register card (four fields,
-     help text, Google button) is taller than a laptop viewport, and a centered
-     flex item that overflows is clipped at BOTH ends — the top overflow being
-     unreachable by scrolling, which cut off the brand and tabs. Starting at
-     flex-start and centring via `margin: auto` on .auth-layout below keeps it
-     centred when it fits and scrollable when it doesn't. */
+  /* Not `align-items: center`. The Register card (four fields, help text, Google button) is taller than a laptop viewport, and a
+     centered flex item that overflows is clipped at both ends, with the top unreachable by scrolling. flex-start plus
+     `margin: auto` on .auth-layout below centers it when it fits and scrolls when it doesn't. */
   align-items: flex-start;
   justify-content: center;
   padding: 1.5rem;
@@ -2592,12 +2472,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .auth-hero {
   position: relative;
   display: flex;
-  /* Not vertically centered: the grid row is as tall as whichever side is
-     taller, and Register's longer form stretches this panel well past its
-     own content height. Centering made the content float in a growing pool
-     of empty space and visibly jump position when switching Login/Register.
-     Anchoring near the top keeps it in the same place in both modes and
-     collects the slack as a single margin below instead. */
+  /* Not vertically centered: the grid row is as tall as the taller side, and Register's longer form stretches this panel, so
+     centering floated the content in growing empty space and made it jump between Login and Register. Anchoring near the top
+     keeps it in place in both modes and collects the slack as a margin below. */
   align-items: flex-start;
   padding: 3rem 2.5rem;
   color: #fff;
@@ -2628,13 +2505,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   position: relative;
   z-index: 1;
   max-width: 360px;
-  /* Fixed, not stretched to the row's height: the row grows with Register's
-     extra fields, and letting this content block grow with it either left a
-     widening dead gap under the feature list or made the list drift to
-     wherever the row happened to end. A fixed height keeps every element
-     here — including the list — pinned to the exact same position and size
-     in both Sign In and Register; only the plain panel background below it
-     (already carrying the ::after vignette) absorbs the slack. */
+  /* Fixed, not stretched to the row's height: the row grows with Register's extra fields, and a content block that grew with
+     it left a widening dead gap or made the list drift. A fixed height keeps every element in the same position in Sign In and
+     Register; only the panel background below (with the ::after vignette) absorbs the slack. */
   height: 460px;
   display: flex;
   flex-direction: column;
@@ -2766,10 +2639,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 }
 .auth-tabs button:hover { color: var(--text); }
 .auth-tabs button.active { background: var(--surface); color: var(--orange); box-shadow: var(--shadow); }
-/* In dark mode, --surface (the active pill) is darker than --surface-2 (the
-   track it sits on), so the "selected" pill read as a dent, not a raised
-   tab — legible only from its orange text. A tint of the same orange used
-   for text/focus rings gives it its own contrast against the track. */
+/* In dark mode --surface (the active pill) is darker than --surface-2 (its track), so the selected pill read as a dent and was
+   legible only from its orange text. A tint of the text/focus-ring orange gives it contrast against the track. */
 [data-theme='dark'] .auth-tabs button.active { background: var(--orange-soft); }
 .auth-tabs button:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
 
@@ -2781,11 +2652,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 [data-theme='dark'] .auth-field-error { color: #fca5a5; }
 .auth-input:has(input[aria-invalid='true']) input { border-color: #dc2626; }
 [data-theme='dark'] .auth-input:has(input[aria-invalid='true']) input { border-color: #f87171; }
-/* Register's "Your name" is the one field with no help line, sandwiched
-   between School code and Password which both have one — without this it
-   reads as a shorter, slightly cut-off step in the form rather than a
-   field that simply doesn't need one. This closes the gap without
-   inventing text the field doesn't need. */
+/* Register's "Your name" is the one field with no help line, between School code and Password which both have one; without this
+   it reads as a cut-off step. This closes the gap without inventing text the field doesn't need. */
 .auth-field-spaced { padding-bottom: 0.9rem; }
 
 .auth-input { position: relative; display: flex; align-items: center; }
@@ -2815,11 +2683,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   border-color: var(--orange);
   box-shadow: 0 0 0 3px var(--orange-soft);
 }
-/* Chrome forces its own light-blue background on autofilled fields, ignoring
-   `background`. A huge inset box-shadow paints over it (the only property
-   autofill styling can't block) so autofilled inputs stay on-theme in dark
-   mode instead of flashing a pale blue box. The absurd transition delay is
-   the standard trick to stop Chrome re-applying its style after paint. */
+/* Chrome forces a light-blue background on autofilled fields and ignores `background`. A huge inset box-shadow paints over it
+   (the one thing autofill styling can't block) so autofilled inputs stay on-theme in dark mode; the long transition delay stops
+   Chrome re-applying its style after paint. */
 .auth-input input:-webkit-autofill,
 .auth-input input:-webkit-autofill:hover,
 .auth-input input:-webkit-autofill:focus {
@@ -2865,8 +2731,7 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   animation: auth-error-in 0.18s ease;
 }
 .auth-error svg { flex-shrink: 0; }
-/* Same idiom as .attendance-queued-banner .btn-text — a right-aligned
-   inline retry action on an error banner (Finding #6). */
+/* Same idiom as .attendance-queued-banner .btn-text: a right-aligned inline retry action on an error banner. */
 .auth-error .btn-text { margin-left: auto; flex-shrink: 0; font-size: 0.82rem; padding: 0.3rem 0.6rem; }
 [data-theme='dark'] .auth-error {
   color: #fca5a5;
@@ -2907,10 +2772,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   animation: spin 0.7s linear infinite;
 }
 
-/* line-height is set explicitly: body declares none, so this inherited the UA
-   default (~1.2). At 0.82rem that left the underline of "Forgot your password?"
-   almost touching the "First time here?" line below it, which read as the two
-   links overlapping. */
+/* line-height is explicit: body declares none, so this inherited the UA default (~1.2) and at 0.82rem the "Forgot your
+   password?" underline nearly touched the "First time here?" line, reading as overlap. */
 .auth-hint {
   color: var(--text-muted);
   font-size: 0.82rem;
@@ -2961,11 +2824,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
    lines up with the full-width submit button above. */
 .auth-google { display: flex; justify-content: center; margin-top: 1rem; }
 
-/* On Register the school code picks the tenant, so Google can't run without
-   one. Rather than letting the account chooser open and fail afterwards, the
-   button is greyed out and click-blocked; the wrapper catches the click and
-   explains why. `pointer-events: none` leaves the iframe in the tab order, so
-   handleGoogleToken keeps its own guard for keyboard users. */
+/* On Register the school code picks the tenant, so Google can't run without one. Instead of opening the account chooser and
+   failing, the button is greyed and click-blocked and the wrapper explains why. `pointer-events: none` leaves the iframe in the
+   tab order, so handleGoogleToken keeps its own guard for keyboard users. */
 .auth-google-blocked { opacity: 0.45; filter: grayscale(1); pointer-events: none; }
 
 @media (max-width: 820px) {
@@ -3004,27 +2865,17 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   position: relative;
   width: 100%;
   max-width: 440px;
-  /* Below 640px this fills the entire screen edge-to-edge (see the
-     border-radius/box-shadow reset just below) — matching the real /login
-     page's full-screen appearance instead of reading as a partial-height
-     sheet with visible backdrop around it. The min-width:640px query below
-     switches it back to a capped-height floating card once there's enough
-     room to show it as an actual overlay rather than a takeover. */
+  /* Below 640px this fills the screen edge to edge (see the border-radius/box-shadow reset below), like the real /login page. The
+     min-width:640px query below switches it to a capped-height floating card once there's room for an overlay. */
   height: 100dvh;
   max-height: 100dvh;
   overflow-y: auto;
-  /* Register's longer form regularly exceeds max-height on short/mobile
-     viewports, so this scrolls internally — but a bottom sheet reads as a
-     single scrollable surface, not a page with its own scrollbar chrome, so
-     the scrollbar is hidden while staying fully scrollable (wheel, touch,
-     and keyboard scrolling are all unaffected by hiding the indicator). */
+  /* Register's longer form often exceeds max-height on short viewports, so this scrolls internally; the scrollbar is hidden (a
+     bottom sheet reads as one scrollable surface) while wheel, touch and keyboard scrolling still work. */
   scrollbar-width: none;
-  /* Overrides .auth-card's `justify-content: center` (shared below): centering
-     an overflowing flex container splits the overflow evenly above and below,
-     and scrollTop can never go negative — so with center alignment the top of
-     the form (the logo, brand, and tabs) was pushed above the scrollable area
-     and permanently unreachable. flex-start keeps all the overflow at the
-     bottom, where scrolling actually reaches it. */
+  /* Overrides .auth-card's `justify-content: center` (shared below): centering an overflowing flex container splits the overflow
+     above and below, and scrollTop can't go negative, so the logo, brand and tabs were pushed above the scrollable area and
+     unreachable. flex-start keeps the overflow at the bottom, where scrolling reaches it. */
   justify-content: flex-start;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -3052,12 +2903,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   .auth-modal-overlay, .auth-modal-sheet { transition: none; }
 }
 
-/* ---- Toast ----------------------------------------------------------------
-   A compact, bordered surface card — the same subtle tint-on-neutral
-   language the app already uses for status/state (.status-pill,
-   .type-tag, .history-item-menu-item.danger) — rather than a solid-fill
-   colored pill. Kept small and off to one side of the content it reports
-   on, not a wide banner across it. */
+/* ---- Toast ----
+   A compact bordered surface card, the tint-on-neutral style the app uses for status (.status-pill, .type-tag,
+   .history-item-menu-item.danger), not a solid-fill pill. Small and off to one side of what it reports on, not a wide banner. */
 .toast-stack { position: fixed; bottom: 1.2rem; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; flex-direction: column; gap: 0.4rem; align-items: center; }
 .toast {
   display: flex;
@@ -3144,14 +2992,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .admin-tabs a.active { color: var(--orange); border-bottom-color: var(--orange); }
 .admin-tabs a:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; border-radius: var(--radius-sm); }
 
-/* Mobile: the tab list (Overview/Manage/Support/Notifications/Settings, and
-   whatever else lands here later — PYQ, Reports, Users) no longer fits one
-   line. `.admin-tabs` becomes its own scroll container instead of wrapping
-   or shrinking tabs — `overflow-x: auto` clips the overflowing links to
-   this element's own box, which is what keeps the rest of the Admin page
-   (and the page-level scroll width) from being pushed wide by them. Desktop
-   is untouched; this whole block is gated to the same 640px breakpoint the
-   rest of the app's mobile layout uses. */
+/* Mobile: the admin tab list (Overview/Manage/Support/Notifications/Settings and whatever lands later) no longer fits one line.
+   `.admin-tabs` becomes its own scroll container instead of wrapping or shrinking tabs; `overflow-x: auto` clips the overflow to
+   its own box so the page's scroll width isn't pushed wide. Desktop is untouched; gated to the app's 640px mobile breakpoint. */
 @media (max-width: 640px) {
   .admin-tabs {
     flex-wrap: nowrap;
@@ -3286,9 +3129,7 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 [data-theme='dark'] .status-pill.status-pending { color: #fcd34d; border-color: #78350f; background: rgba(120, 53, 15, 0.35); }
 [data-theme='dark'] .status-pill.status-rejected { color: #fca5a5; border-color: #7f1d1d; background: rgba(127, 29, 29, 0.35); }
 
-/* Support ticket status/type — Admin Support Inbox (Phase 2). Reuses the
-   same .status-pill base as the user-status pills above; these are simply
-   a different set of values on the same component. */
+/* Support ticket status/type (Admin Support Inbox): the same .status-pill base as the user-status pills above with a different set of values. */
 .status-pill.status-open { color: #b91c1c; border-color: #fca5a5; background: #fef2f2; }
 .status-pill.status-triaged { color: #b45309; border-color: #fcd34d; background: #fffbeb; }
 .status-pill.status-resolved { color: #15803d; border-color: #86efac; background: #f0fdf4; }
@@ -3298,19 +3139,16 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 [data-theme='dark'] .status-pill.status-triaged { color: #fcd34d; border-color: #78350f; background: rgba(120, 53, 15, 0.35); }
 [data-theme='dark'] .status-pill.status-resolved { color: #6ee7a8; border-color: #14532d; background: rgba(20, 83, 45, 0.35); }
 
-/* Schedule a Call booking status — Admin bookings inbox. Same .status-pill
-   base; "confirmed" reuses the resolved/active green, "cancelled" reuses
-   the muted wont_fix treatment (a cancelled booking is a closed, neutral
-   outcome, not an error state). */
+/* Schedule a Call booking status (admin bookings inbox). Same .status-pill base; "confirmed" reuses the resolved/active green
+   and "cancelled" the muted wont_fix treatment (a closed, neutral outcome, not an error). */
 .status-pill.status-confirmed { color: #15803d; border-color: #86efac; background: #f0fdf4; }
 .status-pill.status-cancelled { color: var(--text-muted); border-color: var(--border); background: var(--surface-2); }
 
 [data-theme='dark'] .status-pill.status-confirmed { color: #6ee7a8; border-color: #14532d; background: rgba(20, 83, 45, 0.35); }
 
-/* ---- Classroom Management (docs/classroom-feature-plan.md) --------------
-   NOT the unrelated "Classroom Mode" AI chat feature — that has its own
-   composer-scoped styles elsewhere in this file. This block covers the
-   /classroom page shell, tab bar, and My Classes / Students panels. */
+/* ---- Classroom Management (docs/classroom-feature-plan.md) ----
+   Not the "Classroom Mode" AI chat feature, which has composer-scoped styles elsewhere. Covers the /classroom page shell, tab
+   bar and My Classes / Students panels. */
 .classroom-main { max-width: 1080px; margin: 0 auto; padding: 1.75rem 1.25rem 3rem; }
 
 .classroom-tabs {
@@ -3342,10 +3180,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .classroom-tabs button.active { color: var(--orange); border-bottom-color: var(--orange); }
 .classroom-tabs button:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; border-radius: var(--radius-sm); }
 
-/* Desktop: a persistent class list beside whichever tab is active (§5) —
-   picking a different class never requires leaving the current tab. Mobile
-   (see the 640px media query below) stacks these and shows only one at a
-   time, driven by the active tab. */
+/* Desktop: a persistent class list beside the active tab, so picking a class never means leaving the tab. Mobile (640px query
+   below) stacks these and shows one at a time, driven by the active tab. */
 .classroom-layout { display: grid; grid-template-columns: 280px 1fr; gap: 1.25rem; align-items: start; }
 
 .classroom-sidebar,
@@ -3457,14 +3293,10 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   margin-bottom: 0.4rem;
 }
 
-/* Attendance (docs/classroom-feature-plan.md Phase 3) — Mark Attendance /
-   Monthly Summary. Reuses .classroom-empty/.classroom-summary-tile/etc.'s
-   existing card language rather than introducing a second visual system. */
+/* Attendance (docs/classroom-feature-plan.md): Mark Attendance / Monthly Summary, reusing the .classroom-empty/.classroom-summary-tile card language. */
 
-/* "Mark Attendance" / "Monthly Summary" segmented control — deliberately NOT
-   styled like .classroom-tabs (the outer My Classes/Students/.../Reports
-   nav): a smaller pill toggle keeps the two levels visually distinct so
-   they don't read as one six-item tab strip. */
+/* "Mark Attendance" / "Monthly Summary" segmented control: deliberately not styled like .classroom-tabs (the outer nav), so a
+   smaller pill toggle keeps the two levels distinct and they don't read as one six-item strip. */
 .classroom-subtabs { display: flex; gap: 0.4rem; margin-bottom: 1.1rem; }
 .classroom-subtabs button {
   border: 1px solid var(--border);
@@ -3535,10 +3367,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 [data-theme='dark'] .classroom-summary-tile.tile-partial .classroom-summary-value { color: #fcd34d; }
 [data-theme='dark'] .classroom-summary-tile.tile-info .classroom-summary-value { color: #93c5fd; }
 
-/* Clickable fee-status tiles (Reports tab) — a modifier on the shared
-   .classroom-summary-tile, kept separate so the plain (non-interactive)
-   tiles reused in FeeStatusBoard/AttendanceDaily/AttendanceMonthly are
-   unaffected. */
+/* Clickable fee-status tiles (Reports tab): a modifier on the shared .classroom-summary-tile, so the plain tiles reused in
+   FeeStatusBoard/AttendanceDaily/AttendanceMonthly are unaffected. */
 .classroom-summary-tile-clickable {
   border: 1px solid var(--border);
   font: inherit;
@@ -3591,10 +3421,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.35);
 }
 
-/* Fee-status student list modal (Reports tab) — opened by a clickable tile
-   above. Same overlay/portal/focus-trap conventions as .attachment-modal-*,
-   kept as its own class family since sizing (a scrollable name list, not a
-   media preview) differs. */
+/* Fee-status student list modal (Reports tab), opened by a clickable tile above. Same overlay/portal/focus-trap conventions as
+   .attachment-modal-*, in its own class family since the sizing (a scrollable name list) differs. */
 .classroom-fee-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -3617,11 +3445,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   overflow: hidden;
   box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.55), var(--shadow);
 }
-/* Static border ring around the whole open modal — no motion. Color matches
-   the status of the tile that opened it (same tones as the tile's own
-   "selected" ring), so it reinforces which category is showing rather than
-   adding an unrelated accent color. Neutral/orange for "Total Students" (no
-   tone class). */
+/* Static border ring around the open modal, no motion. Its color matches the status of the tile that opened it (the tile's
+   "selected" ring tones), reinforcing the category shown; neutral/orange for "Total Students" (no tone class). */
 .classroom-fee-modal.tile-present { box-shadow: 0 0 0 2px rgba(21, 128, 61, 0.55), var(--shadow); }
 .classroom-fee-modal.tile-partial { box-shadow: 0 0 0 2px rgba(180, 83, 9, 0.55), var(--shadow); }
 .classroom-fee-modal.tile-absent { box-shadow: 0 0 0 2px rgba(185, 28, 28, 0.55), var(--shadow); }
@@ -3744,10 +3569,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 @media (max-width: 640px) {
   .classroom-main { padding: 1.25rem 0.9rem 2rem; }
   .classroom-layout { display: block; }
-  /* Only one of the sidebar (My Classes) or the active tab's content is
-     shown at a time on a phone — see ClassroomPage.tsx, which toggles this
-     class based on the active tab (§4: "Students/Attendance/Fees/Reports
-     are always scoped to one class at a time on small screens"). */
+  /* Only one of the sidebar (My Classes) or the active tab's content shows at a time on a phone; ClassroomPage.tsx toggles this
+     class by active tab (Students/Attendance/Fees/Reports are scoped to one class at a time on small screens). */
   .classroom-sidebar.mobile-hidden,
   .classroom-content.mobile-hidden { display: none; }
 
@@ -3778,7 +3601,7 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .ticket-row { cursor: pointer; }
 .ticket-row:hover { background: var(--surface-2); }
 
-/* ---- Ticket detail page (Admin Support Inbox, Phase 2.3) ------------------ */
+/* ---- Ticket detail page (Admin Support Inbox) ---- */
 .ticket-detail-main { max-width: 980px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
 .ticket-back { display: inline-flex; align-items: center; gap: 0.4rem; margin-bottom: 1rem; }
 
@@ -3883,13 +3706,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0; border-top: 1px solid var(--border); }
 .settings-row:first-of-type { border-top: none; }
 
-/* Standalone legal pages (Terms of Service / Privacy Policy) — opened in
-   their own browser tab from ProfileMenu's "Learn more" flyout (own document,
-   so the sticky header + smooth-scroll-to-anchor behaviour set up in
-   LegalLayout.tsx never touches the rest of the app). Built from the same
-   surface/border/shadow/orange-accent vocabulary as the rest of the app
-   (.topbar, .brand, .help-option-icon's icon-badge recipe) rather than a
-   one-off palette. */
+/* Standalone legal pages (Terms / Privacy), opened in their own tab from ProfileMenu's "Learn more" flyout, so the sticky header
+   and smooth-scroll-to-anchor from LegalLayout.tsx never touch the rest of the app. Built from the app's surface/border/shadow/
+   orange-accent vocabulary (.topbar, .brand, .help-option-icon's icon-badge recipe), not a one-off palette. */
 .legal-page { min-height: 100vh; background: var(--bg); }
 
 .legal-topbar {
@@ -4121,14 +3940,10 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 /* ---- Spinner utility (inline icon) --------------------------------------- */
 .spin { animation: spin 0.8s linear infinite; }
 
-/* ---- Help & Support -------------------------------------------------------
-   A globally-mounted overlay + sheet (see components/HelpSupport.tsx) rather
-   than the Sidebar's own backdrop classes — Sidebar is docked in-flow on
-   desktop and only becomes a fixed overlay under the mobile breakpoint, but
-   this panel needs to work as a true overlay from anywhere in the app, on
-   every screen size. Same visual language (surface/border/shadow tokens,
-   backdrop) as the rest of the app, just always-overlay instead of
-   breakpoint-gated. */
+/* ---- Help & Support ----
+   A globally mounted overlay + sheet (components/HelpSupport.tsx), not the Sidebar's backdrop classes: Sidebar is docked in flow
+   on desktop and only becomes an overlay under the mobile breakpoint, while this panel must be a true overlay everywhere, on
+   every screen size. Same surface/border/shadow tokens and backdrop as the rest of the app. */
 .help-overlay {
   position: fixed;
   inset: 0;
@@ -4207,15 +4022,10 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .help-success { text-align: center; padding: 0.6rem 0 0.4rem; }
 .help-success-ref { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; color: var(--text-muted); font-size: 0.85rem; }
 
-/* ---- Notification System (components/Notifications.tsx) -----------------
-   Bell lives in .icon-btn (already position: relative — see L95), the badge
-   is an absolutely-positioned pill on top of it. The panel is an ANCHORED
-   dropdown under the bell on desktop (same visual language as
-   .profile-dropdown). On mobile it stays anchored near the TOP of the
-   screen (below the sticky .topbar, which is 62px tall — see L127) rather
-   than becoming a bottom sheet, so it never lands near/behind the fixed
-   .bottom-nav — one markup, chrome flips at the same 640px breakpoint the
-   rest of the app uses. */
+/* ---- Notification System (components/Notifications.tsx) ----
+   The bell lives in .icon-btn (already position: relative) with the badge an absolutely positioned pill on top. The panel is an
+   anchored dropdown under the bell on desktop (like .profile-dropdown). On mobile it stays near the top, below the 62px sticky
+   .topbar, instead of a bottom sheet, so it never lands behind the fixed .bottom-nav; one markup, flipping at the app's 640px breakpoint. */
 .notif-bell-wrap { position: relative; }
 .notif-badge {
   position: absolute;
@@ -4353,8 +4163,7 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
     z-index: 1800;
     align-items: flex-start;
     justify-content: center;
-    /* Push the panel below the sticky 62px .topbar (see L127) instead of
-       letting it fall to the bottom of the viewport near .bottom-nav. */
+    /* Push the panel below the 62px sticky .topbar instead of letting it fall to the bottom of the viewport near .bottom-nav. */
     padding: calc(62px + env(safe-area-inset-top) + 0.6rem) 0.75rem 0.75rem;
   }
   .notif-panel {
@@ -4459,14 +4268,11 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   outline-offset: 1px;
 }
 
-/* ---- Exam-paper letterhead (Phase 3) -------------------------------------- */
-/* .exam-header is used identically on-screen (inside the .exam-paper preview)
-   and in the hidden .print-doc. It is laid out like a real school examination
-   paper: large centred school name, centred exam title, Class/Subject and
-   Time/Maximum-Marks rows spread to the margins, Name/Roll-No fill-in lines,
-   and a General Instructions block, closed by a double rule. All colors come
-   from currentColor so the same rules produce ink-on-paper in the print doc
-   and in the white .exam-paper preview without a parallel color scheme. */
+/* ---- Exam-paper letterhead ---- */
+/* .exam-header is used identically on screen (inside the .exam-paper preview) and in the hidden .print-doc, laid out like a real
+   school exam paper: large centred school name and exam title, Class/Subject and Time/Maximum-Marks rows spread to the margins,
+   Name/Roll-No fill-in lines and a General Instructions block, closed by a double rule. Colors come from currentColor, so the
+   same rules give ink-on-paper in print and in the white preview. */
 .exam-header {
   padding: 0 0 0.9rem;
   margin: 0 0 1.1rem;
@@ -4504,11 +4310,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 }
 .exam-header-instructions b { font-style: normal; }
 
-/* The on-screen preview of an assessment renders as a white sheet of paper —
-   ink text, serif type, brand colors suppressed — so what the teacher sees is
-   what the printed page will look like, in light AND dark theme alike. The
-   custom-property overrides repaint everything inside (headings, borders,
-   list text) without a parallel stylesheet. */
+/* The on-screen assessment preview renders as a white sheet (ink text, serif type, brand colors suppressed) so it matches the
+   printed page in both light and dark themes. The custom-property overrides repaint everything inside without a parallel stylesheet. */
 .workspace-preview.exam-paper {
   background: #ffffff;
   color: #1a1a1a;
@@ -4676,17 +4479,11 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   .workspace-main { padding: 1rem 0.9rem 3rem; }
 }
 
-/* ---- Print / Export PDF (Phase 3) ---------------------------------------- */
-/* The print document is hidden on screen and revealed only when printing.
-   Everything else in the app is hidden so the export is a clean, white,
-   classroom-ready sheet regardless of the active light/dark theme.
-
-   Hidden by OFF-SCREEN POSITIONING, deliberately not display:none —
-   display:none content is never laid out, so the KaTeX math web fonts it
-   needs would not be fetched until the print dialog itself rendered, and
-   Chrome's print snapshot does not wait for late font loads: the first
-   print/PDF of a math paper came out with invisible math. Off-screen content
-   is laid out normally, so the fonts load with the page. */
+/* ---- Print / Export PDF ---- */
+/* The print document is hidden on screen and revealed only when printing, so the export is a clean white sheet whatever the theme.
+   Hidden by off-screen positioning, not display:none: display:none content is never laid out, so the KaTeX fonts it needs wouldn't
+   be fetched until the print dialog rendered, and Chrome's print snapshot doesn't wait for late fonts (the first print of a math
+   paper had invisible math). Off-screen content is laid out normally, so the fonts load with the page. */
 .print-doc {
   position: absolute;
   top: 0;
@@ -4752,12 +4549,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
      handed out (or photocopied) without the answers riding on its last page. */
   .print-body .fmt-answer-key { page-break-before: always; break-before: page; border-top: none; padding-top: 0; }
 
-  /* Exam-paper print document: professionally typeset — serif body (which
-     KaTeX's own serif math blends into), ink-on-paper letterhead colors via
-     currentColor, and centred small-caps section headings. Hardcoded
-     print-safe colors (never CSS custom properties) so a printed page never
-     inherits the app's dark theme, same convention as every other .print-*
-     rule in this block. */
+  /* Exam-paper print document: serif body (KaTeX's serif math blends into it), ink-on-paper letterhead via currentColor and
+     centred small-caps section headings. Hardcoded print-safe colors (never custom properties) so a printout never inherits the
+     dark theme, like the other .print-* rules here. */
   .print-doc--exam {
     font-family: Cambria, Georgia, 'Times New Roman', serif;
   }
@@ -4772,15 +4566,10 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   .print-doc--exam .katex { font-size: 1.06em; }
   .exam-header { color: #111111; page-break-inside: avoid; break-inside: avoid; }
 
-  /* Explicit A4 so a generated paper has a predictable, consistent page size
-     regardless of the browser/OS print-dialog default (which varies by
-     region — e.g. Letter in the US). True per-page "Page X of Y" numbering
-     is intentionally NOT attempted here: CSS Paged Media's @page margin
-     boxes (counter(page)/counter(pages)) are not supported by Chrome,
-     Edge, or Firefox's print engines, so that CSS would silently do
-     nothing rather than degrade gracefully. Reliable page numbers need a
-     paginated renderer (e.g. paged.js) or server-side PDF generation —
-     tracked as later work, not attempted in this pass. */
+  /* Explicit A4 so a generated paper has a consistent page size whatever the browser/OS print default (e.g. Letter in the US).
+     Per-page "Page X of Y" numbering isn't attempted: @page margin boxes (counter(page)/counter(pages)) aren't supported by
+     Chrome, Edge or Firefox print engines and would silently do nothing. Reliable page numbers need a paginated renderer
+     (e.g. paged.js) or server-side PDF generation. */
   @page { size: A4; margin: 1.6cm; }
 }
 
@@ -4909,12 +4698,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   white-space: nowrap;
 }
 .generator-type-option:hover { background: var(--surface-2); }
-/* Undoes .ws-field input's width:100%/padding/background/border (meant for
-   text and number inputs) — without this, the checkbox becomes an
-   invisible flex item that fills the leftover row width, so its native
-   glyph renders centered inside that box instead of flush left, and every
-   row with a different label length ends up with its checkbox visibly at a
-   different x position. */
+/* Undoes .ws-field input's width:100%/padding/background/border (meant for text and number inputs). Without it the checkbox becomes
+   an invisible flex item filling the leftover width, so its glyph renders centered instead of flush left and rows with
+   different label lengths put their checkbox at different x positions. */
 .generator-type-option input[type="checkbox"] {
   width: auto;
   flex: 0 0 auto;
@@ -4973,10 +4759,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 }
 
 /* ---- Structured Question Model (Generator v2) --------------------------- */
-/* One question card, shared by GeneratorPage's Edit/Preview tabs and
-   ResourceWorkspace's structured editor — see docs/generator-v2-plan.md.
-   Deliberately reuses .ws-field/.btn-text/.icon-btn rather than a parallel
-   visual language. */
+/* One question card, shared by GeneratorPage's Edit/Preview tabs and ResourceWorkspace's structured editor
+   (docs/generator-v2-plan.md). Reuses .ws-field/.btn-text/.icon-btn rather than a parallel visual language. */
 .question-list-instructions { margin-bottom: 0.9rem; }
 .question-list-instructions input { width: 100%; }
 .question-list-instructions-display { font-style: italic; color: var(--text-muted); margin: 0 0 1rem; }
@@ -5093,13 +4877,10 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   .question-card-actions { margin-left: 0; }
 }
 
-/* ---- AI prefill banner + provenance markers (AI Action Router, M3) -------- */
-/* Shown when the router has pre-filled the Generator. Sits in normal flow above
-   the form — never an overlay — for the same reason the onboarding tip does: it
-   must not cover the form it is describing, and it has to scroll away on a
-   phone. It replaces the generator-intro tip for that visit (CHANGE-10) rather
-   than stacking with it, which on a small screen would push the form below the
-   fold. Theme-aware through the shared variables. */
+/* ---- AI prefill banner + provenance markers (AI Action Router) ---- */
+/* Shown when the router has pre-filled the Generator. In normal flow above the form, never an overlay, like the onboarding tip:
+   it mustn't cover the form it describes and has to scroll away on a phone. It replaces the generator-intro tip for that visit
+   instead of stacking with it, which on a small screen would push the form below the fold. Theme-aware via shared variables. */
 .ai-banner {
   display: flex;
   align-items: flex-start;
@@ -5151,10 +4932,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Per-field provenance markers. NEVER colour-only (CHANGE-12): each carries
-   visible text, and the uncertain variant is additionally announced to screen
-   readers, because a teacher who cannot see the styling still needs to know
-   which value was a guess. */
+/* Per-field provenance markers. Never colour-only: each carries visible text, and the uncertain variant is also announced to
+   screen readers, since a teacher who can't see the styling still needs to know which value was a guess. */
 .ai-field-note {
   display: inline-flex;
   align-items: center;
@@ -5188,14 +4967,10 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   .ai-banner { animation: none; }
 }
 
-/* ---- AI clarifying question (AI Action Router, M6) ----------------------- */
-/* Sits inside the composer dock, directly above the context bar, because the
-   answer is given either by tapping a chip here or by typing in the composer
-   immediately below — keeping the question and both of its answer surfaces in
-   one visual group. In normal flow, never an overlay: on a phone it must push
-   the conversation up rather than cover it. Deliberately reuses the banner's
-   visual language (soft orange, left rule) so the router looks like one feature
-   rather than two. */
+/* ---- AI clarifying question (AI Action Router) ---- */
+/* Inside the composer dock, above the context bar, because the answer comes from tapping a chip here or typing in the composer
+   just below, keeping the question and both answer surfaces in one group. In normal flow, never an overlay: on a phone it must
+   push the conversation up rather than cover it. Reuses the banner's look (soft orange, left rule) so the router reads as one feature. */
 .ai-clarify {
   display: flex;
   align-items: flex-start;
@@ -5247,10 +5022,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   .ai-clarify { animation: none; }
 }
 
-/* ---- Confirm dialog ------------------------------------------------------
-   Modal confirmation for hard-to-undo actions (see components/ConfirmDialog).
-   Sits above .help-overlay's z-index because a confirmation can be raised
-   from inside a panel that is itself an overlay. */
+/* ---- Confirm dialog ----
+   Modal confirmation for hard-to-undo actions (components/ConfirmDialog). Above .help-overlay's z-index since a confirmation can be
+   raised from inside a panel that is itself an overlay. */
 .confirm-overlay {
   position: fixed;
   inset: 0;
@@ -5299,11 +5073,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   .confirm-panel { animation: none; }
 }
 
-/* ---- Teacher Attendance ---------------------------------------------------
-   docs/feature-teacher-attendance-implementation-plan.md. .attendance-main
-   mirrors .library-main's page-shell shape; .attendance-error mirrors
-   .assistant-error's banner exactly (same color tokens, same dark-mode
-   override), so this page reads as the same design system, not a one-off. */
+/* ---- Teacher Attendance (docs/feature-teacher-attendance-implementation-plan.md) ----
+   .attendance-main mirrors .library-main's page shell; .attendance-error mirrors .assistant-error's banner (same color tokens and
+   dark-mode override), so the page reads as the same design system. */
 .attendance-main { max-width: 640px; margin: 0 auto; padding: 1.75rem 1.25rem 3rem; }
 /* Reports (AttendancePage.tsx) needs real room for its data table — the
    table itself still gets its own horizontal scroll below this width, so
@@ -5375,10 +5147,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 [data-theme='dark'] .attendance-distance-status.attendance-distance-toofar { color: #fca5a5; }
 .attendance-distance-refresh { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.8rem; padding: 0.15rem 0.4rem; }
 
-/* "Distance to school" card — the big colour-coded number a teacher checks
-   before the button even matters (docs/attendance-register-design.html
-   §1/§2). Present in every state (in range, out of range) so it never
-   reads as a dead patch of screen. */
+/* "Distance to school" card: the big colour-coded number a teacher checks before the button matters
+   (docs/attendance-register-design.html). Present in every state (in and out of range) so it's never a dead patch of screen. */
 .attendance-distance-card {
   background: var(--surface-2);
   border-radius: var(--radius-sm);
@@ -5432,11 +5202,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .attendance-checked-time { font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; margin: 0.15rem 0; color: var(--text); display: block; }
 .attendance-checked-sub { font-size: 0.8rem; color: var(--text-muted); display: block; }
 
-/* End-of-day summary — check-in AND check-out together, plus the final
-   word on the day, in one card. The card background reflects the overall
-   day outcome (amber for half_day); each half's own label/sub-text is
-   colored independently by whether THAT event was on time, so an on-time
-   check-in still reads green even on a half-day card. */
+/* End-of-day summary: check-in and check-out together plus the final word on the day, in one card. The card background reflects
+   the day's outcome (amber for half_day); each half's label is colored by whether that event was on time, so an on-time
+   check-in still reads green on a half-day card. */
 .attendance-day-summary.tone-warning { background: var(--att-warning-soft); }
 
 .attendance-day-summary-times {
@@ -5664,9 +5432,7 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .attendance-settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.9rem; margin-bottom: 1rem; }
 .attendance-subhead { font-size: 1rem; font-weight: 700; margin: 1.4rem 0 0.6rem; }
 
-/* Settings regrouped into named, collapsible sections
-   (docs/attendance-register-design.html §8) — the same fields as before,
-   organized by what a Principal is actually trying to change in one sitting. */
+/* Settings regrouped into named, collapsible sections (docs/attendance-register-design.html), organized by what a Principal changes in one sitting. */
 .attendance-settings-group {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -5695,10 +5461,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .attendance-settings-group .attendance-settings-grid,
 .attendance-settings-group .attendance-weekday-picker,
 .attendance-settings-group .attendance-location-row { margin-bottom: 0; }
-/* A lead-in explanation line above a group's fields — left-aligned and
-   flush with the group body's own top padding, unlike .attendance-hint's
-   base centered/standalone styling (meant for "no results" style messages
-   elsewhere in this feature, not a sentence introducing a form). */
+/* A lead-in line above a group's fields: left-aligned and flush with the group body's top padding, unlike .attendance-hint's
+   centered "no results" styling. */
 .attendance-settings-group-body > .attendance-hint:first-child { text-align: left; margin: 0 0 1rem; }
 
 .attendance-location-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1.4rem; }
@@ -5713,12 +5477,9 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .attendance-holiday-edit .text-input:nth-child(2) { flex: 1; min-width: 140px; }
 .attendance-holiday-form .text-input { flex: 1; min-width: 140px; }
 
-/* Reports tab (Principal) — one row per teacher; clicking a row REPLACES
-   the table with that teacher's own day-by-day view (a "Back to all
-   teachers" link takes you out) rather than expanding inline — a list of
-   days doesn't read well squeezed into one cell of a wide number table.
-   Wide table gets its own horizontal scroll, per this app's "the page body
-   never scrolls sideways" convention. */
+/* Reports tab (Principal): one row per teacher; clicking one replaces the table with that teacher's day-by-day view (with a "Back
+   to all teachers" link) instead of expanding inline, since a list of days doesn't fit one cell of a wide number table. The wide
+   table gets its own horizontal scroll ("the page body never scrolls sideways"). */
 @keyframes attendance-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .attendance-fade-in { animation: attendance-fade-in 0.18s ease; }
 @media (prefers-reduced-motion: reduce) {
@@ -5800,10 +5561,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 .attendance-reports-table tbody tr:last-child td { border-bottom: none; }
 .attendance-reports-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--surface-2) 45%, transparent); }
 
-/* Separates the two "needs your attention" columns (Flagged, Missing
-   checkout) from the six routine ones to their left — a plain wall of
-   nine equal-weight numbers is hard to scan at a glance; this makes clear
-   which two are actually worth stopping on. */
+/* Separates the two "needs your attention" columns (Flagged, Missing checkout) from the six routine ones, since nine equal-weight
+   numbers are hard to scan. */
 .attendance-reports-divider-col { border-left: 2px solid var(--border); }
 
 /* Nonzero counts should read normally; a zero is a non-event and shouldn't
@@ -5826,20 +5585,15 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 }
 .attendance-reports-badge.warn { background: var(--att-absent-soft); color: var(--att-absent); }
 
-/* Teacher name stays put while the rest of the (wide) row scrolls
-   horizontally — otherwise a scrolled-right row is unreadable, no way to
-   tell whose numbers you're looking at. Needs its own OPAQUE background
-   (the zebra stripe above is semi-transparent) so scrolling content
-   doesn't show through underneath it. */
+/* The teacher name stays put while the wide row scrolls, otherwise a scrolled-right row can't be attributed. It needs its own
+   opaque background (the zebra stripe above is semi-transparent) so scrolling content doesn't show through. */
 .attendance-reports-table th:first-child,
 .attendance-reports-table td:first-child {
   position: sticky;
   left: 0;
   box-shadow: 1px 0 0 var(--border);
-  /* Fixed, not auto — a long email (some run 40+ characters) used to
-     stretch this column wide enough to push every numeric column off
-     screen. Capped here and truncated with an ellipsis (see
-     .attendance-reports-name-text) instead. */
+  /* Fixed, not auto: a 40+ character email used to stretch this column and push every numeric column off screen. Capped and
+     truncated with an ellipsis (see .attendance-reports-name-text). */
   width: 210px;
   max-width: 210px;
 }
@@ -5967,11 +5721,8 @@ th.attendance-reports-num-col .attendance-reports-sort-btn { flex-direction: row
 }
 .attendance-activity-search { flex: 1 1 200px; max-width: 240px; }
 
-/* A real segmented control (not a row of independent chips) — the active
-   segment "floats" on its own surface inside a shared track, the pattern
-   iOS/Linear use for "one choice among a few peers." Visually distinct from
-   the day-range chips beside it, which are independent toggles, not one
-   mutually-exclusive group in the same sense. */
+/* A real segmented control (not independent chips): the active segment floats on its own surface inside a shared track, as in
+   iOS/Linear, and is distinct from the day-range chips beside it, which are independent toggles. */
 .attendance-activity-segmented {
   display: inline-flex;
   background: var(--surface-2);
@@ -6101,8 +5852,7 @@ th.attendance-reports-num-col .attendance-reports-sort-btn { flex-direction: row
 .attendance-cal-absent { background: var(--att-absent-soft); color: var(--att-absent); }
 .attendance-cal-off { background: var(--surface-2); color: var(--text-muted); }
 
-/* Dashboard-style "today" stat cards atop Reports — the landing glance
-   before the table (docs/attendance-register-design.html §5). */
+/* Dashboard-style "today" stat cards atop Reports, the landing glance before the table (docs/attendance-register-design.html). */
 .attendance-stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
@@ -6203,11 +5953,8 @@ th.attendance-reports-num-col .attendance-reports-sort-btn { flex-direction: row
 .attendance-weekday-chip.checked { background: var(--orange-soft); border-color: var(--orange); color: var(--orange); }
 
 /* ---- Home / Landing (public, signed-out "/") ------------------------------ */
-/* overflow-x: clip, not hidden: `hidden` turns .home-page into a scroll
-   container, which made the sticky header bar stick to a box that never scrolls
-   (so it scrolled away with the page). `clip` hides the same overflow without
-   creating a scroll container. `hidden` stays as the fallback for browsers
-   that predate `clip`. */
+/* overflow-x: clip, not hidden: `hidden` makes .home-page a scroll container, so the sticky header stuck to a box that never
+   scrolls and scrolled away. `clip` hides the same overflow without one; `hidden` stays as the fallback for browsers without `clip`. */
 .home-page h1, .home-page h2, .home-page h3 { text-wrap: balance; }
 .home-page p { text-wrap: pretty; }
 .home-page { min-height: 100vh; background: var(--bg); color: var(--text); overflow-x: hidden; overflow-x: clip; }
@@ -6221,10 +5968,8 @@ html:has(.home-page) { scroll-behavior: smooth; }
 #faq,
 #android,
 #follow { scroll-margin-top: 84px; }
-/* .btn-primary/.btn-outline/.btn-text are button styles used elsewhere only on
-   <button> elements (which have no underline to begin with) — this page is
-   the only place they're applied to <Link>s, so the reset is scoped here
-   rather than touching the shared button rules. */
+/* .btn-primary/.btn-outline/.btn-text are elsewhere used only on <button>s (no underline); this page applies them to <Link>s, so the
+   reset is scoped here instead of touching the shared rules. */
 .home-page a.btn-primary,
 .home-page a.btn-outline,
 .home-page a.btn-text { text-decoration: none; }
@@ -6326,17 +6071,11 @@ html:has(.home-page) { scroll-behavior: smooth; }
 .home-mobile-menu .btn-primary { justify-content: center; margin-top: 0.75rem; }
 
 /* ================= HERO ================= */
-/* Centered hero (was a 2-column split): a big statement headline over a
-   full-width product-preview panel, rather than text-left/visual-right.
-   Deliberately NOT `overflow: hidden` on .home-hero itself — nothing here
-   currently needs it, and clipping the section would cut off anything that
-   ever overlaps its bottom edge again. The glow/dot decoration gets its own
-   backdrop layer with its own clip instead. */
+/* Centered hero: a big statement headline over a full-width product-preview panel. Not `overflow: hidden` on .home-hero (nothing
+   needs it, and it would clip anything overlapping the bottom edge); the glow/dot decoration gets its own backdrop layer with its own clip. */
 .home-hero { position: relative; padding: 3.5rem 1.5rem 0; text-align: center; }
-/* The backdrop's own transform is set inline by HomePage.tsx's mousemove
-   handler (a subtle cursor-reactive parallax on the glow layer) — the
-   transition here is what makes that motion glide instead of snap, and
-   ..reduce collapses its duration same as everything else on this page. */
+/* The backdrop's transform is set inline by HomePage.tsx's mousemove handler (a cursor parallax on the glow); this transition makes
+   it glide instead of snap, and ..reduce collapses its duration like everything else here. */
 .home-hero-backdrop { position: absolute; inset: 0; overflow: hidden; z-index: 0; pointer-events: none; transition: transform 0.35s ease-out; }
 .home-hero-glow-a,
 .home-hero-glow-b,
@@ -6467,11 +6206,9 @@ html:has(.home-page) { scroll-behavior: smooth; }
   font-weight: 700;
   color: var(--text-muted);
 }
-/* Sidebar column — mirrors Sidebar.tsx's new-chat/recents/account structure,
-   and is a genuinely functioning nav: New chat and each Recent item are real
-   buttons that swap what the chat column shows (see HomePage.tsx). Tall
-   enough (min-height on .home-hero-visual-body below) to read like an actual
-   app window, not a cramped teaser. */
+/* Sidebar column: mirrors Sidebar.tsx's new-chat/recents/account structure and is a working nav (New chat and each Recent item
+   are buttons that swap the chat column; see HomePage.tsx). Tall enough (min-height on .home-hero-visual-body below) to read
+   as an app window, not a teaser. */
 .home-hero-visual-body { display: flex; gap: 1.2rem; align-items: stretch; min-height: 420px; }
 .home-hero-visual-sidebar {
   display: flex;
@@ -6617,10 +6354,8 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 }
 [data-theme='dark'] .home-hero-visual-avatar { color: var(--amber); }
 
-/* Chat column — same shapes as .user-bubble and .composer-box on the real
-   Coach page, and genuinely interactive: .home-hero-visual-messages grows to
-   fill the tall panel (see min-height above) and pushes the composer to the
-   bottom, same as a real chat view regardless of how short the exchange is. */
+/* Chat column: the same shapes as .user-bubble and .composer-box on the real Coach page, and interactive.
+   .home-hero-visual-messages grows to fill the tall panel and pushes the composer to the bottom, as in a real chat view. */
 .home-hero-visual-chat { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.65rem; }
 .home-hero-visual-messages { flex: 1; display: flex; flex-direction: column; gap: 0.65rem; }
 .home-hero-visual-empty { margin: auto 0 0; font-size: 0.85rem; color: var(--text-muted); }
@@ -6637,10 +6372,8 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   border-radius: 14px 14px 14px 3px;
   color: var(--text);
 }
-/* Two rows — the message, then the controls beneath it — same shape as
-   .composer-box, not a single-row pill. The text row is a real <input> now
-   (see HomePage.tsx), so it's reset to look like plain composer text until
-   focused. */
+/* Two rows (message, then controls) like .composer-box, not a single-row pill. The text row is a real <input> (see
+   HomePage.tsx), reset to look like plain composer text until focused. */
 .home-hero-visual-composer {
   margin-top: auto;
   display: flex;
@@ -6709,15 +6442,10 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 }
 [data-theme='dark'] .home-eyebrow { color: var(--amber); }
 
-/* Scroll-driven reveal — pure CSS, no JS. Only engages where the browser
-   supports scroll-linked animations (@supports gate: currently
-   Chromium-based browsers); every other browser just shows the section at
-   its normal, fully-visible state via the base rule below. The explicit
-   reduced-motion disable is extra insurance beyond the sitewide
-   `*, *::before, *::after { animation-duration: 0.001ms !important }` rule
-   above, since a scroll-timeline-driven animation's "duration" isn't a
-   plain time value — same belt-and-suspenders approach already used for
-   .onboarding-tip and the attendance reports progress bar in this file. */
+/* Scroll-driven reveal, pure CSS. It engages only where scroll-linked animations are supported (@supports, currently Chromium);
+   elsewhere the section shows in its base, fully visible state. The explicit reduced-motion disable backs up the sitewide
+   `*, *::before, *::after { animation-duration: 0.001ms !important }` rule, since a scroll-timeline animation's "duration" isn't
+   a plain time value; same approach as .onboarding-tip and the attendance reports progress bar. */
 .home-reveal { opacity: 1; }
 @supports (animation-timeline: view()) {
   @keyframes home-reveal-in { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: translateY(0); } }
@@ -6889,15 +6617,9 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 }
 
 /* ---- faq (flat divided list — was a bordered card per question) ---- */
-/* A small icon above the FAQ heading that periodically flips over, echoing
-   "an animated icon above the FAQ section" seen on
-   claude.com/product/claude-code — that one turns out to be a proprietary
-   multi-frame hand-drawn redraw animation (79 path segments), which isn't
-   something to copy; this is an original, much simpler equivalent: a real
-   3D Y-axis flip (not just a bob) plus a pulsing ring, in our own
-   orange/amber language. `perspective` has to live on the wrapper, not the
-   element being rotated, for the flip to read as 3D depth instead of a
-   flat horizontal squash. */
+/* A small icon above the FAQ heading that periodically flips over, with a pulsing ring: a real 3D Y-axis flip (not a bob) in the
+   brand orange/amber. `perspective` must be on the wrapper, not the rotated element, for the flip to read as depth and not a
+   flat squash. */
 .home-faq-icon-wrap { display: flex; justify-content: center; margin: 0 auto 1.2rem; perspective: 480px; }
 .home-faq-icon {
   position: relative;
@@ -6989,13 +6711,10 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 .home-cta-outline-inverse:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); border-color: #fff; }
 
 /* ---- "Follow SarasTech" links (components/SocialLinks.tsx) ----
-   Lives in the footer's brand column now, as a row of round icon buttons. The
-   platform name stays in the DOM - visually hidden rather than display:none -
-   and every link keeps its aria-label ("SarasTech on LinkedIn"), so screen
-   readers and crawlers still get it. The heading reuses the footer column-title
-   look. Six 36px targets + 8px gaps = 256px (40px = 280px on tablet/mobile, which still fits a 320px screen). Icon
-   colour is --accent-text; orange is otherwise only used for the border and
-   focus ring, which need 3:1. */
+   In the footer's brand column as a row of round icon buttons. The platform name stays in the DOM (visually hidden, not
+   display:none) and every link keeps its aria-label ("SarasTech on LinkedIn"), so screen readers and crawlers still get it. The
+   heading reuses the footer column-title look. Six 36px targets + 8px gaps = 256px (40px = 280px on tablet/mobile, still fitting
+   320px). Icon color is --accent-text; orange is otherwise only the border and focus ring, which need 3:1. */
 .home-social { margin-top: 1.5rem; }
 .home-social h2 { font-size: 0.76rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin: 0 0 0.75rem; }
 .home-social-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
@@ -7090,11 +6809,8 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   .home-steps { grid-template-columns: 1fr; gap: 1.75rem; }
   .home-footer-inner { grid-template-columns: 1fr 1fr; gap: 1.75rem; }
   .home-footer-inner .home-footer-col:first-child { grid-column: 1 / -1; }
-  /* Was a separate 780px breakpoint — between 780-900px the header had
-     nowhere near enough room for the full nav (logo + 4 links + theme
-     toggle + Sign In + Get Started) on one line, and "Why SarasTech" /
-     "How It Works" wrapped to two lines. Folded into the same 900px
-     breakpoint everything else already collapses at. */
+  /* Folded into the 900px breakpoint everything else collapses at: between 780 and 900px the header had no room for the full nav
+     (logo, 4 links, theme toggle, Sign In, Get Started) on one line and "Why SarasTech" / "How It Works" wrapped. */
   .home-nav { display: none; }
   .home-desktop-only { display: none; }
   .home-mobile-toggle { display: inline-flex; }
@@ -7246,10 +6962,8 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   .home-announcement-close { width: 44px; height: 44px; margin-left: 0; }
 }
 
-/* "Android app coming soon" — a horizontal announcement card before the FAQ.
-   Deliberately a left-aligned row, not another centered eyebrow/heading stack,
-   so it doesn't repeat the other sections. No store badge or download link
-   until a real listing exists. */
+/* "Android app coming soon": a horizontal announcement card before the FAQ, a left-aligned row so it doesn't repeat the centered
+   eyebrow/heading stack of other sections. No store badge or link until a real listing exists. */
 .home-android-card {
   position: relative;
   overflow: hidden;
@@ -7292,11 +7006,8 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   .home-android-cta { align-self: stretch; min-height: 44px; }
 }
 
-/* "For Schools & Organizations" — the one B2B-shaped CTA on an otherwise
-   self-serve teacher signup page (see docs/schedule-a-call-plan.md). Same
-   horizontal-card shape as .home-android-card just above, minus the icon and
-   the orange border — this one is meant to read as a quieter, secondary
-   surface, not another "look at this" banner. */
+/* "For Schools & Organizations": the one B2B CTA on a self-serve signup page. Same horizontal card as .home-android-card above
+   without the icon and orange border, so it reads as a quieter, secondary surface. */
 .home-schools-card {
   display: flex; align-items: center; justify-content: space-between; gap: 2rem;
   background: var(--surface);
@@ -7314,10 +7025,8 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   .home-schools-cta { align-self: stretch; min-height: 44px; }
 }
 
-/* ---- Schedule a Call (pages/ScheduleDemoPage.tsx, ManageBookingPage.tsx,
-   components/DemoBookingWidget.tsx, DemoBookingCalendar.tsx) ----
-   Reuses the .home-* and .auth-* design language throughout — no new color
-   tokens, same --orange/--radius/--shadow every other section uses. */
+/* ---- Schedule a Call (pages/ScheduleDemoPage.tsx, ManageBookingPage.tsx, components/DemoBookingWidget.tsx, DemoBookingCalendar.tsx) ----
+   Reuses the .home-* and .auth-* design language with no new color tokens. */
 .demo-hero {
   max-width: 720px;
   margin: 0 auto 2.5rem;
@@ -7407,13 +7116,9 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 .demo-success-link { display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none; margin-top: 0.5rem; }
 
 @media (max-width: 900px) {
-  /* minmax(0, 1fr), not a bare 1fr: a plain `1fr` track still gives its grid
-     item an implicit `min-width: auto` (content-based), so a wide,
-     non-wrapping child further down the tree (.demo-date-strip's row of
-     date chips) blew this column out past the viewport instead of letting
-     it shrink and scroll internally — exactly the bug the codebase's other
-     flex/grid children already guard against with an explicit min-width: 0
-     (see .coach-main-chat, .composer-controls-right, etc.). */
+  /* minmax(0, 1fr), not a bare 1fr: a plain `1fr` track gives its item an implicit `min-width: auto`, so a wide non-wrapping child
+     (.demo-date-strip's row of date chips) blew this column out past the viewport instead of shrinking and scrolling internally.
+     Same guard as other flex/grid children here (.coach-main-chat, .composer-controls-right). */
   .demo-layout { grid-template-columns: minmax(0, 1fr); gap: 1.75rem; }
 }
 @media (max-width: 480px) {
@@ -7421,10 +7126,9 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   .demo-confirm-actions { flex-direction: column-reverse; align-items: stretch; }
 }
 
-/* ---- real product screenshots (components/ProductShot.tsx) ----
-   Framed captures of the running product. The frame background is --bg, the
-   same surface the app itself sits on, so the bottom fade of a clamped
-   capture blends into the capture rather than into a mismatched panel. */
+/* ---- Real product screenshots (components/ProductShot.tsx) ----
+   Framed captures of the running product. The frame background is --bg, the surface the app sits on, so a clamped capture's
+   bottom fade blends into it rather than a mismatched panel. */
 .product-shot-figure { margin: 0; min-width: 0; }
 .product-shot {
   position: relative;
@@ -7489,12 +7193,10 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   .home-how .product-shot-figure { width: 100%; max-width: 440px; margin: 0 auto; }
 }
 
-/* ---- section variety ----
-   Features keeps the page's one centered header. Every other section gets a
-   composition that fits its job instead of icon -> eyebrow -> centered heading:
-   Why = statement + card, Explore = compact left-aligned index, How It Works =
-   header + timeline beside a real worksheet, Made for India = real Hindi answer
-   beside the copy, FAQ = title on the left, questions on the right. */
+/* ---- Section variety ----
+   Features keeps the page's one centered header. Every other section gets a composition that fits its job instead of icon,
+   eyebrow, centered heading: Why = statement + card, Explore = compact left-aligned index, How It Works = header + timeline
+   beside a real worksheet, Made for India = real Hindi answer beside the copy, FAQ = title left, questions right. */
 .home-head { text-align: left; margin-bottom: 1.75rem; }
 .home-head .home-eyebrow { text-align: left; }
 .home-head h2 { font-size: clamp(1.7rem, 3vw, 2.15rem); letter-spacing: -0.015em; line-height: 1.2; margin: 0; }
@@ -7538,9 +7240,8 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 .home-head .home-faq-icon-wrap { justify-content: flex-start; margin-left: 0; }
 
 /* ---- "See it in action" product tour (components/HomeTour.tsx) ----
-   A framed, looping capture of the real app. The window chrome reuses the hero
-   preview's traffic-light dots; the glow is a blurred brand-colour halo behind
-   the frame, kept subtle so it reads as light spilling off the window. */
+   A framed looping capture of the real app. The window chrome reuses the hero preview's traffic-light dots; the glow is a
+   subtle blurred brand-color halo behind the frame, like light spilling off the window. */
 .home-cta-tour { display: inline-flex; align-items: center; gap: 0.5rem; }
 .home-tour { scroll-margin-top: 84px; padding-top: 2.25rem; }
 .home-tour-head { max-width: 900px; margin: 0 auto 1.6rem; text-align: center; }

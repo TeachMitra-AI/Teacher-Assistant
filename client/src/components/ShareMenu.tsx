@@ -4,20 +4,11 @@ import { Share2, MessageCircle, Send, Camera } from 'lucide-react';
 import { useDismissable } from '../hooks/useDismissable';
 import { useToast } from './Toast';
 
-// The Share action on a response card: opens a small popover offering
-// WhatsApp, Telegram and Instagram instead of jumping straight to WhatsApp.
-// Portalled to document.body for the same reason HistoryItemMenu is — this
-// button lives inside `.chat-scroll` (overflow-y: auto), which would clip an
-// un-portalled popover the moment the card isn't near the bottom of the
-// thread. Its own compact `.share-menu-popover`/`.share-menu-item` classes
-// (index.css) rather than HistoryItemMenu's — a 3-item share sheet reads as
-// its own minimal affordance, not a reuse of the taller chat-actions list.
-//
-// Instagram has no web API for prefilled-text sharing (unlike wa.me or
-// Telegram's t.me/share/url) — the content is copied to the clipboard and
-// Instagram opens in a new tab so the teacher can paste it themselves. That
-// is the standard, technically-honest fallback other products use for the
-// same limitation, not a fake deep link that silently does nothing.
+// The Share action on a response card: a small popover offering WhatsApp, Telegram and Instagram. Portalled to
+// document.body like HistoryItemMenu, since it sits inside `.chat-scroll` (overflow-y: auto) and would be clipped. It uses
+// compact `.share-menu-*` classes (index.css) rather than HistoryItemMenu's taller list.
+// Instagram has no web API for prefilled text (unlike wa.me or t.me/share/url), so the content is copied to the clipboard
+// and Instagram opens in a new tab for the teacher to paste, instead of a fake deep link that does nothing.
 
 interface Position {
   top?: number;

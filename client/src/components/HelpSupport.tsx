@@ -8,21 +8,11 @@ import { ApiError } from '../api';
 import { createSupportTicket, captureAutoContext } from '../lib/support';
 import { BUG_CATEGORIES, FEEDBACK_CATEGORIES, MAX_SUPPORT_DESCRIPTION_LENGTH, SUPPORT_WHATSAPP_NUMBER } from '../config';
 
-// Help & Support — one globally-mounted panel (same "provider owns its own
-// overlay" shape as ToastProvider) rather than a component instantiated at
-// each entry point. ProfileMenu (used by both TopBar and the Coach page's
-// Sidebar) and the Settings card both just call useHelpSupport().openMenu();
-// error surfaces (network-error toast, the top-level ErrorBoundary) call
-// openBugReport() with a category pre-selected. Reuses the app's existing
-// form controls (.style-grid /
-// .style-option, .text-input, .btn-primary) rather than inventing new ones.
-//
-// Phase 1 only (see docs/help-support-architecture.md): no attachment, no
-// AI-conversation opt-in, no admin inbox. Contact Support creates no ticket
-// at all for the WhatsApp path — only its in-app fallback does, filed as
-// `type: 'feedback', category: 'other'` (there is no separate ticket type for
-// it — see the architecture discussion on why this app has exactly two:
-// bug | feedback).
+// Help & Support: one globally mounted panel (like ToastProvider) instead of a component at each entry point. ProfileMenu
+// and the Settings card call useHelpSupport().openMenu(); error surfaces (network-error toast, the top-level ErrorBoundary)
+// call openBugReport() with a category pre-selected. Reuses the existing form controls (.style-grid/.style-option,
+// .text-input, .btn-primary). See docs/help-support-architecture.md. The WhatsApp path creates no ticket; only the in-app
+// fallback does, filed as `type: 'feedback', category: 'other'` since the app has exactly two ticket types (bug | feedback).
 
 type View = 'menu' | 'bug' | 'feedback' | 'contact' | 'contact-message' | 'success';
 
@@ -398,9 +388,7 @@ function ContactMessageView({
     if (message.trim().length === 0) return;
     setSubmitting(true);
     try {
-      // No dedicated "contact" ticket type — a direct message is stored the
-      // same way general feedback is (see the architecture discussion on
-      // why this app has exactly two ticket types, bug | feedback).
+      // No "contact" ticket type: a direct message is stored as general feedback (the app has only bug | feedback).
       await createSupportTicket({
         type: 'feedback',
         category: 'other',

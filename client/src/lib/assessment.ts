@@ -1,15 +1,9 @@
-// Helpers for quiz/worksheet assessments.
-//
-// Answer-key separation is deliberately structural, not visual: the generator
-// emits the answer key as the LAST Markdown section under a canonical heading
-// ("## Answer Key" for quizzes, "## Teacher Answer Key" for worksheets). We
-// split on that heading so the student print can render ONLY the questions
-// half — the answer key is never inserted into the student print DOM, so it
-// cannot leak even if print CSS were bypassed.
+// Helpers for quiz/worksheet assessments. Answer-key separation is structural: the generator emits the key as the last
+// Markdown section under a canonical heading ("## Answer Key" / "## Teacher Answer Key"), and we split on it so the student
+// print renders only the questions and the key never enters that print DOM.
 
-// Matches an answer-key heading at any Markdown heading level, case-insensitive,
-// tolerating "Teacher Answer Key" and "Answer Keys". Anchored to the start of a
-// line so it never matches the phrase mid-sentence inside a question.
+// Matches an answer-key heading at any level, case-insensitively, tolerating "Teacher Answer Key" and "Answer Keys". Anchored to
+// line start so it doesn't match mid-sentence.
 const ANSWER_KEY_HEADING = /^\s{0,3}#{1,6}\s*(?:teacher(?:'s)?\s+)?answer\s*keys?\b.*$/im;
 
 export interface SplitAssessment {
@@ -21,22 +15,12 @@ export interface SplitAssessment {
   hasAnswerKey: boolean;
 }
 
-// Matches the generator's own document preamble: a leading "# Title" line
-// followed by the "**Grade:** ..."-style metadata lines (and blank lines), up
-// to but not including the first "##" section heading. On an exam paper this
-// information lives in the letterhead (components/ExamHeader.tsx) — showing
-// the preamble too printed the title and metadata twice (three times counting
-// the browser-window title Chrome adds). Content the teacher has hand-edited
-// away from this exact shape is returned unchanged — stripping is
-// display-only and must never guess.
+// Matches the generator's preamble: a leading "# Title" plus "**Grade:** ..."-style metadata lines, up to the first "##".
+// The exam letterhead (components/ExamHeader.tsx) already shows this, so printing it too repeated it. Hand-edited content
+// that no longer has this shape is returned unchanged; stripping is display-only and never guesses.
 const GENERATED_PREAMBLE = /^\s*# [^\n]+\n(?:\s*\n|\*\*[^\n]+\n)*(?=\s{0,3}##\s)/;
 
-/**
- * Removes the generated title/metadata preamble from an assessment's Markdown
- * for display alongside the exam-paper letterhead (which already presents the
- * same information). The stored content is never modified — the server's
- * AI-assist parser still relies on the preamble being saved intact.
- */
+/** Strips the generated title/metadata preamble for display beside the letterhead. Stored content is untouched, since the server's AI-assist parser relies on the preamble. */
 export function stripAssessmentPreamble(markdown: string): string {
   const text = markdown ?? '';
   return text.replace(GENERATED_PREAMBLE, '');

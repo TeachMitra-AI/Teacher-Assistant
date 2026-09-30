@@ -8,14 +8,9 @@ import {
   DRAFT_STORAGE_KEY,
 } from './draftStore';
 
-// The draft store's defining property is that it FAILS SOFT. Every degraded
-// path below — quota exhaustion, storage disabled, corrupt JSON, a malformed or
-// hand-written record — must resolve to "no draft" so the Generator opens with
-// its normal defaults, which is exactly today's behaviour. None of them may
-// throw: a crash here would break a page that works fine without the router.
-//
-// These are not hypothetical cases. Private browsing and tight quotas are
-// routine on the low-end Android devices this product targets.
+// The store fails soft: every degraded path (quota, storage disabled, corrupt JSON, malformed or hand-written record)
+// must resolve to "no draft" without throwing, so the Generator opens with its defaults. These cases are routine on
+// low-end Android and private tabs.
 
 const validInput = {
   actionId: 'generate_assessment',
@@ -26,28 +21,10 @@ const validInput = {
   utterance: 'Generate a Class 5 fractions worksheet',
 };
 
-// ---------------------------------------------------------------------------
-// Simulating unavailable storage.
-//
-// jsdom's `sessionStorage` is a PROXY, not a plain Storage instance. Its
-// prototype is not `Storage.prototype`, and its `set` trap writes through
-// rather than replacing a method — so BOTH of the obvious approaches silently
-// do nothing:
-//
-//   vi.spyOn(window.Storage.prototype, 'setItem')  → never intercepts
-//   vi.spyOn(window.sessionStorage,   'setItem')   → never intercepts
-//
-// "Silently" is the dangerous part. The spy installs without error, storage
-// keeps working, and the test exercises the NORMAL path while its name claims
-// it covers the failure path. These tests passed under an older jsdom and
-// stopped meaning anything after an upgrade, without ever going red for a
-// reason anyone would connect to storage.
-//
-// Replacing the whole object is the only thing that works. The evidence that
-// it now bites: with no change to draftStore.ts, these tests went from FAILING
-// (createDraft returned a handle, because the write never threw) to passing.
-// The only path to `null` there is the write actually failing, so the fake is
-// reaching the code under test.
+// Simulating unavailable storage. jsdom's `sessionStorage` is a Proxy, so spying on `Storage.prototype.setItem` or on
+// the instance silently intercepts nothing: the spy installs, storage keeps working, and a "failure path" test runs the
+// normal path. Replacing the whole object is the only approach that works; it's confirmed by these tests failing
+// against an unbroken store.
 function breakStorage(broken: Partial<Record<'getItem' | 'setItem' | 'removeItem', () => never>>) {
   const backing = new Map<string, string>();
   const fake: Storage = {
@@ -59,10 +36,7 @@ function breakStorage(broken: Partial<Record<'getItem' | 'setItem' | 'removeItem
     clear: () => backing.clear(),
   } as Storage;
 
-  // Seed the fake with whatever the real storage holds, so a test that wrote a
-  // draft BEFORE breaking storage can still read it back through the working
-  // methods — which is exactly the "wrote fine, now reading fails" shape the
-  // private-browsing tests need.
+  // Seed the fake from the real storage, so a draft written before breaking storage can still be read back.
   for (let i = 0; i < window.sessionStorage.length; i += 1) {
     const k = window.sessionStorage.key(i);
     if (k !== null) backing.set(k, window.sessionStorage.getItem(k) ?? '');
@@ -79,9 +53,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  // Put the real Proxy back. `vi.restoreAllMocks()` cannot undo a
-  // defineProperty, so this is explicit — without it, one broken-storage test
-  // would poison every test after it in the file.
+  // Restore the real Proxy; vi.restoreAllMocks() can't undo defineProperty, and one broken-storage test would poison the rest.
   Object.defineProperty(window, 'sessionStorage', {
     value: realSessionStorage, configurable: true, writable: true,
   });
@@ -105,8 +77,7 @@ describe('createDraft / readDraft', () => {
 
   it('generates an id that carries no teacher text', () => {
     const id = createDraft(validInput)!;
-    // The handle is the only part of a prefill that reaches the URL, so it must
-    // not leak the topic or the utterance (guardrail G12).
+    // The handle is the only part of a prefill that reaches the URL, so it mustn't leak the topic or utterance.
     expect(id.toLowerCase()).not.toContain('fraction');
     expect(id.toLowerCase()).not.toContain('worksheet');
     expect(id).toMatch(/^[0-9a-f]+$/);
@@ -127,8 +98,7 @@ describe('createDraft / readDraft', () => {
   });
 
   it('isolates the stored record from later mutation of the returned object', () => {
-    // Refresh semantics depend on initialParams staying exactly as resolved, so
-    // a caller that mutates what it read must not corrupt what is stored.
+    // Refresh relies on initialParams staying as resolved, so a caller mutating what it read mustn't corrupt storage.
     const id = createDraft(validInput)!;
     const first = readDraft(id)!;
     (first.initialParams as Record<string, unknown>).topic = 'Mutated';
@@ -160,7 +130,7 @@ describe('expiry', () => {
     vi.useFakeTimers();
     const id = createDraft(validInput)!;
     vi.advanceTimersByTime(DRAFT_TTL_MS + 1);
-    // A stale topic is worse than none — it produces a confident, wrong worksheet.
+    // A stale topic is worse than none: it yields a confident, wrong worksheet.
     expect(readDraft(id)).toBeNull();
   });
 
@@ -200,8 +170,7 @@ describe('retention and eviction', () => {
 
 describe('markConsumed', () => {
   it('makes a consumed draft read as absent', () => {
-    // "Clear AI fields" must not be undone by a refresh re-applying the values
-    // the teacher just rejected.
+    // "Clear AI fields" must not be undone by a refresh re-applying rejected values.
     const id = createDraft(validInput)!;
     markConsumed(id);
     expect(readDraft(id)).toBeNull();
@@ -231,8 +200,7 @@ describe('fail-soft: storage unavailable', () => {
   it('returns null from createDraft when writing throws (quota exceeded)', () => {
     breakStorage({ setItem: () => { throw new DOMException('QuotaExceededError'); } });
 
-    // A null handle is a normal outcome, not an error: the caller navigates
-    // without ?ai= and the teacher gets an ordinary empty Generator.
+    // A null handle is normal: the caller navigates without ?ai= and gets an ordinary empty Generator.
     expect(createDraft(validInput)).toBeNull();
   });
 
@@ -294,8 +262,7 @@ describe('fail-soft: corrupt or foreign storage contents', () => {
   });
 
   it('keeps a valid record alongside a malformed sibling', () => {
-    // One bad entry must not discard the whole store — a stale-PWA client
-    // reading a newer draft shape is an everyday occurrence once this ships.
+    // One bad entry mustn't discard the store; a stale cached client reading a newer draft shape is routine.
     const id = createDraft(validInput)!;
     const stored = JSON.parse(window.sessionStorage.getItem(DRAFT_STORAGE_KEY)!);
     window.sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify([{ junk: true }, ...stored]));
@@ -304,8 +271,7 @@ describe('fail-soft: corrupt or foreign storage contents', () => {
   });
 
   it('accepts a hand-written record that omits optional fields', () => {
-    // Manual verification writes records by hand, and so does the M3 gate.
-    // Required fields are strict; optional ones default rather than reject.
+    // Hand-written records: required fields are strict, optional ones default rather than reject.
     window.sessionStorage.setItem(
       DRAFT_STORAGE_KEY,
       JSON.stringify([

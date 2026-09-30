@@ -1,12 +1,8 @@
-// Helpers for the exam-paper letterhead (Phase 3 of the quiz/worksheet
-// generator rework). ExamPaperMeta is stored inside LibraryResource.structured
-// (a free-form JSON text column already used for the generator config), under
-// the key "examMeta" — alongside, not replacing, the existing
-// { format, difficulty, questionType, questionCount, topic } shape.
+// Helpers for the exam-paper letterhead. ExamPaperMeta is stored in LibraryResource.structured (a free-form JSON column)
+// under "examMeta", alongside the existing generator config rather than replacing it.
 import type { ExamPaperDefaults, ExamPaperMeta, User } from '../types';
 
-/** Sensible starting values for a NEW resource's letterhead, prefilled from
- * the teacher's site-wide defaults (Settings) and their School/User identity. */
+/** Starting values for a new resource's letterhead, prefilled from the teacher's site-wide defaults (Settings) and School/User identity. */
 export function buildInitialExamMeta(user: User, defaults: ExamPaperDefaults | undefined): ExamPaperMeta {
   const d = defaults ?? {};
   return {
@@ -32,9 +28,7 @@ export function parseExamMeta(structured: string | null | undefined): ExamPaperM
   }
 }
 
-/** Merges an updated examMeta into a resource's existing structured JSON
- * string, preserving whatever else was already stored there (e.g. the
- * generator config) rather than overwriting it. */
+/** Merges an updated examMeta into a resource's structured JSON string, keeping whatever else is stored (e.g. the generator config). */
 export function mergeExamMeta(structured: string | null | undefined, examMeta: ExamPaperMeta): string {
   let base: Record<string, unknown> = {};
   if (structured) {

@@ -18,11 +18,9 @@ import {
   type DemoBookingConfig,
 } from '../lib/scheduleDemo';
 
-// Reschedule/cancel page for a Schedule a Call booking, reached from the
-// link in the confirmation email (?id=...&token=...) — no login required,
-// same "possess the token" model as password reset. See
-// docs/schedule-a-call-plan.md §8. The date/time picker itself is
-// DemoBookingCalendar, shared with DemoBookingWidget's initial booking flow.
+// Reschedule/cancel page for a Schedule a Call booking, reached from the confirmation email link (?id=...&token=...). No
+// login: the same "possess the token" model as password reset. The date/time picker is DemoBookingCalendar, shared with
+// DemoBookingWidget's initial booking.
 export default function ManageBookingPage({ signedIn = false }: { signedIn?: boolean }) {
   const { theme, toggleTheme } = usePreferences();
   const { authMode, openAuth, closeAuth } = useAuthModal();
@@ -33,9 +31,7 @@ export default function ManageBookingPage({ signedIn = false }: { signedIn?: boo
   useDocumentMeta({
     title: 'Manage your SarasTech call',
     description: 'Reschedule or cancel your scheduled call with SarasTech.',
-    // Canonical points at the bare path, not this visitor's ?id=&token=
-    // query string — a token-bearing URL should never be what search
-    // engines treat as canonical.
+    // Canonical points at the bare path, since a token-bearing URL shouldn't be what search engines treat as canonical.
     canonical: 'https://www.sarastech.co.in/schedule-demo/manage',
   });
 

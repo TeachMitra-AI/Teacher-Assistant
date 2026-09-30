@@ -15,31 +15,23 @@ interface SidebarProps {
   loading: boolean;
   activeId?: string | null;
   isMobile: boolean;
-  // Pin/rename overrides — lifted up to CoachPage (one useHistoryOverrides
-  // instance) rather than called here, so ChatSearchOverlay's results agree
-  // with this list instead of keeping a second, disagreeing set of overrides.
+  // Pin/rename overrides, lifted to CoachPage (one useHistoryOverrides) so ChatSearchOverlay's results agree with this list.
   isPinned: (id: string) => boolean;
   titleFor: (item: HistoryItem) => string;
   pinnedIds: string[];
   togglePin: (id: string) => void;
   rename: (id: string, title: string) => void;
   forget: (id: string) => void;
-  // Collapses the sidebar (mobile: closes the drawer; desktop: shrinks to the
-  // icon-only rail — see .sidebar-rail-toggle below).
+  // Collapses the sidebar (mobile: closes the drawer; desktop: shrinks to the icon-only rail).
   onClose: () => void;
-  // Re-expands the sidebar from its collapsed desktop rail. Mobile has no use
-  // for this — a closed drawer is off-canvas, and the button that reopens it
-  // lives in TopBar instead (see CoachPage.tsx), since a control inside an
-  // off-canvas element can't be reached.
+  // Re-expands from the collapsed desktop rail. Mobile doesn't use it: a closed drawer is off-canvas and its reopen button
+  // lives in TopBar (see CoachPage.tsx), since a control inside an off-canvas element can't be reached.
   onOpen: () => void;
   onNewChat: () => void;
   onSelect: (item: HistoryItem) => void;
   onDelete: (item: HistoryItem) => void;
   onClearAll: () => void;
-  // Toggles ChatSearchOverlay — brand/search/collapse now live together in
-  // this component's header (see .sidebar-brand-row) instead of TopBar, so
-  // this reuses the exact same handler CoachPage always owned rather than a
-  // second search implementation.
+  // Toggles ChatSearchOverlay; brand/search/collapse live in this header instead of TopBar, reusing CoachPage's handler.
   onSearchToggle: () => void;
   searchOpen: boolean;
 }
@@ -52,8 +44,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const { show } = useToast();
 
-  // Only one row's menu open at a time (a self-managed popover per row could
-  // not guarantee that), and only one row renaming at a time.
+  // Only one row's menu open, and one row renaming, at a time (a per-row popover couldn't guarantee that).
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
@@ -61,19 +52,14 @@ export default function Sidebar({
   const renameInputRef = useRef<HTMLInputElement>(null);
   const asideRef = useRef<HTMLElement>(null);
 
-  // Additional gesture on top of the existing tap/click/Escape controls —
-  // swipe right-to-left on the open drawer to close it (mobile only; see
-  // useSidebarSwipe.ts). Desktop's inline sidebar is untouched.
+  // Swipe right-to-left on the open drawer closes it, on top of tap/click/Escape (mobile only; useSidebarSwipe.ts).
   useDrawerSwipeToClose(asideRef, isMobile && open, onClose);
 
   useEffect(() => {
     if (renamingId) renameInputRef.current?.select();
   }, [renamingId]);
 
-  // Pinned chats float to the top, newest-pinned first, then everything else
-  // in the order the server already returns (most recent first) — reordering
-  // is the whole point of a pin, but nothing else about the list's order
-  // changes.
+  // Pinned chats float to the top, newest-pinned first, then the server's order (most recent first).
   const sortedItems = useMemo(() => {
     if (pinnedIds.length === 0) return items;
     return [...items].sort((a, b) => Number(isPinned(b.id)) - Number(isPinned(a.id)));
@@ -101,10 +87,7 @@ export default function Sidebar({
   }
 
   function shareChat(item: HistoryItem) {
-    // Same mechanism ResponseCard's "Share" action already uses (a wa.me
-    // compose link the teacher reviews and sends themselves) — reused rather
-    // than a new sharing architecture, so there is no new way for chat
-    // content to leave the app unintentionally.
+    // Reuses ResponseCard's Share mechanism (a wa.me link the teacher reviews and sends), so there's no new way for chat content to leave the app.
     const text = `${titleFor(item)}\n\n${item.text}`;
     const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank', 'noopener');
@@ -120,16 +103,11 @@ export default function Sidebar({
   return (
     <>
       <div className={`sidebar-backdrop${open ? ' show' : ''}`} onClick={onClose} hidden={!open} />
-      {/* aria-hidden only when truly imperceptible: a closed MOBILE drawer is
-          translated fully off-canvas, but a collapsed DESKTOP rail is still
-          on screen and its one button (below) is the only way to re-expand
-          it — hiding that from assistive tech would strand it. */}
+      {/* aria-hidden only when truly imperceptible: a closed mobile drawer is fully off-canvas, but a collapsed desktop rail
+          is on screen and its button is the only way to re-expand it. */}
       <aside ref={asideRef} className={`sidebar${open ? ' sidebar-open' : ''}`} aria-hidden={!open && isMobile}>
-        {/* Collapsed desktop rail — hidden via CSS whenever the sidebar is
-            open (see .sidebar-rail-toggle in index.css). On mobile the whole
-            aside is off-canvas while closed, so this is inert there; the
-            drawer's own open control lives in TopBar instead (see
-            CoachPage.tsx). */}
+        {/* Collapsed desktop rail, hidden via CSS while the sidebar is open (.sidebar-rail-toggle in index.css). Inert on mobile,
+            where the aside is off-canvas and reopens from TopBar. */}
         <button
           type="button"
           className="icon-btn sidebar-rail-toggle"
@@ -202,11 +180,8 @@ export default function Sidebar({
             sortedItems.map((item) => (
               <div key={item.id} className={`history-item${item.id === activeId ? ' active' : ''}`}>
                 {renamingId === item.id ? (
-                  // A <div>, not a <button>, while renaming: an <input> is
-                  // interactive content, which a <button> may never contain
-                  // (invalid HTML, and unreliable focus/typing in practice).
-                  // The row isn't selectable mid-rename anyway, so a button's
-                  // semantics don't belong here for these few moments.
+                  // A <div>, not a <button>, while renaming: an <input> is interactive content a <button> can't contain,
+                  // and the row isn't selectable mid-rename anyway.
                   <div className="history-item-main">
                     <input
                       ref={renameInputRef}
@@ -256,11 +231,7 @@ export default function Sidebar({
             ))}
         </div>
 
-        {/* Fixed at the bottom, below the independently-scrollable history
-            list above (.history-list has its own overflow-y and flex: 1, so
-            it grows to fill the remaining space and this footer never moves).
-            Same ProfileMenu/account-menu state TopBar uses everywhere else —
-            see ProfileMenu.tsx. */}
+        {/* Fixed at the bottom, below the scrollable history list (.history-list grows to fill the space). Same ProfileMenu state as TopBar. */}
         <div className="sidebar-footer">
           <ProfileMenu variant="sidebar" />
         </div>

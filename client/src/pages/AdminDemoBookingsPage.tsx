@@ -7,10 +7,8 @@ import { usePagedList } from '../hooks/usePagedList';
 import { usePreferences } from '../hooks/usePreferences';
 import { listDemoBookings, type AdminDemoBooking } from '../lib/adminScheduleDemo';
 
-// Read-only admin inbox for Schedule a Call bookings — see
-// docs/schedule-a-call-plan.md. No mutation UI: cancelling/rescheduling is
-// visitor-token-driven (the emailed manage link), matching the server
-// route's own "visibility only" scope (routes/adminScheduleDemo.js).
+// Read-only admin inbox for Schedule a Call bookings. No mutation UI: cancelling and rescheduling are driven by the
+// visitor's emailed manage link, matching the server route's visibility-only scope (routes/adminScheduleDemo.js).
 const STATUS_LABELS = { confirmed: 'Confirmed', cancelled: 'Cancelled' } as const;
 const STATUSES = Object.keys(STATUS_LABELS) as (keyof typeof STATUS_LABELS)[];
 

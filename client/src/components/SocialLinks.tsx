@@ -2,15 +2,11 @@ import type { ReactNode } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { SITE_NAME, SOCIAL_PROFILES } from '../seo/site';
 
-// "Follow SarasTech" — the compact row of social icon links in the home page
-// footer's brand column (it used to be its own section between the final CTA and
-// the footer). The profiles come from SOCIAL_PROFILES (seo/site.ts), the
-// same list that feeds Organization `sameAs`, so adding a platform is a data
-// change there plus, optionally, an icon here. lucide-react ships no brand
-// icons, hence the small inline SVGs (24x24 stroke, matching lucide's style).
-// No `.home-reveal` entrance animation on purpose: its view() timeline binds to
-// the non-scrolling `.home-page` container, so anything near the page bottom
-// stays stuck partly transparent (measured 0.24 opacity here) — unreadable.
+// "Follow SarasTech": the row of social icon links in the home footer's brand column. Profiles come from SOCIAL_PROFILES
+// (seo/site.ts), the same list feeding Organization `sameAs`, so a new platform is a data change there plus optionally an
+// icon here. lucide-react has no brand icons, hence the inline SVGs (24x24 stroke, matching lucide).
+// No `.home-reveal` entrance animation: its view() timeline binds to the non-scrolling `.home-page` container, so anything
+// near the page bottom stays partly transparent (measured 0.24 opacity).
 
 const svgProps = {
   width: 18,
@@ -25,8 +21,7 @@ const svgProps = {
   focusable: false,
 } as const;
 
-// Keyed by SocialProfile.id. A profile with no entry falls back to a generic
-// external-link icon, so a new platform never renders as a broken/empty link.
+// Keyed by SocialProfile.id. A profile with no entry falls back to a generic external-link icon, so a new platform never renders broken.
 const ICONS: Record<string, ReactNode> = {
   linkedin: (
     <svg {...svgProps}>

@@ -5,11 +5,8 @@ import { useAuth } from '../auth';
 import { ApiError } from '../api';
 import { usePreferences } from '../hooks/usePreferences';
 
-// Step two of self-service password reset: redeem the emailed token and set a
-// new password. The token arrives in the URL, so it is never typed by hand.
-//
-// A successful reset revokes every existing session server-side, so this page
-// sends the teacher to sign in fresh rather than logging them straight in.
+// Step two of self-service password reset: redeem the emailed token (from the URL, never typed) and set a new password. A
+// successful reset revokes every session server-side, so this sends the teacher to sign in fresh.
 export default function ResetPasswordPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
   const { resetPassword } = useAuth();
   const { token = '' } = useParams<{ token: string }>();
@@ -33,8 +30,7 @@ export default function ResetPasswordPage({ preferences }: { preferences: Return
       return;
     }
     if (password !== confirm) {
-      // Surfaced inline under the Confirm field (see confirmMismatch) rather
-      // than duplicated here in the top-level banner.
+      // Shown inline under the Confirm field (see confirmMismatch), not repeated in the top banner.
       setConfirmTouched(true);
       return;
     }
@@ -44,8 +40,7 @@ export default function ResetPasswordPage({ preferences }: { preferences: Return
       await resetPassword(token, password);
       setDone(true);
     } catch (err) {
-      // An expired, already-used or unknown link lands here with the server's
-      // own "request a new one" wording.
+      // An expired, used or unknown link lands here with the server's own "request a new one" wording.
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
     } finally {
       setBusy(false);

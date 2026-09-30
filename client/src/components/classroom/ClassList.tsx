@@ -144,9 +144,7 @@ export default function ClassList({
               <p className="library-empty-hint">Add your first class above to get started.</p>
             </>
           ) : (
-            // Reachable only when every existing class is archived and
-            // showArchived is off — NOT "you've never created a class"
-            // (you have; that's why this view is empty).
+            // Reached only when every class is archived and showArchived is off, not when no class was ever created.
             <>
               <p className="library-empty-title">No active classes</p>
               <p className="library-empty-hint">Toggle "Show archived classes" above to see your archived ones.</p>

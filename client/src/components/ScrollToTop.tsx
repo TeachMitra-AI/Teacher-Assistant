@@ -1,24 +1,13 @@
 import { useLayoutEffect, useRef } from 'react';
 import { useLocation, useNavigationType } from 'react-router-dom';
 
-// Global "new page starts at the top" behaviour. A single-page app keeps the
-// window's scroll position across route changes, so clicking a footer link
-// opened the next page scrolled down to where the footer had been. Mounted once
-// inside <BrowserRouter> (see App.tsx) so it covers every link and every
-// programmatic navigate() without any page having to remember to scroll itself.
-//
-// - Only a PUSH/REPLACE navigation scrolls. A back/forward (POP) navigation is
-//   left alone so the browser's own scroll restoration keeps working, and so
-//   does the initial page load (a reload keeps its position).
-// - Scrolls only when the pathname or hash actually changed — NOT for the query
-//   string — so changing only `?tab=…` on the same page doesn't yank the reader
-//   to the top.
-// - A `#hash` that matches an element scrolls to that element instead (an
-//   in-page anchor); otherwise the page goes to the top.
-// - `behavior: 'instant'` on purpose: the home and legal pages set
-//   `scroll-behavior: smooth` on <html>, and a plain scrollTo(0, 0) would then
-//   animate a long, visible scroll up from the footer instead of just opening
-//   the new page at its top.
+// Makes each new page start at the top: an SPA keeps the scroll position across routes, so a footer link opened the next page
+// scrolled to where the footer was. Mounted once inside <BrowserRouter> (App.tsx), covering every link and navigate().
+// - Only PUSH/REPLACE scrolls; back/forward (POP) and the initial load are left to the browser's scroll restoration.
+// - Only a changed pathname or hash scrolls, not the query string, so changing `?tab=…` doesn't yank the reader up.
+// - A `#hash` matching an element scrolls to it; otherwise to the top.
+// - `behavior: 'instant'`, since the home and legal pages set `scroll-behavior: smooth` on <html> and scrollTo(0, 0) would
+//   otherwise animate a long scroll up from the footer.
 // - A layout effect, so the position is set before the new page paints.
 export default function ScrollToTop() {
   const { pathname, hash } = useLocation();

@@ -34,9 +34,7 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
   const [responseStyle, setResponseStyle] = useState<ResponseStyle>(prefs.responseStyle ?? 'balanced');
   const [savingProfile, setSavingProfile] = useState(false);
 
-  // Custom profile picture — its own upload/remove round trip, independent of
-  // this form's "Save changes" button (matches how most avatar uploads work:
-  // picking a photo takes effect immediately, not on a later form submit).
+  // Custom profile picture: its own upload/remove round trip, independent of "Save changes"; picking a photo takes effect immediately.
   const { uploading: uploadingPhoto, previewUrl, upload: uploadPhoto, remove: removePhoto } = useProfilePicture();
   const photoInputRef = useRef<HTMLInputElement>(null);
   const photoUrl = previewUrl || (user?.avatarUrl ? `${API_BASE}${user.avatarUrl}` : null);
@@ -68,10 +66,8 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
     }
   }
 
-  // Picking an emoji and having a photo are mutually exclusive (a photo
-  // always outranks an emoji wherever an avatar renders — see TopBar.tsx) —
-  // so choosing an emoji while a photo is set clears the photo immediately,
-  // the same way the dedicated Remove button does.
+  // A photo and an emoji are mutually exclusive (a photo outranks an emoji wherever an avatar renders, see TopBar.tsx), so
+  // choosing an emoji while a photo is set clears the photo, like the Remove button.
   async function handleAvatarEmojiSelected(emoji: string) {
     setAvatar(emoji);
     if (user?.avatarUrl) {
@@ -81,8 +77,7 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
     }
   }
 
-  // Exam-paper letterhead defaults (Quiz/Worksheet Generator) — prefilled
-  // from the school/teacher identity the app already has, editable/overridable.
+  // Exam-paper letterhead defaults (Quiz/Worksheet Generator), prefilled from the school/teacher identity and overridable.
   const [examSchoolName, setExamSchoolName] = useState(examDefaults.schoolName ?? user?.school.name ?? '');
   const [examTeacherName, setExamTeacherName] = useState(examDefaults.teacherName ?? user?.displayName ?? user?.name ?? '');
   const [examInstructions, setExamInstructions] = useState(examDefaults.defaultInstructions ?? '');
@@ -108,9 +103,7 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
       defaultSubject: defaultSubject || undefined,
       defaultClassroomType: defaultClassroomType || undefined,
       responseStyle,
-      // Preserved as-is — this form doesn't edit exam-paper defaults, and the
-      // server does a shallow merge of the whole `preferences` object, so
-      // omitting this key here would wipe it out otherwise.
+      // Preserved as-is: this form doesn't edit exam-paper defaults, and the server shallow-merges `preferences`, so omitting the key would wipe it.
       examPaperDefaults: prefs.examPaperDefaults,
     };
     try {

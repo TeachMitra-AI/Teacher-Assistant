@@ -5,13 +5,9 @@ export interface SelectedAttachment {
   id: string;
   file: File;
   kind: AttachmentKind;
-  // An object URL for the local file — the image thumbnail in the composer,
-  // and the source for the full-size preview dialog (AttachmentPreviewModal),
-  // where a PDF is handed to the browser's built-in viewer. Created for EVERY
-  // kind, not just images: a PDF still shows a file icon rather than a
-  // thumbnail in the tray, but without a URL it could not be opened for
-  // preview at all. Costs nothing but a handle — an object URL does not copy
-  // the file — and is revoked on remove/clear/unmount like every other one.
+  // Object URL for the local file: the thumbnail in the composer and the source for the full-size preview (a PDF goes to the
+  // browser's viewer). Created for every kind, since a PDF needs one to be previewable. Costs only a handle and is revoked on
+  // remove/clear/unmount.
   previewUrl: string | null;
 }
 
@@ -20,21 +16,14 @@ function newId(): string {
 }
 
 /**
- * Manages the collection of files a teacher can attach to a Coach question —
- * add (one or many at once), validate as a batch (count + combined size,
- * client-side courtesy only, see lib/attachmentValidation.ts), preview,
- * remove one, or clear all. All currently-selected files are sent to Gemini
- * TOGETHER in one request when the message is sent (see
- * docs/multimodal-attachments-architecture.md) — this hook's job is only to
- * manage what's staged for that one request, not to send anything itself.
+ * Manages the files a teacher attaches to a Coach question: add, batch-validate (count + combined size; a client courtesy,
+ * see lib/attachmentValidation.ts), preview, remove or clear. All files go to Gemini together in one request on send
+ * (docs/multimodal-attachments-architecture.md); this hook only manages what's staged.
  */
 export function useAttachments() {
   const [attachments, setAttachments] = useState<SelectedAttachment[]>([]);
   const [error, setError] = useState<string | null>(null);
-  // Object URLs are tracked in a ref (not derived from state) so every one
-  // can be revoked on unmount without depending on the latest render's
-  // closure — mirrors the single-attachment hook's original approach, just
-  // keyed by attachment id now that there can be more than one.
+  // Object URLs live in a ref so every one can be revoked on unmount without depending on the latest render's closure.
   const previewUrlsRef = useRef<Map<string, string>>(new Map());
 
   const revokeAll = useCallback(() => {
@@ -42,8 +31,7 @@ export function useAttachments() {
     previewUrlsRef.current.clear();
   }, []);
 
-  // Revoke everything on unmount only — remove()/clear() below revoke their
-  // own targets explicitly on their own paths.
+  // Revoke everything on unmount only; remove()/clear() revoke their own targets.
   useEffect(() => () => revokeAll(), [revokeAll]);
 
   const add = useCallback(
@@ -60,11 +48,8 @@ export function useAttachments() {
       const newOnes: SelectedAttachment[] = [];
       for (const file of accepted) {
         const kind = attachmentKind(file.type);
-        // Unreachable in practice — validateNewAttachments already checked
-        // the mimeType against the same allowlist attachmentKind reads — but
-        // a file with no recognized kind is simply skipped rather than
-        // asserted, since a File's `.type` is browser-reported, not
-        // something this code controls.
+        // Unreachable in practice (the mimeType was already checked against the same allowlist), but a file with no
+        // recognized kind is skipped rather than asserted, since `.type` is browser-reported.
         if (!kind) continue;
         const id = newId();
         const previewUrl = URL.createObjectURL(file);

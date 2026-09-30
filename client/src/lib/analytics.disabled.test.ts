@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// The "no Measurement ID configured" half of the contract, in its own file —
-// see analytics.test.ts's top comment for why this can't share a file with
-// the configured case.
+// The "no Measurement ID configured" half of the contract; see analytics.test.ts for why it needs its own file.
 vi.mock('../config', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../config')>()),
   GA_MEASUREMENT_ID: '',

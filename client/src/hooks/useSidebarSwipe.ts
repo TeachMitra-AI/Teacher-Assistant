@@ -2,15 +2,9 @@ import { useEffect } from 'react';
 import type { RefObject } from 'react';
 
 /**
- * Mobile drawer swipe gestures for the chat-history sidebar. Threshold-based,
- * not a live drag-follow: once a swipe clears the thresholds below it just
- * flips open/closed exactly like the existing tap handlers, and the
- * sidebar's own CSS transition (see .sidebar in index.css) animates it.
- *
- * EDGE_ZONE_PX must start narrow — it is where a left-to-right swipe is
- * allowed to begin while the drawer is closed, and anything wider starts
- * competing with normal horizontal interaction elsewhere on the page (see
- * useEdgeSwipeToOpen below).
+ * Mobile drawer swipe gestures for the chat-history sidebar. Threshold-based, not a live drag: a swipe that clears the
+ * thresholds flips the sidebar open/closed like the tap handlers, and its CSS transition animates it. EDGE_ZONE_PX must
+ * stay narrow, since a wider zone competes with normal horizontal interaction (see useEdgeSwipeToOpen).
  */
 const EDGE_ZONE_PX = 24;
 const MIN_SWIPE_DISTANCE_PX = 50;
@@ -36,7 +30,7 @@ function usePointerSwipe({ ref, enabled, edgeOnly, onSwipe }: PointerSwipeOption
     let tracking = false;
 
     function onPointerDown(e: PointerEvent) {
-      // Touch only — desktop mouse dragging must never toggle the drawer.
+      // Touch only; desktop mouse dragging must never toggle the drawer.
       if (e.pointerType !== 'touch') return;
       if (edgeOnly && e.clientX > EDGE_ZONE_PX) return;
       startX = e.clientX;
@@ -49,9 +43,7 @@ function usePointerSwipe({ ref, enabled, edgeOnly, onSwipe }: PointerSwipeOption
       tracking = false;
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
-      // A real vertical scroll normally never reaches here: the browser
-      // recognizes it as a scroll gesture and fires pointercancel instead
-      // (see onPointerCancel below). This check is the backstop for a
+      // A real vertical scroll normally ends in pointercancel (see onPointerCancel); this is the backstop for a
       // mostly-vertical drag that still ends in a pointerup.
       if (Math.abs(dy) > MAX_VERTICAL_DRIFT_PX) return;
       if (Math.abs(dx) < MIN_SWIPE_DISTANCE_PX) return;
@@ -73,12 +65,7 @@ function usePointerSwipe({ ref, enabled, edgeOnly, onSwipe }: PointerSwipeOption
   }, [ref, enabled, edgeOnly, onSwipe]);
 }
 
-/**
- * Left edge → swipe right to open the closed sidebar. Listens on `window`
- * rather than a dedicated hit-area element, so there is nothing sitting on
- * screen to intercept normal clicks/scrolls — a swipe that doesn't start in
- * EDGE_ZONE_PX is simply never tracked.
- */
+/** Left edge → swipe right to open the closed sidebar. Listens on `window` (no hit-area element to intercept clicks/scrolls); a swipe outside EDGE_ZONE_PX is never tracked. */
 export function useEdgeSwipeToOpen(enabled: boolean, onOpen: () => void) {
   usePointerSwipe({
     enabled,
@@ -89,11 +76,7 @@ export function useEdgeSwipeToOpen(enabled: boolean, onOpen: () => void) {
   });
 }
 
-/**
- * Swipe right-to-left anywhere on the open drawer to close it. Scoped to
- * the drawer element itself (not the whole document) so it never competes
- * with swipes elsewhere on the page.
- */
+/** Swipe right-to-left on the open drawer to close it. Scoped to the drawer so it doesn't compete with swipes elsewhere. */
 export function useDrawerSwipeToClose(ref: RefObject<HTMLElement>, enabled: boolean, onClose: () => void) {
   usePointerSwipe({
     ref,

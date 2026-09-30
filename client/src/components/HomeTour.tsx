@@ -1,32 +1,23 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowRight, Pause, Play } from 'lucide-react';
 
-// "See it in action" — a ~28s muted loop recorded in the running product
-// (Library → Lesson Plan → Worksheet → Classroom attendance), never a mock-up.
-//
-// Two recordings, because one cannot serve both: the desktop cut is a 1280×720
-// capture of the desktop layout, which shrinks to ~0.27× in a phone-width frame
-// and turns body text into ~4px smudges. The mobile cut is the real app at a
-// 390px phone viewport (2×, 780×1172), shown at ~0.9× so text stays readable.
-// Each ships in light and dark (client/public/product/sarastech-tour[-mobile]-
-// <theme>.mp4 + .webp poster), chosen by viewport width and site theme; only the
-// active one is ever requested.
-//
-// Loading: `preload="none"` until the section is within ~600px of the
-// viewport, so the file never competes with the hero. Playback: it plays while
-// at least half the frame is on screen and pauses when it leaves; a visitor who
-// pauses it stays paused. It never autoplays under prefers-reduced-motion or
-// data-saver (poster + play button instead). The poster is the video's opening
-// frame and is the fallback if the video can't load.
+// "See it in action": a ~28s muted loop recorded in the running product (Library → Lesson Plan → Worksheet → Classroom
+// attendance), never a mock-up.
+// Two cuts, since one can't serve both: the desktop 1280×720 capture shrinks to ~0.27× in a phone frame and turns text into
+// smudges, so the mobile cut is the real app at a 390px viewport shown at ~0.9×. Each ships light and dark
+// (client/public/product/sarastech-tour[-mobile]-<theme>.mp4 + .webp poster), chosen by viewport width and site theme, and
+// only the active one is requested.
+// Loading: `preload="none"` until the section is within ~600px of the viewport, so it doesn't compete with the hero. It plays
+// while at least half the frame is visible and pauses when it leaves; a visitor who pauses stays paused. Under
+// prefers-reduced-motion or data-saver it never autoplays (poster + play button). The poster is the opening frame and the fallback.
 
 type Theme = 'light' | 'dark';
 type Variant = 'desktop' | 'mobile';
 
 const MOBILE_QUERY = '(max-width: 767px)';
 
-// Start times (seconds) of each scene in each cut, measured from the edited
-// videos. The final seconds return to the Library view so the loop closes
-// seamlessly; they belong to chapter 0.
+// Start times (seconds) of each scene in each cut, measured from the edited videos. The final seconds return to the Library
+// view so the loop closes seamlessly; they belong to chapter 0.
 const CHAPTERS: Record<Variant, { labels: readonly { label: string; start: number }[]; loopTailStart: number }> = {
   desktop: {
     labels: [
@@ -58,8 +49,7 @@ function chapterIndexAt(time: number, variant: Variant): number {
   return index;
 }
 
-// Read synchronously so the very first render already asks for the right poster
-// (a phone must never download the desktop poster first).
+// Read synchronously so the first render asks for the right poster (a phone must never download the desktop one).
 function readVariant(): Variant {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'desktop';
   return window.matchMedia(MOBILE_QUERY).matches ? 'mobile' : 'desktop';
@@ -75,9 +65,8 @@ export function HomeTour({ theme, onGetStarted }: HomeTourProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const userPaused = useRef(false);
   const lastSource = useRef('');
-  // Last real playhead/play state. Swapping `src` makes the browser reset
-  // currentTime to 0 and pause during the commit, so the values to carry over
-  // have to be remembered from before it, not read afterwards.
+  // Last real playhead/play state: swapping `src` resets currentTime to 0 and pauses during the commit, so these must be
+  // remembered from before it.
   const playhead = useRef({ fraction: 0, playing: false });
 
   const [variant, setVariant] = useState<Variant>(readVariant);
@@ -153,9 +142,8 @@ export function HomeTour({ theme, onGetStarted }: HomeTourProps) {
     return () => observer.disconnect();
   }, [autoplayOk, play]);
 
-  // A theme or viewport change swaps the file; carry the position (as a share of
-  // the runtime — the cuts differ in length) and play state across. A layout
-  // effect so the listener is attached before any media event can fire.
+  // A theme or viewport change swaps the file; carry the position (as a share of runtime, since the cuts differ in length)
+  // and play state across. A layout effect so the listener is attached before any media event can fire.
   useLayoutEffect(() => {
     if (lastSource.current === source) return;
     const first = lastSource.current === '';

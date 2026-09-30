@@ -6,10 +6,8 @@ import { GENERATOR_ROUTE, PREFILL_PARAM } from './routes';
 import { DRAFT_STORAGE_KEY, readDraft } from '../draftStore';
 import type { ResolvedAction } from '../types';
 
-// Handlers are the ONLY place an AI-navigation route string may appear (G16) and
-// the only place the teacher's text ever touches storage. Both properties are
-// asserted here rather than assumed, because the URL is the one surface where a
-// mistake becomes permanent — browser history, referrer headers, access logs.
+// Handlers are the only place an AI-navigation route string may appear and the only place the teacher's text touches
+// storage. Both are asserted here since the URL is where a mistake becomes permanent (history, referrers, logs).
 
 const prefill: ResolvedAction = {
   actionId: 'generate_assessment',
@@ -58,7 +56,7 @@ describe('generate_assessment handler', () => {
     expect(to).not.toContain('fractions');
     expect(to).not.toContain('worksheet');
     expect(to).not.toContain('Class');
-    // Available where it is safe: in the tab's own storage, for the banner.
+    // Safe here: the tab's own storage, for the banner.
     expect(readDraft(handleIdFrom(to))!.utterance).toBe(utterance);
   });
 
@@ -69,9 +67,7 @@ describe('generate_assessment handler', () => {
   });
 
   it('navigates WITHOUT a handle when the draft cannot be stored', () => {
-    // Quota exhaustion and disabled storage are routine on the target devices.
-    // A handle resolving to nothing would leave a dead parameter in the URL and
-    // an empty form; the bare route is today's behaviour instead.
+    // A handle resolving to nothing would leave a dead parameter and an empty form; the bare route is the fallback.
     vi.spyOn(window.sessionStorage.__proto__, 'setItem').mockImplementation(() => {
       throw new Error('QuotaExceededError');
     });
@@ -119,8 +115,7 @@ describe('the handler map', () => {
   });
 
   it('registers exactly the Phase 1 capability set', () => {
-    // A third entry appearing here without a milestone behind it is scope creep,
-    // and this is where a reviewer sees it.
+    // A third entry needs a deliberate decision, and this is where a reviewer sees it.
     expect(REGISTERED_ACTION_IDS.sort()).toEqual(['generate_assessment', 'open_generator']);
     expect(REGISTERED_DOMAINS).toEqual(['generator']);
   });

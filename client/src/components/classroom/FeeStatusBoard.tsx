@@ -14,12 +14,9 @@ function statusLabel(status: FeeStatus): string {
   return 'Pending';
 }
 
-// One class's month-wise fee/payment status
-// (docs/fee-tracking-amounts-plan.md). Each student has an amount-paid
-// input; status (paid/partial/pending) is always derived server-side from
-// that amount vs the class's fee amount, never set directly here. Unlike
-// Attendance (bulk save), there's no bulk fee-upsert endpoint, so each save
-// PATCHes immediately.
+// One class's month-wise fee status (docs/fee-tracking-amounts-plan.md). Each student has an amount-paid input; status
+// (paid/partial/pending) is derived server-side from that amount vs the class's fee amount, never set here. Unlike
+// Attendance there's no bulk endpoint, so each save PATCHes immediately.
 export default function FeeStatusBoard({ classId, className }: { classId: string; className: string }) {
   const { show } = useToast();
 
@@ -28,9 +25,7 @@ export default function FeeStatusBoard({ classId, className }: { classId: string
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
-  // Local text-entry state per student, keyed by studentId — kept separate
-  // from `board` so typing doesn't fight with the loaded/optimistic amount
-  // until the teacher actually saves.
+  // Local text-entry state per student, kept apart from `board` so typing doesn't fight the loaded/optimistic amount until saved.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
