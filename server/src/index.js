@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const { GeminiService } = require('./gemini');
 const { GeminiKeyPool } = require('./lib/geminiKeyPool');
 const { LANGUAGE_NAMES } = require('./prompts');
-const { normalizeQuery, flagPossibleInjection } = require('./safety/inputGuard');
+const { normalizeQuery, flagPossibleInjection, detectEmergencyInThread } = require('./safety/inputGuard');
 const { parseIntEnv } = require('./lib/config');
 const { prisma } = require('./lib/db');
 const { sendAiError } = require('./lib/sendAiError');
@@ -48,7 +48,8 @@ const scheduleDemoRouter = require('./routes/scheduleDemo');
 const adminScheduleDemoRouter = require('./routes/adminScheduleDemo');
 const { runCheckoutReminderSweep, SWEEP_INTERVAL_MS: teacherAttendanceReminderIntervalMs } = require('./lib/teacherAttendanceReminder');
 const { initSocketServer } = require('./lib/socketServer');
-const { readNotificationsFlags } = require('./lib/flags');
+const { readNotificationsFlags, readCoachMemoryFlags } = require('./lib/flags');
+const { loadThreadHistory, threadKeyWhere } = require('./lib/conversationHistory');
 // AI Learning Representation System. Requiring it also runs mapping.js's completeness guard and schemas.js's
 // registry-consistency guard, which throw on load if their data is out of sync.
 const learningRepresentationRouter = require('./routes/learningRepresentation');
@@ -553,6 +554,11 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
     return res.status(400).json({ error: 'Invalid "conversationId".', requestId });
   }
   const conversationId = rawConversationId || null;
+  // Edit-and-resubmit: the row this turn replaces. Only meaningful (and only read) with Coach memory on and a thread.
+  const { supersedes: rawSupersedes } = req.body || {};
+  if (rawSupersedes !== undefined && (typeof rawSupersedes !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(rawSupersedes))) {
+    return res.status(400).json({ error: 'Invalid "supersedes".', requestId });
+  }
   if (typeof query !== 'string' || query.trim().length === 0) {
     return res.status(400).json({ error: 'A non-empty "query" string is required.', requestId });
   }
@@ -583,6 +589,26 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
   }
 
   try {
+    // Coach memory: the earlier turns of this thread, read from the database (never from the client). Off, or no thread,
+    // leaves history empty and every request below exactly as it was.
+    let history = [];
+    let superseded = null;
+    if (conversationId && readCoachMemoryFlags(process.env).enabled) {
+      try {
+        ({ exchanges: history, superseded } = await loadThreadHistory(prisma, {
+          userId: req.user.id,
+          conversationId,
+          supersedes: rawSupersedes,
+        }));
+      } catch (historyError) {
+        // Memory is an enhancement: answer without it rather than fail the question.
+        logAiEvent('error', 'coach_history_load_failed', { requestId, message: historyError.message });
+      }
+    }
+    const priorQueries = history.map((e) => e.query);
+    // An emergency carries over to its follow-ups, which have no emergency words of their own.
+    const threadEmergency = detectEmergencyInThread(priorQueries, normalizedQuery);
+
     // Classroom Mode: start the planner now, alongside the answer, so its latency hides behind the longer coaching call.
     // It's awaited only once the answer is ready.
     // `classroomMode === true` is an exact check, since it decides whether to spend a model call and a stray "false" or 1
@@ -602,6 +628,8 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
                 language,
                 requestId,
                 log: logAiEvent,
+                priorQueries,
+                emergency: threadEmergency.isEmergency,
               })
             : null
         )
@@ -632,6 +660,8 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
         context: safeContext,
         language,
         responseStyle,
+        history,
+        forceEmergency: threadEmergency.carried,
       },
       { correlationId: requestId }
     );
@@ -641,7 +671,13 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
 
     // Metadata-only structured log for every AI request: call counts,
     // retries, continuations, latency, outcome. No prompt/response text.
-    logAiEvent('info', 'coach_completed', { requestId, ...metrics });
+    // Counts only, never the text.
+    logAiEvent('info', 'coach_completed', {
+      requestId,
+      ...metrics,
+      ...(history.length > 0 ? { historyTurns: history.length, historyChars: history.reduce((n, e) => n + e.query.length + e.answer.length, 0) } : {}),
+      ...(threadEmergency.carried ? { emergencyCarried: true } : {}),
+    });
 
     // Persist the query for history + analytics. A failure here must not break
     // the response the teacher is waiting for.
@@ -651,7 +687,7 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
       // this user, so another user's identical id can't leak a title.
       const thread = conversationId
         ? await prisma.query.findFirst({
-            where: { userId: req.user.id, OR: [{ id: conversationId }, { conversationId }] },
+            where: threadKeyWhere(req.user.id, conversationId),
             orderBy: { createdAt: 'desc' },
             select: { title: true, pinned: true },
           })
@@ -667,10 +703,19 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
           responseTimeMs: clientResult.responseTime || null,
           finishReason: clientResult.finishReason || null,
           conversationId,
+          // An edit takes the replaced turn's place in the thread's order.
+          ...(superseded ? { createdAt: superseded.createdAt } : {}),
           ...(thread ? { title: thread.title, pinned: thread.pinned } : {}),
         },
       });
       queryId = saved.id;
+      if (superseded) {
+        // The edit replaces that turn, so the old row goes (it is the same teacher's, found through their own thread).
+        await prisma.$transaction([
+          prisma.feedback.deleteMany({ where: { queryId: superseded.id } }),
+          prisma.query.deleteMany({ where: { id: superseded.id, userId: req.user.id } }),
+        ]);
+      }
     } catch (persistError) {
       logAiEvent('error', 'query_persist_failed', { requestId, message: persistError.message });
     }

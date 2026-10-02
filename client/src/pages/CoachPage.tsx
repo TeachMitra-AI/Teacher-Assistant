@@ -221,13 +221,13 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }));
   }
 
-  async function runTurn(id: string, queryText: string, lang: string, ctx: QueryContext, classroom: boolean) {
+  async function runTurn(id: string, queryText: string, lang: string, ctx: QueryContext, classroom: boolean, supersedes?: string) {
     const conversationId = conversationIdRef.current;
     try {
       const res = await api<CoachResponse>('/coach', {
         method: 'POST',
         // `classroomMode` is sent only when on, so a teacher who never uses it sends the same request body as always.
-        body: { query: queryText, language: lang, context: ctx, ...(conversationId ? { conversationId } : {}), ...(classroom ? { classroomMode: true } : {}) },
+        body: { query: queryText, language: lang, context: ctx, ...(conversationId ? { conversationId } : {}), ...(conversationId && supersedes ? { supersedes } : {}), ...(classroom ? { classroomMode: true } : {}) },
       });
       setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'done', response: res, rating: null } : t)));
       loadHistory();
@@ -369,7 +369,9 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
       ? { ...t, query: newQuery, status: 'pending', error: undefined, response: undefined, rating: null, restored: false, startedAt: Date.now() }
       : t)));
     scrollToBottom();
-    await runTurn(turnId, newQuery, turn.language, turn.context, turn.classroomMode ?? false);
+    // `supersedes`: the saved row this edit replaces, so the server (with Coach memory on) swaps it in place and leaves it and
+    // the turns after it out of the context sent to the model.
+    await runTurn(turnId, newQuery, turn.language, turn.context, turn.classroomMode ?? false, turn.response?.queryId ?? undefined);
   }
 
   async function handleFeedback(turnId: string, rating: 'helpful' | 'not_helpful') {

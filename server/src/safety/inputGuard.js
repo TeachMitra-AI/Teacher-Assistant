@@ -106,4 +106,21 @@ function detectEmergency(query) {
   return { isEmergency: false, category: null };
 }
 
-module.exports = { normalizeQuery, flagPossibleInjection, detectEmergency };
+/**
+ * Emergency state of a chat thread. An emergency carries over to the follow-ups after it ("what do I do next?" has no
+ * emergency words of its own), until the teacher asks a teaching-about request or an earlier non-emergency turn ends it.
+ * Erring this way is safe: the emergency prompt is short and points to the school's protocol.
+ * @param {string[]} priorQueries earlier questions in the thread, oldest first
+ * @param {string} query the current question
+ * @returns {{ isEmergency: boolean, carried: boolean }}
+ */
+function detectEmergencyInThread(priorQueries, query) {
+  let active = false;
+  for (const q of [...priorQueries, query]) {
+    active = detectEmergency(q).isEmergency || (active && !TEACHING_ABOUT_PATTERN.test(q));
+  }
+  const own = detectEmergency(query).isEmergency;
+  return { isEmergency: active, carried: active && !own };
+}
+
+module.exports = { normalizeQuery, flagPossibleInjection, detectEmergency, detectEmergencyInThread };
