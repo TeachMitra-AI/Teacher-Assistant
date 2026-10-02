@@ -171,6 +171,8 @@ export interface CoachResponse {
   finishReason?: string;
   context: QueryContext;
   queryId: string | null;
+  // Echoes the thread id the turn was saved under (see Turn/HistoryItem); absent when none was sent.
+  conversationId?: string;
   // Set when the planner found a teachable topic and materials worth making.
   classroom?: ClassroomPlan;
   // Set when Classroom Mode was on and ran. `classroomMode` without `classroom` means it looked and found nothing (the
@@ -274,6 +276,10 @@ export interface HistoryItem {
   // Sidebar Rename/Pin. `title` is null until renamed; useHistoryOverrides' titleFor() then falls back to `query`.
   title: string | null;
   pinned: boolean;
+  // Server rows: the thread this turn belongs to, null for history saved before threads existed.
+  conversationId?: string | null;
+  // Sidebar items only (lib/historyThreads.ts): every turn of the thread, oldest first. Absent on raw server rows.
+  turns?: HistoryItem[];
 }
 
 export interface Analytics {

@@ -545,9 +545,14 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
   // Correlation ID for this AI request: logged with every event and returned to the client so a problem report can quote it. Contains no user data.
   const requestId = crypto.randomUUID();
 
-  const { query, context = {}, language = 'en', classroomMode = false } = req.body || {};
+  const { query, context = {}, language = 'en', classroomMode = false, conversationId: rawConversationId } = req.body || {};
 
   // --- Input validation (system boundary) ---
+  // Optional: groups this turn with the earlier turns of the same chat thread (see Query.conversationId).
+  if (rawConversationId !== undefined && (typeof rawConversationId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(rawConversationId))) {
+    return res.status(400).json({ error: 'Invalid "conversationId".', requestId });
+  }
+  const conversationId = rawConversationId || null;
   if (typeof query !== 'string' || query.trim().length === 0) {
     return res.status(400).json({ error: 'A non-empty "query" string is required.', requestId });
   }
@@ -642,6 +647,15 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
     // the response the teacher is waiting for.
     let queryId = null;
     try {
+      // A later turn inherits the thread's rename/pin, which are stored per row and applied to the whole thread. Scoped to
+      // this user, so another user's identical id can't leak a title.
+      const thread = conversationId
+        ? await prisma.query.findFirst({
+            where: { userId: req.user.id, OR: [{ id: conversationId }, { conversationId }] },
+            orderBy: { createdAt: 'desc' },
+            select: { title: true, pinned: true },
+          })
+        : null;
       const saved = await prisma.query.create({
         data: {
           userId: req.user.id,
@@ -652,6 +666,8 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
           responseText: clientResult.text,
           responseTimeMs: clientResult.responseTime || null,
           finishReason: clientResult.finishReason || null,
+          conversationId,
+          ...(thread ? { title: thread.title, pinned: thread.pinned } : {}),
         },
       });
       queryId = saved.id;
@@ -726,6 +742,7 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
       context: safeContext,
       queryId,
       requestId,
+      ...(conversationId ? { conversationId } : {}),
       ...(classroomPlan ? { classroom: classroomPlan } : {}),
       // Separates "the mode was on and found nothing to make" from "the mode was off"; only the first shows the teacher an
       // explanation, and the client can't tell them apart otherwise since both lack `classroom`.

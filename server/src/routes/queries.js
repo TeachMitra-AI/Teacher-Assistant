@@ -8,16 +8,49 @@ const { authRequired } = require('../middleware/auth');
 
 const router = express.Router();
 
-// GET /api/queries — the signed-in user's own history (most recent first).
+// A thread's rows: those sharing its conversationId, plus the row whose id IS that key. The second part is a pre-thread
+// row a teacher kept chatting under: it has no conversationId, and its own id becomes the key for the turns that follow.
+function threadWhere(userId, query) {
+  const key = query.conversationId || query.id;
+  return { userId, OR: [{ id: key }, { conversationId: key }] };
+}
+
+// How many recent rows to scan when choosing which threads to return; bounds the query for a very long history.
+const THREAD_SCAN_ROWS = 2000;
+
+// GET /api/queries — the signed-in user's own history (most recent first). One chat thread spans several rows (see
+// Query.conversationId); each row carries its conversationId and the client groups them.
 router.get('/queries', authRequired, asyncHandler(async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
   // Explicit select, not every column: `classroomArtifacts` holds up to five full documents, and a 20-row history
   // that pulled it would move hundreds of KB to render a sidebar that shows none of it. The plan is included (small,
   // and tells the client a turn has materials); the artifacts are fetched on demand per turn below.
-  const rows = await prisma.query.findMany({
+  // `limit` counts chat threads, not rows: turns sharing a conversationId are one thread, and a row saved before threads
+  // existed (no conversationId) is its own thread. So pick the most recent `limit` threads from a light projection,
+  // then load every row of those threads, so a reopened thread is never cut off mid-way.
+  const recent = await prisma.query.findMany({
     where: { userId: req.user.id },
     orderBy: { createdAt: 'desc' },
-    take: limit,
+    take: THREAD_SCAN_ROWS,
+    select: { id: true, conversationId: true },
+  });
+  const threadKeys = new Set();
+  const conversationIds = [];
+  const legacyIds = [];
+  for (const r of recent) {
+    const key = r.conversationId || r.id;
+    if (threadKeys.has(key)) continue;
+    if (threadKeys.size >= limit) break;
+    threadKeys.add(key);
+    if (r.conversationId) conversationIds.push(r.conversationId);
+    else legacyIds.push(r.id);
+  }
+  const rows = await prisma.query.findMany({
+    where: {
+      userId: req.user.id,
+      OR: [{ id: { in: legacyIds } }, { conversationId: { in: conversationIds } }, { id: { in: conversationIds } }],
+    },
+    orderBy: { createdAt: 'desc' },
     select: {
       id: true,
       queryText: true,
@@ -29,6 +62,7 @@ router.get('/queries', authRequired, asyncHandler(async (req, res) => {
       classroomPlan: true,
       title: true,
       pinned: true,
+      conversationId: true,
       feedback: { where: { userId: req.user.id }, take: 1, select: { rating: true } },
     },
   });
@@ -44,6 +78,7 @@ router.get('/queries', authRequired, asyncHandler(async (req, res) => {
     rating: q.feedback[0]?.rating || null,
     title: q.title,
     pinned: q.pinned,
+    conversationId: q.conversationId,
     // Classroom Mode's plan for this turn, omitted for an ordinary question. Spread rather than set to null so a history
     // payload for a teacher who never uses the mode is unchanged.
     ...(q.classroomPlan ? { classroom: safeParse(q.classroomPlan) } : {}),
@@ -139,7 +174,7 @@ router.delete('/queries', authRequired, asyncHandler(async (req, res) => {
   res.json({ success: true, deleted: deleted.count });
 }));
 
-// DELETE /api/queries/:id — remove a single history entry (owner only).
+// DELETE /api/queries/:id — remove a history entry (owner only). If the row belongs to a chat thread, the whole thread goes.
 router.delete('/queries/:id', authRequired, asyncHandler(async (req, res) => {
   const { id } = req.params;
   const query = await prisma.query.findUnique({ where: { id } });
@@ -148,9 +183,10 @@ router.delete('/queries/:id', authRequired, asyncHandler(async (req, res) => {
     return res.status(403).json({ error: 'You cannot delete this entry.' });
   }
 
+  const where = threadWhere(req.user.id, query);
   await prisma.$transaction([
-    prisma.feedback.deleteMany({ where: { queryId: id } }),
-    prisma.query.delete({ where: { id } }),
+    prisma.feedback.deleteMany({ where: { query: where } }),
+    prisma.query.deleteMany({ where }),
   ]);
   res.json({ success: true });
 }));
@@ -168,7 +204,7 @@ const patchQuerySchema = z
     message: 'Provide a title or pinned value to update.',
   });
 
-// PATCH /api/queries/:id: rename or pin a history entry (owner only). Same ownership check as DELETE /queries/:id,
+// PATCH /api/queries/:id: rename or pin a history entry (owner only); applies to the whole chat thread when the row has one. Same ownership check as DELETE /queries/:id,
 // since a stricter or looser check between the two would be a silent inconsistency.
 router.patch('/queries/:id', authRequired, asyncHandler(async (req, res) => {
   const parsed = patchQuerySchema.safeParse(req.body || {});
@@ -187,11 +223,8 @@ router.patch('/queries/:id', authRequired, asyncHandler(async (req, res) => {
   if (parsed.data.title !== undefined) data.title = parsed.data.title;
   if (parsed.data.pinned !== undefined) data.pinned = parsed.data.pinned;
 
-  const updated = await prisma.query.update({
-    where: { id },
-    data,
-    select: { id: true, title: true, pinned: true },
-  });
+  await prisma.query.updateMany({ where: threadWhere(req.user.id, query), data });
+  const updated = await prisma.query.findUnique({ where: { id }, select: { id: true, title: true, pinned: true } });
   res.json({ success: true, id: updated.id, title: updated.title, pinned: updated.pinned });
 }));
 
