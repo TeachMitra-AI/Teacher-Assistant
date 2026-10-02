@@ -215,8 +215,8 @@ describe('the happy path, through the real GeminiService', () => {
       decision: 'prefill',
       confidence: 'high',
     });
-    // Canonicalized in code, never by the model: "class 5" became "Class 3-5".
-    expect(action.params.grade).toBe('Class 3-5');
+    // Canonicalized in code, never by the model: "class 5" became "Class 5".
+    expect(action.params.grade).toBe('Class 5');
     expect(action.provenance.grade).toBe('utterance');
 
     // The request actually asked for structured output against a

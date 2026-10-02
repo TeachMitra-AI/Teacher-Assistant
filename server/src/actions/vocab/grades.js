@@ -1,5 +1,5 @@
-// Controlled vocabulary: GRADES. Turns "class 5", "5th", "V", "पाँचवीं", "kaksha 5 ke liye" into a canonical grade band.
-// The hardest mapping: the vocabulary is ranges while teachers speak in points, so "class 5-6" spans two bands with
+// Controlled vocabulary: GRADES. Turns "class 5", "5th", "V", "पाँचवीं", "kaksha 5 ke liye" into a canonical grade.
+// The hardest mapping: "class 5-6" and "primary" span several grades with
 // no single honest answer. Done in code rather than a prompt so it can be unit-tested against many phrasings.
 // client/src/config.ts (GRADES) holds the same list, pinned by test/actions/vocabDrift.test.js. Change both together.
 
@@ -13,31 +13,14 @@ const {
   resolveMultiple,
 } = require('./shared');
 
-/** The canonical grade bands, in school order; every mapped result is exactly one of these. */
+/** The canonical grades, in school order; every mapped result is exactly one of these. */
 const GRADES = Object.freeze([
   'Pre-Primary',
-  'Class 1-2',
-  'Class 3-5',
-  'Class 6-8',
-  'Class 9-10',
-  'Class 11-12',
+  ...Array.from({ length: 12 }, (_, i) => `Class ${i + 1}`),
 ]);
 
-/** Which band a numbered class falls in. Classes outside 1-12 are not grades. */
-const NUMBER_TO_BAND = Object.freeze({
-  1: 'Class 1-2',
-  2: 'Class 1-2',
-  3: 'Class 3-5',
-  4: 'Class 3-5',
-  5: 'Class 3-5',
-  6: 'Class 6-8',
-  7: 'Class 6-8',
-  8: 'Class 6-8',
-  9: 'Class 9-10',
-  10: 'Class 9-10',
-  11: 'Class 11-12',
-  12: 'Class 11-12',
-});
+/** Classes outside 1-12 are not grades. */
+const classLabel = (number) => (number >= 1 && number <= 12 ? `Class ${number}` : null);
 
 /**
  * Words that mark a phrase as being about a class, in English and Hinglish. Exported because
@@ -170,20 +153,19 @@ const PRE_PRIMARY_TOKENS = new Set([
 ]);
 
 /**
- * Vague band words. One candidate is a confident answer ("middle school" is classes 6-8); several mean the
- * phrase spans bands and the caller keeps the teacher's own words.
+ * Vague band words. They span several grades, so the caller keeps the teacher's own words unless a numbered class narrows it.
  */
 const BAND_WORDS = Object.freeze({
-  primary: ['Class 1-2', 'Class 3-5'],
-  primaryschool: ['Class 1-2', 'Class 3-5'],
-  elementary: ['Class 1-2', 'Class 3-5'],
-  middle: ['Class 6-8'],
-  middleschool: ['Class 6-8'],
-  upperprimary: ['Class 6-8'],
-  secondary: ['Class 9-10'],
-  highschool: ['Class 9-10'],
-  seniorsecondary: ['Class 11-12'],
-  seniorschool: ['Class 11-12'],
+  primary: ['Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5'],
+  primaryschool: ['Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5'],
+  elementary: ['Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5'],
+  middle: ['Class 6', 'Class 7', 'Class 8'],
+  middleschool: ['Class 6', 'Class 7', 'Class 8'],
+  upperprimary: ['Class 6', 'Class 7', 'Class 8'],
+  secondary: ['Class 9', 'Class 10'],
+  highschool: ['Class 9', 'Class 10'],
+  seniorsecondary: ['Class 11', 'Class 12'],
+  seniorschool: ['Class 11', 'Class 12'],
 });
 
 // Multi-word phrases collapsed to one token before tokenizing, so "pre-primary" isn't read as two mentions joined by a range separator. Applied in order.
@@ -202,8 +184,8 @@ const PHRASE_ALIASES = Object.freeze([
 
 /**
  * Read a single token as a class number, or null. Roman numerals and cardinal words are gated on class
- * context because alone they're ordinary words ("i want a worksheet" would read as Class 1-2, "ten questions"
- * as Class 9-10). They're accepted when the phrase is about a class ("class five") or is the whole phrase ("five").
+ * context because alone they're ordinary words ("i want a worksheet" would read as Class 1, "ten questions"
+ * as Class 10). They're accepted when the phrase is about a class ("class five") or is the whole phrase ("five").
  * Digits and ordinals need no gate.
  *
  * @param {string} token
@@ -225,7 +207,7 @@ function readClassNumber(token, { hasClassContext }) {
 }
 
 /**
- * Map a raw grade phrase to a canonical band.
+ * Map a raw grade phrase to a canonical grade.
  *
  * @param {unknown} raw whatever the classifier put in the `grade` slot
  * @returns {{status: string, value?: string, candidates?: string[], readings?: string[], raw: unknown}}
@@ -259,9 +241,8 @@ function mapGrade(raw) {
     }
 
     const number = readClassNumber(token, { hasClassContext });
-    if (number !== null && NUMBER_TO_BAND[number]) {
-      mentions.push(NUMBER_TO_BAND[number]);
-    }
+    const label = number !== null ? classLabel(number) : null;
+    if (label) mentions.push(label);
   }
 
   if (mentions.length > 0) {

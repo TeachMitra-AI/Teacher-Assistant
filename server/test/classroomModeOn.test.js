@@ -53,7 +53,7 @@ function restoreOriginalFlag() {
 const ANSWER = 'Start with a chapati cut into four equal parts.';
 const PLAN_JSON = JSON.stringify({
   topic: 'Fractions',
-  grade: 'Class 4',
+  grade: 'fourth class',
   subject: 'Maths',
   artifacts: ['lesson_plan', 'worksheet', 'quiz', 'homework', 'exit_ticket'],
 });
@@ -101,15 +101,15 @@ describe('Classroom Mode ON — the route honours every gate', () => {
     test('the grade the model returned is canonicalized, not passed through raw', async () => {
       mockRouted({ answer: geminiSuccess(ANSWER), planner: geminiSuccess(PLAN_JSON) });
       const res = await ask(base);
-      // "Class 4" is not one of the app's grade bands; "Class 3-5" is.
-      expect(res.body.classroom.grade).toBe('Class 3-5');
+      // "fourth class" is not one of the app's grades; "Class 4" is.
+      expect(res.body.classroom.grade).toBe('Class 4');
       expect(res.body.classroom.subject).toBe('Mathematics');
     });
 
     test("the teacher's own grade choice beats the model's (D8)", async () => {
       mockRouted({ answer: geminiSuccess(ANSWER), planner: geminiSuccess(PLAN_JSON) });
-      const res = await ask({ ...base, context: { grade: 'Class 9-10', subject: 'Science' } });
-      expect(res.body.classroom.grade).toBe('Class 9-10');
+      const res = await ask({ ...base, context: { grade: 'Class 9', subject: 'Science' } });
+      expect(res.body.classroom.grade).toBe('Class 9');
       expect(res.body.classroom.subject).toBe('Science');
     });
 

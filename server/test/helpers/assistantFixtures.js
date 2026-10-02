@@ -75,7 +75,7 @@ const interpretRequest = {
   utterance: 'Generate a Class 5 fractions worksheet',
   catalogVersion: 1,
   memory: {
-    grade: { value: 'Class 3-5', source: 'utterance', turn: 2 },
+    grade: { value: 'Class 5', source: 'utterance', turn: 2 },
     subject: { value: 'Mathematics', source: 'utterance', turn: 2 },
   },
   pendingAsk: null,
@@ -100,7 +100,7 @@ const interpretPrefillResponse = {
       params: {
         format: 'worksheet',
         topic: 'Fractions',
-        grade: 'Class 3-5',
+        grade: 'Class 5',
         subject: 'Mathematics',
         difficulty: 'medium',
         questionType: 'mcq',
@@ -124,7 +124,7 @@ const interpretPrefillResponse = {
   memoryUpdates: {
     format: { value: 'worksheet', source: 'utterance', turn: 3 },
     topic: { value: 'Fractions', source: 'utterance', turn: 3 },
-    grade: { value: 'Class 3-5', source: 'utterance', turn: 3 },
+    grade: { value: 'Class 5', source: 'utterance', turn: 3 },
   },
   requestId: '6f1c0f4e-0000-4000-8000-000000000001',
 };
@@ -151,7 +151,7 @@ const interpretAskResponse = {
       confidence: 'high',
       params: {
         topic: 'Fractions',
-        grade: 'Class 3-5',
+        grade: 'Class 5',
         difficulty: 'medium',
         questionType: 'mcq',
         questionCount: 10,

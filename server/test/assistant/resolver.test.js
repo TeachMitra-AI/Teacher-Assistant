@@ -53,7 +53,7 @@ describe('resolveSlots — precedence', () => {
       turn: 2,
     });
 
-    expect(result.params.grade).toBe('Class 3-5');
+    expect(result.params.grade).toBe('Class 5');
     expect(result.provenance.grade).toBe('utterance');
   });
 
@@ -130,7 +130,7 @@ describe('resolveSlots — tier 1b, deterministic recovery', () => {
       turn: 1,
     });
 
-    expect(result.params.grade).toBe('Class 9-10');
+    expect(result.params.grade).toBe('Class 9');
     expect(result.provenance.grade).toBe('utterance');
   });
 
@@ -344,7 +344,7 @@ describe('resolveSlots — ambiguity and contradiction', () => {
 
     expect(result.params.grade).toBeUndefined();
     expect(result.contradictions).toEqual([
-      { slot: 'grade', readings: ['Class 3-5', 'Class 6-8'] },
+      { slot: 'grade', readings: ['Class 5', 'Class 8'] },
     ]);
   });
 
@@ -482,7 +482,7 @@ describe('resolveSlots — the params object itself', () => {
     });
 
     expect(Object.keys(result.memoryUpdates).sort()).toEqual(['format', 'grade', 'topic']);
-    expect(result.memoryUpdates.grade).toEqual({ value: 'Class 3-5', source: 'utterance', turn: 3 });
+    expect(result.memoryUpdates.grade).toEqual({ value: 'Class 5', source: 'utterance', turn: 3 });
     // Defaults and profile values are not "remembered" — they are re-derived
     // every turn from their own source, which is what keeps memory correctable.
     expect(result.memoryUpdates.language).toBeUndefined();
@@ -517,8 +517,8 @@ describe('resolveSlots — conformance with the approved specification', () => {
     const result = resolveSlots({
       descriptor: generateAssessment,
       slots: { topic: 'Fractions' },
-      recovered: { grade: 'Class 3-5' },
-      memory: { grade: { value: 'Class 3-5', source: 'utterance', turn: 2 } },
+      recovered: { grade: 'Class 5' },
+      memory: { grade: { value: 'Class 5', source: 'utterance', turn: 2 } },
       profile: { defaultLanguage: 'en' },
       turn: 3,
     });

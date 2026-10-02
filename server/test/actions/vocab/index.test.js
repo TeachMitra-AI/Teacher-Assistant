@@ -40,7 +40,7 @@ describe('vocabulary registry', () => {
   });
 
   test('mapVocabulary dispatches to the right mapper', () => {
-    expect(mapVocabulary('GRADES', 'class 5').value).toBe('Class 3-5');
+    expect(mapVocabulary('GRADES', 'class 5').value).toBe('Class 5');
     expect(mapVocabulary('SUBJECTS', 'maths').value).toBe('Mathematics');
     expect(mapVocabulary('LANGUAGES', 'in hindi').value).toBe('hi');
   });
