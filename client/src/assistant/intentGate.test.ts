@@ -55,6 +55,16 @@ const REFERRED = [
 ];
 
 const NOT_REFERRED = [
+  // ---- Coach follow-ups (conversation memory): refer back to the previous answer, so they must reach /coach untouched ----
+  'Explain it simply',
+  'Explain it simply.',
+  'Explain it in simple words',
+  'Give me an example',
+  'Can you explain that again?',
+  'Why?',
+  'What about for Class 3?',
+  'Make it shorter',
+  'Say that in Hindi',
   // ---- Coaching questions: the traffic this gate exists to protect ----
   'how do I manage a noisy class?',
   'How do I make a worksheet?',

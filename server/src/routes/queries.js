@@ -5,14 +5,13 @@ const { z } = require('zod');
 const { prisma } = require('../lib/db');
 const { asyncHandler } = require('../lib/asyncHandler');
 const { authRequired } = require('../middleware/auth');
+const { threadKeyWhere } = require('../lib/conversationHistory');
 
 const router = express.Router();
 
-// A thread's rows: those sharing its conversationId, plus the row whose id IS that key. The second part is a pre-thread
-// row a teacher kept chatting under: it has no conversationId, and its own id becomes the key for the turns that follow.
+// A thread's rows; see lib/conversationHistory.js.
 function threadWhere(userId, query) {
-  const key = query.conversationId || query.id;
-  return { userId, OR: [{ id: key }, { conversationId: key }] };
+  return threadKeyWhere(userId, query.conversationId || query.id);
 }
 
 // How many recent rows to scan when choosing which threads to return; bounds the query for a very long history.

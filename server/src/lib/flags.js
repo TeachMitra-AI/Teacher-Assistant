@@ -328,6 +328,27 @@ function readNotificationsFlags(env, { warn = console.warn } = {}) {
   };
 }
 
+// Coach conversational memory (lib/conversationHistory.js): when on, /api/coach sends the earlier turns of the chat thread
+// to Gemini so follow-ups ("explain it simply") are understood. Off by default; off changes nothing about the request.
+const COACH_MEMORY_FLAG_DEFAULTS = Object.freeze({
+  enabled: false,
+});
+
+/**
+ * @param {Record<string, string|undefined>} env
+ * @param {{warn?: (msg: string) => void}} [opts]
+ * @returns {{enabled: boolean}}
+ */
+function readCoachMemoryFlags(env, { warn = console.warn } = {}) {
+  return {
+    enabled: parseBoolEnv(env.COACH_MEMORY_ENABLED, {
+      name: 'COACH_MEMORY_ENABLED',
+      defaultValue: COACH_MEMORY_FLAG_DEFAULTS.enabled,
+      warn,
+    }),
+  };
+}
+
 // Classroom Management (docs/classroom-feature-plan.md), the class/student/attendance/fee workspace. Not
 // Classroom Mode above (an AI chat feature); the env var names are kept distinct.
 // Master kill switch: when false every /api/classroom/* route returns 503 and touches no table.
@@ -479,6 +500,8 @@ module.exports = {
   CLASSROOM_MODE_FLAG_DEFAULTS,
   readNotificationsFlags,
   NOTIFICATIONS_FLAG_DEFAULTS,
+  readCoachMemoryFlags,
+  COACH_MEMORY_FLAG_DEFAULTS,
   readClassroomManagementFlags,
   CLASSROOM_MANAGEMENT_FLAG_DEFAULTS,
   readStructuredQuestionsFlags,

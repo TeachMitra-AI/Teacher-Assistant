@@ -7,7 +7,7 @@
 // one shared call budget (maxCallsPerRequest) and one overall deadline (totalTimeoutMs), which caps both cost and
 // latency. See the per-request `tracker` created in generateResponse().
 
-const { selectTemplate, languageDirective, styleDirective } = require('./prompts');
+const { selectTemplate, languageDirective, styleDirective, MEMORY_DIRECTIVE } = require('./prompts');
 const { sanitizeOutput, MAX_OUTPUT_LENGTH } = require('./safety/outputGuard');
 const { parseRetryAfter, computeBackoffMs, classifyGeminiError } = require('./lib/geminiPolicy');
 const { GeminiKeyPool } = require('./lib/geminiKeyPool');
@@ -102,8 +102,10 @@ class GeminiService {
    *   `attachments` (optional): inline files (base64 `data` plus `mimeType`) added as extra `parts` in the same
    *   `contents` block as `userText`, so Gemini reasons over every file and the question together. They are untrusted
    *   user-turn content like the text; the systemInstruction/contents boundary doesn't change.
+   *   `history` (optional): earlier turns as `[{role: 'user'|'model', text}]`, placed before the final user turn. Only
+   *   generateResponse passes it (Coach memory); without it the body is unchanged.
    */
-  buildRequestBody({ systemInstruction, userText, responseSchema, attachments }) {
+  buildRequestBody({ systemInstruction, userText, responseSchema, attachments, history }) {
     const generationConfig = { ...GENERATION_CONFIG, maxOutputTokens: this.maxOutputTokens };
     if (responseSchema) {
       generationConfig.responseMimeType = 'application/json';
@@ -115,7 +117,7 @@ class GeminiService {
     }
     return {
       systemInstruction: { parts: [{ text: systemInstruction }] },
-      contents: [{ role: 'user', parts }],
+      contents: [...(history || []).map((m) => ({ role: m.role, parts: [{ text: m.text }] })), { role: 'user', parts }],
       generationConfig,
       safetySettings: SAFETY_SETTINGS,
     };
@@ -407,11 +409,23 @@ You are continuing a response that was cut off mid-way. The text already written
 
   /**
    * Generate a coaching response.
-   * @param {{query: string, context: object, language: string, responseStyle?: string}} params
+   * @param {{query: string, context: object, language: string, responseStyle?: string, history?: {query: string, answer: string}[], forceEmergency?: boolean}} params
+   *   `history`: earlier exchanges of the thread, oldest first (lib/conversationHistory.js). Questions are delimited like
+   *   the current one; answers go back as model turns.
    * @param {{correlationId?: string}} [options]
    */
-  async generateResponse({ query, context = {}, language = 'en', responseStyle = 'balanced' }, options = {}) {
-    const { systemInstruction: baseInstruction, userContent } = selectTemplate(query, context);
+  async generateResponse(
+    { query, context = {}, language = 'en', responseStyle = 'balanced', history = [], forceEmergency = false },
+    options = {}
+  ) {
+    const { systemInstruction: selectedInstruction, userContent } = selectTemplate(query, context, { forceEmergency });
+    const baseInstruction = history.length > 0 ? `${selectedInstruction}
+
+${MEMORY_DIRECTIVE}` : selectedInstruction;
+    const historyMessages = history.flatMap((e) => [
+      { role: 'user', text: wrapDelimited(e.query) },
+      { role: 'model', text: e.answer },
+    ]);
     // Always present, English included (see languageDirective). Kept last in the instruction: the templates mandate
     // English section names ("Fun Activity 1"), and this tells the model to translate those too.
     const languageInstruction = `\n\nIMPORTANT: ${languageDirective(language)}`;
@@ -426,7 +440,10 @@ You are continuing a response that was cut off mid-way. The text already written
 
     try {
       const first = this.extractCandidate(
-        await this.makeRequest(this.buildRequestBody({ systemInstruction, userText: userContent }), tracker)
+        await this.makeRequest(
+          this.buildRequestBody({ systemInstruction, userText: userContent, history: historyMessages }),
+          tracker
+        )
       );
       let text = first.text;
       let finishReason = first.finishReason;
