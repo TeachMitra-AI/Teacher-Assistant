@@ -546,6 +546,14 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
   // Correlation ID for this AI request: logged with every event and returned to the client so a problem report can quote it. Contains no user data.
   const requestId = crypto.randomUUID();
 
+  // "Stop generating" (client Composer): the teacher aborted the fetch, which closes this connection. Only before the
+  // response is actually sent — the same event fires on ordinary completion once the socket closes. Threaded into
+  // gemini.generateResponse so the upstream Gemini call is cancelled too, not just ignored.
+  const abortController = new AbortController();
+  req.on('close', () => {
+    if (!res.writableEnded) abortController.abort();
+  });
+
   const { query, context = {}, language = 'en', classroomMode = false, conversationId: rawConversationId } = req.body || {};
 
   // --- Input validation (system boundary) ---
@@ -663,7 +671,7 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
         history,
         forceEmergency: threadEmergency.carried,
       },
-      { correlationId: requestId }
+      { correlationId: requestId, signal: abortController.signal }
     );
 
     // `metrics` is internal observability and must not be spread into the client response.
@@ -794,6 +802,13 @@ app.post('/api/coach', authRequired, limiter, async (req, res) => {
       ...(classroomRequested ? { classroomMode: true } : {}),
     });
   } catch (error) {
+    // The teacher cancelled: the connection is already gone, so there's nothing to send and nothing worth persisting
+    // or counting as a reliability incident. Distinct from every other catch path below.
+    if (abortController.signal.aborted) {
+      logAiEvent('info', 'coach_request_cancelled', { requestId, ...(error.metrics || {}) });
+      return;
+    }
+
     // Metadata-only failure log, including the reliability metrics attached to the error (call counts, timed out, rate
     // limited). Never the prompt, response or upstream error body.
     logAiEvent('error', 'coach_request_failed', {

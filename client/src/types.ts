@@ -252,6 +252,9 @@ export interface Turn {
   error?: string;
   // Set when `error` was a network failure (ApiError status 0); the one category offering a "Report" action (MessageBubble.tsx).
   errorIsNetwork?: boolean;
+  // Set when the teacher clicked "Stop generating" (CoachPage.stopGenerating); MessageBubble shows a neutral banner
+  // instead of the red error one, with no "Report" action.
+  cancelled?: boolean;
   // Epoch ms; set only when every Gemini API key is exhausted (ApiError.retryAt). Drives the countdown and "Try again" state.
   retryAt?: number;
   // Set only for turns with attachments, which go to POST /api/coach/attachment (see CoachPage.runTurnWithAttachments),

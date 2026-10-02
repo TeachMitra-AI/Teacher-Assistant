@@ -95,6 +95,11 @@ function classifyGeminiError(error) {
     return { retriable: false, reason: 'safety_blocked' };
   }
 
+  // The teacher cancelled ("Stop generating") — a deliberate client action, never a transient failure to retry.
+  if (error.code === 'CLIENT_ABORTED') {
+    return { retriable: false, reason: 'client_aborted' };
+  }
+
   // Abort/timeout from AbortSignal.timeout has no HTTP status.
   if (error.name === 'TimeoutError' || error.name === 'AbortError') {
     return { retriable: true, reason: 'timeout' };

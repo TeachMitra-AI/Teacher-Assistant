@@ -21,6 +21,7 @@ module.exports = [
         // Node 18+ globals (this project requires Node >=18 — see package.json "engines")
         fetch: 'readonly',
         AbortSignal: 'readonly',
+        AbortController: 'readonly',
         URL: 'readonly',
         URLSearchParams: 'readonly',
         crypto: 'readonly',

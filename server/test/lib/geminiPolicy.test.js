@@ -94,6 +94,7 @@ describe('geminiPolicy.classifyGeminiError', () => {
     ['404 config', { status: 404 }, 'client_error'],
     ['INPUT_BLOCKED', { code: 'INPUT_BLOCKED' }, 'safety_blocked'],
     ['OUTPUT_BLOCKED', { code: 'OUTPUT_BLOCKED' }, 'safety_blocked'],
+    ['CLIENT_ABORTED', { code: 'CLIENT_ABORTED' }, 'client_aborted'],
   ])('NOT retriable: %s', (_label, err, reason) => {
     expect(classifyGeminiError(err)).toEqual({ retriable: false, reason });
   });

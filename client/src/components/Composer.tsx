@@ -1,6 +1,6 @@
 import type { ChangeEvent, FormEvent, RefObject } from 'react';
 import { useLayoutEffect, useRef } from 'react';
-import { Mic, ArrowUp } from 'lucide-react';
+import { Mic, ArrowUp, Square } from 'lucide-react';
 import {
   ATTACHMENT_ACCEPT, ATTACHMENTS_ENABLED, CLASSROOM_MODE_ENABLED, MAX_ATTACHMENTS_COUNT, MAX_QUERY_LENGTH,
 } from '../config';
@@ -23,6 +23,10 @@ interface ComposerProps {
   onChange: (value: string) => void;
   onSubmit: (e?: FormEvent) => void;
   loading: boolean;
+  /** A coach request is in flight and can actually be cancelled (as opposed to `loading`'s other causes, like the
+   *  router's brief pre-pass or the API-cooldown wait, which have nothing to abort). Swaps the send button for Stop. */
+  canStop: boolean;
+  onStop: () => void;
   voice: ReturnType<typeof useVoiceInput>;
   attachments: ReturnType<typeof useAttachments>;
   textareaRef: RefObject<HTMLTextAreaElement>;
@@ -33,7 +37,7 @@ interface ComposerProps {
 }
 
 export default function Composer({
-  value, onChange, onSubmit, loading, voice, attachments, textareaRef,
+  value, onChange, onSubmit, loading, canStop, onStop, voice, attachments, textareaRef,
   classroomMode, onClassroomModeChange, cooldownMessage,
 }: ComposerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -179,15 +183,27 @@ export default function Composer({
                 <Mic size={18} aria-hidden="true" />
               </button>
             )}
-            <button
-              type="submit"
-              className="composer-send"
-              disabled={loading || !value.trim()}
-              aria-label="Send question"
-              title="Send (Ctrl+Enter)"
-            >
-              {loading ? <span className="btn-spinner" aria-hidden="true" /> : <ArrowUp size={18} aria-hidden="true" />}
-            </button>
+            {canStop ? (
+              <button
+                type="button"
+                className="composer-send composer-send--stop"
+                onClick={onStop}
+                aria-label="Stop generating"
+                title="Stop generating"
+              >
+                <Square size={14} fill="currentColor" aria-hidden="true" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="composer-send"
+                disabled={loading || !value.trim()}
+                aria-label="Send question"
+                title="Send (Ctrl+Enter)"
+              >
+                {loading ? <span className="btn-spinner" aria-hidden="true" /> : <ArrowUp size={18} aria-hidden="true" />}
+              </button>
+            )}
           </div>
         </div>
       </div>

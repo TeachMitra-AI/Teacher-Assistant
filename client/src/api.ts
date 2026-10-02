@@ -41,6 +41,8 @@ interface RequestOptions {
   method?: string;
   body?: unknown;
   auth?: boolean;
+  /** Lets the caller cancel the in-flight request (e.g. the Composer's Stop button). */
+  signal?: AbortSignal;
 }
 
 async function rawRequest(
@@ -48,7 +50,7 @@ async function rawRequest(
   options: RequestOptions,
   token: string | null
 ): Promise<{ res: Response; data: unknown }> {
-  const { method = 'GET', body } = options;
+  const { method = 'GET', body, signal } = options;
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
   const headers: Record<string, string> = {};
   // A FormData body sets its own multipart Content-Type (with the boundary); setting it here would break parsing.
@@ -61,8 +63,13 @@ async function rawRequest(
       method,
       headers,
       body: body === undefined ? undefined : isFormData ? (body as FormData) : JSON.stringify(body),
+      signal,
     });
-  } catch {
+  } catch (err) {
+    // The caller's AbortController fired (e.g. "Stop generating"); a distinct code so it isn't shown as a network error.
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new ApiError('Request cancelled.', 0, { code: 'CANCELLED' });
+    }
     throw new ApiError('Network error. Please check your connection.', 0);
   }
 
