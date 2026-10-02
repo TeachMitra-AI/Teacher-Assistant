@@ -169,12 +169,16 @@ model Query {
   title              String?
   // "Pin chat". A plain boolean, not nullable, so existing rows backfill to the same unpinned default as new ones.
   pinned             Boolean  @default(false)
+  // Groups the turns of one chat thread. Each turn is still its own row; the client sends the same id with every turn of
+  // a thread. NULL for rows saved before threads existed, which stay one-turn chats keyed by their own id.
+  conversationId     String?
 
   feedback Feedback[]
 
   @@index([userId])
   @@index([schoolId])
   @@index([createdAt])
+  @@index([userId, conversationId])
 }
 
 // Documents an existing table, not a new feature. This model (and Message) existed only in the live dev.db's

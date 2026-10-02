@@ -124,9 +124,12 @@ describe('My Library — /api/resources', () => {
       if (savedEnv === undefined) delete process.env.NOTIFICATIONS_ENABLED;
       else process.env.NOTIFICATIONS_ENABLED = savedEnv;
     });
-    afterEach(async () => {
-      await prisma.notification.deleteMany({ where: { recipientId: { in: [fx.teacherA.id, fx.teacherB.id] } } });
-    });
+    // Cleared before as well as after: when a local server/.env enables notifications, resources saved by earlier tests in
+    // this file have already notified teacherA, and the exact-count assertions below would see those rows too.
+    const clearNotifications = () =>
+      prisma.notification.deleteMany({ where: { recipientId: { in: [fx.teacherA.id, fx.teacherB.id] } } });
+    beforeEach(clearNotifications);
+    afterEach(clearNotifications);
 
     test('creates exactly one lesson_generated notification for the owner, linking to the saved resource', async () => {
       const res = await createFor(teacherAToken, { type: 'lesson_plan', title: 'Fractions intro' });

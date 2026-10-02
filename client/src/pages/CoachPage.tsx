@@ -36,6 +36,7 @@ import { api, ApiError } from '../api';
 // The page's only import from the AI Action Router: a single line keeps the feature deletable and this most-used file reviewable.
 import { useAssistantRouting, type RoutingOutcome } from '../assistant/RouterProvider';
 import { persistOnboarding } from '../lib/onboarding';
+import { groupHistory } from '../lib/historyThreads';
 import { ADMIN_ROLES, CLASSROOM_MODE_ENABLED, SPEECH_LOCALE } from '../config';
 import type { AttachmentMeta, CoachResponse, HistoryItem, QueryContext, Turn } from '../types';
 
@@ -97,6 +98,10 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   }
 
   const [turns, setTurns] = useState<Turn[]>([]);
+  // The thread the on-screen turns belong to, sent with every turn so the server saves them as one chat. A ref, not state:
+  // submitTurn can run from the router's async settle, and must see the id the previous turn set. Null until the first turn
+  // is submitted; cleared with the thread (New chat) and set when a history entry is reopened.
+  const conversationIdRef = useRef<string | null>(null);
   const isSubmitting = turns.some((t) => t.status === 'pending');
 
   // Every Gemini API key exhausted (ApiError.retryAt): blocks sending until the soonest key recovers, then clears itself (no
@@ -142,7 +147,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     setHistoryLoading(true);
     try {
       const data = await api<{ queries: HistoryItem[] }>('/queries?limit=20');
-      setHistory(data.queries);
+      setHistory(groupHistory(data.queries));
     } catch {
       // History is non-critical; fail quietly.
     } finally {
@@ -207,6 +212,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   useEffect(() => {
     if (!introReopened) return;
     setTurns([]);
+    conversationIdRef.current = null;
     setQuery('');
     if (isMobileViewport()) setSidebarOpen(false);
   }, [introReopened]);
@@ -216,11 +222,12 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   }
 
   async function runTurn(id: string, queryText: string, lang: string, ctx: QueryContext, classroom: boolean) {
+    const conversationId = conversationIdRef.current;
     try {
       const res = await api<CoachResponse>('/coach', {
         method: 'POST',
         // `classroomMode` is sent only when on, so a teacher who never uses it sends the same request body as always.
-        body: { query: queryText, language: lang, context: ctx, ...(classroom ? { classroomMode: true } : {}) },
+        body: { query: queryText, language: lang, context: ctx, ...(conversationId ? { conversationId } : {}), ...(classroom ? { classroomMode: true } : {}) },
       });
       setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'done', response: res, rating: null } : t)));
       loadHistory();
@@ -247,6 +254,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     closeIntro();
     markIntroSeen();
     const id = newTurnId();
+    if (!conversationIdRef.current) conversationIdRef.current = crypto.randomUUID();
     // Snapshotted onto the turn at submit, like `language` and `context` (see types.ts): a retry mustn't read it live.
     const classroom = CLASSROOM_MODE_ENABLED && classroomMode;
     setTurns((ts) => [
@@ -380,6 +388,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
 
   function handleNewChat() {
     setTurns([]);
+    conversationIdRef.current = null;
     setQuery('');
     setContext(EMPTY_CONTEXT);
     attachments.clear();
@@ -433,25 +442,28 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   }
 
   function selectHistory(item: HistoryItem) {
+    // `item` is a whole thread (lib/historyThreads.ts); a raw one-turn item (no `turns`) restores as before.
     const mergedContext = { ...EMPTY_CONTEXT, ...item.context };
-    setTurns([{
-      id: item.id,
-      query: item.query,
-      language: item.language,
-      context: mergedContext,
-      status: 'done',
-      rating: item.rating,
+    conversationIdRef.current = item.conversationId || item.id;
+    setTurns((item.turns ?? [item]).map((t) => ({
+      id: t.id,
+      query: t.query,
+      language: t.language,
+      context: { ...EMPTY_CONTEXT, ...t.context },
+      status: 'done' as const,
+      rating: t.rating,
       // Reopening a chat mustn't spend model calls: the plan is restored so the cards reappear, but `restored` keeps them idle until Generate is pressed.
       restored: true,
       response: {
         success: true,
-        text: item.text,
-        language: item.language,
-        context: item.context,
-        queryId: item.id,
-        ...(item.classroom ? { classroom: item.classroom } : {}),
+        text: t.text,
+        language: t.language,
+        context: t.context,
+        queryId: t.id,
+        conversationId: conversationIdRef.current ?? undefined,
+        ...(t.classroom ? { classroom: t.classroom } : {}),
       },
-    }]);
+    })));
     setLanguage(item.language);
     setContext(mergedContext);
     setQuery('');
@@ -463,7 +475,8 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     setContext((c) => ({ ...c, [key]: value }));
   }
 
-  const activeHistoryId = turns.length === 1 ? turns[0].response?.queryId ?? null : null;
+  const openConversationId = turns[0]?.response?.conversationId;
+  const activeHistoryId = openConversationId ? history.find((h) => h.conversationId === openConversationId)?.id ?? null : null;
   const isEmpty = turns.length === 0;
 
   // The resize handle exists only on desktop/tablet in the active-chat state: not on mobile, and not over the empty welcome screen.
