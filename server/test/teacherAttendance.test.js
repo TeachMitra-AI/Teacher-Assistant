@@ -779,14 +779,21 @@ describe('Teacher Attendance', () => {
   describe('today-summary (Reports dashboard cards)', () => {
     // The real day these tests run on could be a Sunday (schoolA defaults weeklyOffDays to "0"), making the endpoint
     // return all-zero "non-working day" counts regardless of the seeded records. Cleared for this block so it's deterministic.
+    // Same for a declared holiday: the 'holidays' block above creates one on the literal date 2026-10-02, so on that real
+    // day the endpoint reports a holiday (all zeros). Set aside for this block and restored after.
     let savedWeeklyOffDays;
+    let savedTodayHoliday;
     beforeAll(async () => {
       const config = await prisma.schoolAttendanceConfig.findUnique({ where: { schoolId: fx.schoolA.id } });
       savedWeeklyOffDays = config.weeklyOffDays;
       await prisma.schoolAttendanceConfig.update({ where: { schoolId: fx.schoolA.id }, data: { weeklyOffDays: '' } });
+      const date = istDateString(new Date());
+      savedTodayHoliday = await prisma.schoolHoliday.findUnique({ where: { schoolId_date: { schoolId: fx.schoolA.id, date } } });
+      if (savedTodayHoliday) await prisma.schoolHoliday.delete({ where: { id: savedTodayHoliday.id } });
     });
     afterAll(async () => {
       await prisma.schoolAttendanceConfig.update({ where: { schoolId: fx.schoolA.id }, data: { weeklyOffDays: savedWeeklyOffDays } });
+      if (savedTodayHoliday) await prisma.schoolHoliday.create({ data: savedTodayHoliday });
     });
 
     test('a plain teacher cannot reach it', async () => {
