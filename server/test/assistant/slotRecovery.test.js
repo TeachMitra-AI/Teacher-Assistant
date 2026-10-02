@@ -2,7 +2,7 @@
 // missed recovery leaves a blank field the teacher fills in, while a false one prefills a confident wrong class or
 // subject, with the same badge as a correct one, that may not be noticed until the worksheet is printed.
 // The negative table is also why the module works on spans: handing the whole utterance to `mapGrade` maps "I have 5
-// students" to Class 3-5, and `mapSubject` maps "Math teacher" to Mathematics. Those are pinned so nobody re-simplifies it.
+// students" to Class 5, and `mapSubject` maps "Math teacher" to Mathematics. Those are pinned so nobody re-simplifies it.
 
 const { generateAssessment } = require('../../src/actions/descriptors/generateAssessment');
 const { openGenerator } = require('../../src/actions/descriptors/openGenerator');
@@ -20,29 +20,29 @@ const recover = (utterance, alreadyFilled = []) =>
 describe('grade — positive, across the scripts teachers actually type', () => {
   const cases = [
     // English
-    ['Class 5', 'Class 3-5'],
-    ['class 5', 'Class 3-5'],
-    ['Grade 6', 'Class 6-8'],
-    ['grade 2 worksheet', 'Class 1-2'],
-    ['5th class', 'Class 3-5'],
-    ['class five', 'Class 3-5'],
-    ['Standard VII', 'Class 6-8'],
-    ['Std VIII', 'Class 6-8'],
-    ['std 10 quiz', 'Class 9-10'],
+    ['Class 5', 'Class 5'],
+    ['class 5', 'Class 5'],
+    ['Grade 6', 'Class 6'],
+    ['grade 2 worksheet', 'Class 2'],
+    ['5th class', 'Class 5'],
+    ['class five', 'Class 5'],
+    ['Standard VII', 'Class 7'],
+    ['Std VIII', 'Class 8'],
+    ['std 10 quiz', 'Class 10'],
     // The number sits two tokens from the keyword — the proximity boundary.
-    ['I have 40 students in class 5', 'Class 3-5'],
+    ['I have 40 students in class 5', 'Class 5'],
     // Hindi (Devanagari), including Devanagari digits
-    ['कक्षा 5', 'Class 3-5'],
-    ['कक्षा ५', 'Class 3-5'],
-    ['पाँचवीं कक्षा', 'Class 3-5'],
-    ['आठवीं कक्षा के लिए', 'Class 6-8'],
+    ['कक्षा 5', 'Class 5'],
+    ['कक्षा ५', 'Class 5'],
+    ['पाँचवीं कक्षा', 'Class 5'],
+    ['आठवीं कक्षा के लिए', 'Class 8'],
     // Hinglish
-    ['class 5 ke liye worksheet banao', 'Class 3-5'],
-    ['kaksha 6 ka paper', 'Class 6-8'],
-    ['panchvi class', 'Class 3-5'],
+    ['class 5 ke liye worksheet banao', 'Class 5'],
+    ['kaksha 6 ka paper', 'Class 6'],
+    ['panchvi class', 'Class 5'],
     // Realistic full utterances
-    ['Generate a Class 5 Mathematics worksheet on Fractions', 'Class 3-5'],
-    ['Create a Science paper for Class 8', 'Class 6-8'],
+    ['Generate a Class 5 Mathematics worksheet on Fractions', 'Class 5'],
+    ['Create a Science paper for Class 8', 'Class 8'],
   ];
 
   test.each(cases)('%s -> %s', (utterance, expected) => {
@@ -74,8 +74,8 @@ describe('grade — NEGATIVE: a number is only a class when the sentence says so
 
   test('the whole-utterance shortcut this module exists to avoid IS broken', () => {
     // Testing the premise, not our code: if these stop mapping, the span machinery could be simplified.
-    expect(mapGrade('I have 5 students').value).toBe('Class 3-5');
-    expect(mapGrade('Chapter 5').value).toBe('Class 3-5');
+    expect(mapGrade('I have 5 students').value).toBe('Class 5');
+    expect(mapGrade('Chapter 5').value).toBe('Class 5');
     expect(mapSubject('Math teacher').value).toBe('Mathematics');
   });
 
@@ -158,9 +158,9 @@ describe('subject — NEGATIVE: governed by a preposition, so it names something
   test('the grade in those same utterances is still recovered', () => {
     // The guard must be surgical: it demotes the subject and nothing else.
     expect(recover('Make a worksheet on nouns for class 3 and write it in Hindi').recovered.grade)
-      .toBe('Class 3-5');
+      .toBe('Class 3');
     expect(recover('Ek hard worksheet banao algebra par class 10 ke liye').recovered.grade)
-      .toBe('Class 9-10');
+      .toBe('Class 10');
   });
 
   test('a span may never BEGIN on a governing word', () => {
@@ -211,7 +211,7 @@ describe('ambiguity is refused, never voted on', () => {
 
   test('two spans agreeing on one value DO recover it', () => {
     // "class 5" and "5th standard" are one reading stated twice, not two.
-    expect(recover('class 5 worksheet for 5th standard').recovered.grade).toBe('Class 3-5');
+    expect(recover('class 5 worksheet for 5th standard').recovered.grade).toBe('Class 5');
   });
 });
 
@@ -229,7 +229,7 @@ describe('scope — only grade and subject, ever', () => {
       'make an easy mcq maths worksheet on fractions with 10 questions for class 5'
     );
     expect(Object.keys(result.recovered).sort()).toEqual(['grade', 'subject']);
-    expect(result.recovered).toEqual({ grade: 'Class 3-5', subject: 'Mathematics' });
+    expect(result.recovered).toEqual({ grade: 'Class 5', subject: 'Mathematics' });
   });
 
   test('an action that declares no such slots recovers nothing', () => {
@@ -250,7 +250,7 @@ describe('the length cap that whole-utterance scanning would have hit', () => {
       'Please could you generate a printable worksheet for class 5 mathematics ' +
       'on the topic of equivalent fractions, with an answer key for my students';
     expect(long.length).toBeGreaterThan(120);
-    expect(recover(long).recovered).toEqual({ grade: 'Class 3-5', subject: 'Mathematics' });
+    expect(recover(long).recovered).toEqual({ grade: 'Class 5', subject: 'Mathematics' });
   });
 });
 

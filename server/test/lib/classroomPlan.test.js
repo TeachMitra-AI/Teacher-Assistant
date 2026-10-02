@@ -89,7 +89,7 @@ describe('classroomPlan.normalizePlan — the "is there a topic?" rule (D5)', ()
     );
     expect(plan).toEqual({
       topic: 'Fractions',
-      grade: 'Class 3-5',
+      grade: 'Class 4',
       subject: 'Mathematics',
       language: 'en',
       artifacts: ['worksheet', 'quiz'],
@@ -141,7 +141,7 @@ describe('classroomPlan.normalizePlan — context precedence (D8)', () => {
       { topic: 'Fractions', grade: 'Class 4', subject: 'Maths', artifacts: ['quiz'] },
       { context: { subject: 'Science' }, language: 'en' }
     );
-    expect(plan.grade).toBe('Class 3-5'); // filled by the model, canonicalized
+    expect(plan.grade).toBe('Class 4'); // filled by the model, canonicalized
     expect(plan.subject).toBe('Science'); // the teacher's, untouched
   });
 
@@ -202,7 +202,7 @@ describe('classroomPlan.planClassroom — end to end', () => {
   test('a teachable question produces a plan', async () => {
     const gemini = fakeGemini('{"topic":"Fractions","grade":"Class 4","subject":"Maths","artifacts":["quiz","worksheet"]}');
     const plan = await planClassroom({ gemini, query: 'How do I teach fractions to Class 4?', language: 'en' });
-    expect(plan).toMatchObject({ topic: 'Fractions', grade: 'Class 3-5', artifacts: ['worksheet', 'quiz'] });
+    expect(plan).toMatchObject({ topic: 'Fractions', grade: 'Class 4', artifacts: ['worksheet', 'quiz'] });
     expect(gemini.calls).toHaveLength(1);
   });
 

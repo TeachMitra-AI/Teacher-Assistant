@@ -46,6 +46,7 @@ export default function TeachingContextMenu({
             Grade
             <select value={context.grade} onChange={(e) => onContextChange('grade', e.target.value)}>
               <option value="">Any</option>
+              {context.grade && !GRADES.includes(context.grade) && <option value={context.grade}>{context.grade}</option>}
               {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
             </select>
           </label>

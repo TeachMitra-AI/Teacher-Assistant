@@ -7,52 +7,52 @@ const { GRADES, VOCAB_STATUS, mapGrade } = require('../../../src/actions/vocab/g
 describe('mapGrade — confident mappings', () => {
   const CASES = [
     // English, the common forms
-    ['class 5', 'Class 3-5'],
-    ['Class 5', 'Class 3-5'],
-    ['class-5', 'Class 3-5'],
-    ['class 5th', 'Class 3-5'],
-    ['5th class', 'Class 3-5'],
-    ['5th', 'Class 3-5'],
-    ['5', 'Class 3-5'],
-    ['grade 5', 'Class 3-5'],
-    ['std 5', 'Class 3-5'],
-    ['standard 5', 'Class 3-5'],
-    ['fifth', 'Class 3-5'],
-    ['fifth standard', 'Class 3-5'],
+    ['class 5', 'Class 5'],
+    ['Class 5', 'Class 5'],
+    ['class-5', 'Class 5'],
+    ['class 5th', 'Class 5'],
+    ['5th class', 'Class 5'],
+    ['5th', 'Class 5'],
+    ['5', 'Class 5'],
+    ['grade 5', 'Class 5'],
+    ['std 5', 'Class 5'],
+    ['standard 5', 'Class 5'],
+    ['fifth', 'Class 5'],
+    ['fifth standard', 'Class 5'],
 
     // Roman numerals
-    ['V', 'Class 3-5'],
-    ['class V', 'Class 3-5'],
-    ['X', 'Class 9-10'],
-    ['class XII', 'Class 11-12'],
+    ['V', 'Class 5'],
+    ['class V', 'Class 5'],
+    ['X', 'Class 10'],
+    ['class XII', 'Class 12'],
 
     // Number words, cardinal as well as ordinal: "class five" is as common as "class 5".
-    ['class five', 'Class 3-5'],
-    ['class one', 'Class 1-2'],
-    ['class twelve', 'Class 11-12'],
-    ['class ninth', 'Class 9-10'],
+    ['class five', 'Class 5'],
+    ['class one', 'Class 1'],
+    ['class twelve', 'Class 12'],
+    ['class ninth', 'Class 9'],
 
     // Hinglish and Hindi
-    ['kaksha 5', 'Class 3-5'],
-    ['panchvi', 'Class 3-5'],
-    ['paanchvi kaksha', 'Class 3-5'],
-    ['chhati', 'Class 6-8'],
-    ['dasvi', 'Class 9-10'],
-    ['pehli class', 'Class 1-2'],
-    ['5 वीं', 'Class 3-5'],
-    ['class 5 ke liye', 'Class 3-5'],
-    ['कक्षा 5', 'Class 3-5'],
-    ['कक्षा ५', 'Class 3-5'],
-    ['पाँचवीं', 'Class 3-5'],
-    ['पांचवी', 'Class 3-5'],
-    ['दसवीं', 'Class 9-10'],
+    ['kaksha 5', 'Class 5'],
+    ['panchvi', 'Class 5'],
+    ['paanchvi kaksha', 'Class 5'],
+    ['chhati', 'Class 6'],
+    ['dasvi', 'Class 10'],
+    ['pehli class', 'Class 1'],
+    ['5 वीं', 'Class 5'],
+    ['class 5 ke liye', 'Class 5'],
+    ['कक्षा 5', 'Class 5'],
+    ['कक्षा ५', 'Class 5'],
+    ['पाँचवीं', 'Class 5'],
+    ['पांचवी', 'Class 5'],
+    ['दसवीं', 'Class 10'],
 
-    // Every band is reachable
-    ['class 1', 'Class 1-2'],
-    ['class 2', 'Class 1-2'],
-    ['class 8', 'Class 6-8'],
-    ['class 10', 'Class 9-10'],
-    ['class 12', 'Class 11-12'],
+    // Every grade is reachable
+    ['class 1', 'Class 1'],
+    ['class 2', 'Class 2'],
+    ['class 8', 'Class 8'],
+    ['class 10', 'Class 10'],
+    ['class 12', 'Class 12'],
 
     // Pre-primary is named, not numbered
     ['nursery', 'Pre-Primary'],
@@ -63,25 +63,13 @@ describe('mapGrade — confident mappings', () => {
     ['pre primary', 'Pre-Primary'],
     ['play group', 'Pre-Primary'],
 
-    // A range that stays inside one band is NOT ambiguous — the teacher gets a
-    // confident fill rather than a question they cannot answer usefully.
-    ['class 3 to 5', 'Class 3-5'],
-    ['class 3 and 4', 'Class 3-5'],
-    ['class 3-5', 'Class 3-5'],
-    // Alternatives that agree are not a contradiction either.
-    ['class 3 or 4', 'Class 3-5'],
-
-    // Band words that cover exactly one canonical band
-    ['middle school', 'Class 6-8'],
-    ['upper primary', 'Class 6-8'],
-    ['high school', 'Class 9-10'],
-    ['secondary', 'Class 9-10'],
-    ['senior secondary', 'Class 11-12'],
-    ['higher secondary', 'Class 11-12'],
+    // The same grade named twice is not ambiguous.
+    ['class 3 or 3', 'Class 3'],
+    ['class 3 and 3', 'Class 3'],
 
     // An explicit number outranks a vague band word in the same phrase
-    ['primary class 3', 'Class 3-5'],
-    ['high school class 12', 'Class 11-12'],
+    ['primary class 3', 'Class 3'],
+    ['high school class 12', 'Class 12'],
   ];
 
   test.each(CASES)('%j maps to %s', (raw, expected) => {
@@ -103,15 +91,21 @@ describe('mapGrade — confident mappings', () => {
 
 describe('mapGrade — ambiguous phrases keep the teacher’s own words', () => {
   const CASES = [
-    ['class 5-6', ['Class 3-5', 'Class 6-8']],
-    ['class 5 to 6', ['Class 3-5', 'Class 6-8']],
-    ['class 2 and 3', ['Class 1-2', 'Class 3-5']],
+    ['class 5-6', ['Class 5', 'Class 6']],
+    ['class 5 to 6', ['Class 5', 'Class 6']],
+    ['class 2 and 3', ['Class 2', 'Class 3']],
     // "aur" is Hinglish "and" — a span, matching its English counterpart, and
     // the mirror of "ya" being treated as an alternation.
-    ['class 5 aur 6', ['Class 3-5', 'Class 6-8']],
-    ['primary', ['Class 1-2', 'Class 3-5']],
-    ['primary school', ['Class 1-2', 'Class 3-5']],
-    ['elementary', ['Class 1-2', 'Class 3-5']],
+    ['class 5 aur 6', ['Class 5', 'Class 6']],
+    ['primary', ['Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5']],
+    ['primary school', ['Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5']],
+    ['elementary', ['Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5']],
+    ['middle school', ['Class 6', 'Class 7', 'Class 8']],
+    ['upper primary', ['Class 6', 'Class 7', 'Class 8']],
+    ['high school', ['Class 9', 'Class 10']],
+    ['secondary', ['Class 9', 'Class 10']],
+    ['senior secondary', ['Class 11', 'Class 12']],
+    ['higher secondary', ['Class 11', 'Class 12']],
   ];
 
   test.each(CASES)('%j is ambiguous across %j', (raw, candidates) => {
@@ -129,10 +123,11 @@ describe('mapGrade — ambiguous phrases keep the teacher’s own words', () => 
 
 describe('mapGrade — contradictions are never resolved by guessing', () => {
   const CASES = [
-    ['class 5 or class 8', ['Class 3-5', 'Class 6-8']],
-    ['class 5 ya 8', ['Class 3-5', 'Class 6-8']],
-    ['class 2 or class 11', ['Class 1-2', 'Class 11-12']],
-    ['nursery or class 5', ['Pre-Primary', 'Class 3-5']],
+    ['class 5 or class 8', ['Class 5', 'Class 8']],
+    ['class 5 ya 8', ['Class 5', 'Class 8']],
+    ['class 2 or class 11', ['Class 2', 'Class 11']],
+    ['class 3 or 4', ['Class 3', 'Class 4']],
+    ['nursery or class 5', ['Pre-Primary', 'Class 5']],
   ];
 
   test.each(CASES)('%j reports both readings', (raw, readings) => {
@@ -172,12 +167,12 @@ describe('mapGrade — unmapped is a safe, ordinary outcome', () => {
 
   test('a bare roman numeral inside a sentence is not read as a class', () => {
     // "i", "v" and "x" are all valid roman numerals AND ordinary English. Without
-    // the context gate, "i want a worksheet" resolves to Class 1-2.
+    // the context gate, "i want a worksheet" resolves to Class 1.
     expect(mapGrade('i want a worksheet').status).toBe(VOCAB_STATUS.UNMAPPED);
     expect(mapGrade('x marks the spot').status).toBe(VOCAB_STATUS.UNMAPPED);
     // ...but the same numeral with class context, or standing alone, still works.
-    expect(mapGrade('class i').value).toBe('Class 1-2');
-    expect(mapGrade('i').value).toBe('Class 1-2');
+    expect(mapGrade('class i').value).toBe('Class 1');
+    expect(mapGrade('i').value).toBe('Class 1');
   });
 
   test('a cardinal number word inside a sentence is not read as a class', () => {
@@ -186,8 +181,8 @@ describe('mapGrade — unmapped is a safe, ordinary outcome', () => {
     expect(mapGrade('ten questions on fractions').status).toBe(VOCAB_STATUS.UNMAPPED);
     expect(mapGrade('five minute activity').status).toBe(VOCAB_STATUS.UNMAPPED);
     // ...and the phrasings the gate is there to preserve still work.
-    expect(mapGrade('class five').value).toBe('Class 3-5');
-    expect(mapGrade('five').value).toBe('Class 3-5');
+    expect(mapGrade('class five').value).toBe('Class 5');
+    expect(mapGrade('five').value).toBe('Class 5');
   });
 
   test('an over-long value is refused rather than scanned', () => {

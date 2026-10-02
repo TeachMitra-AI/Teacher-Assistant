@@ -40,7 +40,11 @@ export const SPEECH_LOCALE: Record<string, string> = {
 
 // Mirrors server/src/actions/vocab/grades.js and subjects.js, which the router maps typed input onto; pinned by
 // vocabDrift.test.js. Change both together: drift is silent, and the router would prefill a band this datalist doesn't offer.
-export const GRADES = ['Pre-Primary', 'Class 1-2', 'Class 3-5', 'Class 6-8', 'Class 9-10', 'Class 11-12'];
+export const GRADES = [
+  'Pre-Primary',
+  'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6',
+  'Class 7', 'Class 8', 'Class 9', 'Class 10', 'Class 11', 'Class 12',
+];
 export const SUBJECTS = ['Mathematics', 'Science', 'English', 'Hindi', 'Social Studies', 'Languages', 'General'];
 export const CLASSROOM_TYPES = ['Single Grade', 'Multi-Grade', 'Mixed Ability', 'Large Class (40+)', 'Small Class (<20)'];
 export const ISSUE_TYPES = ['Classroom Management', 'Concept Explanation', 'Student Engagement', 'Assessment', 'Differentiation', 'Resource Constraints'];

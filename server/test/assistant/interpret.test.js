@@ -70,7 +70,7 @@ describe('the happy path reproduces the specification’s published payload', ()
     const { response } = await run(
       {
         utterance: 'a fractions worksheet for class 5',
-        memory: { grade: { value: 'Class 3-5', source: 'utterance', turn: 2 } },
+        memory: { grade: { value: 'Class 5', source: 'utterance', turn: 2 } },
         turn: interpretRequest.turn,
       },
       {
@@ -93,7 +93,7 @@ describe('the happy path reproduces the specification’s published payload', ()
     const { response } = await run(
       {
         utterance: 'a fractions worksheet',
-        memory: { grade: { value: 'Class 3-5', source: 'utterance', turn: 2 } },
+        memory: { grade: { value: 'Class 5', source: 'utterance', turn: 2 } },
         turn: interpretRequest.turn,
       },
       {
@@ -106,7 +106,7 @@ describe('the happy path reproduces the specification’s published payload', ()
       }
     );
 
-    expect(response.actions[0].params.grade).toBe('Class 3-5');
+    expect(response.actions[0].params.grade).toBe('Class 5');
     expect(response.actions[0].provenance.grade).toBe('memory');
   });
 
@@ -126,11 +126,11 @@ describe('the happy path reproduces the specification’s published payload', ()
       }
     );
 
-    expect(response.actions[0].params.grade).toBe('Class 3-5');
+    expect(response.actions[0].params.grade).toBe('Class 5');
     expect(response.actions[0].provenance.grade).toBe('utterance');
     // Names only, never the recovered value.
     expect(telemetry.recoveredSlots).toEqual(['grade']);
-    expect(JSON.stringify(telemetry)).not.toContain('Class 3-5');
+    expect(JSON.stringify(telemetry)).not.toContain('Class 5');
   });
 
   test('a turn with nothing recoverable adds no recovery fields to the log', async () => {

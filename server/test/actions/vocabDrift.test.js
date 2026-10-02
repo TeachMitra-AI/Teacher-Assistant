@@ -65,7 +65,7 @@ describe('vocabulary drift — the extractors themselves work', () => {
   const config = readFile(CONFIG_PATH);
 
   test('a known flat array is parsed correctly', () => {
-    expect(extractStringArray(config, 'GRADES')).toContain('Class 3-5');
+    expect(extractStringArray(config, 'GRADES')).toContain('Class 5');
   });
 
   test('a known option list is parsed correctly', () => {

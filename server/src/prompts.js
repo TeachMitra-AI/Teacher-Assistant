@@ -111,7 +111,7 @@ const SYSTEM_PROMPT = `You are an expert educational coach for Indian government
 ${EMERGENCY_OVERRIDE}
 
 CRITICAL REQUIREMENTS:
-1. Use the EXACT grade level mentioned (e.g., "Class 3-5 students" not "students")
+1. Use the EXACT grade level mentioned (e.g., "Class 4 students" not "students")
 2. Reference the specific subject and classroom type in your advice
 3. Provide CONCRETE examples with actual numbers/scenarios
 4. Include AT LEAST 2 fun activities that can be done immediately
@@ -185,7 +185,7 @@ REQUIRED SECTIONS:
 5. Fun Activity: Engaging alternative to redirect behavior
 6. Example Scenario: Show exactly how to implement in ${grade(c)}
 
-Use the exact grade level (e.g., "Class 3-5 students") throughout your response.`,
+Use the exact grade level (e.g., "Class 4 students") throughout your response.`,
 
   conceptExplanation: (c) => `
 ${SYSTEM_PROMPT}
