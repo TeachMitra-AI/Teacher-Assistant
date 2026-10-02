@@ -1428,6 +1428,19 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 0.9rem;
 }
 [data-theme='dark'] .assistant-error { color: #fca5a5; background: rgba(248, 113, 113, 0.1); border-color: rgba(248, 113, 113, 0.3); }
+/* A stopped generation isn't a failure, so it gets a neutral banner (no warning icon, no "Report") instead of .assistant-error's red. */
+.assistant-cancelled {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.9rem;
+  font-size: 0.9rem;
+}
 .retry-btn { padding: 0.2rem 0.5rem; }
 
 .ai-message-content { width: 100%; }

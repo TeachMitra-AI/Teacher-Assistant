@@ -36,6 +36,32 @@ function wrapDelimited(text) {
   return '```\n' + text + '\n```';
 }
 
+/**
+ * One AbortSignal that aborts as soon as any input does (AbortSignal.any() isn't available on Node 18, the
+ * package's minimum). Used to combine the per-call timeout with the caller's own cancellation (e.g. the teacher's
+ * "Stop generating"), so either one ends the fetch.
+ * @param {Array<AbortSignal|undefined>} signals
+ * @returns {AbortSignal}
+ */
+function anySignal(signals) {
+  const controller = new AbortController();
+  for (const signal of signals) {
+    if (!signal) continue;
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+      break;
+    }
+    signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true });
+  }
+  return controller.signal;
+}
+
+function makeClientAbortedError() {
+  const err = new Error('Request cancelled by client');
+  err.code = 'CLIENT_ABORTED';
+  return err;
+}
+
 function makeDeadlineError() {
   const err = new Error('AI request exceeded the overall time budget');
   err.code = 'DEADLINE_EXCEEDED';
@@ -185,13 +211,16 @@ class GeminiService {
   /**
    * Make one logical Gemini call, retrying transient failures. Every fetch counts against the shared `tracker`
    * budget and respects the shared deadline; retries stop at whichever comes first: maxRetries, the call budget or the deadline.
+   * @param {AbortSignal} [signal] external cancellation (e.g. the teacher closed the connection); checked before every
+   *   attempt and wired into the fetch itself, and never retried once it fires.
    */
-  async makeRequest(requestBody, tracker) {
+  async makeRequest(requestBody, tracker, signal) {
     let attempt = 0;
     // Caps key hops per logical call; one attempt per key in the pool is enough to try everything available.
     let keyRotations = 0;
     const maxKeyRotations = this.keyPool.size();
     for (;;) {
+      if (signal?.aborted) throw makeClientAbortedError();
       if (tracker.callsMade >= tracker.maxCalls) throw makeBudgetError();
       const remaining = tracker.deadline - tracker.now();
       if (remaining <= 0) {
@@ -212,9 +241,11 @@ class GeminiService {
             'x-goog-api-key': key,
           },
           body: JSON.stringify(requestBody),
-          signal: AbortSignal.timeout(perCallTimeout),
+          signal: signal ? anySignal([signal, AbortSignal.timeout(perCallTimeout)]) : AbortSignal.timeout(perCallTimeout),
         });
       } catch (fetchError) {
+        // The teacher's own cancellation, not a transient timeout — stop outright, no retry.
+        if (signal?.aborted) throw makeClientAbortedError();
         // Network-level failure or per-call timeout (no HTTP status) — not a
         // key-specific problem, so no rotation, just the normal retry path.
         const { retriable, reason } = classifyGeminiError(fetchError);
@@ -320,7 +351,7 @@ class GeminiService {
    * is carried forward so continuations follow the same rules, and the shared tracker means a continuation's
    * retries use the same budget.
    */
-  async fetchContinuation(previousText, language, baseSystemInstruction, tracker) {
+  async fetchContinuation(previousText, language, baseSystemInstruction, tracker, signal) {
     tracker.continuations += 1;
     // Restated though `baseSystemInstruction` carries it: a long answer is most likely to drift back into English here.
     const languageInstruction = ` ${languageDirective(language)}`;
@@ -334,7 +365,8 @@ You are continuing a response that was cut off mid-way. The text already written
         systemInstruction: continuationSystemInstruction,
         userText: wrapDelimited(previousText),
       }),
-      tracker
+      tracker,
+      signal
     );
     return this.extractCandidate(response);
   }
@@ -350,15 +382,16 @@ You are continuing a response that was cut off mid-way. The text already written
    *   invalid JSON, so a truncated response is left for the caller's schema validation to reject.
    *   `attachments` (optional): inline image/PDF parts in the same request (see buildRequestBody); a batch is one
    *   logical call. Sent only on the initial call; continuations stay text-only.
-   * @param {{correlationId?: string}} [options]
+   * @param {{correlationId?: string, signal?: AbortSignal}} [options]
    */
   async generateContent({ systemInstruction, userText, language = 'en', responseSchema, attachments }, options = {}) {
     const startTime = this.now();
     const tracker = this.createTracker();
+    const { signal } = options;
 
     try {
       const first = this.extractCandidate(
-        await this.makeRequest(this.buildRequestBody({ systemInstruction, userText, responseSchema, attachments }), tracker)
+        await this.makeRequest(this.buildRequestBody({ systemInstruction, userText, responseSchema, attachments }), tracker, signal)
       );
       let text = first.text;
       let finishReason = first.finishReason;
@@ -369,11 +402,12 @@ You are continuing a response that was cut off mid-way. The text already written
         finishReason === 'MAX_TOKENS' &&
         i < this.maxContinuations &&
         text.length < MAX_OUTPUT_LENGTH &&
-        this.hasCapacity(tracker);
+        this.hasCapacity(tracker) &&
+        !signal?.aborted;
         i++
       ) {
         try {
-          const cont = await this.fetchContinuation(text, language, systemInstruction, tracker);
+          const cont = await this.fetchContinuation(text, language, systemInstruction, tracker, signal);
           if (!cont.text.trim()) break;
           text = `${text.trim()} ${cont.text.trim()}`;
           finishReason = cont.finishReason;
@@ -437,12 +471,14 @@ ${MEMORY_DIRECTIVE}` : selectedInstruction;
 
     const startTime = this.now();
     const tracker = this.createTracker();
+    const { signal } = options;
 
     try {
       const first = this.extractCandidate(
         await this.makeRequest(
           this.buildRequestBody({ systemInstruction, userText: userContent, history: historyMessages }),
-          tracker
+          tracker,
+          signal
         )
       );
       let text = first.text;
@@ -455,11 +491,12 @@ ${MEMORY_DIRECTIVE}` : selectedInstruction;
         finishReason === 'MAX_TOKENS' &&
         i < this.maxContinuations &&
         text.length < MAX_OUTPUT_LENGTH &&
-        this.hasCapacity(tracker);
+        this.hasCapacity(tracker) &&
+        !signal?.aborted;
         i++
       ) {
         try {
-          const cont = await this.fetchContinuation(text, language, systemInstruction, tracker);
+          const cont = await this.fetchContinuation(text, language, systemInstruction, tracker, signal);
           if (!cont.text.trim()) break;
           text = `${text.trim()} ${cont.text.trim()}`;
           finishReason = cont.finishReason;
@@ -474,10 +511,11 @@ ${MEMORY_DIRECTIVE}` : selectedInstruction;
         finishReason !== 'MAX_TOKENS' &&
         !this.isResponseComplete(text) &&
         text.length < MAX_OUTPUT_LENGTH &&
-        this.hasCapacity(tracker)
+        this.hasCapacity(tracker) &&
+        !signal?.aborted
       ) {
         try {
-          const cont = await this.fetchContinuation(text, language, systemInstruction, tracker);
+          const cont = await this.fetchContinuation(text, language, systemInstruction, tracker, signal);
           if (cont.text.trim()) text = `${text.trim()} ${cont.text.trim()}`;
         } catch {
           // Keep the partial answer.

@@ -98,6 +98,10 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   }
 
   const [turns, setTurns] = useState<Turn[]>([]);
+  // The in-flight /coach (or /coach/attachment) request, if any, so "Stop generating" can cancel it. Only one request is
+  // ever in flight at a time (Composer disables the input while isSubmitting, and a retry/edit first marks its own turn
+  // pending, which already makes isSubmitting true), so a single ref is enough.
+  const abortControllerRef = useRef<AbortController | null>(null);
   // The thread the on-screen turns belong to, sent with every turn so the server saves them as one chat. A ref, not state:
   // submitTurn can run from the router's async settle, and must see the id the previous turn set. Null until the first turn
   // is submitted; cleared with the thread (New chat) and set when a history entry is reopened.
@@ -223,23 +227,35 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
 
   async function runTurn(id: string, queryText: string, lang: string, ctx: QueryContext, classroom: boolean, supersedes?: string) {
     const conversationId = conversationIdRef.current;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     try {
       const res = await api<CoachResponse>('/coach', {
         method: 'POST',
         // `classroomMode` is sent only when on, so a teacher who never uses it sends the same request body as always.
         body: { query: queryText, language: lang, context: ctx, ...(conversationId ? { conversationId } : {}), ...(conversationId && supersedes ? { supersedes } : {}), ...(classroom ? { classroomMode: true } : {}) },
+        signal: controller.signal,
       });
       setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'done', response: res, rating: null } : t)));
       loadHistory();
     } catch (err) {
+      const cancelled = err instanceof ApiError && err.code === 'CANCELLED';
       const message = err instanceof ApiError ? err.message : 'Failed to get a response. Please try again.';
-      const errorIsNetwork = err instanceof ApiError && err.status === 0;
+      const errorIsNetwork = !cancelled && err instanceof ApiError && err.status === 0;
       const retryAt = err instanceof ApiError && err.code === 'RATE_LIMITED' ? err.retryAt : undefined;
       if (retryAt != null) setAiCooldownUntil(retryAt);
-      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message, errorIsNetwork, retryAt } : t)));
+      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message, errorIsNetwork, cancelled, retryAt } : t)));
     } finally {
+      if (abortControllerRef.current === controller) abortControllerRef.current = null;
       scrollToBottom();
     }
+  }
+
+  // "Stop generating" (Composer's Stop button): aborts the in-flight /coach or /coach/attachment request. The fetch
+  // rejects with an AbortError, which api() turns into ApiError code 'CANCELLED', caught above (and in
+  // runTurnWithAttachments) and rendered as a neutral "Stopped generating." banner, not a red error.
+  function stopGenerating() {
+    abortControllerRef.current?.abort();
   }
 
   // Persists the first-run intro as "seen" (idempotent, optimistic, non-blocking). Called on dismissal and on first engagement,
@@ -270,20 +286,24 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   // attachment-bearing message is Coach Q&A, not a navigation/prefill action.
   // All files go in one request (repeated 'files' entries) so the backend sends the whole set to Gemini together.
   async function runTurnWithAttachments(id: string, queryText: string, lang: string, files: File[]) {
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     try {
       const formData = new FormData();
       formData.append('query', queryText);
       formData.append('language', lang);
       for (const file of files) formData.append('files', file);
-      const res = await api<CoachResponse>('/coach/attachment', { method: 'POST', body: formData });
+      const res = await api<CoachResponse>('/coach/attachment', { method: 'POST', body: formData, signal: controller.signal });
       setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'done', response: res, rating: null } : t)));
     } catch (err) {
+      const cancelled = err instanceof ApiError && err.code === 'CANCELLED';
       const message = err instanceof ApiError ? err.message : 'Failed to get a response. Please try again.';
-      const errorIsNetwork = err instanceof ApiError && err.status === 0;
+      const errorIsNetwork = !cancelled && err instanceof ApiError && err.status === 0;
       const retryAt = err instanceof ApiError && err.code === 'RATE_LIMITED' ? err.retryAt : undefined;
       if (retryAt != null) setAiCooldownUntil(retryAt);
-      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message, errorIsNetwork, retryAt } : t)));
+      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: 'error', error: message, errorIsNetwork, cancelled, retryAt } : t)));
     } finally {
+      if (abortControllerRef.current === controller) abortControllerRef.current = null;
       scrollToBottom();
     }
   }
@@ -650,6 +670,8 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
                 onChange={setQuery}
                 onSubmit={handleSubmit}
                 loading={isSubmitting || router.routing || (aiCooldownUntil != null && !aiCooldownReady)}
+                canStop={isSubmitting}
+                onStop={stopGenerating}
                 voice={voice}
                 attachments={attachments}
                 textareaRef={textareaRef}

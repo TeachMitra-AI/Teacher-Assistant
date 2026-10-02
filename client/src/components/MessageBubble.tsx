@@ -171,13 +171,18 @@ export default function MessageBubble({ turn, onFeedback, onRetry, onEdit }: Mes
         )}
 
         {turn.status === 'error' && (
-          <div className="message-bubble assistant-error" role="alert">
-            <span aria-hidden="true">⚠️</span> {turn.retryAt != null ? retryMessage(retryRemainingMs) : turn.error}
+          <div
+            className={`message-bubble ${turn.cancelled ? 'assistant-cancelled' : 'assistant-error'}`}
+            role={turn.cancelled ? 'status' : 'alert'}
+          >
+            {/* A stopped generation isn't a failure, so it skips the warning icon. */}
+            {!turn.cancelled && <span aria-hidden="true">⚠️</span>}{' '}
+            {turn.cancelled ? 'Stopped generating.' : turn.retryAt != null ? retryMessage(retryRemainingMs) : turn.error}
             {/* Retrying while every key is exhausted would fail the same way; the button returns once retryReady flips (or at once for other errors). */}
             {retryReady && (
               <button type="button" className="btn-text retry-btn" onClick={() => onRetry(turn)}>Try again</button>
             )}
-            {/* Only for a network failure, not a validation/upstream error the teacher can act on. */}
+            {/* Only for a network failure, not a validation/upstream error or a teacher-initiated stop. */}
             {turn.errorIsNetwork && HELP_SUPPORT_ENABLED && (
               <button
                 type="button"
