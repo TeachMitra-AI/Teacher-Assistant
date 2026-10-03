@@ -63,7 +63,7 @@ const { planClassroom } = require('./lib/classroomPlan');
 const { createBudgetCounter } = require('./assistant/budget');
 const { createRenderCache } = require('./learningRepresentation/rendering/cache');
 const { createRouterBreaker } = require('./assistant/breaker');
-const { createGenerateLimiter } = require('./lib/limiters');
+const { createGenerateLimiter, rateLimitMessage } = require('./lib/limiters');
 
 // Logs only non-sensitive metadata about an AI request/response, never the raw query, response text, upstream error
 // body, API keys, tokens or PII. One helper makes the safe pattern the easy one.
@@ -277,6 +277,23 @@ const learningRepresentationRenderCache = createRenderCache();
 // stale. Turning this off stops the planner and every downstream artifact call for everyone, which makes it a usable spend control.
 const classroomModeFlagsAtBoot = readClassroomModeFlags(process.env);
 
+// Process-level safety net. The global Express error middleware below only catches failures inside a request — a
+// bug outside that pattern (a bare `.then()` without `.catch()`, a stray promise in a background job) would
+// otherwise crash the whole process for every user on Node 18+, exactly as a single Prisma P2021 error once did
+// (see that middleware's comment). Logged the same metadata-only way as everywhere else: never the error object or
+// stack, which could echo request content.
+process.on('unhandledRejection', (reason) => {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  console.error('Unhandled promise rejection:', { message: err.message, code: err.code });
+});
+// A thrown (not rejected) error escaped every try/catch. Node's own guidance is not to resume normal operation
+// after this — some internal state may be corrupted — so this exits and lets the process manager restart a clean
+// instance instead of limping on.
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception, exiting:', { message: err.message, code: err.code });
+  process.exit(1);
+});
+
 // App setup
 
 const app = express();
@@ -367,7 +384,7 @@ const limiter = rateLimit({
   legacyHeaders: false,
   // Worded differently from the Gemini-upstream 429 message in the /coach catch block so the two aren't ambiguous:
   // this means "you called our API too often", that one "the AI provider is rate-limiting us", which patience alone doesn't fix.
-  message: { error: 'You have made too many requests. Please wait a few minutes and try again.' },
+  message: rateLimitMessage('You have made too many requests. Please wait a few minutes and try again.'),
 });
 
 // Separate bucket for the assistant, not the /coach limiter: sharing would let catalog fetches and routing eat the
@@ -381,7 +398,7 @@ const assistantLimiter = rateLimit({
   max: ASSISTANT_RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many assistant requests. Please wait a few minutes and try again.' },
+  message: rateLimitMessage('Too many assistant requests. Please wait a few minutes and try again.'),
 });
 
 // Separate bucket for POST /api/coach/attachment, with a lower ceiling than /coach since an attachment request is the
@@ -395,7 +412,7 @@ const attachmentLimiter = rateLimit({
   max: ATTACHMENT_RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many attachment requests. Please wait a few minutes and try again.' },
+  message: rateLimitMessage('Too many attachment requests. Please wait a few minutes and try again.'),
 });
 
 // Separate, tighter bucket for POST /api/support/tickets, which has no per-user daily budget (see lib/flags.js), so
@@ -415,7 +432,7 @@ const notificationsSendLimiter = rateLimit({
   max: NOTIFICATIONS_SEND_RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests. Please wait a few minutes and try again.' },
+  message: rateLimitMessage('Too many requests. Please wait a few minutes and try again.'),
 });
 
 // Classroom Management gets its own bucket (docs/classroom-feature-plan.md). Its writes are frequent and cheap, closer
@@ -429,7 +446,7 @@ const classroomLimiter = rateLimit({
   max: CLASSROOM_MANAGEMENT_RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests. Please wait a few minutes and try again.' },
+  message: rateLimitMessage('Too many requests. Please wait a few minutes and try again.'),
 });
 
 const supportLimiter = rateLimit({
@@ -437,7 +454,7 @@ const supportLimiter = rateLimit({
   max: SUPPORT_RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests. Please wait a few minutes and try again.' },
+  message: rateLimitMessage('Too many requests. Please wait a few minutes and try again.'),
 });
 
 // Teacher Attendance gets its own bucket, like classroomLimiter: a check-in or check-out is a small write, about two a
@@ -451,7 +468,7 @@ const teacherAttendanceLimiter = rateLimit({
   max: TEACHER_ATTENDANCE_RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests. Please wait a few minutes and try again.' },
+  message: rateLimitMessage('Too many requests. Please wait a few minutes and try again.'),
 });
 
 // Separate, tighter bucket for POST /api/schedule-demo/bookings: a public, unauthenticated write with no per-user
@@ -465,7 +482,7 @@ const demoBookingLimiter = rateLimit({
   max: DEMO_BOOKING_RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests. Please wait a few minutes and try again.' },
+  message: rateLimitMessage('Too many requests. Please wait a few minutes and try again.'),
 });
 
 // Separate bucket for POST /api/coach/learning-representation, as for assistantLimiter: an optional feature mustn't
@@ -481,7 +498,7 @@ const learningRepresentationLimiter = rateLimit({
   max: LEARNING_REPRESENTATION_RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests. Please wait a few minutes and try again.' },
+  message: rateLimitMessage('Too many requests. Please wait a few minutes and try again.'),
 });
 
 // /generate is the most expensive path (a Gemini call with an 8-call budget) and was guarded by authRequired alone.
@@ -499,7 +516,7 @@ const avatarLimiter = rateLimit({
   max: isProduction ? 20 : 300,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests. Please wait a few minutes and try again.' },
+  message: rateLimitMessage('Too many requests. Please wait a few minutes and try again.'),
 });
 
 // Stricter limiter for auth endpoints, to slow credential guessing. The ceiling is env-overridable and development-aware
@@ -517,7 +534,7 @@ const authLimiter = rateLimit({
   max: AUTH_RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many attempts. Please wait a few minutes and try again.' },
+  message: rateLimitMessage('Too many attempts. Please wait a few minutes and try again.'),
 });
 
 // Routes
@@ -943,6 +960,16 @@ app.use((err, req, res, _next) => {
     console.warn('Malformed JSON body:', { method: req.method, path: req.path });
     if (res.headersSent) return;
     return res.status(400).json({ error: 'The request body was not valid JSON.' });
+  }
+
+  // body-parser's own limit (express.json({limit}) above — 16kb normally, 64kb for /resources and the classroom-
+  // artifacts route) throws this, not a SyntaxError, when the body exceeds it. Same reasoning as the malformed-JSON
+  // case above: this is the requester's doing, not a server failure, and deserves its real status instead of the
+  // generic 500 below (which previously told a teacher pasting a long lesson plan "something went wrong on our end").
+  if (err.type === 'entity.too.large' && err.status === 413) {
+    console.warn('Request body too large:', { method: req.method, path: req.path });
+    if (res.headersSent) return;
+    return res.status(413).json({ error: 'Your request is too large. Please shorten it and try again.' });
   }
 
   console.error('Unhandled request error:', {

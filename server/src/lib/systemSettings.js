@@ -81,7 +81,7 @@ async function resolveSetting(key, { type, fallback }) {
     }
     return { value, source: 'override', updatedAt: row.updatedAt };
   } catch (err) {
-    console.warn(`[systemSettings] failed to read "${key}"; falling back to default.`, err);
+    console.warn(`[systemSettings] failed to read "${key}"; falling back to default.`, { message: err.message, code: err.code });
     return { value: fallback, source: 'env-default', updatedAt: null };
   }
 }

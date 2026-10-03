@@ -49,7 +49,7 @@ async function rawRequest(
   path: string,
   options: RequestOptions,
   token: string | null
-): Promise<{ res: Response; data: unknown }> {
+): Promise<{ res: Response; data: unknown; parseFailed: boolean }> {
   const { method = 'GET', body, signal } = options;
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
   const headers: Record<string, string> = {};
@@ -74,15 +74,21 @@ async function rawRequest(
   }
 
   let data: unknown = null;
+  // A non-empty body that isn't valid JSON (e.g. a captive wifi portal or misconfigured proxy returning an HTML
+  // page with a 200) is distinct from a genuinely empty body (several routes reply 204 with none at all) — only the
+  // former is a real parse failure, and api() below turns that into a clear error instead of silently proceeding as
+  // if the call had succeeded with no data.
+  let parseFailed = false;
   const text = await res.text();
   if (text) {
     try {
       data = JSON.parse(text);
     } catch {
       data = null;
+      parseFailed = true;
     }
   }
-  return { res, data };
+  return { res, data, parseFailed };
 }
 
 // De-dupes concurrent refreshes: if several requests hit a 401 at once, only one /auth/refresh is made.
@@ -142,13 +148,13 @@ export async function apiDownload(path: string): Promise<{ blob: Blob; filename:
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { auth = true } = options;
 
-  let { res, data } = await rawRequest(path, options, auth ? getToken() : null);
+  let { res, data, parseFailed } = await rawRequest(path, options, auth ? getToken() : null);
 
   // An expiring access token is expected: refresh once silently and retry before surfacing a failure.
   if (res.status === 401 && auth && getRefreshToken()) {
     const refreshed = await tryRefresh();
     if (refreshed) {
-      ({ res, data } = await rawRequest(path, options, getToken()));
+      ({ res, data, parseFailed } = await rawRequest(path, options, getToken()));
     }
   }
 
@@ -159,6 +165,13 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     const retryAtRaw = body && typeof body.retryAt === 'string' ? Date.parse(body.retryAt) : NaN;
     const retryAt = Number.isNaN(retryAtRaw) ? undefined : retryAtRaw;
     throw new ApiError(message, res.status, { code, retryAt });
+  }
+
+  // A "successful" response whose non-empty body wasn't valid JSON (see rawRequest) is not actually usable — the
+  // caller expects a typed object and would otherwise get `null` silently, surfacing later as a confusing crash or
+  // blank state far from the real cause.
+  if (parseFailed) {
+    throw new ApiError('Unexpected response from the server. Please try again.', res.status);
   }
 
   return data as T;

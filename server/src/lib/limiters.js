@@ -9,6 +9,26 @@ const rateLimit = require('express-rate-limit');
 const { parseIntEnv } = require('./config');
 
 /**
+ * Builds a 429 response body for any of this app's own rate limiters: the same `{error, code, retryAt}` shape
+ * Gemini-key-exhaustion 429s already use (lib/sendAiError.js), so the client's existing RATE_LIMITED/retryAt
+ * handling (api.ts's ApiError, the Coach/Generator countdown UI) treats them identically instead of needing a
+ * separate code path per limiter. `req.rateLimit.resetTime` is set by express-rate-limit itself before this runs,
+ * so unlike the Gemini case, every limiter built with this knows its own exact reset time for free.
+ * @param {string} error the existing per-limiter wording, unchanged
+ * @returns {(req: import('express').Request) => {error: string, code: 'RATE_LIMITED', retryAt?: string}}
+ */
+function rateLimitMessage(error) {
+  return (req) => {
+    const resetTime = req.rateLimit?.resetTime;
+    return {
+      error,
+      code: 'RATE_LIMITED',
+      ...(resetTime instanceof Date ? { retryAt: resetTime.toISOString() } : {}),
+    };
+  };
+}
+
+/**
  * Default ceiling per window, by environment. The generous non-production value is deliberate: the test suite
  * exercises /generate many times through the real app, and a production-shaped ceiling would fail it. If a
  * test needs an env change to pass, the default is wrong. In production, 30 per 15 minutes is about two
@@ -41,10 +61,10 @@ function createGenerateLimiter({ env, isProduction, windowMinutes }) {
     max,
     standardHeaders: true,
     legacyHeaders: false,
-    message: {
-      error: 'You have generated a lot of content in a short time. Please wait a few minutes and try again.',
-    },
+    message: rateLimitMessage(
+      'You have generated a lot of content in a short time. Please wait a few minutes and try again.'
+    ),
   });
 }
 
-module.exports = { createGenerateLimiter, GENERATE_LIMIT_DEFAULTS };
+module.exports = { createGenerateLimiter, GENERATE_LIMIT_DEFAULTS, rateLimitMessage };
