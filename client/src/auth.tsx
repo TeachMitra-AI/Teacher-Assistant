@@ -1,5 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { api, ApiError, setSession, getToken, getRefreshToken, TOKEN_KEY } from './api';
+import {
+  api,
+  ApiError,
+  AUTH_SYNC_KEY,
+  SESSION_ENDED_EVENT,
+  getToken,
+  restoreSession,
+  setAccessToken,
+  signalSessionChange,
+  takeLegacyRefreshToken,
+} from './api';
 import { shouldResyncAuthOnStorageEvent } from './lib/authStorageSync';
 import type {
   AuthOutcome,
@@ -38,6 +48,7 @@ function outcomeForError(err: unknown): AuthOutcome | null {
   if (!(err instanceof ApiError)) return null;
   if (err.status === 403 && err.message === 'pending_approval') return { kind: 'pending' };
   if (err.status === 403 && err.message === 'registration_rejected') return { kind: 'rejected' };
+  if (err.status === 403 && err.message === 'account_suspended') return { kind: 'suspended' };
   if (err.status === 404 && err.message === 'google_not_registered') return { kind: 'not_registered' };
   if (err.status === 503 && err.message === 'google_not_configured') return { kind: 'unavailable' };
   return null;
@@ -56,47 +67,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // and, via the 'storage' listener, when another tab signs in, out or invalidates the session (docs/enterprise-exploratory-qa-report.md).
   // Doesn't touch `loading` after the first call, so a resync or api.ts's background token refresh (tryRefresh) updates
   // identity in place instead of flashing the loading spinner in every open tab.
-  const reconcile = useCallback(async () => {
+  // Restores the session. With an in-memory token it just confirms it with /auth/me. Otherwise, and whenever `renew` is set,
+  // it renews from the refresh cookie first. A storage event sets `renew`, because another tab's sign-out leaves this tab's
+  // in-memory token valid for up to its 15-minute life. Only a genuine 401 signs the user out. A network failure or server
+  // error leaves the current state alone, so a flaky connection never logs a teacher out.
+  const reconcile = useCallback(async (renew = false) => {
     const id = ++reconcileIdRef.current;
-    if (!getToken()) {
-      if (id === reconcileIdRef.current) {
-        setUser(null);
-        setFeatureFlags(null);
-        setLoading(false);
-      }
-      return;
-    }
+    const isCurrent = () => id === reconcileIdRef.current;
     try {
+      if (renew || !getToken()) {
+        // The pre-cookie build's refresh token is migrated once here; takeLegacyRefreshToken() returns null afterwards.
+        const state = await restoreSession(takeLegacyRefreshToken() ?? undefined);
+        if (state === 'unauthenticated') {
+          if (isCurrent()) {
+            setUser(null);
+            setFeatureFlags(null);
+          }
+          return;
+        }
+        if (state === 'unavailable') return;
+      }
       const res = await api<{ user: User; featureFlags: FeatureFlags }>('/auth/me');
-      if (id === reconcileIdRef.current) {
+      if (isCurrent()) {
         setUser(res.user);
         setFeatureFlags(res.featureFlags);
       }
-    } catch {
-      // Covers "no session" and "refresh token expired/revoked" (api()'s silent refresh already failed).
-      setSession(null, null);
-      if (id === reconcileIdRef.current) {
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401 && isCurrent()) {
         setUser(null);
         setFeatureFlags(null);
       }
     } finally {
-      if (id === reconcileIdRef.current) setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, []);
 
-  // Restore the session from a stored token on first load.
+  // Restore the session on first load.
   useEffect(() => {
     reconcile();
   }, [reconcile]);
+
+  // The server ended the session during a call (api.ts): drop the user now rather than leaving a signed-in-looking UI.
+  useEffect(() => {
+    // Only clears the user. It must not bump reconcileIdRef: the initial restore that just reported the 401 would then be
+    // superseded before it sets loading to false, and the app would hang on its loading state.
+    function onSessionEnded() {
+      setUser(null);
+      setFeatureFlags(null);
+    }
+    window.addEventListener(SESSION_ENDED_EVENT, onSessionEnded);
+    return () => window.removeEventListener(SESSION_ENDED_EVENT, onSessionEnded);
+  }, []);
 
   // Cross-tab session sync. The 'storage' event fires only in OTHER same-origin tabs, so this reacts to another tab's
   // sign-in/out and can't loop on its own writes. The tab that performs the login/logout updates its own state directly.
   useEffect(() => {
     function onStorage(event: StorageEvent) {
-      // Ignore sessionStorage events; this only cares about the localStorage that setSession() writes.
+      // Ignore sessionStorage events; this only cares about the localStorage that signalSessionChange() writes.
       if (event.storageArea !== null && event.storageArea !== window.localStorage) return;
-      if (!shouldResyncAuthOnStorageEvent(event.key, TOKEN_KEY)) return;
-      reconcile();
+      if (!shouldResyncAuthOnStorageEvent(event.key, AUTH_SYNC_KEY)) return;
+      reconcile(true);
     }
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
@@ -111,7 +141,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       // Invalidate any in-flight reconcile() so a stale response can't overwrite the identity just signed in.
       reconcileIdRef.current += 1;
-      setSession(res.token, res.refreshToken);
+      setAccessToken(res.token);
+      signalSessionChange();
       setUser(res.user);
       setFeatureFlags(res.featureFlags);
       return { kind: 'signed_in' };
@@ -126,9 +157,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Registration creates an active account server-side, then signs in via authenticate(), so a future pending/rejected
   // result still gets its dedicated screen.
+  // A duplicate address gets the same 201 as a new one (routes/auth.js), so the sign-in below is where a mismatch shows. Its
+  // message points to sign-in without confirming that the account exists.
   const register = useCallback(async (c: RegisterCredentials): Promise<AuthOutcome> => {
     await api<{ status: string }>('/auth/register', { method: 'POST', body: c, auth: false });
-    return authenticate('/auth/login', { email: c.email, password: c.password });
+    try {
+      return await authenticate('/auth/login', { email: c.email, password: c.password });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        throw new ApiError('We could not create your account. If you already have one, sign in instead.', 401);
+      }
+      throw err;
+    }
   }, [authenticate]);
 
   // Serves Google sign-up and sign-in via one endpoint; `signup: true` makes it a sign-up (the server assigns a default school).
@@ -150,13 +190,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Clear local state at once so sign-out feels instant; revoke server-side in the background (best-effort, a failure
     // doesn't roll back). Invalidate any in-flight reconcile() first so it can't resurrect the signed-out user.
     reconcileIdRef.current += 1;
-    const refreshToken = getRefreshToken();
-    setSession(null, null);
+    setAccessToken(null);
     setUser(null);
     setFeatureFlags(null);
-    if (refreshToken) {
-      api('/auth/logout', { method: 'POST', body: { refreshToken }, auth: false }).catch(() => {});
-    }
+    signalSessionChange();
+    // The server revokes the session and clears the refresh cookie. Local state is already cleared, so a failure here is harmless.
+    api('/auth/logout', { method: 'POST', body: {}, auth: false }).catch(() => {});
   }, []);
 
   const updateUser = useCallback((next: User) => {

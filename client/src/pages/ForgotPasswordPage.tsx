@@ -4,6 +4,7 @@ import { Mail, Sun, Moon, CircleAlert, ArrowLeft, KeyRound } from 'lucide-react'
 import { useAuth } from '../auth';
 import { ApiError } from '../api';
 import { usePreferences } from '../hooks/usePreferences';
+import { emailError } from '../lib/authValidation';
 
 // Step one of self-service password reset: ask for an email and the server mails a single-use link. The confirmation says
 // nothing about whether the address has an account: the endpoint answers identically either way so it can't reveal who is
@@ -11,6 +12,9 @@ import { usePreferences } from '../hooks/usePreferences';
 export default function ForgotPasswordPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
   const { forgotPassword } = useAuth();
   const [email, setEmail] = useState('');
+  // Errors appear once the field has been left or a submit attempted, the same rule as sign-in and register.
+  const [touched, setTouched] = useState(false);
+  const fieldError = touched ? emailError(email) : '';
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -19,6 +23,8 @@ export default function ForgotPasswordPage({ preferences }: { preferences: Retur
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
+    setTouched(true);
+    if (!email.trim() || emailError(email)) return;
     setBusy(true);
     try {
       await forgotPassword(email.trim());
@@ -72,15 +78,22 @@ export default function ForgotPasswordPage({ preferences }: { preferences: Retur
                   <input
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    onBlur={() => setTouched(true)}
                     type="email"
                     placeholder="you@example.com"
                     autoComplete="email"
                     autoCapitalize="none"
                     spellCheck={false}
+                    aria-invalid={!!fieldError}
+                    aria-describedby={fieldError ? 'email-error' : 'email-help'}
                     required
                   />
                 </span>
-                <span className="auth-field-help">The address you use to sign in.</span>
+                {fieldError ? (
+                  <span className="auth-field-error" id="email-error" role="alert">{fieldError}</span>
+                ) : (
+                  <span className="auth-field-help" id="email-help">The address you use to sign in.</span>
+                )}
               </label>
 
               {error && (

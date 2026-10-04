@@ -8,8 +8,7 @@ export function shouldResyncAuthOnStorageEvent(key: string | null, tokenStorageK
   // key === null means localStorage.clear(); the event can't say whether the token survived, so resync.
   if (key === null) return true;
 
-  // Only the access-token key means identity may have changed. setSession() writes or removes both tokens together, so a
-  // sign-in/out produces a pair of events; keying off this one de-dupes to a single resync and ignores unrelated keys
-  // (theme, fontScale, a lone refresh_token).
+  // Only the session-sync key means identity may have changed. signalSessionChange() writes it on every sign-in and sign-out,
+  // and nothing else touches it, so this ignores unrelated keys (theme, fontScale) and never reacts to a token.
   return key === tokenStorageKey;
 }

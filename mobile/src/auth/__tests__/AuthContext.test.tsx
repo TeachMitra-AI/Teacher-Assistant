@@ -9,6 +9,7 @@ import React from 'react';
 import { renderHook, waitFor, act } from '@testing-library/react-native';
 import { AuthProvider, useAuth } from '../AuthContext';
 import { setSession, getToken } from '../../api/session';
+import { api } from '../../api/client';
 import * as pushLib from '../../lib/push';
 
 jest.mock('expo-secure-store', () => {
@@ -168,6 +169,45 @@ describe('AuthContext', () => {
     });
 
     expect(outcome).toEqual({ kind: 'pending' });
+    expect(result.current.user).toBeNull();
+    expect(await getToken()).toBeNull();
+  });
+
+  it('a session the server ends mid-use (suspension) signs the user out of the UI at once, not only on relaunch', async () => {
+    const { result } = await renderAuth();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    (globalThis.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, { token: 'tok', refreshToken: 'ref', user: mockUser, featureFlags: mockFeatureFlags })
+    );
+    await act(async () => {
+      await result.current.login({ email: mockUser.email, password: 'password123' });
+    });
+    expect(result.current.user).toEqual(mockUser);
+
+    // The admin suspended the account: the next authenticated call is refused, and the refresh is refused too.
+    (globalThis.fetch as jest.Mock)
+      .mockResolvedValueOnce(jsonResponse(401, { error: 'Your account is no longer active. Please sign in again.' }))
+      .mockResolvedValueOnce(jsonResponse(403, { error: 'account_suspended' }));
+    await act(async () => {
+      await expect(api('/notifications/unread-count')).rejects.toBeTruthy();
+    });
+
+    expect(result.current.user).toBeNull();
+    expect(await getToken()).toBeNull();
+  });
+
+  it('a suspended account gets a suspended outcome, not a raw error, and no session', async () => {
+    const { result } = await renderAuth();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    (globalThis.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(403, { error: 'account_suspended' }));
+
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.login({ email: 'teacher@example.com', password: 'password123' });
+    });
+
+    expect(outcome).toEqual({ kind: 'suspended' });
     expect(result.current.user).toBeNull();
     expect(await getToken()).toBeNull();
   });

@@ -6,6 +6,7 @@
 // New sign-ups are `active` and can sign in at once. statusGateError() still enforces `pending`/`rejected` for
 // accounts put in those states (e.g. by an admin through routes/admin.js).
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 const { z } = require('zod');
 
@@ -36,6 +37,10 @@ const {
   generateRefreshToken,
   hashToken,
   refreshTokenExpiry,
+  usesCookieTransport,
+  readRefreshCookie,
+  setRefreshCookie,
+  clearRefreshCookie,
 } = require('../middleware/auth');
 
 const router = express.Router();
@@ -55,32 +60,72 @@ async function issueSession(user, req) {
   return { token: signAccessToken(user), refreshToken };
 }
 
-const MAX_ATTEMPTS = parseInt(process.env.LOGIN_MAX_ATTEMPTS || '5', 10);
-const LOCKOUT_MINUTES = parseInt(process.env.LOGIN_LOCKOUT_MINUTES || '15', 10);
+// Sends a new session: the refresh token always goes into the HttpOnly cookie, and into the body only for clients that
+// have no cookie jar (mobile, older builds). Web clients never see it in JavaScript.
+function sendSession(req, res, { token, refreshToken }, body) {
+  setRefreshCookie(res, refreshToken);
+  return res.json({
+    token,
+    ...(usesCookieTransport(req) ? {} : { refreshToken }),
+    ...body,
+  });
+}
+
+// Failed password attempts on one account. From FAILED_LOGIN_SLOWDOWN_AFTER on, each further failure is answered after
+// FAILED_LOGIN_SLOWDOWN_MS. That slows a distributed guessing run without locking the owner out, so someone else can't lock
+// a teacher out of their own account. Per-(IP, email) rate limiting (index.js) caps a single source.
+const FAILED_LOGIN_SLOWDOWN_AFTER = parseInt(process.env.LOGIN_SLOWDOWN_AFTER || '10', 10);
+const FAILED_LOGIN_SLOWDOWN_MS = 2000;
 const RESET_TOKEN_TTL_MINUTES = parseInt(process.env.PASSWORD_RESET_TTL_MINUTES || '60', 10);
+
+// Refresh-token rotation race window. Two tabs (or two requests) refreshing at the same moment both present the token that
+// was just rotated. Within this window that's treated as a retryable conflict, not as theft that revokes every session.
+const ROTATION_GRACE_MS = 10000;
+
+// Compared against when the email has no account, so a missing account costs the same bcrypt time as a wrong password.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('dummy-password-for-timing', 10);
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Zod's own wording ("Invalid input: expected string, received undefined") is written for developers and names internal
+// shapes. Every field below carries a plain message; this is the backstop for anything that still falls through to Zod.
+const GENERIC_INVALID = 'Please check your details and try again.';
+const ZOD_DEFAULT_WORDING = /\b(expected|received|Invalid input|Too (big|small))\b/i;
+function firstValidationMessage(error) {
+  const message = error?.issues?.[0]?.message;
+  return message && !ZOD_DEFAULT_WORDING.test(message) ? message : GENERIC_INVALID;
+}
 
 // Emails are trimmed and lower-cased before validation so matching is case-insensitive; the stored value is the normalized one.
 const emailField = z
-  .string()
+  .string({ error: 'Enter your email address.' })
   .trim()
   .toLowerCase()
-  .pipe(z.email('Enter a valid email address.').max(160));
+  .pipe(z.email({ error: 'Enter a valid email address.' }).max(160, { error: 'Email address is too long.' }));
 
 // 72 bytes is bcrypt's own input limit — anything beyond it is silently
 // ignored by the hash, so it's rejected up front rather than truncated.
 const newPasswordField = z
-  .string()
-  .min(8, 'Password must be at least 8 characters.')
-  .max(72, 'Password must be at most 72 characters.');
+  .string({ error: 'Enter a password.' })
+  .min(8, { error: 'Password must be at least 8 characters.' })
+  .max(72, { error: 'Password must be at most 72 characters.' });
 
-// Verifying an existing password skips the length rule: rules belong on the path that sets one, and applying them here
-// would turn a wrong-password 401 into a confusing 400.
-const existingPasswordField = z.string().min(1, 'Enter your password.').max(72);
+// Verifying an existing password skips the length *minimum*. Accounts created before a rule change can hold shorter
+// passwords, and rejecting them here would lock those teachers out. The 72-byte maximum still applies: bcrypt can't hash
+// more, so no account can hold a longer one.
+const existingPasswordField = z
+  .string({ error: 'Enter your password.' })
+  .min(1, { error: 'Enter your password.' })
+  .max(72, { error: 'Password must be at most 72 characters.' });
 
 const registerSchema = z.object({
   // Optional: the website form doesn't send one (see DEFAULT_REGISTRATION_SCHOOL_CODE); a caller that sends a real code (the mobile app) is placed at that school.
   schoolCode: z.string().trim().min(1).max(40).optional(),
-  name: z.string().trim().min(2).max(60),
+  name: z
+    .string({ error: 'Enter your name.' })
+    .trim()
+    .min(2, { error: 'Name must be at least 2 characters.' })
+    .max(60, { error: 'Name must be at most 60 characters.' }),
   email: emailField,
   password: newPasswordField,
 });
@@ -162,6 +207,7 @@ const DEFAULT_REGISTRATION_SCHOOL_CODE = 'RAMPUR01';
 function statusGateError(user) {
   if (user.status === 'pending') return 'pending_approval';
   if (user.status === 'rejected') return 'registration_rejected';
+  if (user.status === 'suspended') return 'account_suspended';
   return null;
 }
 
@@ -201,7 +247,7 @@ function publicUser(user, school) {
 router.post('/register', asyncHandler(async (req, res) => {
   const parsed = registerSchema.safeParse(req.body || {});
   if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid details.' });
+    return res.status(400).json({ error: firstValidationMessage(parsed.error) });
   }
   const { schoolCode, name, email, password } = parsed.data;
 
@@ -216,11 +262,14 @@ router.post('/register', asyncHandler(async (req, res) => {
     });
   }
 
+  // An address that already has an account here gets the same 201 as a new one, and nothing is written. Answering 409
+  // would tell anyone who can reach this endpoint which teachers have accounts. The client then signs in with the password
+  // it was given: if that matches the existing account, the teacher is signed in; if not, the sign-in fails generically.
   const existing = await prisma.user.findUnique({
     where: { schoolId_email: { schoolId: school.id, email } },
   });
   if (existing) {
-    return res.status(409).json({ error: EMAIL_ALREADY_REGISTERED });
+    return res.status(201).json({ status: 'active' });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
@@ -229,9 +278,10 @@ router.post('/register', asyncHandler(async (req, res) => {
       data: { schoolId: school.id, name, email, passwordHash, role: 'teacher', status: 'active' },
     });
   } catch (err) {
-    // Two concurrent registrations for the same email and school can both pass the findUnique check; the loser hits the schoolId_email constraint here.
+    // Two concurrent registrations for the same email and school can both pass the findUnique check; the loser hits the
+    // schoolId_email constraint here, and gets the same response as the winner.
     if (isUniqueConstraintError(err)) {
-      return res.status(409).json({ error: EMAIL_ALREADY_REGISTERED });
+      return res.status(201).json({ status: 'active' });
     }
     throw err;
   }
@@ -244,7 +294,7 @@ router.post('/register', asyncHandler(async (req, res) => {
 router.post('/login', asyncHandler(async (req, res) => {
   const parsed = loginSchema.safeParse(req.body || {});
   if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid details.' });
+    return res.status(400).json({ error: firstValidationMessage(parsed.error) });
   }
   const { email, password, schoolId } = parsed.data;
 
@@ -254,41 +304,42 @@ router.post('/login', asyncHandler(async (req, res) => {
     orderBy: { createdAt: 'asc' },
   });
 
+  // The password is checked before anything about the account is disclosed. Previously the school list for a shared email
+  // came back with no password at all, which told anyone which schools a teacher belonged to.
   if (matches.length === 0) {
+    await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
     return res.status(401).json({ error: INVALID_CREDENTIALS });
   }
-  if (matches.length > 1) {
-    return res.json({
-      needsSchoolSelection: true,
-      schools: matches.map((u) => ({ id: u.school.id, name: u.school.name, code: u.school.code })),
-    });
+
+  // A Google-only account has no password, so it can never verify here.
+  const verified = [];
+  for (const candidate of matches) {
+    if (candidate.passwordHash && (await bcrypt.compare(password, candidate.passwordHash))) {
+      verified.push(candidate);
+    }
   }
 
-  const user = matches[0];
-
-  // Account lockout after too many failed attempts.
-  if (user.lockedUntil && user.lockedUntil > new Date()) {
-    const minutes = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
-    return res.status(423).json({ error: `Too many attempts. Try again in ${minutes} minute(s).` });
-  }
-
-  // A Google-only account has no password. Treated as a plain credential failure so the response can't distinguish it from a nonexistent account.
-  const ok = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
-  if (!ok) {
-    const failed = user.failedLoginCount + 1;
-    const shouldLock = failed >= MAX_ATTEMPTS;
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        failedLoginCount: shouldLock ? 0 : failed,
-        lockedUntil: shouldLock ? new Date(Date.now() + LOCKOUT_MINUTES * 60000) : null,
-      },
-    });
-    if (shouldLock) {
-      return res.status(423).json({ error: `Too many attempts. Try again in ${LOCKOUT_MINUTES} minute(s).` });
+  if (verified.length === 0) {
+    for (const candidate of matches) {
+      await prisma.user.update({
+        where: { id: candidate.id },
+        data: { failedLoginCount: candidate.failedLoginCount + 1 },
+      });
+    }
+    if (matches[0].failedLoginCount + 1 >= FAILED_LOGIN_SLOWDOWN_AFTER) {
+      await sleep(FAILED_LOGIN_SLOWDOWN_MS);
     }
     return res.status(401).json({ error: INVALID_CREDENTIALS });
   }
+
+  if (verified.length > 1) {
+    return res.json({
+      needsSchoolSelection: true,
+      schools: verified.map((u) => ({ id: u.school.id, name: u.school.name, code: u.school.code })),
+    });
+  }
+
+  const user = verified[0];
 
   // Approval gate, checked only after the password is proven so a pending/rejected state isn't disclosed to someone
   // without the credential. The two error codes are contract: the client shows a dedicated screen for each.
@@ -301,10 +352,8 @@ router.post('/login', asyncHandler(async (req, res) => {
   });
   await logAttendanceLoginIfEnabled(user);
 
-  const { token, refreshToken } = await issueSession(user, req);
-  return res.json({
-    token,
-    refreshToken,
+  const session = await issueSession(user, req);
+  return sendSession(req, res, session, {
     user: publicUser(user, user.school),
     featureFlags: await getEffectiveFeatureFlags(),
   });
@@ -334,7 +383,7 @@ router.post('/google', asyncHandler(async (req, res) => {
 
   const parsed = googleAuthSchema.safeParse(req.body || {});
   if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid Google sign-in request.' });
+    return res.status(400).json({ error: firstValidationMessage(parsed.error) });
   }
   const { idToken, schoolCode, signup, name, schoolId } = parsed.data;
 
@@ -423,10 +472,8 @@ router.post('/google', asyncHandler(async (req, res) => {
   });
   await logAttendanceLoginIfEnabled(user);
 
-  const { token, refreshToken } = await issueSession(user, req);
-  return res.json({
-    token,
-    refreshToken,
+  const session = await issueSession(user, req);
+  return sendSession(req, res, session, {
     user: publicUser(user, user.school),
     featureFlags: await getEffectiveFeatureFlags(),
   });
@@ -447,7 +494,7 @@ router.post('/forgot-password', asyncHandler(async (req, res) => {
   // A malformed address is a client-side format problem, not a statement about
   // who exists, so rejecting it leaks nothing.
   if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Enter a valid email address.' });
+    return res.status(400).json({ error: firstValidationMessage(parsed.error) });
   }
   const { email } = parsed.data;
 
@@ -499,8 +546,12 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
 
   const parsed = resetPasswordSchema.safeParse(req.body || {});
   if (!parsed.success) {
-    // A bad password is actionable ("at least 8 characters") so that message is kept; a bad token gets the generic one
-    // instead of raw schema text.
+    // A missing or malformed token means the reset link itself is bad, whatever else the body holds, so the link message wins
+    // (the form always sends both fields, so an empty body is a bad link, not a missing password). Otherwise a bad password is
+    // actionable ("at least 8 characters") and that message is kept.
+    if (parsed.error.issues.some((issue) => issue.path[0] === 'token')) {
+      return res.status(400).json(invalid);
+    }
     const passwordIssue = parsed.error.issues.find((issue) => issue.path[0] === 'password');
     return res.status(400).json(passwordIssue ? { error: passwordIssue.message } : invalid);
   }
@@ -538,29 +589,52 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
 // POST /api/auth/refresh: exchange a valid refresh token for a new access+refresh pair. It rotates the token every
 // time: the old one is revoked (linked via replacedBy) and can't be reused. Presenting an already-revoked token is
 // treated as likely theft and revokes all the user's sessions.
-const refreshSchema = z.object({ refreshToken: z.string().min(20) });
+// The refresh token comes from the JSON body (mobile, older builds) or, for web clients, from the HttpOnly cookie.
+// Cookies are read only when the cookie-transport header is present, so a cross-site request can't ride the cookie.
+function refreshTokenFromRequest(req) {
+  const fromBody = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken : '';
+  if (fromBody) return fromBody;
+  return usesCookieTransport(req) ? readRefreshCookie(req) : null;
+}
 
 router.post('/refresh', asyncHandler(async (req, res) => {
-  const parsed = refreshSchema.safeParse(req.body || {});
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid refresh token.' });
-  const { refreshToken } = parsed.data;
+  const refreshToken = refreshTokenFromRequest(req);
+  if (!refreshToken || refreshToken.length < 20) {
+    return res.status(401).json({ error: 'Session not found. Please log in again.' });
+  }
 
   const session = await prisma.session.findUnique({
     where: { tokenHash: hashToken(refreshToken) },
     include: { user: { include: { school: true, profilePicture: { select: { updatedAt: true } } } } },
   });
   if (!session) {
+    clearRefreshCookie(res);
     return res.status(401).json({ error: 'Session not found. Please log in again.' });
   }
   if (session.revokedAt) {
+    // A token rotated a moment ago is most likely a second tab or request that lost a race, not theft. Its successor is
+    // already in this browser's cookie, so the caller retries. Only a reuse outside the window counts as theft.
+    if (session.replacedBy && Date.now() - session.revokedAt.getTime() < ROTATION_GRACE_MS) {
+      return res.status(409).json({ error: 'Session is refreshing. Please try again.', code: 'refresh_conflict' });
+    }
     await prisma.session.updateMany({
       where: { userId: session.userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    clearRefreshCookie(res);
     return res.status(401).json({ error: 'Session has been revoked. Please log in again.' });
   }
   if (session.expiresAt < new Date()) {
+    clearRefreshCookie(res);
     return res.status(401).json({ error: 'Session has expired. Please log in again.' });
+  }
+
+  // A suspended account is refused here, before any rotation. The access token stops working at once (authRequired checks
+  // status on every request); this stops the refresh cookie from renewing it.
+  const accountError = statusGateError(session.user);
+  if (accountError) {
+    clearRefreshCookie(res);
+    return res.status(403).json({ error: accountError });
   }
 
   const { user } = session;
@@ -578,11 +652,12 @@ router.post('/refresh', asyncHandler(async (req, res) => {
     data: { revokedAt: new Date(), replacedBy: newSession.id, lastUsedAt: new Date() },
   });
 
-  return res.json({
-    token: signAccessToken(user),
-    refreshToken: newRefreshToken,
-    user: publicUser(user, user.school),
-  });
+  return sendSession(
+    req,
+    res,
+    { token: signAccessToken(user), refreshToken: newRefreshToken },
+    { user: publicUser(user, user.school) }
+  );
 }));
 
 // POST /api/auth/logout: revoke one refresh-token session and unregister one push device token in the same call.
@@ -591,8 +666,9 @@ router.post('/refresh', asyncHandler(async (req, res) => {
 // device token is never deleted for someone else. With no valid session there's no userId, and the device token is
 // left alone.
 router.post('/logout', asyncHandler(async (req, res) => {
-  const refreshToken = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken : null;
+  const refreshToken = refreshTokenFromRequest(req);
   const deviceToken = typeof req.body?.deviceToken === 'string' ? req.body.deviceToken : null;
+  clearRefreshCookie(res);
 
   if (refreshToken) {
     const session = deviceToken
@@ -647,7 +723,7 @@ router.get('/me', authRequired, asyncHandler(async (req, res) => {
 router.patch('/me', authRequired, asyncHandler(async (req, res) => {
   const parsed = profileSchema.safeParse(req.body || {});
   if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid profile details.' });
+    return res.status(400).json({ error: firstValidationMessage(parsed.error) });
   }
 
   const existing = await prisma.user.findUnique({
@@ -676,10 +752,27 @@ router.patch('/me', authRequired, asyncHandler(async (req, res) => {
 
 // PATCH /api/auth/me/password: change the caller's password after verifying the current one. Unlike a reset, other
 // sessions are left alone: the caller just proved they hold the password. Someone who forgot it uses /forgot-password.
-router.patch('/me/password', authRequired, asyncHandler(async (req, res) => {
+// A signed-in session can still be used to guess the current password. Wrong current passwords (401) are capped per
+// account, so a stolen access token can't brute-force the password. Only 401s count: a typo in the new password, a
+// successful change, or a validation error costs nothing. Keyed by account, not IP, so a shared school address doesn't
+// affect anyone else.
+const PASSWORD_CHANGE_FAILURES = parseInt(process.env.PASSWORD_CHANGE_FAILURES_PER_15_MIN || '5', 10);
+const passwordChangeFailureLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: PASSWORD_CHANGE_FAILURES,
+  // Only a 401 counts as a failure. Without skipSuccessfulRequests every request is counted, and the decision above is ignored.
+  requestWasSuccessful: (req, res) => res.statusCode !== 401,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => `password-change:${req.user?.id}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many incorrect current-password attempts. Please wait a few minutes and try again.' },
+});
+
+router.patch('/me/password', authRequired, passwordChangeFailureLimiter, asyncHandler(async (req, res) => {
   const parsed = passwordChangeSchema.safeParse(req.body || {});
   if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid password.' });
+    return res.status(400).json({ error: firstValidationMessage(parsed.error) });
   }
   const { currentPassword, newPassword } = parsed.data;
 

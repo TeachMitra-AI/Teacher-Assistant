@@ -54,7 +54,7 @@ export interface ExamPaperMeta {
 }
 
 // An account's approval state. Every new sign-up starts `pending` and can't sign in until an admin decides.
-export type UserStatus = 'active' | 'pending' | 'rejected';
+export type UserStatus = 'active' | 'pending' | 'rejected' | 'suspended';
 
 export interface User {
   id: string;
@@ -79,7 +79,8 @@ export interface FeatureFlags {
 
 export interface AuthResponse {
   token: string;
-  refreshToken: string;
+  // Only present for clients without a cookie jar (mobile). Web sessions get the refresh token as an HttpOnly cookie.
+  refreshToken?: string;
   user: User;
   featureFlags: FeatureFlags;
 }
@@ -136,6 +137,8 @@ export type AuthOutcome =
   // Registered, now waiting on an admin.
   | { kind: 'pending' }
   | { kind: 'rejected' }
+  // An admin suspended this account. Sign-in is refused with the same message wherever the account is reached.
+  | { kind: 'suspended' }
   | { kind: 'needs_school'; schools: SchoolOption[] }
   // Google token was valid, but no account here uses that Google identity.
   | { kind: 'not_registered' }

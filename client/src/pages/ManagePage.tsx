@@ -11,6 +11,7 @@ import { usePreferences } from '../hooks/usePreferences';
 import { usePagedList } from '../hooks/usePagedList';
 import {
   changeUserRole,
+  setAccountStatus,
   createSchool as createSchoolApi,
   decidePendingUser,
   listAdminSchools,
@@ -28,6 +29,7 @@ const STATUS_LABELS: Record<UserStatus, string> = {
   active: 'Active',
   pending: 'Pending',
   rejected: 'Rejected',
+  suspended: 'Suspended',
 };
 
 export default function ManagePage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
@@ -119,6 +121,35 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
   // row isn't patched optimistically like approve/reject; the select shows the real role until the server confirms, so Cancel is a no-op.
   const [pendingRole, setPendingRole] = useState<{ target: AdminUser; role: Role } | null>(null);
   const [applyingRole, setApplyingRole] = useState(false);
+
+  // Suspend and reactivate are staged in a confirmation dialog, like a role change, since suspending signs the teacher out everywhere.
+  const [pendingStatus, setPendingStatus] = useState<{ target: AdminUser; action: 'suspend' | 'reactivate' } | null>(null);
+  const [applyingStatus, setApplyingStatus] = useState(false);
+
+  // Mirrors the server's rule (routes/admin.js setAccountStatus): nobody changes their own status, and a school_admin doesn't
+  // act on another admin. The server enforces this too; the control is only offered where it would be accepted.
+  function canChangeStatus(target: AdminUser): boolean {
+    if (!canDecide || !user || target.id === user.id) return false;
+    if (user.role === 'school_admin' && (target.role === 'school_admin' || target.role === 'super_admin')) return false;
+    return target.status === 'active' || target.status === 'suspended';
+  }
+
+  async function confirmStatusChange() {
+    if (!pendingStatus) return;
+    const { target, action } = pendingStatus;
+    setApplyingStatus(true);
+    try {
+      await setAccountStatus(target.id, action);
+      show(action === 'suspend' ? 'Account suspended' : 'Account reactivated', 'success');
+      setPendingStatus(null);
+      await users.refetch();
+    } catch (err) {
+      show(err instanceof ApiError ? err.message : 'Could not update account', 'error');
+      setPendingStatus(null);
+    } finally {
+      setApplyingStatus(false);
+    }
+  }
 
   function requestRoleChange(target: AdminUser, role: Role) {
     // Re-selecting the current role isn't worth confirming (the server would reject it as a no-op).
@@ -382,6 +413,16 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
                     </td>
                     <td>
                       <span className={`status-pill status-${u.status}`}>{STATUS_LABELS[u.status]}</span>
+                      {canChangeStatus(u) && (
+                        <button
+                          type="button"
+                          className="btn-text"
+                          onClick={() => setPendingStatus({ target: u, action: u.status === 'active' ? 'suspend' : 'reactivate' })}
+                          aria-label={`${u.status === 'active' ? 'Suspend' : 'Reactivate'} ${u.name}`}
+                        >
+                          {u.status === 'active' ? 'Suspend' : 'Reactivate'}
+                        </button>
+                      )}
                     </td>
                     <td>{u.lastLogin ? new Date(u.lastLogin).toLocaleDateString() : 'Never'}</td>
                   </tr>
@@ -404,6 +445,23 @@ export default function ManagePage({ preferences }: { preferences: ReturnType<ty
           />
         </section>
       </main>
+
+      {pendingStatus && (
+        <ConfirmDialog
+          open
+          title={pendingStatus.action === 'suspend'
+            ? `Suspend ${pendingStatus.target.name}?`
+            : `Reactivate ${pendingStatus.target.name}?`}
+          body={pendingStatus.action === 'suspend'
+            ? 'They will be signed out on every device and cannot sign in until the account is reactivated.'
+            : 'They can sign in again with their existing password.'}
+          confirmLabel={pendingStatus.action === 'suspend' ? 'Suspend account' : 'Reactivate account'}
+          tone={pendingStatus.action === 'suspend' ? 'danger' : 'default'}
+          busy={applyingStatus}
+          onConfirm={confirmStatusChange}
+          onCancel={() => setPendingStatus(null)}
+        />
+      )}
 
       {roleConfirm && (
         <ConfirmDialog
