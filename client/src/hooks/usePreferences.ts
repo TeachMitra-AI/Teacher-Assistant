@@ -7,9 +7,9 @@ const MAX_FONT = 22;
 const DEFAULT_FONT = 16;
 
 function readTheme(): Theme {
-  const saved = localStorage.getItem('theme') as Theme | null;
-  if (saved) return saved;
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  // First-time visitors get light regardless of OS setting; a saved choice wins.
+  const saved = localStorage.getItem('theme');
+  return saved === 'dark' ? 'dark' : 'light';
 }
 
 function readFont(): number {
