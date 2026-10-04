@@ -1,4 +1,4 @@
-import { useEffect, lazy, Suspense } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider, useAuth } from './auth';
@@ -44,8 +44,40 @@ const ClassroomPage = lazy(() => import('./pages/ClassroomPage'));
 const AttendancePage = lazy(() => import('./pages/AttendancePage'));
 const GeneratorPage = lazy(() => import('./pages/GeneratorPage'));
 
+// Shown instead of the signed-out homepage when reconcile() has a stored token it couldn't verify because of a
+// network failure, not because the token was actually rejected (auth.tsx's reconcile()). Bouncing straight to the
+// public homepage here would look like an unexplained logout; this makes the real cause ("couldn't reach the
+// server") visible and offers the one useful action.
+function SessionCheckFailed() {
+  const { retrySessionCheck } = useAuth();
+  const [retrying, setRetrying] = useState(false);
+
+  async function handleRetry() {
+    setRetrying(true);
+    try {
+      await retrySessionCheck();
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  return (
+    <div className="app-crash">
+      <div className="app-crash-card">
+        <h1>Couldn&apos;t verify your session</h1>
+        <p>Check your connection and try again.</p>
+        <div className="app-crash-actions">
+          <button type="button" className="btn-primary" onClick={handleRetry} disabled={retrying} aria-busy={retrying}>
+            {retrying ? 'Retrying…' : 'Retry'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AppRoutes() {
-  const { user, loading } = useAuth();
+  const { user, loading, sessionCheckFailed } = useAuth();
   const preferences = usePreferences();
   const location = useLocation();
 
@@ -61,6 +93,12 @@ function AppRoutes() {
         <div className="spinner" />
       </div>
     );
+  }
+
+  // A stored token exists but the last check of it failed to even reach the server — distinct from "there's no
+  // session"/"the token was rejected", both of which fall through to the signed-out routes below as before.
+  if (!user && sessionCheckFailed) {
+    return <SessionCheckFailed />;
   }
 
   // Password reset happens signed out, so both pages live here beside /login; the token travels in the path.

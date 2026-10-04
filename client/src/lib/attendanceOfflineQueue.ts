@@ -113,13 +113,21 @@ function nextBackoff(attempts: number): number {
   return Math.min(delay, MAX_RETRY_DELAY_MS);
 }
 
-async function syncOne(item: QueuedAttendanceAction): Promise<{ result: 'synced'; attendance: AttendanceActionResult } | { result: 'network-retry' | 'permanent-error' }> {
+async function syncOne(
+  item: QueuedAttendanceAction
+): Promise<
+  | { result: 'synced'; attendance: AttendanceActionResult }
+  | { result: 'network-retry' }
+  | { result: 'permanent-error'; message?: string }
+> {
   try {
     const attendance = item.kind === 'check-in' ? await checkIn(item.evidence) : await checkOut(item.evidence);
     return { result: 'synced', attendance };
   } catch (err) {
     if (err instanceof ApiError && err.status === 0) return { result: 'network-retry' };
-    return { result: 'permanent-error' };
+    // Carry the server's real reason (e.g. "You have already checked in today.") when there is one, instead of
+    // always showing the same generic string regardless of why the sync permanently failed.
+    return { result: 'permanent-error', message: err instanceof ApiError ? err.message : undefined };
   }
 }
 
@@ -154,7 +162,9 @@ export async function attemptSync(userId: string): Promise<void> {
         break; // still offline: stop the pass
       }
       updateQueueItem(item.key, {
-        permanentError: 'Could not sync this attendance action. It has not been lost — you can retry or discard it.',
+        permanentError:
+          outcome.message ??
+          'Could not sync this attendance action. It has not been lost — you can retry or discard it.',
       });
     }
   } finally {

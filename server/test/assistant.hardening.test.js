@@ -455,6 +455,10 @@ describe('POST /api/resources/generate is rate limited', () => {
     expect(blocked.status).toBe(429);
     // The teacher reads a sentence, not a status code: client/src/api.ts surfaces this string through the Generator's error region.
     expect(blocked.body.error).toMatch(/wait a few minutes/i);
+    // code + retryAt give the client the same shape as a Gemini-key-exhaustion 429 (lib/sendAiError.js), so
+    // GeneratorPage's existing RATE_LIMITED/retryAt handling shows a live countdown here too, not just static text.
+    expect(blocked.body.code).toBe('RATE_LIMITED');
+    expect(new Date(blocked.body.retryAt).getTime()).toBeGreaterThan(Date.now());
   });
 
   test('the non-production default is generous enough for the test suite', () => {

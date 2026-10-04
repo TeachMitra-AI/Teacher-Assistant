@@ -6,6 +6,7 @@ import AdminTabs from '../components/AdminTabs';
 import TablePager from '../components/TablePager';
 import { usePagedList } from '../hooks/usePagedList';
 import { usePreferences } from '../hooks/usePreferences';
+import { useToast } from '../components/Toast';
 import { listSupportTickets, getSupportTicketStats } from '../lib/adminSupport';
 import { listAdminSchools } from '../lib/admin';
 import { BUG_CATEGORIES, FEEDBACK_CATEGORIES } from '../config';
@@ -34,21 +35,29 @@ function relativeTime(iso: string): string {
 
 export default function AdminSupportPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
   const navigate = useNavigate();
+  const { show } = useToast();
 
   const [stats, setStats] = useState<SupportTicketStats | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    getSupportTicketStats().then((s) => { if (!cancelled) setStats(s); }).catch(() => {});
-    return () => { cancelled = true; };
+  const [statsFailed, setStatsFailed] = useState(false);
+  const loadStats = useCallback(() => {
+    setStatsFailed(false);
+    getSupportTicketStats().then(setStats).catch(() => setStatsFailed(true));
   }, []);
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
 
   // Populates the School filter: a one-off fetch at a generous page size, not a searchable picker. Fine while school counts
   // stay small; a school-heavy deployment would need a combobox.
   const [schools, setSchools] = useState<AdminSchool[]>([]);
   useEffect(() => {
     let cancelled = false;
-    listAdminSchools({ limit: 100 }).then((res) => { if (!cancelled) setSchools(res.items); }).catch(() => {});
+    listAdminSchools({ limit: 100 }).then((res) => { if (!cancelled) setSchools(res.items); }).catch(() => {
+      if (!cancelled) show('Could not load schools for the filter. Try reloading the page.', 'error');
+    });
     return () => { cancelled = true; };
+    // Runs once on mount; `show` is the stable useToast() callback, not a value this fetch should re-run on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [statusFilter, setStatusFilter] = useState<SupportTicketStatus | ''>('');
@@ -95,6 +104,12 @@ export default function AdminSupportPage({ preferences }: { preferences: ReturnT
             <div className="kpi-card"><span className="kpi-value">{stats.today}</span><span className="kpi-label">Today</span></div>
             <div className="kpi-card"><span className="kpi-value">{stats.bugs} : {stats.feedback}</span><span className="kpi-label">Bugs : Feedback</span></div>
           </section>
+        )}
+        {statsFailed && (
+          <div className="auth-error" role="alert">
+            Could not load ticket stats.
+            <button type="button" className="btn-text" onClick={loadStats}>Try again</button>
+          </div>
         )}
 
         <section className="manage-section">

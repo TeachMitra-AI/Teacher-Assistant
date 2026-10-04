@@ -28,6 +28,12 @@ interface AuthContextValue {
   // Live admin-toggleable flags as of the last session bootstrap; null only before the first response. Callers gating UI
   // should fall back to the matching build-time VITE_* constant in config.ts (a courtesy gate; the server stays authoritative).
   featureFlags: FeatureFlags | null;
+  // True when the most recent reconcile() couldn't reach the server at all (a network failure, not a rejected token).
+  // Only meaningful while `user` is null: it tells the caller "we have a token we couldn't verify yet", as opposed to
+  // "there's no session" — see reconcile()'s catch block.
+  sessionCheckFailed: boolean;
+  // Re-runs the session check (the Retry action for the sessionCheckFailed screen).
+  retrySessionCheck: () => Promise<void>;
   login: (c: LoginCredentials) => Promise<AuthOutcome>;
   register: (c: RegisterCredentials) => Promise<AuthOutcome>;
   loginWithGoogle: (idToken: string, options?: GoogleAuthOptions) => Promise<AuthOutcome>;
@@ -58,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionCheckFailed, setSessionCheckFailed] = useState(false);
 
   // Bumped on every reconciliation attempt (initial restore and cross-tab resync). Checking it after each async step stops a
   // slower, superseded attempt (e.g. two rapid logins in another tab) from clobbering newer state.
@@ -82,20 +89,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (isCurrent()) {
             setUser(null);
             setFeatureFlags(null);
+            setSessionCheckFailed(false);
           }
           return;
         }
-        if (state === 'unavailable') return;
+        if (state === 'unavailable') {
+          // A network failure or server error, not a rejection — leave the stored session alone and flag the check as
+          // failed instead; the caller (App.tsx) only acts on that flag while `user` is still null, so a background
+          // reconcile (already signed in) stays silent and just gets to try again later.
+          if (isCurrent()) setSessionCheckFailed(true);
+          return;
+        }
       }
       const res = await api<{ user: User; featureFlags: FeatureFlags }>('/auth/me');
       if (isCurrent()) {
         setUser(res.user);
         setFeatureFlags(res.featureFlags);
+        setSessionCheckFailed(false);
       }
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401 && isCurrent()) {
-        setUser(null);
-        setFeatureFlags(null);
+      if (err instanceof ApiError && err.status === 401) {
+        // A real rejection: "no session" or "refresh token expired/revoked".
+        if (isCurrent()) {
+          setUser(null);
+          setFeatureFlags(null);
+          setSessionCheckFailed(false);
+        }
+      } else if (isCurrent()) {
+        setSessionCheckFailed(true);
       }
     } finally {
       if (isCurrent()) setLoading(false);
@@ -207,6 +228,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       featureFlags,
       loading,
+      sessionCheckFailed,
+      retrySessionCheck: reconcile,
       login,
       register,
       loginWithGoogle,
@@ -215,7 +238,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       updateUser,
     }),
-    [user, featureFlags, loading, login, register, loginWithGoogle, forgotPassword, resetPassword, logout, updateUser]
+    [
+      user,
+      featureFlags,
+      loading,
+      sessionCheckFailed,
+      reconcile,
+      login,
+      register,
+      loginWithGoogle,
+      forgotPassword,
+      resetPassword,
+      logout,
+      updateUser,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

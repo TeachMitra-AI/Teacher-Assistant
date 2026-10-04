@@ -112,7 +112,7 @@ describe('attemptSync', () => {
     expect(item?.nextRetryAt).toBeGreaterThan(Date.now());
   });
 
-  test('a real rejection marks the item permanently errored and moves on to the next one', async () => {
+  test('a real rejection marks the item permanently errored (with the server\'s real reason) and moves on to the next one', async () => {
     enqueueAction('u1', '2026-08-29', 'check-in', EVIDENCE);
     enqueueAction('u1', '2026-08-30', 'check-in', EVIDENCE);
     mockedApi.checkIn
@@ -123,8 +123,21 @@ describe('attemptSync', () => {
 
     expect(mockedApi.checkIn).toHaveBeenCalledTimes(2); // the pass continued past the permanent error
     const stuck = getQueuedAction('u1', '2026-08-29', 'check-in');
-    expect(stuck?.permanentError).toBeTruthy();
+    // The real server message, not a generic stand-in — a teacher retrying has a reason to know retrying won't help.
+    expect(stuck?.permanentError).toBe('You already checked in today.');
     expect(getQueuedAction('u1', '2026-08-30', 'check-in')).toBeNull(); // synced and removed
+  });
+
+  test('a permanent failure with no ApiError message falls back to the generic explanation', async () => {
+    enqueueAction('u1', '2026-08-29', 'check-in', EVIDENCE);
+    mockedApi.checkIn.mockRejectedValueOnce(new Error('boom'));
+
+    await attemptSync('u1');
+
+    const stuck = getQueuedAction('u1', '2026-08-29', 'check-in');
+    expect(stuck?.permanentError).toBe(
+      'Could not sync this attendance action. It has not been lost — you can retry or discard it.'
+    );
   });
 
   test('skips an item that already has a permanent error', async () => {

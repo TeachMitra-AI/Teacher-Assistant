@@ -5,6 +5,8 @@ import { Mail, Lock, User, Eye, EyeOff, CircleAlert, ArrowLeft, Lightbulb, Langu
 import { useAuth } from '../auth';
 import { ApiError } from '../api';
 import { GOOGLE_CLIENT_ID } from '../config';
+import { useRetryCountdown } from '../hooks/useRetryCountdown';
+import { formatRetryWait } from '../lib/retryCountdown';
 import type { AuthOutcome, SchoolOption } from '../types';
 import { emailError as emailFieldError, passwordError as passwordFieldError } from '../lib/authValidation';
 
@@ -47,6 +49,15 @@ export default function AuthForm({
   // and send a second sign-in request.
   const inFlight = useRef(false);
 
+  // The auth endpoints' own rate limiter (server/src/index.js's authLimiter), hit by repeated failed attempts —
+  // distinct from a wrong-password error, this one has a known recovery time, so it gets a live countdown instead
+  // of a static "try again later" the teacher can't act on.
+  const [retryAt, setRetryAt] = useState<number | null>(null);
+  const { remainingMs: retryRemainingMs, ready: retryReady } = useRetryCountdown(retryAt);
+  useEffect(() => {
+    if (retryAt != null && retryReady) setRetryAt(null);
+  }, [retryAt, retryReady]);
+
   // Field errors surface only after a field is visited (blur) or a submit is attempted, so nothing is flagged on the first pass.
   const [touched, setTouched] = useState<{ email?: boolean; password?: boolean }>({});
   function touch(field: keyof typeof touched) {
@@ -73,12 +84,14 @@ export default function AuthForm({
     setMode(next);
     setView('form');
     setError('');
+    setRetryAt(null);
     setTouched({});
   }
 
   function backToForm() {
     setView('form');
     setError('');
+    setRetryAt(null);
     setAttempt(null);
     setSchoolChoices([]);
   }
@@ -120,9 +133,20 @@ export default function AuthForm({
     return err instanceof ApiError ? err.message : 'Something went wrong. Please try again.';
   }
 
+  // Shared tail of every catch block below: a rate-limit failure with a known reset time gets the countdown instead
+  // of the server's static "wait a few minutes" wording, which the teacher has no way to act on.
+  function applyError(err: unknown) {
+    if (err instanceof ApiError && err.code === 'RATE_LIMITED' && err.retryAt != null) {
+      setRetryAt(err.retryAt);
+      return;
+    }
+    setError(describeError(err));
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
+    setRetryAt(null);
     // Marking every field touched surfaces the inline errors instead of repeating them in the banner.
     setTouched({ email: true, password: true });
 
@@ -146,7 +170,7 @@ export default function AuthForm({
         );
       }
     } catch (err) {
-      setError(describeError(err));
+      applyError(err);
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -157,6 +181,7 @@ export default function AuthForm({
   async function handleGoogleToken(idToken: string) {
     if (inFlight.current) return;
     setError('');
+    setRetryAt(null);
 
     inFlight.current = true;
     setBusy(true);
@@ -164,7 +189,7 @@ export default function AuthForm({
       const options = mode === 'register' ? { signup: true, name: name.trim() || undefined } : undefined;
       applyOutcome(await loginWithGoogle(idToken, options), { via: 'google', idToken });
     } catch (err) {
-      setError(describeError(err));
+      applyError(err);
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -175,6 +200,7 @@ export default function AuthForm({
   async function chooseSchool(school: SchoolOption) {
     if (!attempt || inFlight.current) return;
     setError('');
+    setRetryAt(null);
     inFlight.current = true;
     setBusy(true);
     try {
@@ -184,7 +210,7 @@ export default function AuthForm({
           : await loginWithGoogle(attempt.idToken, { schoolId: school.id });
       applyOutcome(outcome, attempt);
     } catch (err) {
-      setError(describeError(err));
+      applyError(err);
       setView('form');
     } finally {
       inFlight.current = false;
@@ -291,16 +317,22 @@ export default function AuthForm({
                 type="button"
                 className="btn-primary auth-submit"
                 onClick={() => chooseSchool(school)}
-                disabled={busy}
+                disabled={busy || (retryAt != null && !retryReady)}
               >
                 {school.name} ({school.code})
               </button>
             ))}
 
-            {error && (
+            {retryAt != null && !retryReady ? (
               <p className="auth-error" role="alert">
-                <CircleAlert size={16} aria-hidden="true" /> {error}
+                <CircleAlert size={16} aria-hidden="true" /> Too many attempts. You can try again in {formatRetryWait(retryRemainingMs)}.
               </p>
+            ) : (
+              error && (
+                <p className="auth-error" role="alert">
+                  <CircleAlert size={16} aria-hidden="true" /> {error}
+                </p>
+              )
             )}
 
             <button type="button" className="btn-text auth-back" onClick={backToForm} disabled={busy}>
@@ -385,13 +417,24 @@ export default function AuthForm({
               )}
             </label>
 
-            {error && (
+            {retryAt != null && !retryReady ? (
               <p className="auth-error" role="alert">
-                <CircleAlert size={16} aria-hidden="true" /> {error}
+                <CircleAlert size={16} aria-hidden="true" /> Too many attempts. You can try again in {formatRetryWait(retryRemainingMs)}.
               </p>
+            ) : (
+              error && (
+                <p className="auth-error" role="alert">
+                  <CircleAlert size={16} aria-hidden="true" /> {error}
+                </p>
+              )
             )}
 
-            <button type="submit" className="btn-primary auth-submit" disabled={busy} aria-busy={busy}>
+            <button
+              type="submit"
+              className="btn-primary auth-submit"
+              disabled={busy || (retryAt != null && !retryReady)}
+              aria-busy={busy}
+            >
               {busy ? (
                 <>
                   <span className="btn-spinner" aria-hidden="true" /> Please wait…
