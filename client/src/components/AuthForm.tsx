@@ -6,14 +6,13 @@ import { useAuth } from '../auth';
 import { ApiError } from '../api';
 import { GOOGLE_CLIENT_ID } from '../config';
 import type { AuthOutcome, SchoolOption } from '../types';
+import { emailError as emailFieldError, passwordError as passwordFieldError } from '../lib/authValidation';
 
 export type Mode = 'login' | 'register';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 // Which panel the card shows. Sign-in and sign-up can end somewhere other than "you're in": waiting on an approver, turned
-// down, or needing to pick a school.
-type View = 'form' | 'pending' | 'rejected' | 'school_picker';
+// down, suspended, or needing to pick a school.
+type View = 'form' | 'pending' | 'rejected' | 'suspended' | 'school_picker';
 
 // What to re-submit once a school is picked; sign-in needs the credentials again since the first attempt issued no session.
 type Attempt =
@@ -44,18 +43,17 @@ export default function AuthForm({
   const [busy, setBusy] = useState(false);
   const [schoolChoices, setSchoolChoices] = useState<SchoolOption[]>([]);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
+  // Set synchronously before the first await. `busy` is state, so a second click in the same tick would still see it false
+  // and send a second sign-in request.
+  const inFlight = useRef(false);
 
   // Field errors surface only after a field is visited (blur) or a submit is attempted, so nothing is flagged on the first pass.
   const [touched, setTouched] = useState<{ email?: boolean; password?: boolean }>({});
   function touch(field: keyof typeof touched) {
     setTouched((t) => (t[field] ? t : { ...t, [field]: true }));
   }
-  const emailError = touched.email && email.length > 0 && !EMAIL_RE.test(email.trim())
-    ? 'Enter a valid email address.'
-    : '';
-  const passwordError = touched.password && password.length > 0 && password.length < 8
-    ? 'Password must be at least 8 characters.'
-    : '';
+  const emailError = touched.email ? emailFieldError(email) : '';
+  const passwordError = touched.password ? passwordFieldError(password, mode) : '';
 
   // Google's button won't take a percentage width, so to match the full-width submit button its pixel width is measured off
   // this wrapper and kept in sync across breakpoints and font-size changes via ResizeObserver.
@@ -99,6 +97,10 @@ export default function AuthForm({
       setView('rejected');
       return;
     }
+    if (outcome.kind === 'suspended') {
+      setView('suspended');
+      return;
+    }
     if (outcome.kind === 'needs_school') {
       setSchoolChoices(outcome.schools);
       setAttempt(retry);
@@ -124,9 +126,10 @@ export default function AuthForm({
     // Marking every field touched surfaces the inline errors instead of repeating them in the banner.
     setTouched({ email: true, password: true });
 
-    if (!EMAIL_RE.test(email.trim())) return;
-    if (password.length < 8) return;
+    if (!email.trim() || emailFieldError(email) || !password || passwordFieldError(password, mode)) return;
+    if (inFlight.current) return;
 
+    inFlight.current = true;
     setBusy(true);
     try {
       if (mode === 'login') {
@@ -145,14 +148,17 @@ export default function AuthForm({
     } catch (err) {
       setError(describeError(err));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
 
   // Google returns an ID token; which account it maps to, approval and school assignment are decided server-side from the verified token.
   async function handleGoogleToken(idToken: string) {
+    if (inFlight.current) return;
     setError('');
 
+    inFlight.current = true;
     setBusy(true);
     try {
       const options = mode === 'register' ? { signup: true, name: name.trim() || undefined } : undefined;
@@ -160,14 +166,16 @@ export default function AuthForm({
     } catch (err) {
       setError(describeError(err));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
 
   // Re-runs the original attempt, this time naming the school.
   async function chooseSchool(school: SchoolOption) {
-    if (!attempt) return;
+    if (!attempt || inFlight.current) return;
     setError('');
+    inFlight.current = true;
     setBusy(true);
     try {
       const outcome =
@@ -179,6 +187,7 @@ export default function AuthForm({
       setError(describeError(err));
       setView('form');
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -188,6 +197,8 @@ export default function AuthForm({
       ? 'Almost there — your account needs approval.'
       : view === 'rejected'
         ? 'This account was not approved.'
+        : view === 'suspended'
+          ? 'This account is suspended.'
         : view === 'school_picker'
           ? 'You have an account at more than one school.'
           : mode === 'login'
@@ -250,6 +261,17 @@ export default function AuthForm({
           <p className="auth-hint" role="status">
             A school administrator did not approve this account. Please check with your school
             administrator if you think this is a mistake.
+          </p>
+          <button type="button" className="btn-primary auth-submit" onClick={() => switchMode('login')}>
+            Back to sign in
+          </button>
+        </>
+      )}
+
+      {view === 'suspended' && (
+        <>
+          <p className="auth-hint" role="status">
+            Sign-in is turned off for this account. Please contact your school administrator if you think this is a mistake.
           </p>
           <button type="button" className="btn-primary auth-submit" onClick={() => switchMode('login')}>
             Back to sign in
@@ -325,7 +347,7 @@ export default function AuthForm({
                   required
                 />
               </span>
-              {emailError && <span className="auth-field-error" id="email-error">{emailError}</span>}
+              {emailError && <span className="auth-field-error" id="email-error" role="alert">{emailError}</span>}
             </label>
 
             <label className="auth-field">
@@ -355,7 +377,7 @@ export default function AuthForm({
                 </button>
               </span>
               {passwordError ? (
-                <span className="auth-field-error" id="password-help">{passwordError}</span>
+                <span className="auth-field-error" id="password-help" role="alert">{passwordError}</span>
               ) : (
                 mode === 'register' && (
                   <span className="auth-field-help" id="password-help">At least 8 characters. Choose something you will remember.</span>

@@ -467,15 +467,26 @@ describe('NO PATH RETURNS A 5xx (G22)', () => {
   });
 
   test('a database failure during the profile read degrades, it does not 500', async () => {
-    const spy = vi.spyOn(prisma.user, 'findUnique').mockRejectedValue(new Error('db is gone'));
+    // Only the profile read fails. The account-status check in authRequired (which reads the same table) is left alone:
+    // it's what lets this request reach the route at all, and it fails closed on its own (see auth-account-status.test.js).
+    // Save and reassign rather than vi.spyOn: spying on this Prisma client's delegate methods doesn't restore cleanly, and
+    // leaves prisma.user.findUnique undefined for the rest of the file (see auth.test.js).
+    const originalFindUnique = prisma.user.findUnique;
+    prisma.user.findUnique = (args) => (
+      args?.select && 'status' in args.select
+        ? originalFindUnique.call(prisma.user, args)
+        : Promise.reject(new Error('db is gone'))
+    );
     mockGeminiFetch([proposalResponse(GOOD_PROPOSAL)]);
 
-    const res = await interpret({ utterance: 'Generate a Class 5 fractions worksheet' });
-    expect(res.status).toBe(200);
-    // The profile just contributes nothing; the rest of the prefill survives.
-    expect(res.body.actions[0].params.topic).toBe('fractions');
-
-    spy.mockRestore();
+    try {
+      const res = await interpret({ utterance: 'Generate a Class 5 fractions worksheet' });
+      expect(res.status).toBe(200);
+      // The profile just contributes nothing; the rest of the prefill survives.
+      expect(res.body.actions[0].params.topic).toBe('fractions');
+    } finally {
+      prisma.user.findUnique = originalFindUnique;
+    }
   });
 });
 

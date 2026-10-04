@@ -5,7 +5,7 @@
 // web version: the cross-tab `storage` event listener (auth.tsx:117-136) —
 // there are no browser tabs on a phone, so there is nothing to resync with.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { api, ApiError } from '../api/client';
+import { api, ApiError, onSessionEnded } from '../api/client';
 import { setSession, getToken, getRefreshToken } from '../api/session';
 import { getCachedPushToken } from '../lib/push';
 import { startAutoSync } from '../lib/offlineQueue';
@@ -45,6 +45,7 @@ function outcomeForError(err: unknown): AuthOutcome | null {
   if (!(err instanceof ApiError)) return null;
   if (err.status === 403 && err.message === 'pending_approval') return { kind: 'pending' };
   if (err.status === 403 && err.message === 'registration_rejected') return { kind: 'rejected' };
+  if (err.status === 403 && err.message === 'account_suspended') return { kind: 'suspended' };
   if (err.status === 404 && err.message === 'google_not_registered') return { kind: 'not_registered' };
   if (err.status === 503 && err.message === 'google_not_configured') return { kind: 'unavailable' };
   return null;
@@ -104,6 +105,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       if (id === reconcileIdRef.current) setLoading(false);
     }
+  }, []);
+
+  // The server ended the session during a call (see api/client.ts). Clear the user now. This does not bump reconcileIdRef: an
+  // in-flight restore that just reported the refusal must still finish and clear its loading state.
+  useEffect(() => {
+    return onSessionEnded(() => {
+      setUser(null);
+      setFeatureFlags(null);
+    });
   }, []);
 
   // Restore the session from SecureStore on app launch. reconcile()'s own

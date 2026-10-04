@@ -56,7 +56,9 @@ model User {
   // Google's stable subject claim (`sub`) from a verified ID token. Indexed
   // because Google sign-in looks an identity up across every school at once.
   googleSub        String?
-  status           String    @default("active") // active | pending | rejected
+  status           String    @default("active") // active | pending | rejected | suspended
+  // When the status last changed to or from suspended. A token issued before this instant is refused (see middleware/auth.js).
+  statusChangedAt  DateTime?
   // Legacy: the pre-email name+PIN credential. Retained so the migration
   // never has to drop a column; no current code path reads or writes it.
   pinHash          String?

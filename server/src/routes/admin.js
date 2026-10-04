@@ -8,13 +8,14 @@ const { z } = require('zod');
 const { prisma } = require('../lib/db');
 const { asyncHandler } = require('../lib/asyncHandler');
 const { authRequired, requireRole } = require('../middleware/auth');
+const { disconnectUserSockets } = require('../lib/socketServer');
 
 const router = express.Router();
 
 const ADMIN_ROLES = ['school_admin', 'resource_person', 'super_admin'];
 
 const USER_ROLES = ['teacher', 'school_admin', 'resource_person', 'super_admin'];
-const USER_STATUSES = ['active', 'pending', 'rejected'];
+const USER_STATUSES = ['active', 'pending', 'rejected', 'suspended'];
 
 // Shared list-query parsing for the paginated admin tables. The page size is clamped server-side because that, not
 // client behaviour, bounds these endpoints: GET /users used to select every user row, buffer them all and
@@ -327,6 +328,60 @@ router.patch('/users/:id/approve', authRequired, requireRole('school_admin', 'su
 // PATCH /api/admin/users/:id/reject — same gate as approve.
 router.patch('/users/:id/reject', authRequired, requireRole('school_admin', 'super_admin'), asyncHandler(async (req, res) => {
   return decidePendingUser(req, res, { status: 'rejected', eventType: 'user_rejected' });
+}));
+
+// Suspend or reactivate an approved account. Scope is checked as for the decisions above. A school_admin can't act on another
+// admin account, so one admin can't lock another out. Nobody can change their own status, so an admin can't lock themselves
+// out either. Suspending revokes every session at once, and authRequired refuses the account's existing access tokens.
+async function setAccountStatus(req, res, { from, to, eventType }) {
+  const target = await prisma.user.findUnique({ where: { id: req.params.id } });
+  if (!target) return res.status(404).json({ error: 'User not found.' });
+
+  const scope = await schoolScope(req.user);
+  if (scope !== null && !scope.includes(target.schoolId)) {
+    return res.status(403).json({ error: 'You do not have permission to do this.' });
+  }
+  if (target.id === req.user.id) {
+    return res.status(400).json({ error: 'You cannot change the status of your own account.' });
+  }
+  if (req.user.role === 'school_admin' && ['school_admin', 'super_admin'].includes(target.role)) {
+    return res.status(403).json({ error: 'You do not have permission to do this.' });
+  }
+  if (target.status !== from) {
+    return res.status(409).json({ error: to === 'suspended' ? 'This account is not active.' : 'This account is not suspended.' });
+  }
+
+  const updated = await prisma.user.update({
+    where: { id: target.id },
+    data: { status: to, statusChangedAt: new Date() },
+  });
+  if (to === 'suspended') {
+    await prisma.session.updateMany({
+      where: { userId: target.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    disconnectUserSockets(target.id);
+  }
+  await prisma.event.create({
+    data: {
+      userId: req.user.id, // the admin who acted, not the teacher
+      schoolId: target.schoolId,
+      type: eventType,
+      metadata: JSON.stringify({ targetUserId: target.id, targetEmail: target.email }),
+    },
+  });
+
+  return res.json({ id: updated.id, status: updated.status });
+}
+
+// PATCH /api/admin/users/:id/suspend: school_admin/super_admin only. Blocks sign-in and ends the account's sessions now.
+router.patch('/users/:id/suspend', authRequired, requireRole('school_admin', 'super_admin'), asyncHandler(async (req, res) => {
+  return setAccountStatus(req, res, { from: 'active', to: 'suspended', eventType: 'user_suspended' });
+}));
+
+// PATCH /api/admin/users/:id/reactivate: same gate as suspend. The teacher signs in again; old sessions stay ended.
+router.patch('/users/:id/reactivate', authRequired, requireRole('school_admin', 'super_admin'), asyncHandler(async (req, res) => {
+  return setAccountStatus(req, res, { from: 'suspended', to: 'active', eventType: 'user_reactivated' });
 }));
 
 const roleSchema = z.object({

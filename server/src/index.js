@@ -342,7 +342,10 @@ app.use(
       return callback(new Error('Not allowed by CORS'));
     },
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Transport'],
+    // The refresh cookie is sent on cross-origin requests from the web app. Credentials need an explicit origin, which
+    // cors() echoes back, never '*'.
+    credentials: true,
     // Lets a cross-origin fetch() read Content-Disposition, so CSV/Excel downloads (routes/classroom.js exports) get the server's filename.
     exposedHeaders: ['Content-Disposition'],
   })
@@ -508,8 +511,12 @@ const avatarLimiter = rateLimit({
 // for 15 minutes with "Too many attempts" pointing at their password.
 // The production default stays 30, since slowing online credential guessing is the real goal; only the development
 // ceiling is raised. The 15-minute window is intentionally longer than RATE_LIMIT_WINDOW_MINUTES.
+// Credential endpoints only: login, register, Google, and password reset. /me, /refresh, /logout and the session routes are
+// deliberately not counted. They run on every page load and in every open tab, and the limiter is per IP, so counting them
+// let one school behind a single public address lock its own teachers out. The per-IP cap is a spray guard across many
+// accounts; a teacher's own failures are limited per (IP, email) below.
 const AUTH_RATE_LIMIT_MAX_REQUESTS = parseIntEnv(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS, {
-  name: 'AUTH_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 30 : 300, min: 1, max: 100000,
+  name: 'AUTH_RATE_LIMIT_MAX_REQUESTS', defaultValue: isProduction ? 100 : 300, min: 1, max: 100000,
 });
 
 const authLimiter = rateLimit({
@@ -520,13 +527,30 @@ const authLimiter = rateLimit({
   message: { error: 'Too many attempts. Please wait a few minutes and try again.' },
 });
 
+// Failed sign-ins per (IP, email). skipSuccessfulRequests counts only failures, so a teacher who signs in normally is never
+// blocked. A bad actor is blocked for their own address and that one account, not for everyone sharing the school's IP.
+const LOGIN_FAILURES_PER_EMAIL = parseIntEnv(process.env.LOGIN_FAILURES_PER_EMAIL, {
+  name: 'LOGIN_FAILURES_PER_EMAIL', defaultValue: 5, min: 1, max: 1000,
+});
+const loginFailureLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: LOGIN_FAILURES_PER_EMAIL,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => `${req.ip}|${String(req.body?.email || '').trim().toLowerCase()}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many sign-in attempts. Please wait a few minutes and try again.' },
+});
+
 // Routes
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.use('/api/auth', authLimiter, authRouter);
+app.use(['/api/auth/login', '/api/auth/register', '/api/auth/google', '/api/auth/forgot-password', '/api/auth/reset-password'], authLimiter);
+app.post('/api/auth/login', loginFailureLimiter);
+app.use('/api/auth', authRouter);
 
 // Is this teacher inside Classroom Mode's staged rollout? Mirrors `isWithinRollout` in routes/attachments.js, including
 // fail-closed: an empty allow-list means every school, a non-empty one costs a lookup, and a lookup that throws denies.
