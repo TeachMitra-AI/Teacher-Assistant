@@ -22,7 +22,17 @@ type Attempt =
 
 // The auth form, used as the /login page content (LoginPage) and inside the pop-up (AuthModal). `initialMode` sets the
 // active tab on mount and is read once, like LoginPage's ?mode=register param.
-export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'light' | 'dark'; initialMode?: Mode }) {
+export default function AuthForm({
+  theme,
+  initialMode = 'login',
+  valueStrip = true,
+}: {
+  theme: 'light' | 'dark';
+  initialMode?: Mode;
+  // The marketing pills stand in for the hero panel on /login at small widths. The pop-up drops them: it's a sign-up step, and
+  // the value proposition is already on the page behind it.
+  valueStrip?: boolean;
+}) {
   const { login, register, loginWithGoogle } = useAuth();
   const [mode, setMode] = useState<Mode>(initialMode);
   const [view, setView] = useState<View>('form');
@@ -192,13 +202,15 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
         <p>{subtitle}</p>
       </div>
 
-      {/* Stands in for the hero panel when there isn't one (the modal) or once it's hidden below 820px (see .auth-value-strip
-          in index.css), so mobile still gets a compact value proposition. */}
-      <ul className="auth-value-strip" aria-hidden="true">
-        <li><Lightbulb size={13} aria-hidden="true" /> Lesson ideas</li>
-        <li><Languages size={13} aria-hidden="true" /> 9 languages</li>
-        <li><BookOpen size={13} aria-hidden="true" /> Classroom-ready</li>
-      </ul>
+      {/* Stands in for the hero panel once it's hidden below 820px (see .auth-value-strip in index.css), so /login on mobile
+          still gets a compact value proposition. */}
+      {valueStrip && (
+        <ul className="auth-value-strip" aria-hidden="true">
+          <li><Lightbulb size={13} aria-hidden="true" /> Lesson ideas</li>
+          <li><Languages size={13} aria-hidden="true" /> 9 languages</li>
+          <li><BookOpen size={13} aria-hidden="true" /> Classroom-ready</li>
+        </ul>
+      )}
 
       {view === 'form' && (
         <div className="auth-tabs" role="group" aria-label="Choose sign in or register">
