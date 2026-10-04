@@ -29,7 +29,7 @@ import { spacing } from '../../theme/tokens';
 import type { AuthOutcome, SchoolOption } from '../../types';
 
 type Mode = 'login' | 'register';
-type ViewState = 'form' | 'pending' | 'rejected' | 'school_picker';
+type ViewState = 'form' | 'pending' | 'rejected' | 'suspended' | 'school_picker';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -94,6 +94,7 @@ export function AuthScreen({ navigation }: Props) {
     if (outcome.kind === 'signed_in') return; // RootNavigator swaps this screen out once `user` is set.
     if (outcome.kind === 'pending') return setView('pending');
     if (outcome.kind === 'rejected') return setView('rejected');
+    if (outcome.kind === 'suspended') return setView('suspended');
     if (outcome.kind === 'needs_school') {
       setSchoolChoices(outcome.schools);
       setAttempt(retry);
@@ -208,6 +209,8 @@ export function AuthScreen({ navigation }: Props) {
               ? 'Almost there — your account needs approval.'
               : view === 'rejected'
                 ? 'This account was not approved.'
+                : view === 'suspended'
+                  ? 'This account is suspended.'
                 : view === 'school_picker'
                   ? 'You have an account at more than one school.'
                   : mode === 'login'
@@ -231,6 +234,16 @@ export function AuthScreen({ navigation }: Props) {
             <ThemedText accessibilityRole="alert">
               A school administrator did not approve this account. Please check with your school administrator if
               you think this is a mistake.
+            </ThemedText>
+            <Button title="Back to sign in" onPress={() => switchMode('login')} />
+          </Card>
+        )}
+
+        {view === 'suspended' && (
+          <Card style={styles.gap}>
+            <ThemedText accessibilityRole="alert">
+              Sign-in is turned off for this account. Please contact your school administrator if you think this is a
+              mistake.
             </ThemedText>
             <Button title="Back to sign in" onPress={() => switchMode('login')} />
           </Card>

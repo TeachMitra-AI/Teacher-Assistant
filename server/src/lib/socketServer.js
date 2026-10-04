@@ -4,6 +4,13 @@
 // because the app runs a single instance today (see index.js's `trust proxy` note). Revisit before going multi-instance.
 const { Server } = require('socket.io');
 const { decode } = require('../middleware/auth');
+const { prisma } = require('./db');
+
+// Set by initSocketServer. Lets the admin suspend route cut off a suspended teacher's live sockets, not just future ones.
+let disconnectRoom = null;
+function disconnectUserSockets(userId) {
+  if (disconnectRoom) disconnectRoom(userId);
+}
 
 /**
  * @param {import('http').Server} httpServer
@@ -28,16 +35,25 @@ function initSocketServer(httpServer, { isOriginAllowed, isEnabled }) {
   // The gate. NOTIFICATIONS_ENABLED off rejects every handshake, matching the REST routes' gate, so a disabled
   // deployment has no realtime surface. `isEnabled()` is read on every handshake, not once at boot, so flipping
   // the flag takes effect without a restart.
-  io.use((socket, next) => {
+  disconnectRoom = (userId) => io.in(`user:${userId}`).disconnectSockets(true);
+
+  io.use(async (socket, next) => {
     if (!isEnabled()) return next(new Error('Notifications are not enabled.'));
     const token = socket.handshake.auth && socket.handshake.auth.token;
     if (!token) return next(new Error('Authentication required.'));
     try {
       socket.user = decode(token);
-      return next();
     } catch {
       return next(new Error('Invalid or expired session.'));
     }
+    // A token is only as good as its account: a suspended teacher can't open a new realtime connection either.
+    try {
+      const account = await prisma.user.findUnique({ where: { id: socket.user.id }, select: { status: true } });
+      if (!account || account.status !== 'active') return next(new Error('Account is no longer active.'));
+    } catch {
+      return next(new Error('Unable to verify your session.'));
+    }
+    return next();
   });
 
   io.on('connection', (socket) => {
@@ -67,4 +83,4 @@ function initSocketServer(httpServer, { isOriginAllowed, isEnabled }) {
   return { io, emitToUser, connectedUserCount };
 }
 
-module.exports = { initSocketServer };
+module.exports = { initSocketServer, disconnectUserSockets };

@@ -52,10 +52,17 @@ describe('session / refresh-token revocation', () => {
     expect(useNew.status).toBe(200);
   });
 
-  test('reusing a revoked/rotated-out refresh token revokes ALL of that user\'s sessions (theft response)', async () => {
+  test('reusing a rotated-out refresh token revokes ALL of that user\'s sessions (theft response), once the race window has passed', async () => {
+    const { hashToken } = require('../src/middleware/auth');
     const first = await login(fx.schoolAdminA);
     const rotated = await http.post('/api/auth/refresh').send({ refreshToken: first.refreshToken });
     expect(rotated.status).toBe(200);
+
+    // Age the rotation past the race window, so this is a reuse rather than two tabs racing.
+    await prisma.session.update({
+      where: { tokenHash: hashToken(first.refreshToken) },
+      data: { revokedAt: new Date(Date.now() - 60000) },
+    });
 
     // Reuse the old (now-revoked) token — simulates a stolen refresh token
     // being used after the legitimate client already rotated past it.
@@ -67,6 +74,20 @@ describe('session / refresh-token revocation', () => {
     const evenNewOneDead = await http.post('/api/auth/refresh')
       .send({ refreshToken: rotated.body.refreshToken });
     expect(evenNewOneDead.status).toBe(401);
+  });
+
+  test('a rotated-out token presented within the race window is a retryable 409 and revokes nothing (two tabs refreshing at once)', async () => {
+    const first = await login(fx.teacherA2);
+    const rotated = await http.post('/api/auth/refresh').send({ refreshToken: first.refreshToken });
+    expect(rotated.status).toBe(200);
+
+    const race = await http.post('/api/auth/refresh').send({ refreshToken: first.refreshToken });
+    expect(race.status).toBe(409);
+    expect(race.body.code).toBe('refresh_conflict');
+
+    // The winner's successor is untouched: the other tab's session survives.
+    const survivor = await http.post('/api/auth/refresh').send({ refreshToken: rotated.body.refreshToken });
+    expect(survivor.status).toBe(200);
   });
 
   test('logout revokes the session; the refresh token can no longer be used', async () => {

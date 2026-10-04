@@ -166,6 +166,8 @@ export type AuthOutcome =
   // Registered, now waiting on an admin.
   | { kind: 'pending' }
   | { kind: 'rejected' }
+  // An admin suspended this account. Sign-in is refused with the same message on every client.
+  | { kind: 'suspended' }
   | { kind: 'needs_school'; schools: SchoolOption[] }
   // Google token was valid, but no account here uses that Google identity.
   | { kind: 'not_registered' }

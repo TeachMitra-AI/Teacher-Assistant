@@ -80,11 +80,11 @@ describe('auth', () => {
       expect(res.status).toBe(401);
     });
 
-    test('account locks after too many failed attempts, then unlocks after the window passes', async () => {
-      // Dedicated user so this doesn't disturb the lockout counters other
-      // tests in this file rely on.
+    // Failed sign-ins are limited per (IP, email), not per account, so one attacker can't lock a teacher out for everyone.
+    // Each test uses its own fixed address, so the buckets don't leak between tests.
+    test('one address that keeps failing is blocked for that account, and the correct password is refused from it too', async () => {
       const email = 'auth-lockout@example.com';
-      const lockUser = await prisma.user.create({
+      await prisma.user.create({
         data: {
           schoolId: fx.schoolA.id,
           name: 'Lockout Test User',
@@ -94,23 +94,50 @@ describe('auth', () => {
           passwordHash: await bcrypt.hash(PASSWORD, 10),
         },
       });
+      const attacker = makeClient(app, '198.51.100.10');
 
       for (let i = 0; i < 5; i++) {
-        await http.post('/api/auth/login').send({ email, password: 'wrong-password' });
+        const res = await attacker.post('/api/auth/login').send({ email, password: 'wrong-password' });
+        expect(res.status).toBe(401);
       }
 
-      const lockedRes = await http.post('/api/auth/login')
-        .send({ email, password: PASSWORD }); // correct password, still locked
-      expect(lockedRes.status).toBe(423);
+      const blocked = await attacker.post('/api/auth/login').send({ email, password: PASSWORD });
+      expect(blocked.status).toBe(429);
+      expect(blocked.body.error).toMatch(/too many sign-in attempts/i);
+    });
 
-      // Simulate the lockout window having already passed.
-      await prisma.user.update({
-        where: { id: lockUser.id },
-        data: { lockedUntil: new Date(Date.now() - 1000) },
+    test('an attacker cannot lock the owner out: the owner signs in normally from their own address', async () => {
+      const email = 'auth-no-dos@example.com';
+      await prisma.user.create({
+        data: {
+          schoolId: fx.schoolA.id,
+          name: 'Not Lockable By Others',
+          email,
+          role: 'teacher',
+          status: 'active',
+          passwordHash: await bcrypt.hash(PASSWORD, 10),
+        },
       });
+      const attacker = makeClient(app, '198.51.100.20');
+      const owner = makeClient(app, '198.51.100.21');
 
-      const unlockedRes = await http.post('/api/auth/login').send({ email, password: PASSWORD });
-      expect(unlockedRes.status).toBe(200);
+      for (let i = 0; i < 6; i++) {
+        await attacker.post('/api/auth/login').send({ email, password: 'wrong-password' });
+      }
+
+      const ownerRes = await owner.post('/api/auth/login').send({ email, password: PASSWORD });
+      expect(ownerRes.status).toBe(200);
+    });
+
+    test('an unknown email gets the same throttled response as a real one, so the limit reveals nothing', async () => {
+      const email = 'nobody-throttled@example.com';
+      const attacker = makeClient(app, '198.51.100.30');
+      for (let i = 0; i < 5; i++) {
+        await attacker.post('/api/auth/login').send({ email, password: 'wrong-password' });
+      }
+      const blocked = await attacker.post('/api/auth/login').send({ email, password: 'wrong-password' });
+      expect(blocked.status).toBe(429);
+      expect(blocked.body.error).toMatch(/too many sign-in attempts/i);
     });
   });
 
@@ -239,22 +266,29 @@ describe('auth', () => {
       expect(res.body.error).toBe('registration_rejected');
     });
 
-    test('a duplicate email at the same school is a 409', async () => {
+    // Answering 409 here told anyone which teachers have accounts. A duplicate now gets the same 201 as a new registration,
+    // and nothing is changed: the existing password still works and the attempted one doesn't.
+    test('a duplicate email at the same school gets the same 201 as a new one, and changes nothing', async () => {
       const res = await http.post('/api/auth/register').send({
         schoolCode: fx.schoolA.code,
         name: 'Someone Else Entirely',
         email: fx.teacherA.email,
         password: 'a-good-password',
       });
-      expect(res.status).toBe(409);
-      expect(res.body.error).toMatch(/already/i);
+      expect(res.status).toBe(201);
+      expect(res.body).toEqual({ status: 'active' });
+
+      const original = await http.post('/api/auth/login').send({ email: fx.teacherA.email, password: PASSWORD });
+      expect(original.status).toBe(200);
+      const attempted = await http.post('/api/auth/login').send({ email: fx.teacherA.email, password: 'a-good-password' });
+      expect(attempted.status).toBe(401);
     });
 
     // A concurrent second registration can pass the findUnique check before either creates, so the duplicate is only caught
     // when prisma.user.create() throws P2002. Simulated directly, since real concurrency would be flaky.
     // Uses save/reassign/restore rather than vi.spyOn: spying on this Prisma client's delegate methods doesn't restore
     // cleanly here (mockRestore() leaves prisma.user.create undefined for the rest of the file); see docs/ERROR_HANDLING_AUDIT.md.
-    test('a P2002 unique-constraint race on create() is still a 409, not a 500', async () => {
+    test('a P2002 unique-constraint race on create() gets the same 201 as a duplicate, not a 500 or a 409', async () => {
       const originalCreate = prisma.user.create;
       const p2002 = new Error('Unique constraint failed on the fields: (`schoolId`,`email`)');
       p2002.code = 'P2002';
@@ -268,8 +302,8 @@ describe('auth', () => {
           password: 'a-good-password',
         });
 
-        expect(res.status).toBe(409);
-        expect(res.body.error).toMatch(/already/i);
+        expect(res.status).toBe(201);
+        expect(res.body).toEqual({ status: 'active' });
         expect(JSON.stringify(res.body)).not.toMatch(/P2002|Unique constraint/);
       } finally {
         prisma.user.create = originalCreate;
@@ -332,6 +366,14 @@ describe('auth', () => {
           },
         });
       }
+    });
+
+    test('a wrong password for a shared email reveals no school list (the password is checked first)', async () => {
+      const res = await http.post('/api/auth/login').send({ email: shared, password: 'wrong-password' });
+      expect(res.status).toBe(401);
+      expect(res.body.needsSchoolSelection).toBeUndefined();
+      expect(res.body.schools).toBeUndefined();
+      expect(res.body.error).toBe('Incorrect email or password.');
     });
 
     test('login without a schoolId asks which school, and issues no session', async () => {

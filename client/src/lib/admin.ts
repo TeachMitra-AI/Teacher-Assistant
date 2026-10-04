@@ -103,6 +103,11 @@ export async function decidePendingUser(id: string, action: 'approve' | 'reject'
   await api(`/admin/users/${id}/${action}`, { method: 'PATCH' });
 }
 
+// Suspending ends the account's sessions and blocks sign-in; reactivating lets the teacher sign in again.
+export async function setAccountStatus(id: string, action: 'suspend' | 'reactivate'): Promise<void> {
+  await api(`/admin/users/${id}/${action}`, { method: 'PATCH' });
+}
+
 export async function changeUserRole(id: string, role: Role): Promise<void> {
   await api(`/admin/users/${id}/role`, { method: 'PATCH', body: { role } });
 }

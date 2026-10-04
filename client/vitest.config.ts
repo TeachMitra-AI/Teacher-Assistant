@@ -34,6 +34,7 @@ export default defineConfig({
     // wildcard that quietly starts picking up files elsewhere in the app.
     include: [
       'src/assistant/**/*.test.ts',
+      'src/hooks/**/*.test.ts',
       'src/lib/**/*.test.ts',
       'src/seo/**/*.test.ts',
       'src/pages/**/*.test.tsx',

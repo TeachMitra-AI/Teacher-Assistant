@@ -68,6 +68,17 @@ async function rawRequest(
 // if several requests hit a 401 at once, only one /auth/refresh call fires.
 let refreshPromise: Promise<boolean> | null = null;
 
+// Called when the server refuses the session (refresh 401/403: revoked, expired, or the account was suspended). AuthContext
+// subscribes so the signed-in UI clears at once; without it the user stayed on screen until the app was relaunched.
+type SessionEndedListener = () => void;
+const sessionEndedListeners = new Set<SessionEndedListener>();
+export function onSessionEnded(listener: SessionEndedListener): () => void {
+  sessionEndedListeners.add(listener);
+  return () => {
+    sessionEndedListeners.delete(listener);
+  };
+}
+
 async function tryRefresh(): Promise<boolean> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
@@ -77,6 +88,7 @@ async function tryRefresh(): Promise<boolean> {
         const { res, data } = await rawRequest('/auth/refresh', { method: 'POST', body: { refreshToken } }, null);
         if (!res.ok) {
           await setSession(null, null);
+          if (res.status === 401 || res.status === 403) sessionEndedListeners.forEach((listener) => listener());
           return false;
         }
         const parsed = data as { token: string; refreshToken: string };

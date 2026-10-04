@@ -8,14 +8,13 @@ import { GOOGLE_CLIENT_ID } from '../config';
 import { useRetryCountdown } from '../hooks/useRetryCountdown';
 import { formatRetryWait } from '../lib/retryCountdown';
 import type { AuthOutcome, SchoolOption } from '../types';
+import { emailError as emailFieldError, passwordError as passwordFieldError } from '../lib/authValidation';
 
 export type Mode = 'login' | 'register';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 // Which panel the card shows. Sign-in and sign-up can end somewhere other than "you're in": waiting on an approver, turned
-// down, or needing to pick a school.
-type View = 'form' | 'pending' | 'rejected' | 'school_picker';
+// down, suspended, or needing to pick a school.
+type View = 'form' | 'pending' | 'rejected' | 'suspended' | 'school_picker';
 
 // What to re-submit once a school is picked; sign-in needs the credentials again since the first attempt issued no session.
 type Attempt =
@@ -24,7 +23,17 @@ type Attempt =
 
 // The auth form, used as the /login page content (LoginPage) and inside the pop-up (AuthModal). `initialMode` sets the
 // active tab on mount and is read once, like LoginPage's ?mode=register param.
-export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'light' | 'dark'; initialMode?: Mode }) {
+export default function AuthForm({
+  theme,
+  initialMode = 'login',
+  valueStrip = true,
+}: {
+  theme: 'light' | 'dark';
+  initialMode?: Mode;
+  // The marketing pills stand in for the hero panel on /login at small widths. The pop-up drops them: it's a sign-up step, and
+  // the value proposition is already on the page behind it.
+  valueStrip?: boolean;
+}) {
   const { login, register, loginWithGoogle } = useAuth();
   const [mode, setMode] = useState<Mode>(initialMode);
   const [view, setView] = useState<View>('form');
@@ -36,6 +45,9 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
   const [busy, setBusy] = useState(false);
   const [schoolChoices, setSchoolChoices] = useState<SchoolOption[]>([]);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
+  // Set synchronously before the first await. `busy` is state, so a second click in the same tick would still see it false
+  // and send a second sign-in request.
+  const inFlight = useRef(false);
 
   // The auth endpoints' own rate limiter (server/src/index.js's authLimiter), hit by repeated failed attempts —
   // distinct from a wrong-password error, this one has a known recovery time, so it gets a live countdown instead
@@ -51,12 +63,8 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
   function touch(field: keyof typeof touched) {
     setTouched((t) => (t[field] ? t : { ...t, [field]: true }));
   }
-  const emailError = touched.email && email.length > 0 && !EMAIL_RE.test(email.trim())
-    ? 'Enter a valid email address.'
-    : '';
-  const passwordError = touched.password && password.length > 0 && password.length < 8
-    ? 'Password must be at least 8 characters.'
-    : '';
+  const emailError = touched.email ? emailFieldError(email) : '';
+  const passwordError = touched.password ? passwordFieldError(password, mode) : '';
 
   // Google's button won't take a percentage width, so to match the full-width submit button its pixel width is measured off
   // this wrapper and kept in sync across breakpoints and font-size changes via ResizeObserver.
@@ -102,6 +110,10 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
       setView('rejected');
       return;
     }
+    if (outcome.kind === 'suspended') {
+      setView('suspended');
+      return;
+    }
     if (outcome.kind === 'needs_school') {
       setSchoolChoices(outcome.schools);
       setAttempt(retry);
@@ -138,9 +150,10 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
     // Marking every field touched surfaces the inline errors instead of repeating them in the banner.
     setTouched({ email: true, password: true });
 
-    if (!EMAIL_RE.test(email.trim())) return;
-    if (password.length < 8) return;
+    if (!email.trim() || emailFieldError(email) || !password || passwordFieldError(password, mode)) return;
+    if (inFlight.current) return;
 
+    inFlight.current = true;
     setBusy(true);
     try {
       if (mode === 'login') {
@@ -159,15 +172,18 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
     } catch (err) {
       applyError(err);
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
 
   // Google returns an ID token; which account it maps to, approval and school assignment are decided server-side from the verified token.
   async function handleGoogleToken(idToken: string) {
+    if (inFlight.current) return;
     setError('');
     setRetryAt(null);
 
+    inFlight.current = true;
     setBusy(true);
     try {
       const options = mode === 'register' ? { signup: true, name: name.trim() || undefined } : undefined;
@@ -175,15 +191,17 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
     } catch (err) {
       applyError(err);
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
 
   // Re-runs the original attempt, this time naming the school.
   async function chooseSchool(school: SchoolOption) {
-    if (!attempt) return;
+    if (!attempt || inFlight.current) return;
     setError('');
     setRetryAt(null);
+    inFlight.current = true;
     setBusy(true);
     try {
       const outcome =
@@ -195,6 +213,7 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
       applyError(err);
       setView('form');
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -204,6 +223,8 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
       ? 'Almost there — your account needs approval.'
       : view === 'rejected'
         ? 'This account was not approved.'
+        : view === 'suspended'
+          ? 'This account is suspended.'
         : view === 'school_picker'
           ? 'You have an account at more than one school.'
           : mode === 'login'
@@ -218,13 +239,15 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
         <p>{subtitle}</p>
       </div>
 
-      {/* Stands in for the hero panel when there isn't one (the modal) or once it's hidden below 820px (see .auth-value-strip
-          in index.css), so mobile still gets a compact value proposition. */}
-      <ul className="auth-value-strip" aria-hidden="true">
-        <li><Lightbulb size={13} aria-hidden="true" /> Lesson ideas</li>
-        <li><Languages size={13} aria-hidden="true" /> 9 languages</li>
-        <li><BookOpen size={13} aria-hidden="true" /> Classroom-ready</li>
-      </ul>
+      {/* Stands in for the hero panel once it's hidden below 820px (see .auth-value-strip in index.css), so /login on mobile
+          still gets a compact value proposition. */}
+      {valueStrip && (
+        <ul className="auth-value-strip" aria-hidden="true">
+          <li><Lightbulb size={13} aria-hidden="true" /> Lesson ideas</li>
+          <li><Languages size={13} aria-hidden="true" /> 9 languages</li>
+          <li><BookOpen size={13} aria-hidden="true" /> Classroom-ready</li>
+        </ul>
+      )}
 
       {view === 'form' && (
         <div className="auth-tabs" role="group" aria-label="Choose sign in or register">
@@ -264,6 +287,17 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
           <p className="auth-hint" role="status">
             A school administrator did not approve this account. Please check with your school
             administrator if you think this is a mistake.
+          </p>
+          <button type="button" className="btn-primary auth-submit" onClick={() => switchMode('login')}>
+            Back to sign in
+          </button>
+        </>
+      )}
+
+      {view === 'suspended' && (
+        <>
+          <p className="auth-hint" role="status">
+            Sign-in is turned off for this account. Please contact your school administrator if you think this is a mistake.
           </p>
           <button type="button" className="btn-primary auth-submit" onClick={() => switchMode('login')}>
             Back to sign in
@@ -345,7 +379,7 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
                   required
                 />
               </span>
-              {emailError && <span className="auth-field-error" id="email-error">{emailError}</span>}
+              {emailError && <span className="auth-field-error" id="email-error" role="alert">{emailError}</span>}
             </label>
 
             <label className="auth-field">
@@ -375,7 +409,7 @@ export default function AuthForm({ theme, initialMode = 'login' }: { theme: 'lig
                 </button>
               </span>
               {passwordError ? (
-                <span className="auth-field-error" id="password-help">{passwordError}</span>
+                <span className="auth-field-error" id="password-help" role="alert">{passwordError}</span>
               ) : (
                 mode === 'register' && (
                   <span className="auth-field-help" id="password-help">At least 8 characters. Choose something you will remember.</span>

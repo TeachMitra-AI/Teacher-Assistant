@@ -315,18 +315,27 @@ describe('password reset', () => {
       expect(badPassword.body.error).not.toEqual(expiredLike.body.error);
     });
 
-    test('resetting clears a lockout, so a locked-out teacher can get straight back in', async () => {
+    test('a reset request with no token reports the bad link, not a missing password', async () => {
+      const res = await http.post('/api/auth/reset-password').send({});
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('This reset link is invalid or has expired. Please request a new one.');
+    });
+
+    test('resetting clears the failed-attempt counter, so a teacher who struggled to sign in can get straight back in', async () => {
       const user = await makeResettableUser();
 
       for (let i = 0; i < 5; i++) {
         await http.post('/api/auth/login').send({ email: user.email, password: 'wrong-password' });
       }
-      const locked = await http.post('/api/auth/login').send({ email: user.email, password: PASSWORD });
-      expect(locked.status).toBe(423);
+      const before = await prisma.user.findUnique({ where: { id: user.id } });
+      expect(before.failedLoginCount).toBe(5);
 
       const { token } = await requestReset(user.email);
       const reset = await http.post('/api/auth/reset-password').send({ token, password: 'a-brand-new-password' });
       expect(reset.status).toBe(200);
+
+      const after = await prisma.user.findUnique({ where: { id: user.id } });
+      expect(after.failedLoginCount).toBe(0);
 
       const login = await http.post('/api/auth/login').send({ email: user.email, password: 'a-brand-new-password' });
       expect(login.status).toBe(200);
