@@ -6977,11 +6977,10 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 .seo-related-card span:last-child { font-size: 0.9rem; line-height: 1.5; color: var(--text-muted); }
 .seo-related-kind { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--accent-text); }
 [data-theme='dark'] .seo-related-kind { color: var(--amber); }
-@media (max-width: 900px) {
-  }
 @media (max-width: 640px) {
   .seo-article { padding: 2rem 1.25rem 0.5rem; }
-  .seo-related-grid,   .seo-hero-cta .btn-primary { width: 100%; justify-content: center; }
+  .seo-related-grid { grid-template-columns: 1fr; }
+  .seo-hero-cta .btn-primary { width: 100%; justify-content: center; }
 }
 
 /* Announcement bar (components/AnnouncementBar.tsx) — a slim, non-sticky strip
