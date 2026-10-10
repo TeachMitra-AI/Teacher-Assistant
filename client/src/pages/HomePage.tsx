@@ -34,7 +34,12 @@ import { AnnouncementBar } from '../components/AnnouncementBar';
 import { ProductShot } from '../components/ProductShot';
 import { HomeTour } from '../components/HomeTour';
 import { buildHomeGraph } from '../seo/schema';
-import { ABOUT_PAGE, GUIDE_PAGES, TOOL_PAGES } from '../seo/pages';
+import { ABOUT_PAGE, TOOL_PAGES } from '../seo/pages';
+import { aiLessonPlanGenerator } from '../seo/content/aiLessonPlanGenerator';
+import { aiWorksheetGenerator } from '../seo/content/aiWorksheetGenerator';
+import { aiQuizGenerator } from '../seo/content/aiQuizGenerator';
+import { aiTeachingAssistantIndianLanguages } from '../seo/content/aiTeachingAssistantIndianLanguages';
+import { guideAiLessonPlanning } from '../seo/content/guideAiLessonPlanning';
 
 // Public marketing landing page at "/" for signed-out visitors (App.tsx's logged-out routes); signed-in visitors get CoachPage.
 // Every capability, language and classroom type named here is checked against config.ts, the server prompts and the page
@@ -71,14 +76,20 @@ const FEATURES = [
       'Get coaching in English, Hindi, Bengali, Telugu, Marathi, Tamil, Gujarati, Kannada, Odia, or Hinglish, whichever your classroom speaks.',
     // Language names exactly as the product's own language menu shows them.
     chips: ['English', 'हिंदी', 'বাংলা', 'తెలుగు', 'मराठी', 'தமிழ்', '+4 more'],
+    links: [{ label: 'Hindi & Indian languages', to: aiTeachingAssistantIndianLanguages.path }],
   },
   {
     icon: ClipboardCheck,
-    title: 'Quiz & Worksheet Generator',
+    title: 'Lesson Plans, Worksheets & Quizzes',
     description:
-      'Generate structured quizzes and worksheets by grade, subject, topic, and difficulty, complete with an answer key, ready to print.',
+      'Generate lesson plans, structured quizzes and worksheets by grade, subject, topic, and difficulty, complete with an answer key, ready to print.',
     // The Generator's own format options.
     chips: ['Quiz', 'Worksheet', 'Exit ticket', 'Homework'],
+    links: [
+      { label: 'Lesson plans', to: aiLessonPlanGenerator.path },
+      { label: 'Worksheets', to: aiWorksheetGenerator.path },
+      { label: 'Quizzes', to: aiQuizGenerator.path },
+    ],
   },
   {
     icon: Library,
@@ -361,6 +372,11 @@ export default function HomePage() {
                 {link.label}
               </a>
             ))}
+            {TOOL_PAGES.map((page) => (
+              <Link key={page.path} to={page.path} className="home-mobile-menu-link" onClick={closeMenu}>
+                {page.navLabel}
+              </Link>
+            ))}
             {/* Primary action first, above the quieter Sign In. */}
             <button
               type="button"
@@ -607,6 +623,18 @@ export default function HomePage() {
                         ))}
                       </ul>
                     )}
+                    {feature.links && (
+                      <ul className="home-feature-links" aria-label={`${feature.title} pages`}>
+                        {feature.links.map((link) => (
+                          <li key={link.to}>
+                            <Link to={link.to}>
+                              {link.label}
+                              <ArrowRight size={14} aria-hidden="true" />
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                   {/* A real Coach answer (public/product/coach-en-*.png) fills the featured card's right half. */}
                   {isFeatured && (
@@ -630,32 +658,6 @@ export default function HomePage() {
           </p>
         </section>
 
-        {/* Crawlable internal links to every public tool and guide page (seo/pages.ts); the home page is the strongest page on the site, so linking starts here. */}
-        <section className="home-section" id="explore" aria-labelledby="home-explore-heading">
-          <div className="home-head">
-            <span className="home-eyebrow">Explore</span>
-            <h2 id="home-explore-heading">Lesson Plans, Worksheets, Quizzes and More</h2>
-          </div>
-          <div className="seo-related-grid seo-related-grid--wide">
-            {TOOL_PAGES.map((page) => (
-              <Link key={page.path} to={page.path} className="seo-related-card">
-                <span className="seo-related-kind">Tool</span>
-                <strong>{page.navLabel}</strong>
-                <span>{page.teaser}</span>
-              </Link>
-            ))}
-          </div>
-          <h3 className="seo-guides-heading">Guides for teachers</h3>
-          <ul className="seo-guide-links">
-            {GUIDE_PAGES.map((page) => (
-              <li key={page.path}>
-                <Link to={page.path}>{page.navLabel}</Link>
-                <span>{page.teaser}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-
         <section className="home-section home-section--muted" id="how-it-works" aria-labelledby="home-steps-heading">
           <div className="home-how">
             <div className="home-how-main">
@@ -674,6 +676,9 @@ export default function HomePage() {
                   </li>
                 ))}
               </ol>
+              <p className="home-how-guide">
+                New to AI lesson planning? <Link to={guideAiLessonPlanning.path}>Read the step-by-step guide</Link>.
+              </p>
             </div>
             {/* A real generated worksheet (Generator → Preview). */}
             <ProductShot
