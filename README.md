@@ -577,6 +577,8 @@ using Node 20, plus a gitleaks secret scan.
 [`docs/MANUAL-TESTING-GUIDE.md`](docs/MANUAL-TESTING-GUIDE.md) (auth, RBAC, Coach, Library,
 Workspace, Generator, admin, etc.), with detailed mobile/responsive coverage in
 [`docs/MOBILE-RESPONSIVE-TESTING-GUIDE.md`](docs/MOBILE-RESPONSIVE-TESTING-GUIDE.md).
+Read-aloud (text-to-speech) has its own guide with a results log:
+[`docs/READ_ALOUD_MANUAL_TESTING.md`](docs/READ_ALOUD_MANUAL_TESTING.md).
 
 ---
 

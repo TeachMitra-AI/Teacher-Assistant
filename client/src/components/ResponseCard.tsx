@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Volume2, Square, Copy, Check, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { formatResponse } from '../lib/format';
-import { isSpeechSupported, speak, stopSpeaking } from '../lib/tts';
+import { toSpeechText } from '../lib/speechText';
+import { isSpeechSupported, speak, stopSpeaking, type SpeechFailure, type SpeechRequest } from '../lib/tts';
 import { useToast } from './Toast';
 import SaveToLibrary from './SaveToLibrary';
 import ShareMenu from './ShareMenu';
@@ -17,16 +18,29 @@ interface ResponseCardProps {
   onFeedback: (rating: 'helpful' | 'not_helpful') => void;
 }
 
+// The only two failures worth telling the teacher about; a stop or a replaced request never reaches here (see tts.ts).
+function speechErrorMessage(reason: SpeechFailure): string {
+  return reason === 'no-voice'
+    ? "This device has no voice for the selected language. Add one in its text-to-speech settings, or try another language."
+    : "Couldn't read this aloud. Please try again.";
+}
+
 export default function ResponseCard({ query, text, language, context, queryId, rating, onFeedback }: ResponseCardProps) {
   const { show } = useToast();
+  // True from the tap, including while the browser is still loading voices, so the button never looks idle mid-request.
   const [speaking, setSpeaking] = useState(false);
+  // This card's own speech request, so cleanup can't stop speech that another card started.
+  const speechRef = useRef<SpeechRequest | null>(null);
   // Shows a Check in place of the Copy icon briefly after a copy, in the button itself with no toast, where the teacher is already looking.
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Stop any speech if the response changes or the card unmounts.
+  // Stop this card's speech if the response changes or the card unmounts. Stopping ends the request, which resets `speaking`.
   useEffect(() => {
-    return () => stopSpeaking();
+    return () => {
+      stopSpeaking(speechRef.current);
+      speechRef.current = null;
+    };
   }, [text]);
 
   // Clears the revert timer on unmount so it can't call setCopied after this card is gone.
@@ -38,12 +52,18 @@ export default function ResponseCard({ query, text, language, context, queryId, 
 
   function toggleSpeak() {
     if (speaking) {
-      stopSpeaking();
+      stopSpeaking(speechRef.current);
+      speechRef.current = null;
       setSpeaking(false);
       return;
     }
+    // Read the cleaned text, not the Markdown source that the card displays.
+    const spoken = toSpeechText(text);
+    if (!spoken) return;
     setSpeaking(true);
-    speak(text, language, () => setSpeaking(false));
+    speechRef.current = speak(spoken, language, () => setSpeaking(false), {
+      onError: (reason) => show(speechErrorMessage(reason), 'error'),
+    });
   }
 
   async function copy() {
@@ -78,7 +98,6 @@ export default function ResponseCard({ query, text, language, context, queryId, 
             className={`action-chip${speaking ? ' speaking' : ''}`}
             onClick={toggleSpeak}
             aria-label={speaking ? 'Stop reading' : 'Read aloud'}
-            aria-pressed={speaking}
             title={speaking ? 'Stop reading' : 'Read aloud'}
           >
             {speaking ? <Square size={15} aria-hidden="true" /> : <Volume2 size={15} aria-hidden="true" />}
