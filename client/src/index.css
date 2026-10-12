@@ -6688,42 +6688,6 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
 }
 
 /* ---- faq (flat divided list — was a bordered card per question) ---- */
-/* A small icon above the FAQ heading that periodically flips over, with a pulsing ring: a real 3D Y-axis flip (not a bob) in the
-   brand orange/amber. `perspective` must be on the wrapper, not the rotated element, for the flip to read as depth and not a
-   flat squash. */
-.home-faq-icon-wrap { display: flex; justify-content: center; margin: 0 auto 1.2rem; perspective: 480px; }
-.home-faq-icon {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: var(--orange-soft);
-  color: var(--accent-text);
-  animation: home-faq-icon-flip 4s ease-in-out infinite;
-}
-[data-theme='dark'] .home-faq-icon { color: var(--amber); }
-.home-faq-icon-ring {
-  position: absolute;
-  inset: -8px;
-  border-radius: 50%;
-  border: 1.5px solid var(--orange);
-  animation: home-faq-ring-pulse 4s ease-in-out infinite;
-}
-/* Flips once (a full 360° so it lands back exactly at rest, no visible
-   jump), then holds for the rest of the cycle before flipping again —
-   reads as a periodic flip, not a constant spin. */
-@keyframes home-faq-icon-flip {
-  0%, 12% { transform: rotateY(0deg); }
-  40% { transform: rotateY(360deg); }
-  100% { transform: rotateY(360deg); }
-}
-@keyframes home-faq-ring-pulse { 0%, 100% { transform: scale(1); opacity: 0.5; } 50% { transform: scale(1.2); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) {
-  .home-faq-icon, .home-faq-icon-ring { animation: none; }
-}
 .home-faq-list { max-width: 760px; margin: 0 auto; }
 .home-faq-item { border-top: 1px solid var(--border); transition: background 0.15s ease; }
 .home-faq-item:last-child { border-bottom: 1px solid var(--border); }
@@ -7289,19 +7253,72 @@ span.home-hero-visual-icon-btn:hover { background: none; color: var(--text-muted
   gap: 3rem;
   align-items: start;
 }
+.home-faq-side { min-width: 0; }
 .home-faq-layout .home-head { margin-bottom: 0; }
-.home-faq-layout .home-faq-list { max-width: none; margin: 0; }
+.home-faq-layout .home-faq-list { max-width: none; margin: 0; min-width: 0; }
+
+/* Category rail. Flat like the question list beside it: a hairline with a 2px accent marker on the active item, no fill. The active
+   marker and text use --accent-text, not --orange: --orange is only 2.62:1 on the light background, --accent-text is 4.79:1 (light)
+   and 7.96:1 (dark, where it resolves to amber). On mobile (below) the same buttons become an equal-width grid. */
+.home-faq-cats { display: flex; flex-direction: column; margin-top: 1.25rem; border-left: 1px solid var(--border); }
+.home-faq-cat {
+  margin-left: -1px;
+  padding: 0.5rem 0 0.5rem 1rem;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.home-faq-cat:hover { color: var(--text); }
+.home-faq-cat.active { color: var(--accent-text); border-left-color: var(--accent-text); font-weight: 600; }
+.home-faq-cat:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; border-radius: 4px; }
+
+/* Homepage FAQ rows only (the SEO landing pages share the base .home-faq-* rules and are deliberately untouched): side padding so
+   the hover fill doesn't sit against the text, a comfortable answer measure, and an AA-contrast focus ring. */
+.home-faq-layout .home-faq-question { padding-inline: 0.75rem; }
+.home-faq-layout .home-faq-answer { padding-inline: 0.75rem; font-size: 0.95rem; max-width: 66ch; }
+.home-faq-layout .home-faq-question:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; border-radius: var(--radius-sm); }
 
 @media (max-width: 900px) {
   .home-audience { grid-template-columns: 1fr; gap: 2.25rem; }
   .home-audience-copy { order: -1; }
   .home-audience .product-shot-figure { width: 100%; max-width: 440px; margin: 0 auto; }
-  .home-faq-layout { grid-template-columns: 1fr; gap: 1.5rem; }
+  .home-faq-layout { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+  /* The four labels total ~700px, more than a phone's width, so a single row had to scroll and clip. Instead the buttons become an
+     equal-width grid: 2x2 on a phone, one row of four on a tablet. Every category stays visible and long labels wrap inside their
+     button. The active state is the accent border (doubled with an inset ring so it doesn't shift the layout) plus the accent text. */
+  .home-faq-cats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+    gap: 0.5rem;
+    /* The FAQ label names this grid, so it sits close above it: 12px (this margin collapses with the label's 0.6rem bottom margin
+       and the larger wins). The grid sits a full layout gap (1.5rem) above the questions, so label and grid read as one group. */
+    margin-top: 0.75rem;
+    border-left: 0;
+  }
+  .home-faq-cat {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    margin-left: 0;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    line-height: 1.3;
+    text-align: center;
+  }
+  .home-faq-cat.active { border-color: var(--accent-text); box-shadow: inset 0 0 0 1px var(--accent-text); }
+  .home-faq-cat:focus-visible { border-radius: var(--radius-sm); }
   .home-head { margin-bottom: 1.5rem; }
 }
-
-/* FAQ icon sits above the eyebrow in the side-title column, so left-align it there. */
-.home-head .home-faq-icon-wrap { justify-content: flex-start; margin-left: 0; }
 
 /* ---- "See it in action" product tour (components/HomeTour.tsx) ----
    A framed looping capture of the real app. The window chrome reuses the hero preview's traffic-light dots; the glow is a
