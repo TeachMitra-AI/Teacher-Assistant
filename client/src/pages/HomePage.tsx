@@ -8,7 +8,6 @@ import {
   X,
   Sparkles,
   ChevronDown,
-  CircleHelp,
   GraduationCap,
   MessageCircleQuestion,
   Languages,
@@ -161,51 +160,93 @@ const PREVIEW_SCENARIOS: PreviewScenario[] = [
   },
 ];
 
-const FAQS = [
+const FAQ_CATEGORIES = [
   {
-    question: 'What is SarasTech?',
-    answer:
-      'SarasTech, also known as SarasTech AI (and sometimes written Saras Tech), is an AI teaching assistant for teachers in India. It combines an AI classroom coach with a worksheet, quiz, and question-paper generator, plus a personal library and editor for the resources you keep.',
+    id: 'getting-started',
+    label: 'Getting Started',
+    items: [
+      {
+        question: 'What is SarasTech?',
+        answer:
+          'SarasTech, also known as SarasTech AI (and sometimes written Saras Tech), is an AI teaching assistant for teachers in India. It combines an AI classroom coach with a worksheet, quiz, and question-paper generator, plus a personal library and editor for the resources you keep.',
+      },
+      {
+        question: 'How do I sign up?',
+        answer:
+          'Choose Get Started and create a teacher account with your email and a password, or with Google. If you forget your password, you can reset it by email.',
+      },
+      {
+        question: 'Is there a SarasTech Android app?',
+        answer: 'An Android app is coming soon. You can use SarasTech in your browser today.',
+      },
+    ],
   },
   {
-    question: 'What can SarasTech do for me as a teacher?',
-    answer:
-      'Ask any classroom question and get instant, grade- and subject-specific coaching, generate lesson plans, worksheets, and quizzes with an answer key, and save everything to your own teaching library.',
+    id: 'features',
+    label: 'Features & Teaching Tools',
+    items: [
+      {
+        question: 'What can SarasTech do for me as a teacher?',
+        answer:
+          'Ask any classroom question and get instant, grade- and subject-specific coaching, generate lesson plans, worksheets, and quizzes with an answer key, and save everything to your own teaching library.',
+      },
+      {
+        question: 'Can I edit what SarasTech generates?',
+        answer:
+          'Yes. Every saved lesson plan, worksheet, or quiz opens in a built-in editor, so you can refine it before printing or exporting it as a PDF.',
+      },
+      {
+        question: 'Can I speak my question or have an answer read aloud?',
+        answer:
+          'Yes. You can dictate a question instead of typing it, and listen to an answer read aloud. Both use your browser’s built-in speech features, so what you get depends on your browser and device.',
+      },
+      {
+        question: 'Can I print a worksheet or save it as a PDF?',
+        answer:
+          'Yes. Open a saved resource in the editor and choose Print / Export PDF. This opens your browser’s print dialog, where you can print it or save it as a PDF.',
+      },
+    ],
   },
   {
-    question: 'Which languages does it support?',
-    answer:
-      'English, Hindi, Bengali, Telugu, Marathi, Tamil, Gujarati, Kannada, Odia, and Hinglish. Pick whichever your classroom speaks.',
+    id: 'languages',
+    label: 'Languages & Classroom Support',
+    items: [
+      {
+        question: 'Which languages does it support?',
+        answer:
+          'English, Hindi, Bengali, Telugu, Marathi, Tamil, Gujarati, Kannada, Odia, and Hinglish. Pick whichever your classroom speaks.',
+      },
+      {
+        question: 'Does it work for multi-grade or mixed-ability classrooms?',
+        answer:
+          'Yes. You can set your classroom type, including multi-grade, mixed-ability or large class, so coaching and generated resources match how you actually teach.',
+      },
+    ],
   },
   {
-    question: 'Does it work for multi-grade or mixed-ability classrooms?',
-    answer:
-      'Yes. You can set your classroom type, including multi-grade, mixed-ability or large class, so coaching and generated resources match how you actually teach.',
-  },
-  {
-    question: 'Can I edit what SarasTech generates?',
-    answer:
-      'Yes. Every saved lesson plan, worksheet, or quiz opens in a built-in editor, so you can refine it before printing or exporting it as a PDF.',
-  },
-  {
-    question: 'Is there a SarasTech Android app?',
-    answer: 'An Android app is coming soon. You can use SarasTech in your browser today.',
-  },
-  {
-    question: 'Is my saved material private to me?',
-    answer: 'Yes. Your resources and history are tied to your own account, so only you can see and edit them.',
-  },
-  {
-    question: 'Is SarasTech aligned with NCERT, CBSE, or my state board?',
-    answer:
-      'SarasTech creates content from the grade, subject, and topic you give it. It is not tied to any board’s official syllabus or a specific textbook, so check what it generates against your own curriculum before using it.',
-  },
-  {
-    question: 'Can the AI make mistakes?',
-    answer:
-      'Yes. AI-generated lesson ideas, questions, and answer keys can contain errors, so treat every result as a draft. Review it, edit it in the built-in editor, and check answer keys yourself before it reaches students.',
+    id: 'privacy',
+    label: 'Privacy & Accuracy',
+    items: [
+      {
+        question: 'Is my saved material private to me?',
+        answer: 'Yes. Your resources and history are tied to your own account, so only you can see and edit them.',
+      },
+      {
+        question: 'Is SarasTech aligned with NCERT, CBSE, or my state board?',
+        answer:
+          'SarasTech creates content from the grade, subject, and topic you give it. It is not tied to any board’s official syllabus or a specific textbook, so check what it generates against your own curriculum before using it.',
+      },
+      {
+        question: 'Can the AI make mistakes?',
+        answer:
+          'Yes. AI-generated lesson ideas, questions, and answer keys can contain errors, so treat every result as a draft. Review it, edit it in the built-in editor, and check answer keys yourself before it reaches students.',
+      },
+    ],
   },
 ];
+
+// Flat list for the FAQPage JSON-LD below; derived so the markup always matches the questions the page renders.
+const FAQS = FAQ_CATEGORIES.flatMap((category) => category.items);
 
 // Organization / WebSite / WebPage / WebApplication / FAQPage graph (seo/schema.ts). FAQPage entries derive from FAQS above,
 // the array the FAQ section renders, so the data can't drift from the page. Google retired FAQ rich results (May 2026); the
@@ -276,6 +317,7 @@ export default function HomePage() {
 
   // The header picks up a shadow past the hero so the sticky bar "lifts" off the content. Passive listener, no rAF: it only toggles a boolean.
   const [headerScrolled, setHeaderScrolled] = useState(false);
+  const [faqCategoryId, setFaqCategoryId] = useState(FAQ_CATEGORIES[0].id);
   useEffect(() => {
     const handleScroll = () => setHeaderScrolled(window.scrollY > 8);
     handleScroll();
@@ -767,28 +809,50 @@ export default function HomePage() {
 
         <section className="home-section" id="faq" aria-labelledby="home-faq-heading">
           <div className="home-faq-layout">
-            <div className="home-head">
-              <div className="home-faq-icon-wrap">
-                <div className="home-faq-icon" aria-hidden="true">
-                  <span className="home-faq-icon-ring" />
-                  <CircleHelp size={28} strokeWidth={1.8} />
-                </div>
+            <div className="home-faq-side">
+              <div className="home-head">
+                <span className="home-eyebrow">FAQ</span>
+                {/* Not shown, but kept: it names the section for assistive tech (aria-labelledby above) and keeps the page's heading outline. */}
+                <h2 id="home-faq-heading" className="visually-hidden">Frequently Asked Questions</h2>
               </div>
-              <span className="home-eyebrow">FAQ</span>
-              <h2 id="home-faq-heading">Frequently Asked Questions</h2>
+              {/* A group of buttons, not a <nav>: these switch which questions are shown rather than navigate anywhere. */}
+              <div className="home-faq-cats" role="group" aria-label="FAQ categories">
+                {FAQ_CATEGORIES.map((category) => (
+                  <button
+                    type="button"
+                    key={category.id}
+                    className={`home-faq-cat${category.id === faqCategoryId ? ' active' : ''}`}
+                    aria-pressed={category.id === faqCategoryId}
+                    aria-controls={`home-faq-panel-${category.id}`}
+                    onClick={() => setFaqCategoryId(category.id)}
+                  >
+                    {category.label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="home-faq-list home-reveal">
-              {/* name= makes these a native exclusive accordion (HTML Living Standard): opening one collapses the other, with no
-                  React state. A state-based version closed everything, since setting `open` programmatically fires another native
-                  "toggle" event. */}
-              {FAQS.map((faq) => (
-                <details className="home-faq-item" key={faq.question} name="home-faq">
-                  <summary className="home-faq-question">
-                    <span>{faq.question}</span>
-                    <ChevronDown className="home-faq-chevron" size={18} aria-hidden="true" />
-                  </summary>
-                  <p className="home-faq-answer">{faq.answer}</p>
-                </details>
+              {/* Every category stays in the DOM and inactive ones are `hidden`, so all answers remain in the page. Each panel has
+                  its own details name= so it is a native exclusive accordion (HTML Living Standard): opening one collapses the
+                  other, with no React state. A state-based version closed everything, since setting `open` programmatically
+                  fires another native "toggle" event. */}
+              {FAQ_CATEGORIES.map((category) => (
+                <div
+                  className="home-faq-panel"
+                  id={`home-faq-panel-${category.id}`}
+                  key={category.id}
+                  hidden={category.id !== faqCategoryId}
+                >
+                  {category.items.map((faq) => (
+                    <details className="home-faq-item" key={faq.question} name={`home-faq-${category.id}`}>
+                      <summary className="home-faq-question">
+                        <span>{faq.question}</span>
+                        <ChevronDown className="home-faq-chevron" size={18} aria-hidden="true" />
+                      </summary>
+                      <p className="home-faq-answer">{faq.answer}</p>
+                    </details>
+                  ))}
+                </div>
               ))}
             </div>
           </div>
