@@ -27,18 +27,18 @@ describe('formatElapsed', () => {
 });
 
 describe('waitingMessage', () => {
-  test('opens with the line this app has always shown', () => {
-    expect(waitingMessage(0)).toBe('Preparing practical advice for you…');
-    expect(waitingMessage(9_999)).toBe('Preparing practical advice for you…');
+  test('opens with the key this app has always shown by default', () => {
+    expect(waitingMessage(0)).toBe('waitingDefault');
+    expect(waitingMessage(9_999)).toBe('waitingDefault');
   });
 
   test('acknowledges the wait at ten seconds', () => {
-    expect(waitingMessage(10_000)).toContain('Still working');
+    expect(waitingMessage(10_000)).toBe('waitingStillWorking');
   });
 
   test('says so plainly once it is genuinely slow', () => {
-    expect(waitingMessage(25_000)).toContain('longer than usual');
-    expect(waitingMessage(120_000)).toContain('longer than usual');
+    expect(waitingMessage(25_000)).toBe('waitingLonger');
+    expect(waitingMessage(120_000)).toBe('waitingLonger');
   });
 
   test('changes at most twice, so the live region is not noisy', () => {
