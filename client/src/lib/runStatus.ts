@@ -14,9 +14,10 @@ export function formatElapsed(elapsedMs: number): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
-// What to say while waiting. The first message is the one the app has always shown, so a fast answer looks unchanged.
+// Which i18n key to show while waiting (see i18n.ts for the copy, per language). The first key is the
+// one the app has always shown by default, so a fast answer looks unchanged.
 export function waitingMessage(elapsedMs: number): string {
-  if (elapsedMs >= TAKING_LONGER_MS) return 'This is taking longer than usual.';
-  if (elapsedMs >= STILL_WORKING_MS) return 'Still working — a good answer takes a moment.';
-  return 'Preparing practical advice for you…';
+  if (elapsedMs >= TAKING_LONGER_MS) return 'waitingLonger';
+  if (elapsedMs >= STILL_WORKING_MS) return 'waitingStillWorking';
+  return 'waitingDefault';
 }

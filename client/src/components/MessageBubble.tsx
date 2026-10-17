@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { GraduationCap, Pencil, Copy, Check } from 'lucide-react';
 import ResponseCard from './ResponseCard';
 import RunStatus from './RunStatus';
@@ -26,6 +27,7 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({ turn, onFeedback, onRetry, onEdit }: MessageBubbleProps) {
   const hasAttachments = !!turn.attachments && turn.attachments.length > 0;
+  const { t } = useTranslation();
   const { openBugReport } = useHelpSupport();
   const { show } = useToast();
   // The live admin-toggleable value from session bootstrap wins; otherwise the build-time env constant (e.g. featureFlags
@@ -161,11 +163,11 @@ export default function MessageBubble({ turn, onFeedback, onRetry, onEdit }: Mes
         {turn.status === 'pending' && (
           // `startedAt` is absent only on a turn built before the field existed; fall back to the plain line, not a timer counting from 1970.
           turn.startedAt ? (
-            <RunStatus startedAt={turn.startedAt} />
+            <RunStatus startedAt={turn.startedAt} language={turn.language} />
           ) : (
             <div className="message-bubble assistant-pending" role="status" aria-live="polite">
               <span className="spinner spinner-sm" aria-hidden="true" />
-              Preparing practical advice for you…
+              {t('waitingDefault', { lng: turn.language })}
             </div>
           )
         )}

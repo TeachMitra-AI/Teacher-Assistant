@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { formatElapsed, waitingMessage } from '../lib/runStatus';
 
 // The waiting state under a submitted prompt. A slow turn is genuinely slow (the server retries rate-limited calls and can
@@ -11,9 +12,12 @@ import { formatElapsed, waitingMessage } from '../lib/runStatus';
 interface RunStatusProps {
   /** Date.now() at submit. */
   startedAt: number;
+  /** Language this turn was submitted with (see LANGUAGES in config.ts); drives the waiting copy below. */
+  language: string;
 }
 
-export default function RunStatus({ startedAt }: RunStatusProps) {
+export default function RunStatus({ startedAt, language }: RunStatusProps) {
+  const { t } = useTranslation();
   const [elapsedMs, setElapsedMs] = useState(() => Date.now() - startedAt);
 
   useEffect(() => {
@@ -35,7 +39,7 @@ export default function RunStatus({ startedAt }: RunStatusProps) {
         {/* Only the message is a live region: a live clock would be announced every second. The timer is hidden from
             assistive tech and the message (which changes twice in a long wait) carries the news. */}
         <span className="run-status-message" role="status" aria-live="polite">
-          {waitingMessage(elapsedMs)}
+          {t(waitingMessage(elapsedMs), { lng: language })}
         </span>
         <span className="run-status-time" aria-hidden="true">{formatElapsed(elapsedMs)}</span>
       </div>
