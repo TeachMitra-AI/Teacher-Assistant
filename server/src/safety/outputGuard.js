@@ -39,6 +39,19 @@ function containsVerbatimChunk(haystack, needle, chunkLength = 60, step = 20) {
 }
 
 /**
+ * Splits `text` around each allowed echo, so the leak check compares only what's left and no window spans a removed
+ * line. With no allowed echoes it returns `[text]`, leaving the check unchanged.
+ */
+function splitOnAllowedEchoes(text, allowedEchoes) {
+  let segments = [text];
+  for (const echo of allowedEchoes) {
+    if (typeof echo !== 'string' || echo.trim() === '') continue;
+    segments = segments.flatMap((segment) => segment.split(echo));
+  }
+  return segments;
+}
+
+/**
  * Truncates `text` to roughly `maxLength`, cutting at the last sentence boundary in a lookback window (then
  * whitespace, then a hard cut), and appends a short truncation note.
  */
@@ -65,7 +78,10 @@ function truncateCleanly(text, maxLength) {
 /**
  * Validates and, if needed, sanitizes a model response before it is stored or sent.
  * @param {string} text the candidate response text
- * @param {{ systemInstructionText?: string }} [options] the system instruction used for this request, to leak-check against
+ * @param {{ systemInstructionText?: string, allowedEchoes?: string[] }} [options] the system instruction used for this
+ *   request, to leak-check against. `allowedEchoes`: exact lines of it the model is told to reproduce (the template's
+ *   mandated section headings, see prompts.mandatedSectionLines), left out of the comparison so following the
+ *   template isn't mistaken for a leak. The rest of the instruction is still checked.
  * @returns {{ text: string, truncated: boolean, suppressed: boolean }}
  */
 function sanitizeOutput(text, options = {}) {
@@ -73,10 +89,12 @@ function sanitizeOutput(text, options = {}) {
     return { text: SAFE_FALLBACK_MESSAGE, truncated: false, suppressed: true };
   }
 
-  const { systemInstructionText } = options;
+  const { systemInstructionText, allowedEchoes = [] } = options;
   const leaked =
     containsSensitiveMarker(text) ||
-    (systemInstructionText ? containsVerbatimChunk(text, systemInstructionText) : false);
+    (systemInstructionText
+      ? splitOnAllowedEchoes(systemInstructionText, allowedEchoes).some((segment) => containsVerbatimChunk(text, segment))
+      : false);
   if (leaked) {
     return { text: SAFE_FALLBACK_MESSAGE, truncated: false, suppressed: true };
   }

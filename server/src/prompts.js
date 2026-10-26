@@ -163,9 +163,12 @@ Keep the entire response short and focused — a few sentences per point above, 
 
 ${HANDLING_TEACHERS_QUESTION}`;
 
-const grade = (c) => c.grade || 'Not specified';
-const subject = (c) => c.subject || 'Not specified';
-const classroomType = (c) => c.classroomType || 'Not specified';
+// Free-text context stays on one line, so every line break in an instruction comes from the template itself. Otherwise a
+// value could add its own numbered line to a MANDATORY list and exempt it from the leak check (mandatedSectionLines).
+const oneLine = (value) => (typeof value === 'string' ? value.replace(/[\r\n\u2028\u2029]+/g, ' ') : value);
+const grade = (c) => oneLine(c.grade) || 'Not specified';
+const subject = (c) => oneLine(c.subject) || 'Not specified';
+const classroomType = (c) => oneLine(c.classroomType) || 'Not specified';
 
 // Every template builds only the trusted systemInstruction; the teacher's question is never interpolated here.
 // Where a template used to embed the query under a label, the label stays as a static "Question type" line and the
@@ -389,4 +392,26 @@ function selectTemplate(query, context = {}, { forceEmergency = false } = {}) {
   return { systemInstruction, userContent, isEmergency: false };
 }
 
-module.exports = { selectTemplate, LANGUAGE_NAMES, languageDirective, styleDirective, MEMORY_DIRECTIVE };
+/**
+ * The section headings a built instruction tells the model to write: each numbered line (without its "N. ") in a
+ * block whose header starts with MANDATORY, up to the first line that isn't numbered. outputGuard leaves these out of
+ * its leak check, since an answer that follows the template reproduces them.
+ * @param {string} systemInstruction
+ * @returns {string[]}
+ */
+function mandatedSectionLines(systemInstruction) {
+  const lines = [];
+  let inBlock = false;
+  for (const line of String(systemInstruction).split('\n')) {
+    if (line.startsWith('MANDATORY')) {
+      inBlock = true;
+      continue;
+    }
+    const item = inBlock && line.match(/^\d+\.\s+(.+)$/);
+    if (item) lines.push(item[1]);
+    else inBlock = false;
+  }
+  return lines;
+}
+
+module.exports = { selectTemplate, mandatedSectionLines, LANGUAGE_NAMES, languageDirective, styleDirective, MEMORY_DIRECTIVE };
