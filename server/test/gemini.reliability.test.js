@@ -9,6 +9,7 @@ const {
   geminiInputBlocked,
   geminiRateLimited,
 } = require('./helpers/geminiMock');
+const { SAFE_FALLBACK_MESSAGE } = require('../src/safety/outputGuard');
 
 function makeClock(start = 0) {
   let t = start;
@@ -225,7 +226,162 @@ describe('GeminiService reliability', () => {
     expect(metricsJson).not.toContain('A question');
     // Only metadata keys are present.
     expect(Object.keys(result.metrics).sort()).toEqual(
-      ['callsMade', 'continuations', 'correlationId', 'keyRotations', 'latencyMs', 'outcome', 'rateLimited', 'retries', 'safetyBlocked', 'timedOut'].sort()
+      ['callsMade', 'continuations', 'correlationId', 'fallbackUsed', 'keyRotations', 'latencyMs', 'outcome', 'rateLimited', 'retries', 'safetyBlocked', 'timedOut'].sort()
     );
+  });
+});
+
+// Coach-only fallback model (GEMINI_FALLBACK_ENDPOINT): a 5xx or timeout on the primary moves the rest of the request to
+// the fallback, inside the same budget and deadline. Fake URLs only; none contain "flash-lite" (see classroomModeOn.test.js).
+describe('GeminiService reliability — fallback model', () => {
+  const PRIMARY = 'https://example.invalid/generate';
+  const FALLBACK = 'https://example.invalid/fallback';
+  const timeoutErr = () => Object.assign(new Error('aborted due to timeout'), { name: 'TimeoutError' });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test('a 503 on the primary retries on the fallback and succeeds', async () => {
+    const { calls } = mockGeminiFetch([{ status: 503, text: 'unavailable' }, geminiSuccess('From the fallback.')]);
+    const { service } = makeService({ fallbackEndpoint: FALLBACK });
+    const result = await ask(service);
+    expect(calls.map((c) => c.url)).toEqual([PRIMARY, FALLBACK]);
+    expect(result.text).toBe('From the fallback.');
+    expect(result.metrics.fallbackUsed).toBe(true);
+  });
+
+  test('a per-call timeout on the primary retries on the fallback', async () => {
+    const { calls } = mockGeminiFetch([{ reject: timeoutErr() }, geminiSuccess('From the fallback.')]);
+    const { service } = makeService({ fallbackEndpoint: FALLBACK });
+    const result = await ask(service);
+    expect(calls.map((c) => c.url)).toEqual([PRIMARY, FALLBACK]);
+    expect(result.metrics.timedOut).toBe(true);
+    expect(result.metrics.fallbackUsed).toBe(true);
+  });
+
+  test('without a fallback configured, every retry stays on the primary (unchanged behaviour)', async () => {
+    const { calls } = mockGeminiFetch([{ status: 503, text: 'unavailable' }, geminiSuccess('OK now.')]);
+    const { service } = makeService();
+    const result = await ask(service);
+    expect(calls.map((c) => c.url)).toEqual([PRIMARY, PRIMARY]);
+    expect(result.metrics.fallbackUsed).toBe(false);
+  });
+
+  test('a 429 retries on the primary, never the fallback', async () => {
+    const { calls } = mockGeminiFetch([geminiRateLimited(), geminiSuccess('Recovered.')]);
+    const { service } = makeService({ fallbackEndpoint: FALLBACK });
+    const result = await ask(service);
+    expect(calls.map((c) => c.url)).toEqual([PRIMARY, PRIMARY]);
+    expect(result.metrics.fallbackUsed).toBe(false);
+  });
+
+  test.each([400, 401, 404])('a %i is not retried and never reaches the fallback', async (status) => {
+    const { calls } = mockGeminiFetch([{ status, text: 'no' }]);
+    const { service } = makeService({ fallbackEndpoint: FALLBACK });
+    await expect(ask(service)).rejects.toMatchObject({ status });
+    expect(calls.map((c) => c.url)).toEqual([PRIMARY]);
+  });
+
+  test('a network error (no status) retries on the primary', async () => {
+    const { calls } = mockGeminiFetch([{ reject: new Error('socket hang up') }, geminiSuccess('OK now.')]);
+    const { service } = makeService({ fallbackEndpoint: FALLBACK });
+    const result = await ask(service);
+    expect(calls.map((c) => c.url)).toEqual([PRIMARY, PRIMARY]);
+    expect(result.metrics.fallbackUsed).toBe(false);
+  });
+
+  test('once switched, continuations also go to the fallback', async () => {
+    const { calls } = mockGeminiFetch([
+      { status: 503, text: 'unavailable' },
+      geminiSuccess('The first part', 'MAX_TOKENS'),
+      geminiSuccess('and the rest.'),
+    ]);
+    const { service } = makeService({ fallbackEndpoint: FALLBACK });
+    const result = await ask(service);
+    expect(calls.map((c) => c.url)).toEqual([PRIMARY, FALLBACK, FALLBACK]);
+    expect(calls[2].body.systemInstruction.parts[0].text).toContain('CONTINUATION TASK');
+    expect(result.text).toBe('The first part and the rest.');
+  });
+
+  test('fallback attempts draw from the same call budget', async () => {
+    const { calls } = mockGeminiFetch([{ status: 503, text: 'unavailable' }]);
+    const { service } = makeService({ fallbackEndpoint: FALLBACK, maxCallsPerRequest: 2, maxRetries: 5 });
+    await expect(ask(service)).rejects.toMatchObject({ status: 503 });
+    expect(calls.map((c) => c.url)).toEqual([PRIMARY, FALLBACK]);
+  });
+
+  // fallbackUsed means a call actually went to the fallback, not that a switch was decided: with no retry left, it stays false.
+  test.each([
+    ['no retries allowed', { maxRetries: 0 }, { status: 503, text: 'unavailable' }, { status: 503 }],
+    ['the call budget already spent', { maxRetries: 3, maxCallsPerRequest: 1 }, { status: 503, text: 'unavailable' }, { status: 503 }],
+    ['a timeout with no retries allowed', { maxRetries: 0 }, { reject: timeoutErr() }, { name: 'TimeoutError' }],
+  ])('fallbackUsed stays false when the request ends before any fallback call (%s)', async (_label, overrides, response, expected) => {
+    const { calls } = mockGeminiFetch([response]);
+    const { service } = makeService({ fallbackEndpoint: FALLBACK, ...overrides });
+    const err = await ask(service).catch((e) => e);
+    expect(err).toMatchObject(expected);
+    expect(calls.map((c) => c.url)).toEqual([PRIMARY]);
+    expect(err.metrics.fallbackUsed).toBe(false);
+  });
+
+  test('the overall deadline still stops fallback retries', async () => {
+    const { calls } = mockGeminiFetch([{ status: 500, text: 'boom' }]);
+    // As in the deadline test above: backoff 500 then 1000 against a 1000ms deadline allows exactly two calls.
+    const { service } = makeService({ fallbackEndpoint: FALLBACK, totalTimeoutMs: 1000, maxRetries: 10, maxCallsPerRequest: 20 });
+    await expect(ask(service)).rejects.toMatchObject({ status: 500 });
+    expect(calls.map((c) => c.url)).toEqual([PRIMARY, FALLBACK]);
+  });
+
+  test('the fallback receives exactly the same request body (same systemInstruction / contents split)', async () => {
+    const { calls } = mockGeminiFetch([{ status: 503, text: 'unavailable' }, geminiSuccess('OK.')]);
+    const { service } = makeService({ fallbackEndpoint: FALLBACK });
+    await ask(service);
+    expect(calls[1].body).toEqual(calls[0].body);
+    expect(calls[1].body.contents.at(-1).parts[0].text).toContain('A question');
+    expect(calls[1].body.systemInstruction.parts[0].text).not.toContain('A question');
+  });
+
+  test('a fallback answer that echoes the system instruction is still suppressed', async () => {
+    const leaked =
+      'Sure! You are an expert educational coach for Indian government school teachers. Provide DETAILED, GRADE-SPECIFIC, ACTIONABLE guidance.';
+    mockGeminiFetch([{ status: 503, text: 'unavailable' }, geminiSuccess(leaked)]);
+    const { service } = makeService({ fallbackEndpoint: FALLBACK });
+    const result = await ask(service);
+    expect(result.suppressed).toBe(true);
+    expect(result.text).toBe(SAFE_FALLBACK_MESSAGE);
+  });
+
+  test('generateContent (resources, lesson plans, attachments) never uses the fallback', async () => {
+    const { calls } = mockGeminiFetch([{ status: 503, text: 'unavailable' }, geminiSuccess('OK.')]);
+    const { service } = makeService({ fallbackEndpoint: FALLBACK });
+    const result = await service.generateContent({ systemInstruction: 'Trusted.', userText: 'Untrusted.' });
+    expect(calls.map((c) => c.url)).toEqual([PRIMARY, PRIMARY]);
+    expect(result.metrics.fallbackUsed).toBe(false);
+  });
+
+  test('a teacher cancelling during a primary call stops the request without trying the fallback', async () => {
+    const controller = new AbortController();
+    const urls = [];
+    const fetchImpl = async (url) => {
+      urls.push(url);
+      controller.abort();
+      throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    };
+    const { service } = makeService({ fallbackEndpoint: FALLBACK, fetchImpl });
+    await expect(
+      service.generateResponse({ query: 'A question', context: {}, language: 'en' }, { signal: controller.signal })
+    ).rejects.toMatchObject({ code: 'CLIENT_ABORTED' });
+    expect(urls).toEqual([PRIMARY]);
+  });
+
+  test('metrics record the switch but never the endpoint URL or key', async () => {
+    mockGeminiFetch([{ status: 503, text: 'unavailable' }, geminiSuccess('OK.')]);
+    const { service } = makeService({ fallbackEndpoint: FALLBACK });
+    const result = await ask(service);
+    const metricsJson = JSON.stringify(result.metrics);
+    expect(result.metrics.fallbackUsed).toBe(true);
+    expect(metricsJson).not.toContain('example.invalid');
+    expect(metricsJson).not.toContain('test-fake-key');
   });
 });

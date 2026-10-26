@@ -149,6 +149,8 @@ const geminiKeyPool = new GeminiKeyPool(GEMINI_API_KEYS, {
 const gemini = new GeminiService({
   keyPool: geminiKeyPool,
   endpoint: GEMINI_ENDPOINT,
+  // Coach answers only (see gemini.js); unset means no fallback.
+  fallbackEndpoint: process.env.GEMINI_FALLBACK_ENDPOINT || undefined,
   timeoutMs: LLM_TIMEOUT_MS,
   totalTimeoutMs: LLM_TOTAL_TIMEOUT_MS,
   maxRetries: LLM_MAX_RETRIES,

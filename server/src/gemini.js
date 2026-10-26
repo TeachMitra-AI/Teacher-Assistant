@@ -7,7 +7,7 @@
 // one shared call budget (maxCallsPerRequest) and one overall deadline (totalTimeoutMs), which caps both cost and
 // latency. See the per-request `tracker` created in generateResponse().
 
-const { selectTemplate, languageDirective, styleDirective, MEMORY_DIRECTIVE } = require('./prompts');
+const { selectTemplate, mandatedSectionLines, languageDirective, styleDirective, MEMORY_DIRECTIVE } = require('./prompts');
 const { sanitizeOutput, MAX_OUTPUT_LENGTH } = require('./safety/outputGuard');
 const { parseRetryAfter, computeBackoffMs, classifyGeminiError } = require('./lib/geminiPolicy');
 const { GeminiKeyPool } = require('./lib/geminiKeyPool');
@@ -80,6 +80,9 @@ class GeminiService {
     // which keeps single-key behaviour identical to before key rotation.
     this.keyPool = config.keyPool ?? new GeminiKeyPool([config.apiKey]);
     this.endpoint = config.endpoint;
+    // Optional second model for Coach answers only (generateResponse): used for the rest of a request once the primary
+    // returns a 5xx or times out, within the same budget and deadline. Unset means no fallback.
+    this.fallbackEndpoint = config.fallbackEndpoint;
     this.timeoutMs = config.timeoutMs; // per-call timeout
     this.maxRetries = config.maxRetries; // retries per logical call
 
@@ -152,8 +155,9 @@ class GeminiService {
   /**
    * Create the per-request state shared by every fetch. `callsMade` counts all fetches against the single shared
    * budget, `continuations` counts continuation attempts, and `retries` counts retries across everything.
+   * `allowFallback`: only generateResponse passes it, so no other caller can reach the fallback model.
    */
-  createTracker() {
+  createTracker({ allowFallback = false } = {}) {
     return {
       callsMade: 0,
       retries: 0,
@@ -165,6 +169,9 @@ class GeminiService {
       timedOut: false,
       rateLimited: false,
       safetyBlocked: false,
+      fallbackEndpoint: allowFallback ? this.fallbackEndpoint : undefined,
+      onFallback: false, // routing: later attempts go to the fallback model
+      fallbackUsed: false, // metric: at least one call was actually sent to it
     };
   }
 
@@ -180,6 +187,7 @@ class GeminiService {
       timedOut: tracker.timedOut,
       rateLimited: tracker.rateLimited,
       safetyBlocked: tracker.safetyBlocked,
+      fallbackUsed: tracker.fallbackUsed,
     };
   }
 
@@ -232,9 +240,11 @@ class GeminiService {
       const key = this.keyPool.getKey();
       tracker.callsMade += 1;
 
+      if (tracker.onFallback) tracker.fallbackUsed = true;
+
       let response;
       try {
-        response = await this.fetchImpl(this.endpoint, {
+        response = await this.fetchImpl(tracker.onFallback ? tracker.fallbackEndpoint : this.endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -249,7 +259,11 @@ class GeminiService {
         // Network-level failure or per-call timeout (no HTTP status) — not a
         // key-specific problem, so no rotation, just the normal retry path.
         const { retriable, reason } = classifyGeminiError(fetchError);
-        if (reason === 'timeout') tracker.timedOut = true;
+        if (reason === 'timeout') {
+          tracker.timedOut = true;
+          // A slow or overloaded model: later attempts go to the fallback model, if this request allows one.
+          if (tracker.fallbackEndpoint) tracker.onFallback = true;
+        }
         if (!retriable || attempt >= this.maxRetries || !this.hasCapacity(tracker)) throw fetchError;
         const proceeded = await this.backoffAndWait(tracker, attempt, null);
         if (!proceeded) throw fetchError;
@@ -266,6 +280,8 @@ class GeminiService {
 
         const { retriable, reason } = classifyGeminiError(err);
         if (reason === 'rate_limited') tracker.rateLimited = true;
+        // An overloaded model (5xx/408), not a key problem: later attempts go to the fallback model, if allowed.
+        if (reason === 'upstream_5xx' && tracker.fallbackEndpoint) tracker.onFallback = true;
 
         if (reason === 'rate_limited' || reason === 'auth') {
           const retryAfterMs = parseRetryAfter(
@@ -470,7 +486,7 @@ ${MEMORY_DIRECTIVE}` : selectedInstruction;
     const systemInstruction = baseInstruction + styleInstruction + languageInstruction;
 
     const startTime = this.now();
-    const tracker = this.createTracker();
+    const tracker = this.createTracker({ allowFallback: true });
     const { signal } = options;
 
     try {
@@ -522,7 +538,11 @@ ${MEMORY_DIRECTIVE}` : selectedInstruction;
         }
       }
 
-      const sanitized = sanitizeOutput(text, { systemInstructionText: systemInstruction });
+      // The template's mandated headings are expected in the answer, so they're exempt from the leak check.
+      const sanitized = sanitizeOutput(text, {
+        systemInstructionText: systemInstruction,
+        allowedEchoes: mandatedSectionLines(selectedInstruction),
+      });
       const latencyMs = this.now() - startTime;
       const outcome = sanitized.suppressed
         ? 'success_suppressed'

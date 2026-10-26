@@ -8,6 +8,7 @@ const {
   geminiOutputBlocked,
 } = require('./helpers/geminiMock');
 const { MAX_OUTPUT_LENGTH, SAFE_FALLBACK_MESSAGE } = require('../src/safety/outputGuard');
+const { selectTemplate, mandatedSectionLines } = require('../src/prompts');
 
 function makeService(overrides = {}) {
   return new GeminiService({
@@ -257,6 +258,24 @@ describe('GeminiService contract', () => {
     expect(mock).toHaveBeenCalledTimes(1);
     expect(result.suppressed).toBe(true);
     expect(result.text).toBe(SAFE_FALLBACK_MESSAGE);
+  });
+
+  test('does not suppress an answer that reproduces the template\'s mandated section headings verbatim', async () => {
+    // Regression: the leak check used to match these headings against the system instruction and replace a valid
+    // "Explain photosynthesis" answer with the fallback message.
+    const { systemInstruction } = selectTemplate('Explain photosynthesis', {});
+    const answer = mandatedSectionLines(systemInstruction)
+      .map((heading, i) => `**${i + 1}. ${heading}**\nPlants use sunlight, water and air to make their food.`)
+      .join('\n\n');
+    const { mock } = mockGeminiFetch([geminiSuccess(answer, 'STOP')]);
+    const service = makeService();
+
+    const result = await service.generateResponse({ query: 'Explain photosynthesis', context: {}, language: 'en' });
+
+    expect(mock).toHaveBeenCalledTimes(1);
+    expect(result.suppressed).toBe(false);
+    expect(result.text).toBe(answer);
+    expect(result.metrics.outcome).toBe('success');
   });
 });
 
