@@ -197,6 +197,19 @@ export async function generateAssessment(input: GenerateAssessmentInput): Promis
   return api<GenerateAssessmentResult>('/resources/generate', { method: 'POST', body: input });
 }
 
+// Snap-to-Lesson: the same request grounded in textbook page photos/PDFs (POST /resources/generate-from-source). Multipart:
+// every file under `files` (one Gemini call reads them together) and the request as a JSON string under `params`. Same
+// result shape as generateAssessment, and nothing is persisted.
+export async function generateAssessmentFromSource(
+  input: GenerateAssessmentInput,
+  files: File[],
+): Promise<GenerateAssessmentResult> {
+  const formData = new FormData();
+  for (const file of files) formData.append('files', file);
+  formData.append('params', JSON.stringify(input));
+  return api<GenerateAssessmentResult>('/resources/generate-from-source', { method: 'POST', body: formData });
+}
+
 // --- Batched assessment generation (Classroom Mode) ---
 // One call for several question-shaped artifacts instead of one each (7 Gemini calls per question against a 20/min free
 // tier throttled teachers; batching makes it 4). Must match generateAssessmentSetSchema in

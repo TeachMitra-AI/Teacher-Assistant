@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   FileQuestion, ClipboardList, Sparkles, Loader2, Pencil, Eye, Save, ArrowRight, Ticket, House, ChevronDown,
-  type LucideIcon,
+  Camera, FileText, X, type LucideIcon,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import ExamHeader from '../components/ExamHeader';
@@ -17,7 +17,11 @@ import { useDismissable } from '../hooks/useDismissable';
 import { formatResponse } from '../lib/format';
 import { stripAssessmentPreamble } from '../lib/assessment';
 import { buildInitialExamMeta } from '../lib/examMeta';
-import { generateAssessment, createResource, type GenerateAssessmentInput } from '../lib/resources';
+import {
+  generateAssessment, generateAssessmentFromSource, createResource, type GenerateAssessmentInput,
+} from '../lib/resources';
+import { validateNewAttachments } from '../lib/attachmentValidation';
+import { downscaleImage } from '../lib/imageDownscale';
 import {
   buildStructuredPayload,
   parseStructuredDocument,
@@ -34,7 +38,7 @@ import type { ProvenanceSource } from '../assistant/types';
 import {
   ASSESSMENT_FORMATS, DIFFICULTIES, QUESTION_TYPES, LANGUAGES, GRADES, SUBJECTS,
   QUESTION_COUNT_MIN, QUESTION_COUNT_MAX, QUESTION_COUNT_DEFAULT, ASSISTANT_ENABLED,
-  STRUCTURED_QUESTIONS_ENABLED,
+  STRUCTURED_QUESTIONS_ENABLED, SOURCE_GENERATION_ENABLED, MAX_SOURCE_FILES, MAX_SOURCE_QUESTIONS, ATTACHMENT_ACCEPT,
 } from '../config';
 import { ApiError } from '../api';
 import { useRetryCountdown } from '../hooks/useRetryCountdown';
@@ -134,6 +138,14 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
   const [questionCountInput, setQuestionCountInput] = useState(String(FORM_DEFAULTS.questionCount));
   const [language, setLanguage] = useState(FORM_DEFAULTS.language);
   const [instructions, setInstructions] = useState('');
+  // Snap-to-Lesson: textbook page photos/PDFs the next generation is grounded in. Kept in memory only (for Regenerate);
+  // never saved, and gone when the teacher leaves the page.
+  const [sourceFiles, setSourceFiles] = useState<File[]>([]);
+  const sourceInputRef = useRef<HTMLInputElement>(null);
+  // A pick in progress (photos being shrunk). Like generatingRef/generating: the ref ignores an overlapping pick, whose
+  // room would be computed from a stale list, and the state disables the Add button meanwhile.
+  const pickingRef = useRef(false);
+  const [pickingPages, setPickingPages] = useState(false);
 
   // Reflects `questionCount` into the input when it changes from outside (AI prefill, undo); see questionCountInput above.
   useEffect(() => {
@@ -298,15 +310,40 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
   // Auto-dismissed once a result exists, since the banner then describes a form already acted on.
   const showAiBanner = aiFieldCount > 0 && !bannerDismissed && content === null;
 
+  // Snap-to-Lesson page picker. Photos are shrunk first (a phone photo can exceed the per-file cap), then checked with the
+  // same advisory rules as Coach attachments plus this feature's lower page count. The server re-checks everything.
+  async function handleSourceFilesPicked(picked: File[]) {
+    if (picked.length === 0 || pickingRef.current) return;
+    pickingRef.current = true;
+    setPickingPages(true);
+    try {
+      const processed = await Promise.all(picked.map(downscaleImage));
+      const { accepted, error: batchError } = validateNewAttachments(sourceFiles.map((f) => f.size), processed);
+      const room = Math.max(0, MAX_SOURCE_FILES - sourceFiles.length);
+      const kept = accepted.slice(0, room);
+      const messages = batchError ? [batchError] : [];
+      if (accepted.length > kept.length) messages.push(`Only up to ${MAX_SOURCE_FILES} pages can be used at once.`);
+      if (messages.length > 0) show(messages.join(' '), 'error');
+      if (kept.length > 0) setSourceFiles((prev) => [...prev, ...kept]);
+    } finally {
+      pickingRef.current = false;
+      setPickingPages(false);
+    }
+  }
+
   async function handleGenerate(e?: FormEvent) {
     e?.preventDefault();
     if (generatingRef.current) return;
     if (!topic.trim()) {
-      show('Please enter a topic', 'error');
+      show(sourceFiles.length > 0 ? 'Please enter the chapter or topic name' : 'Please enter a topic', 'error');
       return;
     }
     if (questionTypes.length === 0) {
       show('Please select at least one question type', 'error');
+      return;
+    }
+    if (sourceFiles.length > 0 && clampQuestionCount(questionCount) > MAX_SOURCE_QUESTIONS) {
+      show(`From textbook pages, ask for at most ${MAX_SOURCE_QUESTIONS} questions`, 'error');
       return;
     }
     if (content !== null && (contentDirty || structuredDirty)) {
@@ -337,7 +374,18 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
       instructions: instructions.trim() || undefined,
     };
     try {
-      const result = await generateAssessment(input);
+      const result = await (sourceFiles.length > 0
+        ? generateAssessmentFromSource(
+          // The page endpoint takes only the canonical grade/subject values (they reach the trusted prompt), so a
+          // prefilled value outside the lists is sent as "not specified" rather than failing the request.
+          {
+            ...input,
+            grade: input.grade && GRADES.includes(input.grade) ? input.grade : undefined,
+            subject: input.subject && SUBJECTS.includes(input.subject) ? input.subject : undefined,
+          },
+          sourceFiles,
+        )
+        : generateAssessment(input));
       setContent(result.content);
       setTitle(defaultTitle(format, topic, grade));
       setContentDirty(false);
@@ -479,10 +527,67 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
             </div>
           </fieldset>
 
+          {SOURCE_GENERATION_ENABLED && (
+            <div className="ws-field generator-source">
+              <span className="ws-label">From textbook page (optional)</span>
+              <p className="generator-source-hint">
+                Add up to {MAX_SOURCE_FILES} photos of your textbook pages, or a short PDF. Every question will come from these pages.
+              </p>
+              {sourceFiles.length > 0 && (
+                <ul className="attachment-tray-chips generator-source-chips" aria-label="Textbook pages">
+                  {sourceFiles.map((file, i) => (
+                    <li key={`${file.name}-${i}`} className="attachment-chip" title={file.name}>
+                      {file.type === 'application/pdf'
+                        ? <FileText size={14} className="attachment-chip-icon" aria-hidden="true" />
+                        : <Camera size={14} className="attachment-chip-icon" aria-hidden="true" />}
+                      <span className="attachment-chip-name">{file.name}</span>
+                      <button
+                        type="button"
+                        className="attachment-chip-remove"
+                        aria-label={`Remove ${file.name}`}
+                        disabled={generating}
+                        onClick={() => setSourceFiles((prev) => prev.filter((_, j) => j !== i))}
+                      >
+                        <X size={12} aria-hidden="true" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {sourceFiles.length < MAX_SOURCE_FILES && (
+                <button
+                  type="button"
+                  className="btn-outline generator-source-add"
+                  disabled={generating || pickingPages}
+                  onClick={() => sourceInputRef.current?.click()}
+                >
+                  <Camera size={16} aria-hidden="true" />
+                  {sourceFiles.length === 0 ? 'Add textbook pages' : 'Add another page'}
+                </button>
+              )}
+              {/* No `capture` attribute: without it, a phone offers both the camera and the gallery. */}
+              <input
+                ref={sourceInputRef}
+                type="file"
+                accept={ATTACHMENT_ACCEPT}
+                multiple
+                hidden
+                aria-hidden="true"
+                tabIndex={-1}
+                data-testid="source-file-input"
+                onChange={(e) => {
+                  const picked = Array.from(e.target.files ?? []);
+                  e.target.value = '';
+                  void handleSourceFilesPicked(picked);
+                }}
+              />
+            </div>
+          )}
+
           <div className="generator-grid">
             <label className="ws-field">
               <span className="ws-label">
-                Topic <span className="generator-req" aria-hidden="true">*</span>
+                {sourceFiles.length > 0 ? 'Chapter / topic name' : 'Topic'} <span className="generator-req" aria-hidden="true">*</span>
                 <FieldNote source={provenance.topic} uncertain={lowConfidence.includes('topic')} />
               </span>
               <input
@@ -491,7 +596,7 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
                 onChange={(e) => { setTopic(e.target.value); noteEdit('topic'); }}
                 maxLength={200}
                 required
-                placeholder="e.g. Fractions, Water cycle, Parts of speech"
+                placeholder={sourceFiles.length > 0 ? 'e.g. Chapter 4: Fractions' : 'e.g. Fractions, Water cycle, Parts of speech'}
                 aria-label="Topic (required)"
               />
             </label>
@@ -640,7 +745,10 @@ export default function GeneratorPage({ preferences }: { preferences: ReturnType
         </form>
 
         {generating && content === null && (
-          <div className="response-loading"><div className="spinner" /><p>Generating your {format}…</p></div>
+          <div className="response-loading">
+            <div className="spinner" />
+            <p>{sourceFiles.length > 0 ? 'Reading your pages… this can take up to a minute.' : `Generating your ${format}…`}</p>
+          </div>
         )}
 
         {content !== null && (

@@ -13,6 +13,19 @@ Gemini in a single call) — a real backend/pipeline change, called out and expl
 implementation rather than assumed. §2, §4, §5, §6, and §9 below describe the current (array-based)
 shape; single-file is simply the one-element case throughout, not a separate code path.
 
+**Second consumer: Snap-to-Lesson.** `POST /api/resources/generate-from-source` builds one
+quiz/worksheet from 1–3 textbook page photos or a PDF (≤ 10 pages) in the Generator. It shares this
+feature's machinery rather than duplicating it: the upload gate (flag + school allow-list before
+multer, multer `memoryStorage`, multer error mapping) moved unchanged into
+`server/src/attachments/uploadGate.js`, and the route reuses `validateAttachmentBatch`, the per-user
+attachment budget (one unit per request, consumed only after every check passes), the
+`attachmentGemini` instance and the attachment rate limiter. It adds its own kill switch,
+`SOURCE_GENERATION_ENABLED`, layered on `ATTACHMENTS_ENABLED`. The pages go in `contents` as
+`inlineData`; `grade`/`subject` are closed to the server vocabularies because they reach the trusted
+`systemInstruction`. The response is `/resources/generate`'s, validated by the same pipeline. Rollout
+prerequisites (an explicitly probed `ATTACHMENT_GEMINI_ENDPOINT`, `ATTACHMENT_LLM_MAX_OUTPUT_TOKENS=8192`)
+are documented in `server/.env.example`.
+
 ## 1. What this is
 
 Lets a teacher attach one or more JPEG/PNG/WEBP images and/or PDFs to a Coach question — "Solve

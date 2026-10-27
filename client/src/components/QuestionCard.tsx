@@ -1,12 +1,23 @@
 // One structured question, as an editable card (Generator's Edit tab / ResourceWorkspace's structured editor) or a read-only
 // card (Preview tab); see docs/generator-v2-plan.md. One component for both so they don't drift; `editable` picks the controls.
+import type { ReactNode } from 'react';
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import { EDITABLE_QUESTION_TYPES } from '../lib/structuredQuestions';
+import { formatInlineMath } from '../lib/format';
 import type { MatchQuestion, McqQuestion, Question } from '../lib/resources';
 
 const TYPE_LABELS: Record<string, string> = Object.fromEntries(EDITABLE_QUESTION_TYPES.map((t) => [t.value, t.label]));
 
 const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
+
+// Read-only text that may hold $...$ maths (generated questions write fractions as LaTeX). It goes through formatInlineMath,
+// which escapes before adding KaTeX markup, the same path the printed paper takes, so model text can't inject HTML.
+function MathText({ text, as: Tag = 'span', className, fallback }: {
+  text: string; as?: 'p' | 'span' | 'strong' | 'td'; className?: string; fallback: ReactNode;
+}) {
+  if (!text) return <Tag className={className}>{fallback}</Tag>;
+  return <Tag className={className} dangerouslySetInnerHTML={{ __html: formatInlineMath(text) }} />;
+}
 
 export interface QuestionCardProps {
   question: Question;
@@ -101,7 +112,7 @@ export default function QuestionCard({
           rows={2}
         />
       ) : (
-        <p className="question-card-text-display">{question.text || <em>(No question text)</em>}</p>
+        <MathText as="p" className="question-card-text-display" text={question.text} fallback={<em>(No question text)</em>} />
       )}
 
       {question.type === 'mcq' && (
@@ -134,7 +145,7 @@ export default function QuestionCard({
           </label>
         ) : (
           <p className="question-card-answer">
-            {question.type === 'fill_blank' ? 'Answer' : 'Correct answer'}: <strong>{question.correctAnswer || '—'}</strong>
+            {question.type === 'fill_blank' ? 'Answer' : 'Correct answer'}: <MathText as="strong" text={question.correctAnswer} fallback="—" />
           </p>
         )
       )}
@@ -151,7 +162,7 @@ export default function QuestionCard({
             />
           </label>
         ) : (
-          <p className="question-card-answer">Suggested answer: {question.modelAnswer || '—'}</p>
+          <p className="question-card-answer">Suggested answer: <MathText text={question.modelAnswer} fallback="—" /></p>
         )
       )}
       {question.type === 'match' && (
@@ -199,9 +210,11 @@ function McqFields({
               aria-label={`Question ${index + 1} option ${OPTION_LETTERS[i]}`}
             />
           ) : (
-            <span className={`question-card-option-text${question.correctOptionIndex === i ? ' correct' : ''}`}>
-              {opt || <em>(empty)</em>}
-            </span>
+            <MathText
+              className={`question-card-option-text${question.correctOptionIndex === i ? ' correct' : ''}`}
+              text={opt}
+              fallback={<em>(empty)</em>}
+            />
           )}
         </div>
       ))}
@@ -232,7 +245,7 @@ function MatchFields({
         <thead><tr><th>Column A</th><th>Column B</th></tr></thead>
         <tbody>
           {question.pairs.map((p, i) => (
-            <tr key={i}><td>{p.left || '—'}</td><td>{p.right || '—'}</td></tr>
+            <tr key={i}><MathText as="td" text={p.left} fallback="—" /><MathText as="td" text={p.right} fallback="—" /></tr>
           ))}
         </tbody>
       </table>

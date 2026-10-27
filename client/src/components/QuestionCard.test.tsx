@@ -153,6 +153,102 @@ describe('QuestionCard — read-only (preview) mode', () => {
     expect(screen.getByText('1st')).toBeInTheDocument();
   });
 
+  // Generated questions write maths as $...$ LaTeX. The read-only card must typeset it (as the printed paper does), not show
+  // "$\frac{5}{12}$". KaTeX keeps the source in a hidden MathML <annotation> for screen readers, so "visible" text is checked
+  // with the .katex elements removed.
+  function visibleTextOutsideMath(el: HTMLElement): string {
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('.katex').forEach((k) => k.remove());
+    return clone.textContent ?? '';
+  }
+
+  test('typesets a LaTeX fraction in the question text and keeps the surrounding words', () => {
+    const q = {
+      ...(createEmptyQuestion('short_answer') as ShortAnswerQuestion),
+      text: 'In the fraction $\\frac{5}{12}$, which number is the denominator?',
+      correctAnswer: '12',
+    };
+    const { container } = render(<QuestionCard question={q} index={0} total={1} editable={false} />);
+    const text = container.querySelector('.question-card-text-display') as HTMLElement;
+
+    expect(text.tagName).toBe('P');
+    expect(text.querySelectorAll('.katex')).toHaveLength(1);
+    expect(text.querySelector('.katex-mathml math')).not.toBeNull(); // accessible MathML is kept
+    const visible = visibleTextOutsideMath(text);
+    expect(visible).toBe('In the fraction , which number is the denominator?');
+    expect(visible).not.toMatch(/\\frac|\$/);
+  });
+
+  test('plain text renders exactly as before, with HTML-like characters shown literally', () => {
+    const q = {
+      ...(createEmptyQuestion('short_answer') as ShortAnswerQuestion),
+      text: 'Is 3 < 5 & 7 > 2? Answer in <b>one</b> word.',
+      correctAnswer: 'Yes',
+    };
+    const { container } = render(<QuestionCard question={q} index={0} total={1} editable={false} />);
+    const text = container.querySelector('.question-card-text-display') as HTMLElement;
+
+    expect(text.textContent).toBe('Is 3 < 5 & 7 > 2? Answer in <b>one</b> word.');
+    expect(text.querySelector('b')).toBeNull();
+    expect(text.querySelector('.katex')).toBeNull();
+  });
+
+  test('mcq: typesets LaTeX in every option and keeps the correct-option styling', () => {
+    const q: McqQuestion = {
+      ...(createEmptyQuestion('mcq') as McqQuestion),
+      text: 'Which fraction is equivalent to $\\frac{2}{5}$?',
+      options: ['$\\frac{4}{10}$', '$\\frac{3}{8}$', '$\\frac{5}{2}$', '$\\frac{6}{20}$'],
+      correctOptionIndex: 0,
+    };
+    const { container } = render(<QuestionCard question={q} index={0} total={1} editable={false} />);
+    const options = [...container.querySelectorAll('.question-card-option-text')] as HTMLElement[];
+
+    expect(options).toHaveLength(4);
+    for (const option of options) {
+      expect(option.querySelectorAll('.katex')).toHaveLength(1);
+      expect(visibleTextOutsideMath(option)).toBe('');
+    }
+    expect(options[0].className).toContain('correct');
+    expect(options[1].className).not.toContain('correct');
+  });
+
+  test('mcq: an empty option still shows its placeholder', () => {
+    const q: McqQuestion = { ...(createEmptyQuestion('mcq') as McqQuestion), text: 'Q?', options: ['$5$', '', '7', '8'] };
+    render(<QuestionCard question={q} index={0} total={1} editable={false} />);
+    expect(screen.getByText('(empty)')).toBeInTheDocument();
+    expect(screen.getByText('7')).toBeInTheDocument();
+  });
+
+  test('answers and match cells typeset LaTeX too', () => {
+    const shortQ = { ...(createEmptyQuestion('short_answer') as ShortAnswerQuestion), text: '2/8 + 3/8?', correctAnswer: '$\\frac{5}{8}$' };
+    const { container, unmount } = render(<QuestionCard question={shortQ} index={0} total={1} editable={false} />);
+    expect(container.querySelector('.question-card-answer strong .katex')).not.toBeNull();
+    unmount();
+
+    const matchQ: MatchQuestion = {
+      ...(createEmptyQuestion('match') as MatchQuestion),
+      text: 'Match.',
+      pairs: [{ left: '$\\frac{1}{2}$', right: 'half' }, { left: 'b', right: '2' }, { left: 'c', right: '3' }],
+    };
+    const view = render(<QuestionCard question={matchQ} index={0} total={1} editable={false} />);
+    expect(view.container.querySelector('td .katex')).not.toBeNull();
+    expect(screen.getByText('half')).toBeInTheDocument();
+  });
+
+  test('model text cannot inject HTML, in plain text or inside a maths segment', () => {
+    const q: McqQuestion = {
+      ...(createEmptyQuestion('mcq') as McqQuestion),
+      text: '<img src=x onerror="alert(1)"> and $<img src=y onerror=alert(2)>$',
+      options: ['<script>alert(3)</script>', '$\\frac{1}{2}$', 'c', 'd'],
+      correctOptionIndex: 1,
+    };
+    const { container } = render(<QuestionCard question={q} index={0} total={1} editable={false} />);
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('script')).toBeNull();
+    expect(container.querySelector('[onerror]')).toBeNull();
+    expect(screen.getByText('<script>alert(3)</script>')).toBeInTheDocument();
+  });
+
   test('no action buttons (move/delete) render in read-only mode', () => {
     const q = createEmptyQuestion('short_answer');
     render(<QuestionCard question={q} index={0} total={1} editable={false} />);

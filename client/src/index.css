@@ -4790,6 +4790,12 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   margin-bottom: 1rem;
 }
 .generator-req { color: var(--orange); }
+/* Snap-to-Lesson page picker: chips reuse the Coach attachment tray's .attachment-chip styles. */
+.generator-source { display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; margin-bottom: 1rem; }
+.generator-source-hint { margin: 0; font-size: 0.85rem; color: var(--text-muted); }
+.generator-source-chips { list-style: none; margin: 0; padding: 0; width: 100%; }
+.generator-source-chips .attachment-chip { max-width: min(240px, 100%); }
+.generator-source-add { padding: 0.5rem 1rem; }
 .generator-instructions { display: flex; flex-direction: column; margin-bottom: 1rem; }
 .generator-instructions textarea {
   width: 100%;
@@ -4919,6 +4925,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
 }
 .question-card-option-text { font-size: 0.9rem; color: var(--text); }
 .question-card-option-text.correct { font-weight: 700; color: var(--orange); }
+/* KaTeX's `.katex { font: ... }` shorthand resets the weight, which hid the bold correct-answer cue on a maths-only option. */
+.question-card-option-text.correct .katex { font-weight: inherit; }
 
 .question-card-match-editor { display: flex; flex-direction: column; gap: 0.45rem; }
 .question-card-match-row { display: flex; align-items: center; gap: 0.5rem; }

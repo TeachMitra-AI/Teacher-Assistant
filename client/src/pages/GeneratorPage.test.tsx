@@ -14,7 +14,7 @@ vi.mock('../components/TopBar', () => ({ default: () => null }));
 
 vi.mock('../config', async (importOriginal) => {
   const actual = await importOriginal<typeof configLib>();
-  return { ...actual, STRUCTURED_QUESTIONS_ENABLED: false };
+  return { ...actual, STRUCTURED_QUESTIONS_ENABLED: false, SOURCE_GENERATION_ENABLED: false };
 });
 
 vi.mock('../auth', () => ({
@@ -55,6 +55,12 @@ beforeEach(() => {
 });
 
 describe('GeneratorPage — legacy fallback (STRUCTURED_QUESTIONS_ENABLED off)', () => {
+  test('with SOURCE_GENERATION_ENABLED off, there is no textbook page picker', () => {
+    renderPage();
+    expect(screen.queryByText('From textbook page (optional)')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add textbook pages/i })).not.toBeInTheDocument();
+  });
+
   test('a plain generate result with no `structured` field renders the markdown textarea/preview, unchanged', async () => {
     const user = userEvent.setup();
     mockedResources.generateAssessment.mockResolvedValue({ content: '# Quiz: Fractions\n\n1. Q?', requestId: 'r1' });
