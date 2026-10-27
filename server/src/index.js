@@ -888,6 +888,9 @@ app.use('/api', dataRouter);
 // Mounted ahead of the resources router rather than inside it, so routes/resources.js isn't opened again. It must
 // precede the router it guards, and only the generate path is matched.
 app.use('/api/resources/generate', generateLimiter);
+// Snap-to-Lesson sends image/PDF tokens like a Coach attachment, so it shares that bucket. Mounted on its own exact path:
+// the '/api/resources/generate' prefix above doesn't match a hyphenated sibling.
+app.use('/api/resources/generate-from-source', attachmentLimiter);
 app.use('/api', resourcesRouter);
 app.use('/api/admin', adminRouter);
 // Admin Support Inbox. No dedicated rate limiter, like the other /api/admin/* routes: authRequired and requireRole('super_admin') gate it.

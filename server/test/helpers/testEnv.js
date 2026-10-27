@@ -28,6 +28,9 @@ const TEST_ENV = {
   // The shared test app's rate-limiter state persists across every test in a file (one in-memory store keyed by IP), so a
   // file with enough generate() calls could exhaust .env's production-sized default (30) before it finishes.
   RESOURCE_GENERATE_RATE_LIMIT_MAX: '1000',
+  // Same reasoning for the attachment bucket, which also covers POST /resources/generate-from-source: a .env holding the
+  // production-sized value (20) would run out partway through a file.
+  ATTACHMENT_RATE_LIMIT_MAX_REQUESTS: '1000',
   // Same reasoning: classroom.attendance.test.js exercises bulk-mark and
   // export endpoints many times through the shared app.
   CLASSROOM_MANAGEMENT_RATE_LIMIT_MAX_REQUESTS: '5000',

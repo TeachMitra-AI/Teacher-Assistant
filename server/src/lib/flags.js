@@ -404,6 +404,30 @@ function readStructuredQuestionsFlags(env, { warn = console.warn } = {}) {
   };
 }
 
+// Snap-to-Lesson: POST /api/resources/generate-from-source (an assessment built from textbook page photos/PDFs). A
+// separate gate layered on ATTACHMENTS_ENABLED and its school allow-list, like MOBILE_PUSH_ENABLED on
+// NOTIFICATIONS_ENABLED: both must be on, and this one can be switched off without touching Coach attachments.
+
+const SOURCE_GENERATION_FLAG_DEFAULTS = Object.freeze({
+  enabled: false,
+});
+
+/**
+ * Read the Snap-to-Lesson feature's global flags from an environment object.
+ * @param {Record<string, string|undefined>} env
+ * @param {{warn?: (msg: string) => void}} [opts]
+ * @returns {{enabled: boolean}}
+ */
+function readSourceGenerationFlags(env, { warn = console.warn } = {}) {
+  return {
+    enabled: parseBoolEnv(env.SOURCE_GENERATION_ENABLED, {
+      name: 'SOURCE_GENERATION_ENABLED',
+      defaultValue: SOURCE_GENERATION_FLAG_DEFAULTS.enabled,
+      warn,
+    }),
+  };
+}
+
 // Mobile push. A separate gate layered on NOTIFICATIONS_ENABLED: that one controls whether a notification is
 // created at all, this one controls only the extra Expo push dispatch and the device-token routes
 // (routes/notifications.js). That lets push be switched independently of in-app notifications.
@@ -506,6 +530,8 @@ module.exports = {
   CLASSROOM_MANAGEMENT_FLAG_DEFAULTS,
   readStructuredQuestionsFlags,
   STRUCTURED_QUESTIONS_FLAG_DEFAULTS,
+  readSourceGenerationFlags,
+  SOURCE_GENERATION_FLAG_DEFAULTS,
   readMobilePushFlags,
   MOBILE_PUSH_FLAG_DEFAULTS,
   readTeacherAttendanceFlags,

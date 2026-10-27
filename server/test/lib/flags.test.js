@@ -18,6 +18,8 @@ const {
   CLASSROOM_MANAGEMENT_FLAG_DEFAULTS,
   readTeacherAttendanceFlags,
   TEACHER_ATTENDANCE_FLAG_DEFAULTS,
+  readSourceGenerationFlags,
+  SOURCE_GENERATION_FLAG_DEFAULTS,
 } = require('../../src/lib/flags');
 
 function withWarn() {
@@ -458,5 +460,25 @@ describe('flags.readTeacherAttendanceFlags', () => {
     flags.allowedSchoolCodes.push('KV002');
     expect(TEACHER_ATTENDANCE_FLAG_DEFAULTS.allowedSchoolCodes).toEqual([]);
     expect(Object.isFrozen(TEACHER_ATTENDANCE_FLAG_DEFAULTS)).toBe(true);
+  });
+});
+
+describe('flags.readSourceGenerationFlags', () => {
+  test('an empty environment leaves Snap-to-Lesson OFF without warning', () => {
+    const { warn, warnings } = withWarn();
+    expect(readSourceGenerationFlags({}, { warn }).enabled).toBe(false);
+    expect(SOURCE_GENERATION_FLAG_DEFAULTS.enabled).toBe(false);
+    expect(warnings).toHaveLength(0);
+  });
+
+  test('an explicit true is read through', () => {
+    expect(readSourceGenerationFlags({ SOURCE_GENERATION_ENABLED: 'true' }).enabled).toBe(true);
+  });
+
+  test('a nonsense value leaves the feature OFF and warns', () => {
+    const { warn, warnings } = withWarn();
+    expect(readSourceGenerationFlags({ SOURCE_GENERATION_ENABLED: 'ture' }, { warn }).enabled).toBe(false);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/SOURCE_GENERATION_ENABLED/);
   });
 });

@@ -7,6 +7,8 @@
 const { z } = require('zod');
 
 const { MAX_META, MAX_LANGUAGE } = require('../../lib/resourceFields');
+const { GRADES } = require('../vocab/grades');
+const { SUBJECTS } = require('../vocab/subjects');
 
 // Closed vocabularies for the generator's options; the capability descriptor advertises these too.
 // client/src/config.ts (ASSESSMENT_FORMATS, DIFFICULTIES, QUESTION_TYPES, QUESTION_COUNT_MIN/MAX) holds the matching
@@ -69,6 +71,19 @@ const generateAssessmentSchema = z
   })
   .strict();
 
+// Snap-to-Lesson (POST /api/resources/generate-from-source): the same request, arriving as the `params` field of a
+// multipart upload. `grade` and `subject` are closed to the server vocabularies (or empty) because they go into the
+// trusted systemInstruction; unlike generateAssessmentSchema's free text, they can't carry instructions (RCC-001
+// must not grow). The question count is capped lower: page tokens plus a long regional-language answer must stay
+// inside ATTACHMENT_LLM_MAX_OUTPUT_TOKENS and outputGuard's MAX_OUTPUT_LENGTH, which structured JSON can't continue past.
+const MAX_SOURCE_QUESTIONS = 15;
+
+const generateFromSourceSchema = generateAssessmentSchema.extend({
+  grade: z.union([z.enum(GRADES), z.literal('')]).optional(),
+  subject: z.union([z.enum(SUBJECTS), z.literal('')]).optional(),
+  questionCount: z.number().int().min(MIN_QUESTIONS).max(MAX_SOURCE_QUESTIONS),
+});
+
 // A validated `questionType` is a string or an array; consumers normalize through this.
 function normalizeQuestionTypes(questionType) {
   return Array.isArray(questionType) ? questionType : [questionType];
@@ -87,4 +102,6 @@ module.exports = {
   MAX_QUESTIONS,
   MAX_TOPIC,
   MAX_INSTRUCTIONS,
+  generateFromSourceSchema,
+  MAX_SOURCE_QUESTIONS,
 };

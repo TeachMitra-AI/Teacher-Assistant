@@ -10,6 +10,13 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#039;');
 }
 
+// One short string for an inline slot (a structured question card's text, option or answer): formatResponse's escaping and
+// KaTeX math, without its block passes, which would turn "1. ..." into a list item, "A. ..." into an option block, and wrap
+// everything in a <p>. Safe for dangerouslySetInnerHTML for the same reason formatResponse is: it escapes first.
+export function formatInlineMath(raw: string): string {
+  return renderMathSegments(escapeHtml(raw));
+}
+
 export function formatResponse(raw: string): string {
   let text = escapeHtml(raw);
 

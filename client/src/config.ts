@@ -273,6 +273,15 @@ export const TEACHER_ATTENDANCE_ENABLED = import.meta.env.VITE_TEACHER_ATTENDANC
 // STRUCTURED_QUESTIONS_ENABLED is the real kill switch (the new types 503 with STRUCTURED_QUESTIONS_DISABLED).
 export const STRUCTURED_QUESTIONS_ENABLED = import.meta.env.VITE_STRUCTURED_QUESTIONS_ENABLED === 'true';
 
+// ---- Snap-to-Lesson (Generator: build from textbook page photos/PDFs) ----
+// Client-side gate; when false the Generator doesn't render the page picker. The server's SOURCE_GENERATION_ENABLED
+// (layered on ATTACHMENTS_ENABLED) is the real kill switch: POST /api/resources/generate-from-source returns 503.
+export const SOURCE_GENERATION_ENABLED = import.meta.env.VITE_SOURCE_GENERATION_ENABLED === 'true';
+// Mirrors SOURCE_MAX_FILES in server/src/routes/resources.js; the server enforces it.
+export const MAX_SOURCE_FILES = 3;
+// Mirrors MAX_SOURCE_QUESTIONS in server/src/actions/schemas/generateAssessment.js; the server enforces it.
+export const MAX_SOURCE_QUESTIONS = 15;
+
 // Mirrors NOTIFICATION_TYPES in server/src/lib/notificationTypes.js; change both in the same commit. `sendable: true`
 // marks the types an admin's compose form may pick (the server's ADMIN_SENDABLE_TYPES); the rest are system/AI-only.
 export const NOTIFICATION_TYPE_META: Record<NotificationType, { label: string; icon: LucideIcon; sendable: boolean }> = {
