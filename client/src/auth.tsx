@@ -172,9 +172,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [authenticate]);
 
   // Serves Google sign-up and sign-in via one endpoint; `signup: true` makes it a sign-up (the server assigns a default school).
+  // Sign-up returns no session (routes/auth.js), so, like register(), it's followed by a sign-in with the same ID token.
   const loginWithGoogle = useCallback(
-    (idToken: string, options: GoogleAuthOptions = {}) =>
-      authenticate('/auth/google', { idToken, ...options }),
+    async (idToken: string, options: GoogleAuthOptions = {}): Promise<AuthOutcome> => {
+      if (options.signup) {
+        try {
+          await api<{ status: string }>('/auth/google', { method: 'POST', body: { idToken, ...options }, auth: false });
+        } catch (err) {
+          const outcome = outcomeForError(err);
+          if (outcome) return outcome;
+          throw err;
+        }
+        // Only the token: sign-up fields here would make the server treat it as a second sign-up (409).
+        return authenticate('/auth/google', { idToken });
+      }
+      return authenticate('/auth/google', { idToken, ...options });
+    },
     [authenticate]
   );
 
