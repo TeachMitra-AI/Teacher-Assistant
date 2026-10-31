@@ -68,7 +68,22 @@ export default function ResponseCard({ query, text, language, context, queryId, 
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(text);
+      // Rich targets (Notes, Docs, email composers) get the same formatting the card shows on screen; a target with no
+      // rich paste (or a browser without the multi-format write API) falls back to the plain Markdown source.
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard.write) {
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              'text/plain': new Blob([text], { type: 'text/plain' }),
+              'text/html': new Blob([formatResponse(text)], { type: 'text/html' }),
+            }),
+          ]);
+        } catch {
+          await navigator.clipboard.writeText(text);
+        }
+      } else {
+        await navigator.clipboard.writeText(text);
+      }
       setCopied(true);
       // Restart the revert timer instead of stacking one, so repeated clicks keep the Check for a full duration.
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
