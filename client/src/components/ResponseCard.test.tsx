@@ -401,6 +401,38 @@ describe('ResponseCard: other actions are unchanged', () => {
     expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
   });
 
+  // jsdom's Blob has no .text(), so content is read back via FileReader instead.
+  function readBlobText(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(blob);
+    });
+  }
+
+  it('copies rich HTML alongside the plain text when the browser supports it, so bold survives a paste', async () => {
+    installSynth();
+    class FakeClipboardItem {
+      items: Record<string, Blob>;
+      constructor(items: Record<string, Blob>) {
+        this.items = items;
+      }
+    }
+    vi.stubGlobal('ClipboardItem', FakeClipboardItem);
+    const write = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { write, writeText: vi.fn() }, configurable: true });
+    renderCards(<Card text={'**bold**'} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    });
+    expect(write).toHaveBeenCalledTimes(1);
+    const item = write.mock.calls[0][0][0] as FakeClipboardItem;
+    expect(await readBlobText(item.items['text/plain'])).toBe('**bold**');
+    expect(await readBlobText(item.items['text/html'])).toContain('<strong>bold</strong>');
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
+  });
+
   it('still offers Share and Save to Library', () => {
     installSynth();
     renderCards(<Card />);
