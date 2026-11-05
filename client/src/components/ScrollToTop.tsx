@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef } from 'react';
 import { useLocation, useNavigationType } from 'react-router-dom';
 
 // Makes each new page start at the top: an SPA keeps the scroll position across routes, so a footer link opened the next page
-// scrolled to where the footer was. Mounted once inside <BrowserRouter> (App.tsx), covering every link and navigate().
+// scrolled to where the footer was. Mounted once inside the data router's AppShell (App.tsx), covering every link and navigate().
 // - Only PUSH/REPLACE scrolls; back/forward (POP) and the initial load are left to the browser's scroll restoration.
 // - Only a changed pathname or hash scrolls, not the query string, so changing `?tab=…` doesn't yank the reader up.
 // - A `#hash` matching an element scrolls to it; otherwise to the top.

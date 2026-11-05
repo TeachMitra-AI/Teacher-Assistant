@@ -1,13 +1,29 @@
 // Library integration for the Structured Question Model (docs/generator-v2-plan.md). Unlike GeneratorPage, structured mode here
 // depends only on the loaded resource's own `structured.schemaVersion`, not a client flag (a structured resource stays editable
 // even if the flag that created it is later turned off), so no config mocking is needed.
-import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, test, vi, beforeEach, beforeAll, afterAll } from 'vitest';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import ResourceWorkspace from './ResourceWorkspace';
 import * as resourcesLib from '../lib/resources';
 import type { LibraryResource } from '../types';
+
+// A data router builds a fetch `Request` for every real navigation. Under jsdom its AbortController produces a jsdom AbortSignal, which Node's
+// built-in Request rejects ("Expected signal to be an instance of AbortSignal"). This test-only shim keeps the signal the router passed in.
+const NativeRequest = globalThis.Request;
+beforeAll(() => {
+  globalThis.Request = class extends NativeRequest {
+    constructor(input: RequestInfo | URL, init?: RequestInit) {
+      const { signal, ...rest } = init ?? {};
+      super(input, rest);
+      if (signal) Object.defineProperty(this, 'signal', { value: signal });
+    }
+  } as typeof Request;
+});
+afterAll(() => {
+  globalThis.Request = NativeRequest;
+});
 
 vi.mock('../components/TopBar', () => ({ default: () => null }));
 
@@ -31,14 +47,17 @@ vi.mock('../lib/resources', async (importOriginal) => {
 
 const mockedResources = vi.mocked(resourcesLib);
 
-function renderWorkspace(id = 'r1') {
-  return render(
-    <MemoryRouter initialEntries={[`/library/${id}/edit`]}>
-      <Routes>
-        <Route path="/library/:id/edit" element={<ResourceWorkspace preferences={{} as never} />} />
-      </Routes>
-    </MemoryRouter>
+// A data router (not MemoryRouter): the Workspace uses useBlocker, which only works under one. The extra routes are targets to navigate to.
+function renderWorkspace(id = 'r1', initialEntries = [`/library/${id}/edit`]) {
+  const router = createMemoryRouter(
+    [
+      { path: '/library/:id/edit', element: <ResourceWorkspace preferences={{} as never} /> },
+      { path: '/generator', element: <p>Generator page</p> },
+      { path: '/library', element: <p>Library page</p> },
+    ],
+    { initialEntries, initialIndex: initialEntries.length - 1 }
   );
+  return { router, ...render(<RouterProvider router={router} />) };
 }
 
 function structuredResource(overrides: Partial<LibraryResource> = {}): LibraryResource {
@@ -226,6 +245,103 @@ describe('ResourceWorkspace — legacy resource (no schemaVersion)', () => {
     const [, patch] = mockedResources.updateResource.mock.calls[0];
     expect(patch.content).toBe('## Objectives\nExplain photosynthesis.!');
     expect(patch.structured).toBeUndefined();
+  });
+
+  describe('leaving with unsaved edits (useBlocker)', () => {
+    const MESSAGE = 'You have unsaved changes. Leave without saving?';
+
+    async function openAndEdit(entries?: string[]) {
+      mockedResources.getResource.mockResolvedValue(legacyResource());
+      const view = renderWorkspace('r2', entries);
+      await waitFor(() => expect(screen.getByLabelText('Resource content')).toBeInTheDocument());
+      await userEvent.type(screen.getByLabelText('Resource content'), '!');
+      return view;
+    }
+
+    test('declining the prompt keeps the teacher on the page with their edits', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      const { router } = await openAndEdit();
+
+      await act(async () => { await router.navigate('/generator'); });
+
+      expect(confirmSpy).toHaveBeenCalledWith(MESSAGE);
+      expect(router.state.location.pathname).toBe('/library/r2/edit');
+      expect(screen.getByLabelText('Resource content')).toHaveValue('## Objectives\nExplain photosynthesis.!');
+      expect(screen.queryByText('Generator page')).not.toBeInTheDocument();
+    });
+
+    test('accepting the prompt navigates away', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const { router } = await openAndEdit();
+
+      await act(async () => { await router.navigate('/generator'); });
+
+      expect(confirmSpy).toHaveBeenCalledWith(MESSAGE);
+      expect(router.state.location.pathname).toBe('/generator');
+      expect(screen.getByText('Generator page')).toBeInTheDocument();
+    });
+
+    test('a clean workspace navigates without any prompt', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm');
+      mockedResources.getResource.mockResolvedValue(legacyResource());
+      const { router } = renderWorkspace('r2');
+      await waitFor(() => expect(screen.getByLabelText('Resource content')).toBeInTheDocument());
+
+      await act(async () => { await router.navigate('/generator'); });
+
+      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(screen.getByText('Generator page')).toBeInTheDocument();
+    });
+
+    test('the browser Back button is guarded too', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      const { router } = await openAndEdit(['/library', '/library/r2/edit']);
+
+      await act(async () => { await router.navigate(-1); });
+
+      expect(confirmSpy).toHaveBeenCalledWith(MESSAGE);
+      expect(router.state.location.pathname).toBe('/library/r2/edit');
+    });
+
+    test('a query-string-only change does not prompt', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm');
+      const { router } = await openAndEdit();
+
+      await act(async () => { await router.navigate('/library/r2/edit?tab=preview'); });
+
+      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(router.state.location.pathname).toBe('/library/r2/edit');
+    });
+
+    test('after a successful Save the edits are no longer unsaved, so leaving does not prompt', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm');
+      const saved = legacyResource({ content: '## Objectives\nExplain photosynthesis.!' });
+      mockedResources.updateResource.mockResolvedValue(saved);
+      const { router } = await openAndEdit();
+
+      await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+      await waitFor(() => expect(mockedResources.updateResource).toHaveBeenCalled());
+      await waitFor(() => expect(screen.getByRole('button', { name: /save changes/i })).toBeDisabled());
+
+      await act(async () => { await router.navigate('/generator'); });
+
+      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(router.state.location.pathname).toBe('/generator');
+    });
+
+    test('a failed Save leaves the edits unsaved, so leaving still prompts', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      mockedResources.updateResource.mockRejectedValue(new Error('network down'));
+      const { router } = await openAndEdit();
+
+      await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+      await waitFor(() => expect(mockedResources.updateResource).toHaveBeenCalled());
+
+      await act(async () => { await router.navigate('/generator'); });
+
+      expect(confirmSpy).toHaveBeenCalledWith(MESSAGE);
+      expect(router.state.location.pathname).toBe('/library/r2/edit');
+    });
   });
 
   test('an assessment with a `structured` blob that has no schemaVersion (pre-Stage-1 style) also falls back to legacy', async () => {
