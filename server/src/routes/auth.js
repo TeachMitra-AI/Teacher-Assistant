@@ -45,8 +45,8 @@ const {
 
 const router = express.Router();
 
-// Creates a server-tracked refresh-token session and its paired access token. Every login, register and refresh
-// goes through this so a session can always be found and revoked.
+// Creates a server-tracked refresh-token session and its paired access token, so a session can always be found and
+// revoked. Password and Google sign-in use this; /refresh rotates sessions in its own handler, and /register issues none.
 async function issueSession(user, req) {
   const refreshToken = generateRefreshToken();
   await prisma.session.create({
@@ -638,19 +638,39 @@ router.post('/refresh', asyncHandler(async (req, res) => {
   }
 
   const { user } = session;
+  const now = new Date();
   const newRefreshToken = generateRefreshToken();
-  const newSession = await prisma.session.create({
-    data: {
-      userId: user.id,
-      tokenHash: hashToken(newRefreshToken),
-      expiresAt: refreshTokenExpiry(),
-      userAgent: (req.headers['user-agent'] || '').slice(0, 255) || null,
-    },
+  // The revokedAt check above used an earlier read, so simultaneous requests can all pass it. The conditional claim lets
+  // exactly one rotate. It's in a transaction so revokedAt and replacedBy become visible together: a row revoked with no
+  // replacedBy looks like theft to the next request, which would end every session.
+  const rotated = await prisma.$transaction(async (tx) => {
+    const claim = await tx.session.updateMany({
+      where: { id: session.id, revokedAt: null },
+      data: { revokedAt: now, lastUsedAt: now },
+    });
+    if (claim.count !== 1) return false;
+
+    const newSession = await tx.session.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashToken(newRefreshToken),
+        expiresAt: refreshTokenExpiry(),
+        userAgent: (req.headers['user-agent'] || '').slice(0, 255) || null,
+      },
+    });
+    await tx.session.update({
+      where: { id: session.id },
+      data: {
+        replacedBy: newSession.id,
+        // Renewing a session is activity too: a teacher who stays signed in would otherwise look inactive.
+        user: { update: { lastLogin: now } },
+      },
+    });
+    return true;
   });
-  await prisma.session.update({
-    where: { id: session.id },
-    data: { revokedAt: new Date(), replacedBy: newSession.id, lastUsedAt: new Date() },
-  });
+  if (!rotated) {
+    return res.status(409).json({ error: 'Session is refreshing. Please try again.', code: 'refresh_conflict' });
+  }
 
   return sendSession(
     req,

@@ -64,23 +64,20 @@ router.get('/analytics', authRequired, requireRole(...ADMIN_ROLES), asyncHandler
 
   const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-  const [totalQueries, totalTeachers, helpful, notHelpful, recent] = await Promise.all([
+  const [totalQueries, totalTeachers, activeTeachers, helpful, notHelpful, recent] = await Promise.all([
     prisma.query.count({ where }),
     prisma.user.count({ where: { role: 'teacher', ...(scope ? { schoolId: { in: scope } } : {}) } }),
+    // Active teachers = teachers who signed in or renewed a session in the last 30 days: the lastLogin the Manage page shows.
+    prisma.user.count({ where: { role: 'teacher', lastLogin: { gte: since30 }, ...where } }),
     prisma.feedback.count({ where: { rating: 'helpful', query: where.schoolId ? { schoolId: where.schoolId } : {} } }),
     prisma.feedback.count({ where: { rating: 'not_helpful', query: where.schoolId ? { schoolId: where.schoolId } : {} } }),
     prisma.query.findMany({
       where,
-      select: { userId: true, context: true, language: true, queryText: true, createdAt: true },
+      select: { context: true, language: true, queryText: true, createdAt: true },
       orderBy: { createdAt: 'desc' },
       take: 5000,
     }),
   ]);
-
-  // Active teachers = distinct users who asked something in the last 30 days.
-  const activeTeachers = new Set(
-    recent.filter((q) => q.createdAt >= since30 && q.userId).map((q) => q.userId)
-  ).size;
 
   const bySubject = {};
   const byIssueType = {};

@@ -286,6 +286,19 @@ describe('Google sign-in', () => {
       expect(after.lastLogin).not.toBeNull();
     });
 
+    test('a repeat Google sign-in moves lastLogin forward', async () => {
+      const older = new Date('2020-01-01T00:00:00.000Z');
+      const user = await registerAndApprove({ sub: 'goog-in-repeat', email: 'goog-in-repeat@example.com' });
+      await prisma.user.update({ where: { id: user.id }, data: { lastLogin: older } });
+
+      googleIdentity({ sub: 'goog-in-repeat', email: 'goog-in-repeat@example.com' });
+      const res = await http.post('/api/auth/google').send({ idToken: 'a'.repeat(40) });
+
+      expect(res.status).toBe(200);
+      const after = await prisma.user.findUnique({ where: { id: user.id } });
+      expect(after.lastLogin.getTime()).toBeGreaterThan(older.getTime());
+    });
+
     test('the approval gate still blocks a Google account an admin has set to pending', async () => {
       googleIdentity({ sub: 'goog-pending-1', email: 'goog-pending@example.com' });
       await http.post('/api/auth/google').send({
