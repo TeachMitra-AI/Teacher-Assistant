@@ -1,5 +1,12 @@
 import { useEffect, lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import {
+  createBrowserRouter,
+  RouterProvider as DataRouterProvider,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+} from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider, useAuth } from './auth';
 import { trackPageView } from './lib/analytics';
@@ -8,6 +15,7 @@ import { ToastProvider } from './components/Toast';
 import { NotificationProvider } from './components/Notifications';
 import { HelpSupportProvider } from './components/HelpSupport';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import RootErrorScreen from './components/RootErrorScreen';
 // The AI Action Router's provider (not react-router's). Innermost, so the AuthProvider → ToastProvider →
 // OnboardingProvider order stays as is and removing the feature removes one wrapper.
 import { RouterProvider } from './assistant/RouterProvider';
@@ -154,15 +162,13 @@ function AppRoutes() {
   );
 }
 
-export default function App() {
-  // Mounted once at the root: GoogleOAuthProvider calls google.accounts.id.initialize() on mount, and inside LoginPage it
-  // re-ran on every tab switch (GSI warns, and only the last instance stays live). Skipped without a client ID, since
-  // LoginPage already hides the Google buttons.
-  // HelpSupportProvider and NotificationProvider sit inside Auth+Toast (they need both) and outside ErrorBoundary, so the
-  // "Report this" button in the crash fallback still has a live provider. They're spliced in between Toast and
-  // Onboarding without reordering the rest.
-  const tree = (
-    <BrowserRouter>
+// Everything that lived inside <BrowserRouter>, moved here unchanged so it can sit under the data router below.
+// HelpSupportProvider and NotificationProvider sit inside Auth+Toast (they need both) and outside ErrorBoundary, so the
+// "Report this" button in the crash fallback still has a live provider. They're spliced in between Toast and
+// Onboarding without reordering the rest.
+function AppShell() {
+  return (
+    <>
       <ScrollToTop />
       <AuthProvider>
         <ToastProvider>
@@ -179,8 +185,21 @@ export default function App() {
           </NotificationProvider>
         </ToastProvider>
       </AuthProvider>
-    </BrowserRouter>
+    </>
   );
+}
+
+// A data router rather than <BrowserRouter>, so useBlocker works (ResourceWorkspace's unsaved-changes prompt covers every
+// navigation, including navigate() and browser Back). One catch-all route hosts the app; the <Routes> in AppRoutes are
+// descendant routes and stay as they were. Created once at module level, never inside a render. errorElement covers errors
+// thrown by the providers above ErrorBoundary, so react-router's default screen (with a stack trace) never shows.
+const router = createBrowserRouter([{ path: '*', element: <AppShell />, errorElement: <RootErrorScreen /> }]);
+
+export default function App() {
+  // Mounted once at the root: GoogleOAuthProvider calls google.accounts.id.initialize() on mount, and inside LoginPage it
+  // re-ran on every tab switch (GSI warns, and only the last instance stays live). Skipped without a client ID, since
+  // LoginPage already hides the Google buttons.
+  const tree = <DataRouterProvider router={router} />;
 
   return GOOGLE_CLIENT_ID ? (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>{tree}</GoogleOAuthProvider>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useBlocker, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Save, Printer, Pencil, Eye, Wand2, Puzzle,
   ClipboardCheck, GraduationCap, X, Loader2,
@@ -29,6 +29,8 @@ import { ApiError } from '../api';
 import { useRetryCountdown } from '../hooks/useRetryCountdown';
 import { retryMessage } from '../lib/retryCountdown';
 import type { ExamPaperMeta, LibraryResource, ResourceType } from '../types';
+
+const UNSAVED_CHANGES_MESSAGE = 'You have unsaved changes. Leave without saving?';
 
 // How the print document should render an assessment.
 type PrintMode = 'full' | 'student' | 'teacher';
@@ -207,6 +209,17 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [dirty]);
 
+  // In-app navigation (links, navigate(), browser Back/Forward) with unsaved edits asks first. Only a pathname change counts,
+  // so a query-string-only change doesn't prompt. UX only: the server stays the authority on every request.
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) => dirty && currentLocation.pathname !== nextLocation.pathname
+  );
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return;
+    if (window.confirm(UNSAVED_CHANGES_MESSAGE)) blocker.proceed();
+    else blocker.reset();
+  }, [blocker]);
+
   const setField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((f) => (f ? { ...f, [key]: value } : f));
   }, []);
@@ -244,9 +257,8 @@ export default function ResourceWorkspace({ preferences }: { preferences: Return
     else startPrint('full');
   }
 
-  // Guarded in-app navigation: react-router here isn't a data router, so we confirm on the explicit Back/Cancel controls, not useBlocker.
+  // Back/Cancel just navigate: the blocker above asks first when there are unsaved edits.
   function leave(to: string) {
-    if (dirty && !window.confirm('You have unsaved changes. Leave without saving?')) return;
     navigate(to);
   }
 
