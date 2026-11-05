@@ -12,7 +12,7 @@ const { z } = require('zod');
 
 const { prisma } = require('../lib/db');
 const { asyncHandler } = require('../lib/asyncHandler');
-const { isUniqueConstraintError } = require('../lib/prismaErrors');
+const { isUniqueConstraintError, isRecordNotFoundError } = require('../lib/prismaErrors');
 const { sendPasswordResetEmail } = require('../lib/email');
 // Called through the module object so a test can substitute the one function that reaches Google.
 const googleAuth = require('../lib/googleAuth');
@@ -45,8 +45,8 @@ const {
 
 const router = express.Router();
 
-// Creates a server-tracked refresh-token session and its paired access token. Every login, register and refresh
-// goes through this so a session can always be found and revoked.
+// Creates a server-tracked refresh-token session and its paired access token, so a session can always be found and
+// revoked. Password and Google sign-in use this; /refresh rotates sessions in its own handler, and /register issues none.
 async function issueSession(user, req) {
   const refreshToken = generateRefreshToken();
   await prisma.session.create({
@@ -638,6 +638,7 @@ router.post('/refresh', asyncHandler(async (req, res) => {
   }
 
   const { user } = session;
+  const now = new Date();
   const newRefreshToken = generateRefreshToken();
   const newSession = await prisma.session.create({
     data: {
@@ -647,10 +648,30 @@ router.post('/refresh', asyncHandler(async (req, res) => {
       userAgent: (req.headers['user-agent'] || '').slice(0, 255) || null,
     },
   });
-  await prisma.session.update({
-    where: { id: session.id },
-    data: { revokedAt: new Date(), replacedBy: newSession.id, lastUsedAt: new Date() },
-  });
+
+  // The revokedAt check above used an earlier read, so simultaneous requests can all pass it. This conditional claim lets
+  // exactly one rotate. It's one write so revokedAt and replacedBy appear together: a row revoked with no replacedBy looks
+  // like theft to the next request. Don't move this into an interactive transaction: on SQLite, concurrent refreshes
+  // stalled in one until they timed out when the Prisma engine had few threads.
+  try {
+    await prisma.session.update({
+      where: { id: session.id, revokedAt: null },
+      data: {
+        revokedAt: now,
+        replacedBy: newSession.id,
+        lastUsedAt: now,
+        // Renewing a session is activity too: a teacher who stays signed in would otherwise look inactive.
+        user: { update: { lastLogin: now } },
+      },
+    });
+  } catch (err) {
+    if (!isRecordNotFoundError(err)) throw err;
+    // Another request rotated this token first. Nobody holds this successor's token, so a failed cleanup is harmless.
+    await prisma.session.delete({ where: { id: newSession.id } }).catch((cleanupErr) => {
+      console.warn('[auth] refresh_successor_cleanup_failed', { sessionId: newSession.id, code: cleanupErr.code });
+    });
+    return res.status(409).json({ error: 'Session is refreshing. Please try again.', code: 'refresh_conflict' });
+  }
 
   return sendSession(
     req,

@@ -161,16 +161,23 @@ let refreshPromise: Promise<SessionRestore> | null = null;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const REFRESH_MAX_ATTEMPTS = 5;
+
+// Randomized so tabs that lost a race together don't collide again on the retry. All the delays add up to at most 3.6s,
+// which must stay well under the server's 10-second ROTATION_GRACE_MS: past it, a stale token counts as theft.
+const refreshRetryDelayMs = (attempt: number) => 200 * (attempt + 1) + Math.random() * 400;
+
 async function refreshOnce(legacyRefreshToken?: string): Promise<SessionRestore> {
-  // Two tabs can rotate the cookie at the same moment. The loser gets a retryable 409, and its retry picks up the winner's
-  // cookie, so it is retried once rather than treated as a failed session.
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // Several tabs can refresh at the same moment, and the server lets only one rotate the cookie. Each loser gets a
+  // retryable 409, and its retry picks up the winner's cookie, so a conflict isn't treated as a failed session.
+  for (let attempt = 0; attempt < REFRESH_MAX_ATTEMPTS; attempt++) {
     let res: Response;
     let data: unknown;
     try {
       ({ res, data } = await rawRequest(
         '/auth/refresh',
-        { method: 'POST', body: legacyRefreshToken ? { refreshToken: legacyRefreshToken } : undefined },
+        // First attempt only: after a 409 the legacy token is already rotated, so only the cookie can succeed.
+        { method: 'POST', body: attempt === 0 && legacyRefreshToken ? { refreshToken: legacyRefreshToken } : undefined },
         null
       ));
     } catch {
@@ -182,8 +189,8 @@ async function refreshOnce(legacyRefreshToken?: string): Promise<SessionRestore>
       return 'ok';
     }
     const code = data && typeof data === 'object' ? (data as { code?: string }).code : undefined;
-    if (res.status === 409 && code === 'refresh_conflict' && attempt === 0) {
-      await sleep(400);
+    if (res.status === 409 && code === 'refresh_conflict' && attempt < REFRESH_MAX_ATTEMPTS - 1) {
+      await sleep(refreshRetryDelayMs(attempt));
       continue;
     }
     if (res.status === 401 || res.status === 403) {
