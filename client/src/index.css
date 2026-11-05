@@ -1945,6 +1945,7 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
   gap: 0.7rem;
   z-index: 150;
 }
+.context-menu-close { position: absolute; top: 0.3rem; right: 0.3rem; width: 26px; height: 26px; }
 .context-menu-divider { height: 1px; background: var(--border); border: none; margin: 0.1rem 0; }
 .context-menu-section-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
 
@@ -4696,6 +4697,8 @@ textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
     font-size: 1rem;
     min-height: 44px;
   }
+  /* 40px, not 44px: any larger and the tap area overlaps the Grade select below it. */
+  .context-menu-close { top: 0; right: 0; width: 40px; height: 40px; }
 }
 .generator-fieldset { border: none; padding: 0; margin: 0 0 1.1rem; }
 .generator-fieldset .ws-label { margin-bottom: 0.5rem; }

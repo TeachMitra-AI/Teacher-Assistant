@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal, X } from 'lucide-react';
 import { useDismissable } from '../hooks/useDismissable';
 import { LANGUAGES, GRADES, SUBJECTS, CLASSROOM_TYPES, ISSUE_TYPES } from '../config';
 import type { QueryContext } from '../types';
@@ -42,6 +42,14 @@ export default function TeachingContextMenu({
 
       {open && (
         <div className="context-menu-popover" role="dialog" aria-label="Teaching context">
+          <button
+            type="button"
+            className="onboarding-dismiss context-menu-close"
+            onClick={() => setOpen(false)}
+            aria-label="Close teaching context"
+          >
+            <X size={15} aria-hidden="true" />
+          </button>
           <label className="field">
             Grade
             <select value={context.grade} onChange={(e) => onContextChange('grade', e.target.value)}>
