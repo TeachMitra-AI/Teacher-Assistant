@@ -56,6 +56,12 @@ export function SettingsScreen({ navigation }: Props) {
   const isAdmin = !!user && ADMIN_ROLES.includes(user.role);
   const label = user ? user.displayName || user.name : '';
   const s = useSettingsScreen();
+  // A default saved on the web can be a grade this app's list doesn't have; show it rather than a blank field.
+  const gradeOptions = [
+    NO_DEFAULT,
+    ...(s.defaultGrade && !GRADES.includes(s.defaultGrade) ? [{ value: s.defaultGrade, label: s.defaultGrade }] : []),
+    ...GRADES.map((g) => ({ value: g, label: g })),
+  ];
   const photo = useProfilePicture();
   const [photoError, setPhotoError] = useState('');
 
@@ -214,7 +220,7 @@ export function SettingsScreen({ navigation }: Props) {
         <ThemedText variant="muted" style={styles.hint}>These pre-fill the Coach page so you don&apos;t have to pick them every time.</ThemedText>
 
         <SelectField label="Default language" options={[NO_DEFAULT, ...LANGUAGES]} value={s.defaultLanguage} onChange={s.setDefaultLanguage} />
-        <SelectField label="Default grade" options={[NO_DEFAULT, ...GRADES.map((g) => ({ value: g, label: g }))]} value={s.defaultGrade} onChange={s.setDefaultGrade} />
+        <SelectField label="Default grade" options={gradeOptions} value={s.defaultGrade} onChange={s.setDefaultGrade} />
         <SelectField label="Default subject" options={[NO_DEFAULT, ...SUBJECTS.map((sub) => ({ value: sub, label: sub }))]} value={s.defaultSubject} onChange={s.setDefaultSubject} />
         <SelectField label="Default classroom type" options={[NO_DEFAULT, ...CLASSROOM_TYPES.map((c) => ({ value: c, label: c }))]} value={s.defaultClassroomType} onChange={s.setDefaultClassroomType} />
 

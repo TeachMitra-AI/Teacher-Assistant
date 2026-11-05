@@ -14,6 +14,12 @@ import {
 } from '../config';
 import type { ResponseStyle, TeacherPreferences, User } from '../types';
 
+// '' clears a stored value (the server's merge keeps any key left out). A field that was never set stays out of the request,
+// so a form opened earlier can't erase a value saved since on another device.
+function clearableValue(value: string, stored?: string): string | undefined {
+  return value || (stored ? '' : undefined);
+}
+
 export default function SettingsPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
   const { user, updateUser } = useAuth();
   const { show } = useToast();
@@ -97,11 +103,11 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
     e.preventDefault();
     setSavingProfile(true);
     const preferencesPayload: TeacherPreferences = {
-      avatar: avatar || undefined,
-      defaultLanguage: defaultLanguage || undefined,
-      defaultGrade: defaultGrade || undefined,
-      defaultSubject: defaultSubject || undefined,
-      defaultClassroomType: defaultClassroomType || undefined,
+      avatar: clearableValue(avatar, prefs.avatar),
+      defaultLanguage: clearableValue(defaultLanguage, prefs.defaultLanguage),
+      defaultGrade: clearableValue(defaultGrade, prefs.defaultGrade),
+      defaultSubject: clearableValue(defaultSubject, prefs.defaultSubject),
+      defaultClassroomType: clearableValue(defaultClassroomType, prefs.defaultClassroomType),
       responseStyle,
       // Preserved as-is: this form doesn't edit exam-paper defaults, and the server shallow-merges `preferences`, so omitting the key would wipe it.
       examPaperDefaults: prefs.examPaperDefaults,
@@ -285,6 +291,7 @@ export default function SettingsPage({ preferences }: { preferences: ReturnType<
               <label className="field-label" htmlFor="defGrade">Default grade</label>
               <select id="defGrade" className="text-input" value={defaultGrade} onChange={(e) => setDefaultGrade(e.target.value)}>
                 <option value="">No default</option>
+                {defaultGrade && !GRADES.includes(defaultGrade) && <option value={defaultGrade}>{defaultGrade}</option>}
                 {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
               </select>
             </div>

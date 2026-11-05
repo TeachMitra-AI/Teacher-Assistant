@@ -30,8 +30,10 @@ import {
 } from '../HistorySidebar';
 import type { HistoryItem } from '../../../types';
 
+let mockPreferences: Record<string, unknown> = {};
+
 jest.mock('../../../auth/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', name: 'Asha Verma', email: 'asha@example.com', role: 'teacher', preferences: {} } }),
+  useAuth: () => ({ user: { id: 'u1', name: 'Asha Verma', email: 'asha@example.com', role: 'teacher', preferences: mockPreferences } }),
 }));
 
 jest.mock('../../../api/coach', () => ({
@@ -94,8 +96,8 @@ function makeNavigation() {
   return { setOptions: jest.fn() };
 }
 
-function renderScreen(navigation = makeNavigation()) {
-  render(
+async function renderScreen(navigation = makeNavigation()) {
+  await render(
     <SafeAreaProvider>
       <ThemeProvider>
         <CoachScreen
@@ -140,7 +142,7 @@ describe('CoachScreen', () => {
 
   it('renders the empty state with a personalized greeting and quick-action prompts', async () => {
     await act(async () => {
-      renderScreen();
+      await renderScreen();
     });
     expect(screen.getByText('Hi Asha Verma 👋')).toBeTruthy();
     expect(screen.getByTestId('quick-action-Lesson Plan')).toBeTruthy();
@@ -148,7 +150,7 @@ describe('CoachScreen', () => {
 
   it('tapping a quick-action prompt prefills the composer without sending', async () => {
     await act(async () => {
-      renderScreen();
+      await renderScreen();
     });
     await fireEvent.press(screen.getByTestId('quick-action-Explain a Concept'));
     expect(screen.getByTestId('coach-composer-input').props.value).toBe('Explain this concept simply: ');
@@ -157,7 +159,7 @@ describe('CoachScreen', () => {
 
   it('the send button is disabled until there is non-whitespace text', async () => {
     await act(async () => {
-      renderScreen();
+      await renderScreen();
     });
     const input = screen.getByTestId('coach-composer-input');
     const send = screen.getByTestId('coach-composer-send');
@@ -175,7 +177,7 @@ describe('CoachScreen', () => {
     askCoach.mockReturnValueOnce(new Promise((resolve) => { resolveAsk = resolve; }));
 
     await act(async () => {
-      renderScreen();
+      await renderScreen();
     });
     await fireEvent.changeText(screen.getByTestId('coach-composer-input'), 'How do I teach fractions?');
     await fireEvent.press(screen.getByTestId('coach-composer-send'));
@@ -204,7 +206,7 @@ describe('CoachScreen', () => {
     askCoach.mockRejectedValueOnce(new ApiError('Network error. Please check your connection.', 0));
 
     await act(async () => {
-      renderScreen();
+      await renderScreen();
     });
     await fireEvent.changeText(screen.getByTestId('coach-composer-input'), 'A question');
     await fireEvent.press(screen.getByTestId('coach-composer-send'));
@@ -230,7 +232,7 @@ describe('CoachScreen', () => {
     askCoach.mockRejectedValueOnce(new ApiError('Every AI key is busy.', 429, { code: 'RATE_LIMITED', retryAt }));
 
     await act(async () => {
-      renderScreen();
+      await renderScreen();
     });
     await fireEvent.changeText(screen.getByTestId('coach-composer-input'), 'A question');
     await fireEvent.press(screen.getByTestId('coach-composer-send'));
@@ -252,7 +254,7 @@ describe('CoachScreen', () => {
     askCoach.mockResolvedValueOnce({
       success: true, text: 'First answer.', language: 'en', context: {}, queryId: 'q1',
     });
-    await act(async () => { renderScreen(); });
+    await act(async () => { await renderScreen(); });
     await fireEvent.changeText(screen.getByTestId('coach-composer-input'), 'Original question');
     await fireEvent.press(screen.getByTestId('coach-composer-send'));
     await waitFor(() => expect(screen.getByText('First answer.')).toBeTruthy());
@@ -280,7 +282,7 @@ describe('CoachScreen', () => {
     askCoach.mockResolvedValueOnce({
       success: true, text: 'An answer.', language: 'en', context: {}, queryId: 'q1',
     });
-    await act(async () => { renderScreen(); });
+    await act(async () => { await renderScreen(); });
     await fireEvent.changeText(screen.getByTestId('coach-composer-input'), 'Original question');
     await fireEvent.press(screen.getByTestId('coach-composer-send'));
     await waitFor(() => expect(screen.getByText('An answer.')).toBeTruthy());
@@ -297,7 +299,7 @@ describe('CoachScreen', () => {
   it('does not offer Edit while a turn is still pending', async () => {
     let resolveAsk: (v: unknown) => void = () => {};
     askCoach.mockReturnValueOnce(new Promise((resolve) => { resolveAsk = resolve; }));
-    await act(async () => { renderScreen(); });
+    await act(async () => { await renderScreen(); });
     await fireEvent.changeText(screen.getByTestId('coach-composer-input'), 'A question');
     await fireEvent.press(screen.getByTestId('coach-composer-send'));
 
@@ -320,7 +322,7 @@ describe('CoachScreen', () => {
     sendCoachFeedback.mockResolvedValueOnce(undefined);
 
     await act(async () => {
-      renderScreen();
+      await renderScreen();
     });
     await fireEvent.changeText(screen.getByTestId('coach-composer-input'), 'A question');
     await fireEvent.press(screen.getByTestId('coach-composer-send'));
@@ -332,7 +334,7 @@ describe('CoachScreen', () => {
 
   it('opening the sidebar shows the loaded chat history', async () => {
     listHistory.mockResolvedValueOnce([HIST_1, HIST_2]);
-    const navigation = renderScreen();
+    const navigation = await renderScreen();
     await waitFor(() => expect(listHistory).toHaveBeenCalledWith(20));
 
     await openSidebar(navigation);
@@ -343,7 +345,7 @@ describe('CoachScreen', () => {
 
   it('selecting a history item restores it as the active turn without calling the API', async () => {
     listHistory.mockResolvedValueOnce([HIST_1]);
-    const navigation = renderScreen();
+    const navigation = await renderScreen();
     await waitFor(() => expect(listHistory).toHaveBeenCalled());
     await openSidebar(navigation);
 
@@ -362,7 +364,7 @@ describe('CoachScreen', () => {
     // actually exercise the config callbacks. This just confirms the wiring
     // is present: the swipe area renders with panHandlers attached.
     listHistory.mockResolvedValueOnce([]);
-    const navigation = renderScreen();
+    const navigation = await renderScreen();
     await waitFor(() => expect(listHistory).toHaveBeenCalled());
     await openSidebar(navigation);
 
@@ -377,7 +379,7 @@ describe('CoachScreen', () => {
     // whole point), so it renders unconditionally rather than only once
     // `sidebarOpen` is true.
     await act(async () => {
-      renderScreen();
+      await renderScreen();
     });
 
     const edgeArea = screen.getByTestId('sidebar-edge-swipe-area');
@@ -388,7 +390,7 @@ describe('CoachScreen', () => {
   it('New chat clears an active thread back to the empty state', async () => {
     listHistory.mockResolvedValueOnce([HIST_1]);
     askCoach.mockResolvedValueOnce({ success: true, text: 'An answer.', language: 'en', context: {}, queryId: 'q9' });
-    const navigation = renderScreen();
+    const navigation = await renderScreen();
     await waitFor(() => expect(listHistory).toHaveBeenCalled());
 
     await fireEvent.changeText(screen.getByTestId('coach-composer-input'), 'A question');
@@ -407,7 +409,7 @@ describe('CoachScreen', () => {
     jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
       buttons?.find((b) => b.style === 'destructive')?.onPress?.();
     });
-    const navigation = renderScreen();
+    const navigation = await renderScreen();
     await waitFor(() => expect(listHistory).toHaveBeenCalled());
     await openSidebar(navigation);
 
@@ -420,7 +422,7 @@ describe('CoachScreen', () => {
 
   it('renaming a chat updates its sidebar title', async () => {
     listHistory.mockResolvedValueOnce([HIST_1]);
-    const navigation = renderScreen();
+    const navigation = await renderScreen();
     await waitFor(() => expect(listHistory).toHaveBeenCalled());
     await openSidebar(navigation);
 
@@ -434,14 +436,14 @@ describe('CoachScreen', () => {
   });
 
   it('the teaching-context icon shows no badge until a field is set', async () => {
-    const navigation = renderScreen();
+    const navigation = await renderScreen();
     await waitFor(() => expect(listHistory).toHaveBeenCalled());
     expect(headerProps(navigation).contextActiveCount).toBe(0);
   });
 
   it('setting grade and subject via the teaching-context menu updates the header badge and the next question', async () => {
     askCoach.mockResolvedValueOnce({ success: true, text: 'An answer.', language: 'en', context: {}, queryId: 'q9' });
-    const navigation = renderScreen();
+    const navigation = await renderScreen();
     await waitFor(() => expect(listHistory).toHaveBeenCalled());
 
     await openContextMenu(navigation);
@@ -464,7 +466,7 @@ describe('CoachScreen', () => {
 
   it('New chat resets the teaching context (but not the language) back to defaults', async () => {
     askCoach.mockResolvedValueOnce({ success: true, text: 'An answer.', language: 'en', context: {}, queryId: 'q9' });
-    const navigation = renderScreen();
+    const navigation = await renderScreen();
     await waitFor(() => expect(listHistory).toHaveBeenCalled());
 
     await openContextMenu(navigation);
@@ -495,6 +497,155 @@ describe('CoachScreen', () => {
     ));
   });
 
+  describe('saved teaching defaults', () => {
+    const DEFAULTS = { defaultLanguage: 'hi', defaultGrade: 'Class 3-5', defaultSubject: 'Science', defaultClassroomType: 'Multi-Grade' };
+    const DEFAULT_CONTEXT = { grade: 'Class 3-5', subject: 'Science', classroomType: 'Multi-Grade', issueType: '' };
+
+    afterEach(() => {
+      mockPreferences = {};
+    });
+
+    async function ask(text: string) {
+      askCoach.mockResolvedValueOnce({ success: true, text: `Answer to ${text}`, language: 'en', context: {}, queryId: text });
+      await fireEvent.changeText(screen.getByTestId('coach-composer-input'), text);
+      await fireEvent.press(screen.getByTestId('coach-composer-send'));
+      await waitFor(() => expect(screen.getByText(`Answer to ${text}`)).toBeTruthy());
+    }
+
+    // Any state change re-renders the screen, which is how a save on the Settings screen reaches it through useAuth.
+    async function saveDefaults(preferences: Record<string, unknown>) {
+      mockPreferences = preferences;
+      await fireEvent.changeText(screen.getByTestId('coach-composer-input'), 'typing');
+    }
+
+    async function newChat(navigation: ReturnType<typeof makeNavigation>) {
+      await openSidebar(navigation);
+      await fireEvent.press(screen.getByTestId('sidebar-new-chat'));
+    }
+
+    it('the first question uses the saved defaults', async () => {
+      mockPreferences = DEFAULTS;
+      await renderScreen();
+      await waitFor(() => expect(listHistory).toHaveBeenCalled());
+
+      await ask('First');
+
+      expect(askCoach).toHaveBeenLastCalledWith('First', 'hi', DEFAULT_CONTEXT);
+    });
+
+    it('New chat drops the last chat\'s panel choices and restores the saved defaults', async () => {
+      mockPreferences = DEFAULTS;
+      const navigation = await renderScreen();
+      await waitFor(() => expect(listHistory).toHaveBeenCalled());
+
+      await openContextMenu(navigation);
+      await fireEvent.press(screen.getByLabelText('Grade'));
+      await fireEvent.press(screen.getByText('Class 6-8'));
+      await ask('First');
+      expect(askCoach).toHaveBeenLastCalledWith('First', 'hi', expect.objectContaining({ grade: 'Class 6-8' }));
+
+      await newChat(navigation);
+      await ask('Second');
+
+      expect(askCoach).toHaveBeenLastCalledWith('Second', 'hi', DEFAULT_CONTEXT);
+    });
+
+    it('a default saved while the chat is empty applies to it without a restart', async () => {
+      await renderScreen();
+      await waitFor(() => expect(listHistory).toHaveBeenCalled());
+
+      await saveDefaults(DEFAULTS);
+      await ask('First');
+
+      expect(askCoach).toHaveBeenLastCalledWith('First', 'hi', DEFAULT_CONTEXT);
+    });
+
+    it('a default saved during a chat leaves that chat alone, then applies at New chat', async () => {
+      const navigation = await renderScreen();
+      await waitFor(() => expect(listHistory).toHaveBeenCalled());
+
+      await ask('First');
+      await saveDefaults(DEFAULTS);
+      await ask('Second');
+      expect(askCoach).toHaveBeenLastCalledWith('Second', 'en', expect.objectContaining({ grade: '', subject: '' }));
+
+      await newChat(navigation);
+      await ask('Third');
+
+      expect(askCoach).toHaveBeenLastCalledWith('Third', 'hi', DEFAULT_CONTEXT);
+    });
+
+    it('a save that changes no default leaves unsent panel choices on an empty chat', async () => {
+      const navigation = await renderScreen();
+      await waitFor(() => expect(listHistory).toHaveBeenCalled());
+
+      await openContextMenu(navigation);
+      await fireEvent.press(screen.getByLabelText('Language'));
+      await fireEvent.press(screen.getByText('हिंदी'));
+      await fireEvent.press(screen.getByLabelText('Grade'));
+      await fireEvent.press(screen.getByText('Class 3-5'));
+
+      await saveDefaults({ defaultLanguage: '', defaultGrade: '', defaultSubject: '', defaultClassroomType: '' });
+      await ask('First');
+
+      expect(askCoach).toHaveBeenLastCalledWith('First', 'hi', expect.objectContaining({ grade: 'Class 3-5' }));
+    });
+
+    async function pickHindi(navigation: ReturnType<typeof makeNavigation>) {
+      await openContextMenu(navigation);
+      await fireEvent.press(screen.getByLabelText('Language'));
+      await fireEvent.press(screen.getByText('हिंदी'));
+    }
+
+    it('a non-language default saved during a chat keeps the current language at New chat', async () => {
+      mockPreferences = { defaultLanguage: 'en' };
+      const navigation = await renderScreen();
+      await waitFor(() => expect(listHistory).toHaveBeenCalled());
+
+      await pickHindi(navigation);
+      await ask('First');
+      await saveDefaults({ defaultLanguage: 'en', defaultSubject: 'Science' });
+      await newChat(navigation);
+      await ask('Second');
+
+      expect(askCoach).toHaveBeenLastCalledWith('Second', 'hi', expect.objectContaining({ subject: 'Science' }));
+    });
+
+    it('a non-language default saved on an empty chat keeps an unsent language', async () => {
+      const navigation = await renderScreen();
+      await waitFor(() => expect(listHistory).toHaveBeenCalled());
+
+      await pickHindi(navigation);
+      await saveDefaults({ defaultSubject: 'Science' });
+      await ask('First');
+
+      expect(askCoach).toHaveBeenLastCalledWith('First', 'hi', expect.objectContaining({ subject: 'Science' }));
+    });
+
+    it('a language default saved on an empty chat keeps unsent context choices', async () => {
+      const navigation = await renderScreen();
+      await waitFor(() => expect(listHistory).toHaveBeenCalled());
+
+      await openContextMenu(navigation);
+      await fireEvent.press(screen.getByLabelText('Grade'));
+      await fireEvent.press(screen.getByText('Class 3-5'));
+      await saveDefaults({ defaultLanguage: 'hi' });
+      await ask('First');
+
+      expect(askCoach).toHaveBeenLastCalledWith('First', 'hi', expect.objectContaining({ grade: 'Class 3-5' }));
+    });
+
+    it('shows a saved grade that this app\'s list does not have', async () => {
+      mockPreferences = { defaultGrade: 'Class 5' };
+      const navigation = await renderScreen();
+      await waitFor(() => expect(listHistory).toHaveBeenCalled());
+
+      await openContextMenu(navigation);
+
+      expect(screen.getByText('Class 5')).toBeTruthy();
+    });
+  });
+
   it('selecting a history item restores its language/context for the next question', async () => {
     const HIST_HINDI: HistoryItem = {
       ...HIST_1,
@@ -503,7 +654,7 @@ describe('CoachScreen', () => {
     };
     listHistory.mockResolvedValueOnce([HIST_HINDI]);
     askCoach.mockResolvedValueOnce({ success: true, text: 'A follow-up answer.', language: 'hi', context: {}, queryId: 'q11' });
-    const navigation = renderScreen();
+    const navigation = await renderScreen();
     await waitFor(() => expect(listHistory).toHaveBeenCalled());
 
     await openSidebar(navigation);
@@ -535,14 +686,14 @@ describe('CoachScreen', () => {
 
     it('is hidden when the device has no speech recognizer available', async () => {
       ExpoSpeechRecognitionModule.isRecognitionAvailable.mockReturnValue(false);
-      await act(async () => { renderScreen(); });
+      await act(async () => { await renderScreen(); });
       expect(screen.queryByTestId('coach-composer-voice')).toBeNull();
     });
 
     it('tapping the mic requests permission and starts recognition in the current language', async () => {
       ExpoSpeechRecognitionModule.isRecognitionAvailable.mockReturnValue(true);
       ExpoSpeechRecognitionModule.requestPermissionsAsync.mockResolvedValue({ granted: true });
-      await act(async () => { renderScreen(); });
+      await act(async () => { await renderScreen(); });
 
       await fireEvent.press(screen.getByTestId('coach-composer-voice'));
 
@@ -554,7 +705,7 @@ describe('CoachScreen', () => {
     it('appends a final transcript to whatever is already in the composer', async () => {
       ExpoSpeechRecognitionModule.isRecognitionAvailable.mockReturnValue(true);
       ExpoSpeechRecognitionModule.requestPermissionsAsync.mockResolvedValue({ granted: true });
-      await act(async () => { renderScreen(); });
+      await act(async () => { await renderScreen(); });
 
       await fireEvent.changeText(screen.getByTestId('coach-composer-input'), 'How do I');
       await fireEvent.press(screen.getByTestId('coach-composer-voice'));
@@ -571,7 +722,7 @@ describe('CoachScreen', () => {
       ExpoSpeechRecognitionModule.isRecognitionAvailable.mockReturnValue(true);
       ExpoSpeechRecognitionModule.requestPermissionsAsync.mockResolvedValue({ granted: false, status: 'denied' });
       const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-      await act(async () => { renderScreen(); });
+      await act(async () => { await renderScreen(); });
 
       await fireEvent.press(screen.getByTestId('coach-composer-voice'));
 

@@ -38,9 +38,19 @@ import { useAssistantRouting, type RoutingOutcome } from '../assistant/RouterPro
 import { persistOnboarding } from '../lib/onboarding';
 import { groupHistory } from '../lib/historyThreads';
 import { ADMIN_ROLES, CLASSROOM_MODE_ENABLED, SPEECH_LOCALE } from '../config';
-import type { AttachmentMeta, CoachResponse, HistoryItem, QueryContext, Turn } from '../types';
+import type { AttachmentMeta, CoachResponse, HistoryItem, QueryContext, TeacherPreferences, Turn } from '../types';
 
 const EMPTY_CONTEXT: QueryContext = { grade: '', subject: '', classroomType: '', issueType: '' };
+
+// What a fresh chat starts from: the teacher's Settings defaults. Focus (issueType) has no default.
+function defaultContext(prefs: TeacherPreferences): QueryContext {
+  return {
+    grade: prefs.defaultGrade ?? '',
+    subject: prefs.defaultSubject ?? '',
+    classroomType: prefs.defaultClassroomType ?? '',
+    issueType: '',
+  };
+}
 
 function isMobileViewport(): boolean {
   return window.matchMedia('(max-width: 768px)').matches;
@@ -77,12 +87,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
 
   const [language, setLanguage] = useState(prefs.defaultLanguage || 'en');
   const [query, setQuery] = useState('');
-  const [context, setContext] = useState<QueryContext>({
-    grade: prefs.defaultGrade ?? '',
-    subject: prefs.defaultSubject ?? '',
-    classroomType: prefs.defaultClassroomType ?? '',
-    issueType: '',
-  });
+  const [context, setContext] = useState<QueryContext>(() => defaultContext(prefs));
 
   // ---- Classroom Mode (docs/classroom-mode.md) ----
   // Plain component state, deliberately not persisted to user.preferences: it survives in-session navigation and resets to OFF on
@@ -412,7 +417,7 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
     setTurns([]);
     conversationIdRef.current = null;
     setQuery('');
-    setContext(EMPTY_CONTEXT);
+    setContext(defaultContext(prefs));
     attachments.clear();
     // A new conversation mustn't inherit the last one's remembered grade, subject or topic; a stale slot yields a confident, wrong worksheet.
     router.resetSession();

@@ -171,6 +171,46 @@ describe('SettingsScreen', () => {
     expect(screen.getByText('Settings saved')).toBeTruthy();
   });
 
+  it('"No default" sends an empty value, because the server keeps any key that is left out', async () => {
+    mockUser.preferences = { defaultLanguage: 'hi', defaultGrade: 'Class 3-5', defaultSubject: 'Science', defaultClassroomType: 'Multi-Grade', avatar: '🌟' };
+    api.mockResolvedValueOnce({ user: mockUser });
+    await renderScreen();
+
+    await fireEvent.press(screen.getByLabelText('Default grade'));
+    await fireEvent.press(screen.getByText('No default'));
+    await fireEvent.press(screen.getByLabelText('No avatar'));
+    await fireEvent.press(screen.getByTestId('settings-save-profile'));
+
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/auth/me', {
+      method: 'PATCH',
+      body: expect.objectContaining({
+        preferences: expect.objectContaining({ defaultGrade: '', avatar: '', defaultSubject: 'Science' }),
+      }),
+    }));
+  });
+
+  it('leaves a never-set field out of the request while clearing a stored one', async () => {
+    mockUser.preferences = { defaultLanguage: 'hi', defaultGrade: 'Class 3-5', defaultSubject: 'Science', defaultClassroomType: 'Multi-Grade' };
+    api.mockResolvedValueOnce({ user: mockUser });
+    await renderScreen();
+
+    await fireEvent.press(screen.getByLabelText('Default grade'));
+    await fireEvent.press(screen.getByText('No default'));
+    await fireEvent.press(screen.getByTestId('settings-save-profile'));
+
+    await waitFor(() => expect(api).toHaveBeenCalled());
+    const sent = JSON.parse(JSON.stringify(api.mock.calls[0][1].body)).preferences;
+    expect(sent.defaultGrade).toBe('');
+    expect(sent).not.toHaveProperty('avatar');
+  });
+
+  it('shows a saved grade that this app\'s list does not have', async () => {
+    mockUser.preferences = { defaultGrade: 'Class 5' };
+    await renderScreen();
+
+    expect(screen.getByText('Class 5')).toBeTruthy();
+  });
+
   it('shows an inline error and does not update the user when saving the profile fails', async () => {
     api.mockRejectedValueOnce(new Error('boom'));
     await renderScreen();

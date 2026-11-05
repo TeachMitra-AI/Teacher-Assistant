@@ -516,6 +516,62 @@ describe('auth', () => {
     });
   });
 
+  // Settings clears a teaching default by sending '', because the merge keeps any key that is left out.
+  describe('preferences: teaching defaults', () => {
+    let token;
+
+    beforeAll(async () => {
+      const login = await http.post('/api/auth/login')
+        .send({ email: fx.teacherA.email, password: PASSWORD });
+      token = login.body.token;
+    });
+
+    const patchPreferences = (preferences) => http.patch('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ preferences });
+
+    test('an empty string clears a default and leaves sibling preferences intact', async () => {
+      await patchPreferences({
+        defaultGrade: 'Class 5',
+        defaultLanguage: 'hi',
+        avatar: '🌟',
+        responseStyle: 'concise',
+        examPaperDefaults: { schoolName: 'Sibling School' },
+      });
+
+      const res = await patchPreferences({ defaultGrade: '', defaultLanguage: '', avatar: '' });
+      expect(res.status).toBe(200);
+
+      const me = await http.get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+      expect(me.body.user.preferences.defaultGrade).toBe('');
+      expect(me.body.user.preferences.defaultLanguage).toBe('');
+      expect(me.body.user.preferences.avatar).toBe('');
+      expect(me.body.user.preferences.responseStyle).toBe('concise');
+      expect(me.body.user.preferences.examPaperDefaults.schoolName).toBe('Sibling School');
+    });
+
+    test('a key left out of the patch keeps its stored value', async () => {
+      await patchPreferences({ defaultSubject: 'Science' });
+      const res = await patchPreferences({ responseStyle: 'balanced' });
+      expect(res.body.user.preferences.defaultSubject).toBe('Science');
+    });
+
+    test('rejects an unknown response style', async () => {
+      const res = await patchPreferences({ responseStyle: 'shouty' });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects an unknown preference key (strict schema)', async () => {
+      const res = await patchPreferences({ defaultFocus: 'Assessment' });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects an unauthenticated update', async () => {
+      const res = await http.patch('/api/auth/me').send({ preferences: { defaultGrade: 'Class 5' } });
+      expect(res.status).toBe(401);
+    });
+  });
+
   // First-run onboarding state lives in preferences.onboarding (seenWelcomeIntro flag and dismissedTips list). These
   // tests lock in that it round-trips and stays backward-compatible with existing preferences.
   describe('preferences.onboarding', () => {

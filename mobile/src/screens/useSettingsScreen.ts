@@ -13,6 +13,13 @@ import { api, ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { ResponseStyle, TeacherPreferences, User } from '../types';
 
+// '' clears a stored value (the server's merge keeps any key left out). A
+// field that was never set stays out of the request, so a form opened earlier
+// can't erase a value saved since on another device.
+function clearableValue(value: string, stored?: string): string | undefined {
+  return value || (stored ? '' : undefined);
+}
+
 export function useSettingsScreen() {
   const { user, updateUser } = useAuth();
   const prefs = user?.preferences ?? {};
@@ -50,11 +57,11 @@ export function useSettingsScreen() {
     setProfileError('');
     setProfileSaved(false);
     const preferencesPayload: TeacherPreferences = {
-      avatar: avatar || undefined,
-      defaultLanguage: defaultLanguage || undefined,
-      defaultGrade: defaultGrade || undefined,
-      defaultSubject: defaultSubject || undefined,
-      defaultClassroomType: defaultClassroomType || undefined,
+      avatar: clearableValue(avatar, prefs.avatar),
+      defaultLanguage: clearableValue(defaultLanguage, prefs.defaultLanguage),
+      defaultGrade: clearableValue(defaultGrade, prefs.defaultGrade),
+      defaultSubject: clearableValue(defaultSubject, prefs.defaultSubject),
+      defaultClassroomType: clearableValue(defaultClassroomType, prefs.defaultClassroomType),
       responseStyle,
       // Preserved as-is — this form doesn't edit exam-paper defaults, and
       // the server does a shallow merge of the whole `preferences` object,

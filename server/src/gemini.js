@@ -468,7 +468,7 @@ You are continuing a response that was cut off mid-way. The text already written
     { query, context = {}, language = 'en', responseStyle = 'balanced', history = [], forceEmergency = false },
     options = {}
   ) {
-    const { systemInstruction: selectedInstruction, userContent } = selectTemplate(query, context, { forceEmergency });
+    const { systemInstruction: selectedInstruction, userContent, isEmergency } = selectTemplate(query, context, { forceEmergency });
     const baseInstruction = history.length > 0 ? `${selectedInstruction}
 
 ${MEMORY_DIRECTIVE}` : selectedInstruction;
@@ -479,7 +479,8 @@ ${MEMORY_DIRECTIVE}` : selectedInstruction;
     // Always present, English included (see languageDirective). Kept last in the instruction: the templates mandate
     // English section names ("Fun Activity 1"), and this tells the model to translate those too.
     const languageInstruction = `\n\nIMPORTANT: ${languageDirective(language)}`;
-    const style = styleDirective(responseStyle);
+    // An emergency answer keeps its own short, directive shape, whatever style the teacher saved.
+    const style = isEmergency ? '' : styleDirective(responseStyle);
     const styleInstruction = style ? `\n\nRESPONSE STYLE: ${style}` : '';
     // Language/style directives are app-authored, not user text, so they
     // belong in systemInstruction alongside the rest of the trusted framing.

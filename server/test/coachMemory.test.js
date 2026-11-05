@@ -147,6 +147,18 @@ describe('POST /api/coach with memory', () => {
     expect(system(g.calls[1]).slice(0, 200)).toBe(system(g.calls[0]).slice(0, 200));
   });
 
+  test('a carried emergency ignores the saved response style', async () => {
+    const setStyle = (responseStyle) =>
+      request(app).patch('/api/auth/me').set('Authorization', `Bearer ${token}`).send({ preferences: { responseStyle } });
+    await setStyle('detailed');
+    const g = mockGeminiFetch([geminiSuccess('Follow your emergency protocol.'), geminiSuccess('Stay with the student.')]);
+    await ask({ query: 'mem-a student collapsed and is unconscious', conversationId: CONV });
+    await ask({ query: 'mem-what should I do next', conversationId: CONV });
+    await setStyle('balanced');
+    expect(system(g.calls[1]).slice(0, 200)).toBe(system(g.calls[0]).slice(0, 200));
+    expect(system(g.calls[1])).not.toContain('RESPONSE STYLE:');
+  });
+
   test('flag off: the same follow-up is NOT treated as an emergency', async () => {
     process.env.COACH_MEMORY_ENABLED = 'false';
     const g = mockGeminiFetch([geminiSuccess('Done a.'), geminiSuccess('Done b.')]);
