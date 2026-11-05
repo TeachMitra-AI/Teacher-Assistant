@@ -73,9 +73,15 @@ export default function MessageBubble({ turn, onFeedback, onRetry, onEdit }: Mes
     if (!isEditing || !el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, MAX_EDIT_TEXTAREA_HEIGHT)}px`;
+  }, [isEditing, draft]);
+
+  // Only on opening the editor: depending on `draft` here would send the caret to the end on every keystroke.
+  useLayoutEffect(() => {
+    const el = editTextareaRef.current;
+    if (!isEditing || !el) return;
     el.focus();
     el.selectionStart = el.selectionEnd = el.value.length;
-  }, [isEditing, draft]);
+  }, [isEditing]);
 
   function startEdit() {
     setDraft(turn.query);
