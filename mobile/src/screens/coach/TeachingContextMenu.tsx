@@ -51,6 +51,11 @@ export function TeachingContextMenu({
 }: TeachingContextMenuProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  // A saved default or reopened chat can hold a grade this app's list doesn't
+  // have; show it rather than a placeholder, like the web's menu.
+  const gradeOptions = context.grade && !GRADES.includes(context.grade)
+    ? [ANY, { value: context.grade, label: context.grade }, ...GRADE_OPTIONS.slice(1)]
+    : GRADE_OPTIONS;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -66,7 +71,7 @@ export function TeachingContextMenu({
           <ThemedText style={styles.title}>Teaching context</ThemedText>
 
           <ScrollView contentContainerStyle={styles.fields} keyboardShouldPersistTaps="handled">
-            <SelectField label="Grade" options={GRADE_OPTIONS} value={context.grade ?? ''} onChange={(v) => onContextChange('grade', v)} />
+            <SelectField label="Grade" options={gradeOptions} value={context.grade ?? ''} onChange={(v) => onContextChange('grade', v)} />
             <SelectField label="Subject" options={SUBJECT_OPTIONS} value={context.subject ?? ''} onChange={(v) => onContextChange('subject', v)} />
             <SelectField label="Language" options={LANGUAGES} value={language} onChange={onLanguageChange} />
 

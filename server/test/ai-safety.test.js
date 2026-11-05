@@ -277,6 +277,41 @@ describe('AI safety — emergency response mode', () => {
     expect(sentSystemInstruction).toMatch(/emergency protocol/i);
   });
 
+  describe('saved response style', () => {
+    const setStyle = (responseStyle) =>
+      request(app).patch('/api/auth/me').set('Authorization', `Bearer ${token}`).send({ preferences: { responseStyle } });
+
+    afterEach(async () => {
+      await setStyle('balanced');
+    });
+
+    test('never reaches the emergency prompt, which keeps its language directive and leaves the question in contents', async () => {
+      await setStyle('detailed');
+      const query = 'A student collapsed and is unconscious in my classroom.';
+      const { calls } = mockGeminiFetch([geminiSuccess('Activate your school emergency protocol now and stay with the student.')]);
+
+      const res = await coach({ query, context: {}, language: 'hi' });
+
+      expect(res.status).toBe(200);
+      const sentSystemInstruction = calls[0].body.systemInstruction.parts[0].text;
+      expect(sentSystemInstruction).toMatch(/emergency protocol/i);
+      expect(sentSystemInstruction).not.toContain('RESPONSE STYLE:');
+      expect(sentSystemInstruction).toContain('Write your ENTIRE response in');
+      expect(sentSystemInstruction).not.toContain(query);
+      expect(calls[0].body.contents.at(-1).parts[0].text).toContain(query);
+    });
+
+    test('still reaches an ordinary coaching prompt', async () => {
+      await setStyle('detailed');
+      const { calls } = mockGeminiFetch([geminiSuccess('Start with physical objects.')]);
+
+      const res = await coach({ query: 'How do I introduce fractions?', context: {}, language: 'en' });
+
+      expect(res.status).toBe(200);
+      expect(calls[0].body.systemInstruction.parts[0].text).toContain('RESPONSE STYLE:');
+    });
+  });
+
   test('a request for medicine during an active emergency sends an explicit no-prescribing instruction to Gemini', async () => {
     const { calls } = mockGeminiFetch([geminiSuccess('Safety-first guidance without prescribing anything.')]);
 

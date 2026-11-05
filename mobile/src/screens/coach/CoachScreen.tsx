@@ -43,13 +43,23 @@ import { MessageBubble } from './MessageBubble';
 import { Composer } from './Composer';
 import { HistorySidebar } from './HistorySidebar';
 import { TeachingContextMenu } from './TeachingContextMenu';
-import type { AttachmentMeta, HistoryItem, QueryContext, Turn } from '../../types';
+import type { AttachmentMeta, HistoryItem, QueryContext, TeacherPreferences, Turn } from '../../types';
 
 const EMPTY_CONTEXT: QueryContext = { grade: '', subject: '', classroomType: '', issueType: '' };
-// Default state before a teacher touches TeachingContextMenu — matches the
-// web's own default (English, no grade/subject/classroom/focus tags).
+// The language when the teacher has saved no default — matches the web.
 const DEFAULT_LANGUAGE = 'en';
 const HISTORY_LIMIT = 20;
+
+// What a fresh chat starts from: the teacher's Settings defaults, same as the
+// web's CoachPage. Focus (issueType) has no default.
+function defaultContext(prefs: TeacherPreferences): QueryContext {
+  return {
+    grade: prefs.defaultGrade ?? '',
+    subject: prefs.defaultSubject ?? '',
+    classroomType: prefs.defaultClassroomType ?? '',
+    issueType: '',
+  };
+}
 
 function newTurnId(): string {
   return `t${Date.now()}${Math.random().toString(36).slice(2)}`;
@@ -62,6 +72,7 @@ export function CoachScreen({ navigation }: Props) {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const displayName = user?.displayName || user?.name || '';
+  const { defaultLanguage, defaultGrade, defaultSubject, defaultClassroomType } = user?.preferences ?? {};
 
   const [turns, setTurns] = useState<Turn[]>([]);
   const [query, setQuery] = useState('');
@@ -90,12 +101,39 @@ export function CoachScreen({ navigation }: Props) {
   // several model calls instead of one.
   const [classroomMode, setClassroomMode] = useState(false);
 
-  const [language, setLanguage] = useState(DEFAULT_LANGUAGE);
+  const [language, setLanguage] = useState(defaultLanguage || DEFAULT_LANGUAGE);
   const voice = useVoiceInput(SPEECH_LOCALE[language] || 'en-US', (text) => {
     setQuery((q) => (q ? `${q} ${text}` : text));
   });
-  const [context, setContext] = useState<QueryContext>(EMPTY_CONTEXT);
+  const [context, setContext] = useState<QueryContext>(() => defaultContext({ defaultGrade, defaultSubject, defaultClassroomType }));
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
+
+  // Settings is a stack screen above this one, so this screen stays mounted
+  // while it's open and the initial state above never re-reads a new save.
+  // The context defaults and the language default are tracked separately, so
+  // a change to one never overwrites the teacher's current choice of the
+  // other. Each applies once the chat is empty: right away for an empty chat,
+  // or at the next New chat for one with turns, which keeps its own context.
+  // Unset and '' both mean "no default", so the keys treat them alike.
+  const contextDefaultsKey = JSON.stringify([defaultGrade, defaultSubject, defaultClassroomType].map((v) => v ?? ''));
+  const languageDefaultKey = defaultLanguage ?? '';
+  const seenContextDefaultsRef = useRef(contextDefaultsKey);
+  const seenLanguageDefaultRef = useRef(languageDefaultKey);
+  const hasTurns = turns.length > 0;
+  useEffect(() => {
+    if (hasTurns) return;
+    if (contextDefaultsKey !== seenContextDefaultsRef.current) {
+      seenContextDefaultsRef.current = contextDefaultsKey;
+      // Synchronizing with a save made on another screen, which can't be
+      // derived during render: the teacher may also edit these values here.
+      setContext(defaultContext({ defaultGrade, defaultSubject, defaultClassroomType }));
+    }
+    if (languageDefaultKey !== seenLanguageDefaultRef.current) {
+      seenLanguageDefaultRef.current = languageDefaultKey;
+      setLanguage(defaultLanguage || DEFAULT_LANGUAGE);
+    }
+  }, [contextDefaultsKey, languageDefaultKey, defaultLanguage, defaultGrade, defaultSubject, defaultClassroomType, hasTurns]);
+
   // Language isn't counted: it always has a value (defaults to English), so
   // it can never distinguish "set" from "unset" the way the other four can
   // — same reasoning as the web's TeachingContextMenu.
@@ -312,11 +350,13 @@ export function CoachScreen({ navigation }: Props) {
     setQuery('');
     // A new conversation must not inherit the previous one's remembered
     // grade/subject/classroom/focus — a stale slot produces a confident,
-    // wrong answer (mirrors the web's handleNewChat). Language is left
-    // alone, same as the web — and so is `classroomMode`: the web's own
+    // wrong answer — so it starts from the teacher's saved defaults (mirrors
+    // the web's handleNewChat). Language is left alone, same as the web,
+    // unless the language default changed during the chat, which the sync
+    // effect above applies once — and so is `classroomMode`: the web's own
     // handleNewChat does not reset it either, since it is a conversation-
     // level tool choice, not part of the previous chat's remembered state.
-    setContext(EMPTY_CONTEXT);
+    setContext(defaultContext({ defaultGrade, defaultSubject, defaultClassroomType }));
     attachments.clear();
     setSidebarOpen(false);
   }
