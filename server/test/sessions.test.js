@@ -293,6 +293,8 @@ describe('concurrent refresh', () => {
     expect(live[0].tokenHash).toBe(hashToken(winners[0].body.refreshToken));
     const old = await prisma.session.findUnique({ where: { tokenHash: hashToken(refreshToken) } });
     expect(old.replacedBy).toBe(live[0].id);
+    // The old row and one successor: the losers leave nothing behind.
+    expect(await prisma.session.count({ where: { userId: fx.teacherA.id } })).toBe(2);
 
     expect((await refresh(winners[0].body.refreshToken)).status).toBe(200);
   });
