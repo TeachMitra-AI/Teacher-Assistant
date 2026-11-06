@@ -43,6 +43,38 @@ describe('sortByRollNumber', () => {
     ];
     expect(sortByRollNumber(list).map((s) => s.name)).toEqual(['Asha', 'Chetan', 'Ben']);
   });
+
+  it('sorts roll numbers with letters by their digits, in the same order as the server and web', () => {
+    const list = [
+      { name: 'None', rollNumber: null },
+      { name: 'B1', rollNumber: 'B1' },
+      { name: 'A10', rollNumber: 'A10' },
+      { name: 'Ten', rollNumber: '10' },
+      { name: 'A2', rollNumber: 'A2' },
+      { name: 'Two', rollNumber: '2' },
+    ];
+    expect(sortByRollNumber(list).map((s) => s.name)).toEqual(['Two', 'Ten', 'A2', 'A10', 'B1', 'None']);
+  });
+
+  it('compares a leading number numerically too', () => {
+    const list = [{ name: 'Ten', rollNumber: '10A' }, { name: 'Two', rollNumber: '2A' }];
+    expect(sortByRollNumber(list).map((s) => s.name)).toEqual(['Two', 'Ten']);
+  });
+
+  it.each([
+    ['letter case', 'a1', 'A1'],
+    ['leading zeros', 'A01', 'A1'],
+  ])('ties roll numbers differing only by %s, falling back to name', (_label, first, second) => {
+    const list = [{ name: 'Zoya', rollNumber: first }, { name: 'Asha', rollNumber: second }];
+    expect(sortByRollNumber(list).map((s) => s.name)).toEqual(['Asha', 'Zoya']);
+  });
+
+  it('never calls localeCompare with options, which Hermes may ignore', () => {
+    const spy = jest.spyOn(String.prototype, 'localeCompare');
+    sortByRollNumber([{ name: 'A10', rollNumber: 'A10' }, { name: 'A2', rollNumber: 'A2' }]);
+    expect(spy.mock.calls.every((args) => args.length === 1)).toBe(true);
+    spy.mockRestore();
+  });
 });
 
 describe('compareByRollNumber', () => {

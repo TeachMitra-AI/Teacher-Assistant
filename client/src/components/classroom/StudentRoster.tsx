@@ -4,6 +4,7 @@ import ConfirmDialog from '../ConfirmDialog';
 import { useToast } from '../Toast';
 import { ApiError } from '../../api';
 import { listStudents, addStudent, updateStudent, deactivateStudent } from '../../lib/classroomApi';
+import { sortByRollNumber } from '../../lib/students';
 import type { Student } from '../../types';
 
 const FORM_DEFAULTS = { name: '', rollNumber: '' };
@@ -110,7 +111,7 @@ export default function StudentRoster({ classId, className }: { classId: string;
     }
   }
 
-  const visible = showInactive ? students : students.filter((s) => s.active);
+  const visible = sortByRollNumber(showInactive ? students : students.filter((s) => s.active));
 
   return (
     <div className="classroom-roster">

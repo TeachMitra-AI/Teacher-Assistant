@@ -15,6 +15,20 @@ function parseRollNumber(rollNumber?: string | null): number | null {
   return Number(trimmed);
 }
 
+// "A2" before "A10", ignoring case. Hand-rolled because localeCompare's `numeric`
+// option can't be relied on here: Hermes Intl support is partial, and an
+// unsupported option is ignored silently.
+function compareRollText(a: string, b: string): number {
+  const aParts = a.toLowerCase().match(/\d+|\D+/g) ?? [];
+  const bParts = b.toLowerCase().match(/\d+|\D+/g) ?? [];
+  for (let i = 0; i < Math.min(aParts.length, bParts.length); i += 1) {
+    const bothDigits = /^\d/.test(aParts[i]) && /^\d/.test(bParts[i]);
+    const diff = bothDigits ? Number(aParts[i]) - Number(bParts[i]) : aParts[i].localeCompare(bParts[i]);
+    if (diff) return diff;
+  }
+  return aParts.length - bParts.length;
+}
+
 export function compareByRollNumber<T extends RollNumberSortable>(a: T, b: T): number {
   const aNum = parseRollNumber(a.rollNumber);
   const bNum = parseRollNumber(b.rollNumber);
@@ -25,7 +39,7 @@ export function compareByRollNumber<T extends RollNumberSortable>(a: T, b: T): n
 
   const aRoll = a.rollNumber?.trim();
   const bRoll = b.rollNumber?.trim();
-  if (aRoll && bRoll) return aRoll.localeCompare(bRoll) || a.name.localeCompare(b.name);
+  if (aRoll && bRoll) return compareRollText(aRoll, bRoll) || a.name.localeCompare(b.name);
   if (aRoll) return -1;
   if (bRoll) return 1;
 

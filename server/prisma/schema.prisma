@@ -430,6 +430,9 @@ model Student {
   teacherId   String
   name        String
   rollNumber  String? // optional now; first concrete field beyond `details`
+  // Normalized rollNumber (see lib/classroomStudents.js), null when blank or inactive, so the unique index below only
+  // applies among active students. Never returned to clients. NULL on an active row with a roll number marks a pre-existing duplicate.
+  rollNumberKey String?
   active      Boolean     @default(true) // soft-delete: preserves attendance/fee history
   details     String? // JSON string — future fields (contact, DOB, guardian) land here first
   createdAt   DateTime    @default(now())
@@ -438,6 +441,7 @@ model Student {
   attendance AttendanceRecord[]
   feeRecords FeeRecord[]
 
+  @@unique([classId, rollNumberKey])
   @@index([classId])
   @@index([teacherId])
 }

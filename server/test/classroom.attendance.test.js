@@ -229,6 +229,35 @@ describe('Classroom Management — attendance', () => {
     });
   });
 
+  describe('roster order', () => {
+    const EXPECTED = ['Divya', 'Chirag', 'Aarav', 'Bina'];
+    let classId;
+
+    beforeAll(async () => {
+      classId = await makeClass(teacherAToken, 'Roster Order');
+      await addStudent(teacherAToken, classId, 'Aarav', '10');
+      await addStudent(teacherAToken, classId, 'Bina', undefined);
+      await addStudent(teacherAToken, classId, 'Chirag', '2');
+      await addStudent(teacherAToken, classId, 'Divya', '1');
+    });
+
+    test('the daily roster is in numeric roll-number order', async () => {
+      const res = await as(teacherAToken)(request(app).get(`/api/classroom/classes/${classId}/attendance?date=2026-09-01`));
+      expect(res.body.roster.map((r) => r.name)).toEqual(EXPECTED);
+    });
+
+    test('the monthly summary is in numeric roll-number order', async () => {
+      const res = await as(teacherAToken)(request(app).get(`/api/classroom/classes/${classId}/attendance/summary?month=2026-09`));
+      expect(res.body.perStudent.map((s) => s.name)).toEqual(EXPECTED);
+    });
+
+    test('the CSV export is in numeric roll-number order, before the TOTAL row', async () => {
+      const res = await as(teacherAToken)(request(app).get(`/api/classroom/classes/${classId}/attendance/export?month=2026-09`));
+      const names = res.text.trim().split(/\r?\n/).slice(1).map((line) => line.split(',')[0]);
+      expect(names).toEqual([...EXPECTED, 'TOTAL']);
+    });
+  });
+
   describe('GET /api/classroom/classes/:classId/attendance/history', () => {
     let classId;
     let s1;
