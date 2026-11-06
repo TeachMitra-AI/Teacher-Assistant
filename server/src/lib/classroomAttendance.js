@@ -3,6 +3,7 @@
 // analytics), so the number can't drift between tabs and the exported CSV.
 // "Unmarked" is never stored: a student with no AttendanceRecord for a date is unmarked, derived from
 // (roster size - present - absent).
+const { compareByRollNumber } = require('./classroomStudents');
 
 /**
  * attendance% = Present / (Present + Absent) * 100. Unmarked is excluded from both sides. Returns null
@@ -85,6 +86,7 @@ async function computeClassAttendanceMonthSummary(prisma, { classId, teacherId, 
     prisma.student.findMany({ where: { classId, teacherId, active: true }, orderBy: { name: 'asc' } }),
     prisma.attendanceRecord.findMany({ where: { classId, teacherId, date: { gte: start, lt: end } } }),
   ]);
+  students.sort(compareByRollNumber);
 
   const daysMarked = new Set(records.map((r) => dateKey(r.date))).size;
 

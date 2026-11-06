@@ -29,6 +29,8 @@ const {
 } = require('../lib/classroomAttendance');
 const { deriveFeeStatus, getClassFeeStatus, getTeacherFeeCounts } = require('../lib/classroomFees');
 const { buildFeeReportWorkbook } = require('../lib/feeReportExcel');
+const { rollNumberKey, compareByRollNumber } = require('../lib/classroomStudents');
+const { isUniqueConstraintError } = require('../lib/prismaErrors');
 
 const router = express.Router();
 
@@ -222,6 +224,20 @@ const updateStudentSchema = z
   .strict()
   .refine((data) => Object.keys(data).length > 0, { message: 'No fields to update.' });
 
+function duplicateRollNumberMessage(rollNumber) {
+  return `Roll number ${rollNumber} is already used in this class.`;
+}
+
+// Duplicates from before the unique index keep a NULL key, so the index can't see them. Only the backfill leaves such
+// rows and no write adds one, so checking before the write can't be raced into a new duplicate.
+async function isHeldByLegacyDuplicate(classId, key, excludeStudentId) {
+  const legacy = await prisma.student.findMany({
+    where: { classId, active: true, rollNumberKey: null, rollNumber: { not: null }, id: { not: excludeStudentId } },
+    select: { rollNumber: true },
+  });
+  return legacy.some((s) => rollNumberKey(s.rollNumber) === key);
+}
+
 router.get('/classroom/classes/:classId/students', ...gate, asyncHandler(async (req, res) => {
   const cls = await findOwnedClass(req.params.classId, req.user.id);
   if (!cls) return res.status(404).json({ error: 'Class not found.' });
@@ -229,6 +245,7 @@ router.get('/classroom/classes/:classId/students', ...gate, asyncHandler(async (
   const where = { classId: cls.id };
   if (!includeInactive) where.active = true;
   const students = await prisma.student.findMany({ where, orderBy: { name: 'asc' } });
+  students.sort(compareByRollNumber);
   res.json({ students: students.map(studentToDto) });
 }));
 
@@ -242,10 +259,21 @@ router.post('/classroom/classes/:classId/students', ...gate, asyncHandler(async 
   if (cls.archived) {
     return res.status(400).json({ error: 'Cannot add students to an archived class.' });
   }
-  const created = await prisma.student.create({
-    data: { classId: cls.id, teacherId: req.user.id, ...parsed.data },
-  });
-  res.status(201).json({ student: studentToDto(created) });
+  const key = rollNumberKey(parsed.data.rollNumber);
+  if (key && (await isHeldByLegacyDuplicate(cls.id, key))) {
+    return res.status(409).json({ error: duplicateRollNumberMessage(parsed.data.rollNumber) });
+  }
+  try {
+    const created = await prisma.student.create({
+      data: { classId: cls.id, teacherId: req.user.id, ...parsed.data, rollNumberKey: key },
+    });
+    res.status(201).json({ student: studentToDto(created) });
+  } catch (err) {
+    if (isUniqueConstraintError(err)) {
+      return res.status(409).json({ error: duplicateRollNumberMessage(parsed.data.rollNumber) });
+    }
+    throw err;
+  }
 }));
 
 router.patch('/classroom/students/:studentId', ...gate, asyncHandler(async (req, res) => {
@@ -255,8 +283,26 @@ router.patch('/classroom/students/:studentId', ...gate, asyncHandler(async (req,
   }
   const existing = await findOwnedStudent(req.params.studentId, req.user.id);
   if (!existing) return res.status(404).json({ error: 'Student not found.' });
-  const updated = await prisma.student.update({ where: { id: existing.id }, data: parsed.data });
-  res.json({ student: studentToDto(updated) });
+  const nextRollNumber = parsed.data.rollNumber ?? existing.rollNumber;
+  const nextActive = parsed.data.active ?? existing.active;
+  const data = { ...parsed.data };
+  // Only when something changed: clients resend the unchanged roll number on every edit, and a pre-existing duplicate
+  // (NULL key) must stay editable.
+  if (nextActive !== existing.active || rollNumberKey(nextRollNumber) !== rollNumberKey(existing.rollNumber)) {
+    data.rollNumberKey = nextActive ? rollNumberKey(nextRollNumber) : null;
+  }
+  if (data.rollNumberKey && (await isHeldByLegacyDuplicate(existing.classId, data.rollNumberKey, existing.id))) {
+    return res.status(409).json({ error: duplicateRollNumberMessage(nextRollNumber) });
+  }
+  try {
+    const updated = await prisma.student.update({ where: { id: existing.id }, data });
+    res.json({ student: studentToDto(updated) });
+  } catch (err) {
+    if (isUniqueConstraintError(err)) {
+      return res.status(409).json({ error: duplicateRollNumberMessage(nextRollNumber) });
+    }
+    throw err;
+  }
 }));
 
 // Soft-delete (active: false) — preserves attendance/fee history exactly
@@ -264,7 +310,7 @@ router.patch('/classroom/students/:studentId', ...gate, asyncHandler(async (req,
 router.delete('/classroom/students/:studentId', ...gate, asyncHandler(async (req, res) => {
   const existing = await findOwnedStudent(req.params.studentId, req.user.id);
   if (!existing) return res.status(404).json({ error: 'Student not found.' });
-  const updated = await prisma.student.update({ where: { id: existing.id }, data: { active: false } });
+  const updated = await prisma.student.update({ where: { id: existing.id }, data: { active: false, rollNumberKey: null } });
   res.json({ student: studentToDto(updated) });
 }));
 
@@ -299,6 +345,7 @@ router.get('/classroom/classes/:classId/attendance', ...gate, asyncHandler(async
     prisma.student.findMany({ where: { classId: cls.id, active: true }, orderBy: { name: 'asc' } }),
     prisma.attendanceRecord.findMany({ where: { classId: cls.id, date } }),
   ]);
+  students.sort(compareByRollNumber);
   const byStudent = new Map(records.map((r) => [r.studentId, r.status]));
   const roster = students.map((s) => ({
     studentId: s.id,

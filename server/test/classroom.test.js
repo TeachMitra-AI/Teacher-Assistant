@@ -243,4 +243,238 @@ describe('Classroom Management — classes & students', () => {
       expect(row.active).toBe(true);
     });
   });
+
+  describe('Roll numbers', () => {
+    let classId;
+    let otherClassId;
+
+    async function makeClass(name) {
+      const res = await as(teacherAToken)(request(app).post('/api/classroom/classes').send({ name }));
+      return res.body.class.id;
+    }
+
+    function addStudent(name, rollNumber, targetClassId = classId) {
+      return as(teacherAToken)(request(app).post(`/api/classroom/classes/${targetClassId}/students`).send({ name, rollNumber }));
+    }
+
+    function patchStudent(id, body, token = teacherAToken) {
+      return as(token)(request(app).patch(`/api/classroom/students/${id}`).send(body));
+    }
+
+    beforeEach(async () => {
+      classId = await makeClass('Roll Numbers');
+      otherClassId = await makeClass('Roll Numbers Other');
+    });
+
+    test('lists students numerically, then other roll numbers, then none', async () => {
+      await addStudent('No Roll', undefined);
+      await addStudent('Ten', '10');
+      await addStudent('Letter', 'A1');
+      await addStudent('Two', '2');
+      await addStudent('One Hundred', '100');
+
+      const res = await as(teacherAToken)(request(app).get(`/api/classroom/classes/${classId}/students`));
+      expect(res.body.students.map((s) => s.name)).toEqual(['Two', 'Ten', 'One Hundred', 'Letter', 'No Roll']);
+    });
+
+    test.each([
+      ['an identical roll number', '7', '7'],
+      ['leading zeros', '1', '01'],
+      ['all zeros', '0', '00'],
+      ['different letter case', 'a1', 'A1'],
+    ])('POST rejects a duplicate in the same class: %s', async (_label, first, second) => {
+      expect((await addStudent('First', first)).status).toBe(201);
+      const res = await addStudent('Second', second);
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe(`Roll number ${second} is already used in this class.`);
+      expect(await prisma.student.count({ where: { classId } })).toBe(1);
+    });
+
+    test('the same roll number is allowed in a different class', async () => {
+      expect((await addStudent('First', '5')).status).toBe(201);
+      expect((await addStudent('Second', '5', otherClassId)).status).toBe(201);
+    });
+
+    test('students with no roll number never conflict', async () => {
+      expect((await addStudent('First', undefined)).status).toBe(201);
+      expect((await addStudent('Second', undefined)).status).toBe(201);
+      expect((await addStudent('Third', '')).status).toBe(201);
+      expect((await addStudent('Fourth', '')).status).toBe(201);
+    });
+
+    test('concurrent duplicates: the database lets exactly one through', async () => {
+      const results = await Promise.all([addStudent('First', '9'), addStudent('Second', '9')]);
+      expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+      expect(await prisma.student.count({ where: { classId } })).toBe(1);
+    });
+
+    test('PATCH onto a taken roll number 409s and changes nothing', async () => {
+      await addStudent('First', '1');
+      const second = await addStudent('Second', '2');
+      const res = await patchStudent(second.body.student.id, { rollNumber: '01' });
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('Roll number 01 is already used in this class.');
+      const row = await prisma.student.findUnique({ where: { id: second.body.student.id } });
+      expect(row.rollNumber).toBe('2');
+    });
+
+    test('PATCH resending the same roll number succeeds, and changing it frees the old number', async () => {
+      const first = await addStudent('First', '1');
+      const renamed = await patchStudent(first.body.student.id, { name: 'Renamed', rollNumber: '1' });
+      expect(renamed.status).toBe(200);
+      expect(renamed.body.student.name).toBe('Renamed');
+
+      expect((await patchStudent(first.body.student.id, { rollNumber: '2' })).status).toBe(200);
+      expect((await addStudent('Second', '1')).status).toBe(201);
+    });
+
+    test.each([
+      ['DELETE', (id) => as(teacherAToken)(request(app).delete(`/api/classroom/students/${id}`))],
+      ['PATCH active:false', (id) => patchStudent(id, { active: false })],
+    ])('deactivating with %s frees the number, and restoring into it 409s', async (_label, deactivate) => {
+      const first = await addStudent('First', '3');
+      expect((await deactivate(first.body.student.id)).status).toBe(200);
+      expect((await addStudent('Second', '3')).status).toBe(201);
+
+      const restore = await patchStudent(first.body.student.id, { active: true });
+      expect(restore.status).toBe(409);
+      expect((await prisma.student.findUnique({ where: { id: first.body.student.id } })).active).toBe(false);
+    });
+
+    test('restoring a student whose number is still free reclaims it', async () => {
+      const first = await addStudent('First', '4');
+      await patchStudent(first.body.student.id, { active: false });
+      expect((await patchStudent(first.body.student.id, { active: true })).status).toBe(200);
+      expect((await addStudent('Second', '4')).status).toBe(409);
+    });
+
+    test('a pre-existing duplicate stays editable, but cannot move onto another taken number', async () => {
+      await addStudent('Holder', '6');
+      await addStudent('Other', '8');
+      const legacy = await prisma.student.create({
+        data: { classId, teacherId: fx.teacherA.id, name: 'Legacy', rollNumber: '6' },
+      });
+
+      const renamed = await patchStudent(legacy.id, { name: 'Legacy Renamed', rollNumber: '6' });
+      expect(renamed.status).toBe(200);
+      expect(renamed.body.student.rollNumber).toBe('6');
+
+      expect((await patchStudent(legacy.id, { rollNumber: '8' })).status).toBe(409);
+      expect((await patchStudent(legacy.id, { rollNumber: '11' })).status).toBe(200);
+    });
+
+    test('sorts roll numbers with letters by their digits', async () => {
+      await addStudent('None', undefined);
+      await addStudent('B1', 'B1');
+      await addStudent('A10', 'A10');
+      await addStudent('Ten', '10');
+      await addStudent('A2', 'A2');
+      await addStudent('Two', '2');
+
+      const res = await as(teacherAToken)(request(app).get(`/api/classroom/classes/${classId}/students`));
+      expect(res.body.students.map((s) => s.name)).toEqual(['Two', 'Ten', 'A2', 'A10', 'B1', 'None']);
+    });
+
+    describe('a number still held by a legacy duplicate', () => {
+      let holderId;
+      let legacyId;
+
+      // What the migration leaves behind: the earliest student holds the key and the later duplicate has none.
+      function createLegacy(rollNumber, overrides = {}) {
+        return prisma.student.create({
+          data: { classId, teacherId: fx.teacherA.id, name: 'Legacy', rollNumber, ...overrides },
+        });
+      }
+
+      beforeEach(async () => {
+        holderId = (await addStudent('Holder', '6')).body.student.id;
+        legacyId = (await createLegacy('6')).id;
+      });
+
+      test.each([
+        ['DELETE', (id) => as(teacherAToken)(request(app).delete(`/api/classroom/students/${id}`))],
+        ['PATCH active:false', (id) => patchStudent(id, { active: false })],
+        ['moving to another number', (id) => patchStudent(id, { rollNumber: '7' })],
+      ])('stays taken after the key holder leaves it by %s', async (_label, leave) => {
+        expect((await leave(holderId)).status).toBe(200);
+
+        const res = await addStudent('New', '6');
+        expect(res.status).toBe(409);
+        expect(res.body.error).toBe('Roll number 6 is already used in this class.');
+        expect((await addStudent('Variant', '06')).status).toBe(409);
+
+        const other = await addStudent('Other', '9');
+        expect((await patchStudent(other.body.student.id, { rollNumber: '6' })).status).toBe(409);
+      });
+
+      test('blocks restoring the key holder while the legacy row is active', async () => {
+        await patchStudent(holderId, { active: false });
+        expect((await patchStudent(holderId, { active: true })).status).toBe(409);
+        expect((await prisma.student.findUnique({ where: { id: holderId } })).active).toBe(false);
+      });
+
+      test.each([
+        ['moves to another number', () => patchStudent(legacyId, { rollNumber: '11' })],
+        ['is deactivated', () => patchStudent(legacyId, { active: false })],
+      ])('is free again once the holder has left and the legacy row %s', async (_label, release) => {
+        await patchStudent(holderId, { active: false });
+        expect((await release()).status).toBe(200);
+        expect((await addStudent('New', '6')).status).toBe(201);
+      });
+
+      test('the legacy row itself stays editable after the holder leaves', async () => {
+        await patchStudent(holderId, { active: false });
+        const res = await patchStudent(legacyId, { name: 'Legacy Renamed', rollNumber: '6' });
+        expect(res.status).toBe(200);
+      });
+
+      test('an inactive legacy row does not hold a number', async () => {
+        await createLegacy('12', { active: false });
+        expect((await addStudent('New', '12')).status).toBe(201);
+      });
+
+      test('a legacy row in another class does not hold a number here', async () => {
+        await createLegacy('13', { classId: otherClassId });
+        expect((await addStudent('New', '13')).status).toBe(201);
+      });
+
+      test('another teacher gets a 404, never a 409', async () => {
+        await patchStudent(holderId, { active: false });
+        const other = await addStudent('Other', '9');
+
+        const post = await as(teacherA2Token)(
+          request(app).post(`/api/classroom/classes/${classId}/students`).send({ name: 'Intruder', rollNumber: '6' })
+        );
+        expect(post.status).toBe(404);
+        expect((await patchStudent(other.body.student.id, { rollNumber: '6' }, teacherA2Token)).status).toBe(404);
+      });
+    });
+
+    test('rollNumberKey is neither accepted from a client nor returned to one', async () => {
+      const created = await addStudent('First', '1');
+      expect(created.body.student).not.toHaveProperty('rollNumberKey');
+
+      const post = await as(teacherAToken)(
+        request(app).post(`/api/classroom/classes/${classId}/students`).send({ name: 'Second', rollNumberKey: 'x' })
+      );
+      expect(post.status).toBe(400);
+      expect((await patchStudent(created.body.student.id, { rollNumberKey: 'x' })).status).toBe(400);
+    });
+
+    test('a taken roll number never tells another teacher the class or student exists', async () => {
+      await addStudent('First', '1');
+      const second = await addStudent('Second', '2');
+
+      const post = await as(teacherA2Token)(
+        request(app).post(`/api/classroom/classes/${classId}/students`).send({ name: 'Intruder', rollNumber: '1' })
+      );
+      expect(post.status).toBe(404);
+      expect((await patchStudent(second.body.student.id, { rollNumber: '1' }, teacherA2Token)).status).toBe(404);
+    });
+
+    test('requires authentication', async () => {
+      const res = await request(app).post(`/api/classroom/classes/${classId}/students`).send({ name: 'Anon', rollNumber: '1' });
+      expect(res.status).toBe(401);
+    });
+  });
 });
