@@ -1,6 +1,7 @@
 // Classroom Management fee/payment status (docs/classroom-feature-plan.md, docs/fee-tracking-amounts-plan.md).
 // Status is derived from amount vs expectedAmount, never stored: a student with no FeeRecord for a period reads
 // as "pending". Shared by GET .../fees and GET .../fees/export so their numbers match.
+const { compareByRollNumber } = require('./classroomStudents');
 
 /**
  * paid: amount >= expectedAmount. partial: something paid, not enough. pending: nothing paid.
@@ -26,6 +27,7 @@ async function getClassFeeStatus(prisma, { classId, teacherId, period }) {
     prisma.student.findMany({ where: { classId, teacherId, active: true }, orderBy: { name: 'asc' } }),
     prisma.feeRecord.findMany({ where: { classId, teacherId, period } }),
   ]);
+  students.sort(compareByRollNumber);
 
   const classFeeAmount = cls?.feeAmount ?? null;
   const byStudent = new Map(records.map((r) => [r.studentId, r]));
