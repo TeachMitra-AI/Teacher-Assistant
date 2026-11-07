@@ -240,9 +240,10 @@ a well-designed plan in an unfamiliar shape. Exact section list in [P6](#p6--les
 to be confirmed against a real sample before building.
 
 ### D16 — The mode resets on page reload (session-only state)
-**Chosen (owner decision, 2026-08-06):** `classroomMode` is ordinary React state in `CoachPage`.
+**Chosen (owner decision, 2026-08-06):** `classroomMode` is ordinary React state, held in `AppRoutes` (`useClassroomMode`) and passed to `CoachPage`.
 It survives navigation within the session; a reload or a new tab starts it OFF. It is **not**
-persisted to `user.preferences`.
+persisted to `user.preferences`. Signing out or switching account also starts it OFF: `AppRoutes` outlives a logout, and the
+choice must not carry into the next sign-in.
 **Rejected:** remembering it across sessions.
 **Why:** the risk is not annoyance, it is **silent spending**. Persisted, a teacher who turned it on
 once last month keeps paying ~6× on every question and may never register the pill. Given there is
