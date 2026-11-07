@@ -3,10 +3,11 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import CoachPage from './CoachPage';
 import { api } from '../api';
+import { useClassroomMode } from '../hooks/useClassroomMode';
 import type { HistoryItem } from '../types';
 
 const mockUser = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ const mockUser = vi.hoisted(() => ({
 
 vi.mock('../auth', () => ({ useAuth: () => ({ user: mockUser.current, updateUser: vi.fn() }) }));
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal<typeof import('../api')>()), api: vi.fn() }));
+vi.mock('../config', async (importOriginal) => ({ ...(await importOriginal<typeof import('../config')>()), CLASSROOM_MODE_ENABLED: true }));
 vi.mock('../components/Toast', () => ({ useToast: () => ({ show: vi.fn() }) }));
 vi.mock('../onboarding', () => ({ useOnboarding: () => ({ introReopened: false, closeIntro: vi.fn() }) }));
 vi.mock('../hooks/useOnboardingTip', () => ({ useOnboardingTip: () => ({ visible: false, dismiss: vi.fn() }) }));
@@ -35,10 +37,13 @@ vi.mock('../components/Sidebar', () => ({
   ),
 }));
 vi.mock('../components/Composer', () => ({
-  default: ({ value, onChange, onSubmit }: { value: string; onChange: (v: string) => void; onSubmit: () => void }) => (
+  default: ({ value, onChange, onSubmit, onClassroomModeChange }: {
+    value: string; onChange: (v: string) => void; onSubmit: () => void; onClassroomModeChange: (on: boolean) => void;
+  }) => (
     <div>
       <input aria-label="Question" value={value} onChange={(e) => onChange(e.target.value)} />
       <button type="button" onClick={() => onSubmit()}>Send</button>
+      <button type="button" onClick={() => onClassroomModeChange(true)}>Classroom Mode</button>
     </div>
   ),
 }));
@@ -56,13 +61,25 @@ const mockedApi = vi.mocked(api);
 function coachBodies() {
   return mockedApi.mock.calls
     .filter(([path]) => path === '/coach')
-    .map(([, options]) => (options as { body: { language: string; context: Record<string, string>; conversationId?: string } }).body);
+    .map(([, options]) => (options as { body: { language: string; context: Record<string, string>; conversationId?: string; classroomMode?: boolean } }).body);
 }
 
 function renderPage() {
   return render(
     <MemoryRouter>
-      <CoachPage preferences={{} as never} />
+      <CoachPage preferences={{} as never} classroomMode={false} onClassroomModeChange={vi.fn()} />
+    </MemoryRouter>
+  );
+}
+
+// Stands in for AppRoutes: the mode is held above the page, and leaving the route unmounts the page.
+function PageWithRoutes() {
+  const [classroomMode, setClassroomMode] = useClassroomMode('u1');
+  const [onChat, setOnChat] = useState(true);
+  return (
+    <MemoryRouter>
+      <button type="button" onClick={() => setOnChat((v) => !v)}>{onChat ? 'Leave chat' : 'Return to chat'}</button>
+      {onChat && <CoachPage preferences={{} as never} classroomMode={classroomMode} onClassroomModeChange={setClassroomMode} />}
     </MemoryRouter>
   );
 }
@@ -145,5 +162,29 @@ describe('CoachPage teaching context', () => {
     expect(body.language).toBe('bn');
     expect(body.conversationId).toBe('thread-1');
     expect(body.context).toEqual({ grade: 'Class 2', subject: 'English', classroomType: 'Mixed Ability', issueType: '' });
+  });
+});
+
+describe('CoachPage Classroom Mode', () => {
+  test('stays on after leaving the chat and coming back', async () => {
+    const user = userEvent.setup();
+    render(<PageWithRoutes />);
+
+    await user.click(screen.getByRole('button', { name: 'Classroom Mode' }));
+    await user.click(screen.getByRole('button', { name: 'Leave chat' }));
+    expect(screen.queryByLabelText('Question')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Return to chat' }));
+
+    expect((await ask(user, 'First')).classroomMode).toBe(true);
+  });
+
+  test('is left out of the request when it was never turned on', async () => {
+    const user = userEvent.setup();
+    render(<PageWithRoutes />);
+
+    await user.click(screen.getByRole('button', { name: 'Leave chat' }));
+    await user.click(screen.getByRole('button', { name: 'Return to chat' }));
+
+    expect(await ask(user, 'First')).not.toHaveProperty('classroomMode');
   });
 });

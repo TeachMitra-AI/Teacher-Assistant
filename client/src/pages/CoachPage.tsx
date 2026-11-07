@@ -70,7 +70,11 @@ function clampComposerHeight(value: number): number {
   return Math.min(Math.max(value, COMPOSER_MIN_HEIGHT), max);
 }
 
-export default function CoachPage({ preferences }: { preferences: ReturnType<typeof usePreferences> }) {
+export default function CoachPage({ preferences, classroomMode, onClassroomModeChange }: {
+  preferences: ReturnType<typeof usePreferences>;
+  classroomMode: boolean;
+  onClassroomModeChange: (on: boolean) => void;
+}) {
   const { show } = useToast();
   const { user, updateUser } = useAuth();
   const { introReopened, closeIntro } = useOnboarding();
@@ -90,15 +94,14 @@ export default function CoachPage({ preferences }: { preferences: ReturnType<typ
   const [context, setContext] = useState<QueryContext>(() => defaultContext(prefs));
 
   // ---- Classroom Mode (docs/classroom-mode.md) ----
-  // Plain component state, deliberately not persisted to user.preferences: it survives in-session navigation and resets to OFF on
-  // reload. The risk is silent spend, since each question costs several model calls, and a mode remembered across sessions is one a
-  // teacher stops noticing.
-  const [classroomMode, setClassroomMode] = useState(false);
+  // Held above the routes (useClassroomMode in App.tsx) because this page unmounts on navigation, and deliberately not persisted to
+  // user.preferences: it survives in-session navigation and resets to OFF on reload. The risk is silent spend, since each question
+  // costs several model calls, and a mode remembered across sessions is one a teacher stops noticing.
   // First-visit tip pointing at the "+" button.
   const classroomTip = useOnboardingTip('classroom-mode-intro');
 
   function setClassroomModeOn(on: boolean) {
-    setClassroomMode(on);
+    onClassroomModeChange(on);
     show(on ? 'Classroom Mode on' : 'Classroom Mode off', 'success');
   }
 

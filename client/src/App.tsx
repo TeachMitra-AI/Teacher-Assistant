@@ -20,6 +20,7 @@ import RootErrorScreen from './components/RootErrorScreen';
 // OnboardingProvider order stays as is and removing the feature removes one wrapper.
 import { RouterProvider } from './assistant/RouterProvider';
 import { usePreferences } from './hooks/usePreferences';
+import { useClassroomMode } from './hooks/useClassroomMode';
 import { ADMIN_ROLES, GOOGLE_CLIENT_ID } from './config';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
@@ -55,6 +56,7 @@ const GeneratorPage = lazy(() => import('./pages/GeneratorPage'));
 function AppRoutes() {
   const { user, loading } = useAuth();
   const preferences = usePreferences();
+  const [classroomMode, setClassroomMode] = useClassroomMode(user?.id);
   const location = useLocation();
 
   // GA4 page_view per SPA navigation (lib/analytics.ts). The automatic gtag pageview is disabled at init so this covers the
@@ -106,7 +108,10 @@ function AppRoutes() {
         }
       >
       <Routes>
-      <Route path="/" element={<CoachPage preferences={preferences} />} />
+      <Route
+        path="/"
+        element={<CoachPage preferences={preferences} classroomMode={classroomMode} onClassroomModeChange={setClassroomMode} />}
+      />
       <Route path="/library" element={<LibraryPage preferences={preferences} />} />
       <Route path="/library/:id" element={<ResourceView preferences={preferences} />} />
       <Route path="/library/:id/edit" element={<ResourceWorkspace preferences={preferences} />} />
