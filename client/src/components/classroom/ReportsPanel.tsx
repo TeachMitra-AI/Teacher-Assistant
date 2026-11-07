@@ -15,7 +15,7 @@ function isOverpaid(s: StudentFeeStatus): boolean {
   return s.expectedAmount != null && s.amount > s.expectedAmount;
 }
 
-// The fees API orders perStudent by name (server/src/lib/classroomFees.js); re-sorted here by roll number, since a teacher
+// The fees API already orders perStudent by roll number (server/src/lib/classroomFees.js); re-sorted here too, since a teacher
 // scans a fee report roll-wise. Numeric rolls sort numerically ("2" before "10"); non-numeric or missing rolls sort after,
 // by name, so nobody vanishes.
 function byRollNumber(a: StudentFeeStatus, b: StudentFeeStatus): number {

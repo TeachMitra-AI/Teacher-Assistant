@@ -195,6 +195,24 @@ describe('Classroom Management — CSV export', () => {
       expect(res.status).toBe(404);
     });
 
+    test('lists students in numeric roll-number order, before the TOTAL row', async () => {
+      const orderClassId = await makeClass(teacherAToken, 'Fee Export Order');
+      await addStudent(teacherAToken, orderClassId, 'Aarav', '10');
+      await addStudent(teacherAToken, orderClassId, 'Bina', undefined);
+      await addStudent(teacherAToken, orderClassId, 'Chirag', '2');
+      await addStudent(teacherAToken, orderClassId, 'Divya', '1');
+
+      const res = await as(teacherAToken)(
+        request(app).get(`/api/classroom/classes/${orderClassId}/fees/export?period=2026-09`).buffer(true).parse(binaryParser)
+      );
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(res.body);
+
+      const names = [];
+      workbook.worksheets[0].eachRow((row, rowNumber) => { if (rowNumber > 1) names.push(row.getCell(1).value); });
+      expect(names).toEqual(['Divya', 'Chirag', 'Aarav', 'Bina', 'TOTAL']);
+    });
+
     // An overpaid student is a subset of 'paid' (amount > expectedAmount). The export marks them distinctly (label, colour,
     // Extra Paid amount), and the TOTAL row's "still owed" is the sum of each student's own shortfall, never netted against
     // another's overpayment (docs/report-feature-fix.md, same fix as the Reports tab).

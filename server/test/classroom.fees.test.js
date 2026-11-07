@@ -184,6 +184,20 @@ describe('Classroom Management — fees', () => {
     });
   });
 
+  describe('student order', () => {
+    test('perStudent is in numeric roll-number order, then students with none', async () => {
+      const cls = await as(teacherAToken)(request(app).post('/api/classroom/classes').send({ name: 'Fee Order Class' }));
+      const orderClassId = cls.body.class.id;
+      for (const [name, rollNumber] of [['Aarav', '10'], ['Bina', undefined], ['Chirag', '2'], ['Divya', '1']]) {
+        await as(teacherAToken)(request(app).post(`/api/classroom/classes/${orderClassId}/students`).send({ name, rollNumber }));
+      }
+
+      const res = await as(teacherAToken)(request(app).get(`/api/classroom/classes/${orderClassId}/fees?period=2026-09`));
+
+      expect(res.body.perStudent.map((s) => s.name)).toEqual(['Divya', 'Chirag', 'Aarav', 'Bina']);
+    });
+  });
+
   describe('deactivated students', () => {
     test('a deactivated student drops out of the fee status list, but their FeeRecord history is preserved (not hard-deleted)', async () => {
       const st = await as(teacherAToken)(request(app).post(`/api/classroom/classes/${classId}/students`).send({ name: 'Hema' }));
